@@ -34,7 +34,10 @@ export type RequestUser = {
   role: "admin" | "va" | "designer";
 };
 
-type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** Synthetic actor id for system-initiated writes (never a real user row). */
+export const SYSTEM_ACTOR_ID = "system";
 
 /**
  * Run `fn` inside a transaction whose first statement sets the RLS GUCs for
@@ -53,4 +56,19 @@ export function withUserContext<T>(
     );
     return fn(tx);
   });
+}
+
+/**
+ * Run `fn` in an admin-scoped RLS context for BACKGROUND JOBS ONLY — the Etsy
+ * sync, cron tasks, and route handlers that act on behalf of no signed-in user.
+ *
+ * It sets `app.role = 'admin'` (RLS grants full tenant access) with a synthetic
+ * user id, so system-initiated writes should set `actor_id = null`.
+ *
+ * NEVER call this from a request path that serves a logged-in user — that would
+ * silently escalate that request to full cross-tenant access. Request paths use
+ * withUserContext with the real session user. See CLAUDE.md.
+ */
+export function withSystemContext<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return withUserContext({ id: SYSTEM_ACTOR_ID, role: "admin" }, fn);
 }

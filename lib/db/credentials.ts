@@ -6,7 +6,7 @@ import {
 
 import { eq } from "drizzle-orm";
 
-import { db } from "./index";
+import type { Tx } from "./index";
 import { shops } from "./schema";
 
 /**
@@ -78,27 +78,32 @@ function decrypt(envelope: Envelope): ShopCredentials {
 /**
  * Decrypt and return a shop's credentials. The ONLY sanctioned way to read the
  * plaintext. Callers must not log or persist the result.
+ *
+ * Takes a `tx` because `shops` has RLS: run inside withUserContext (admin) or
+ * withSystemContext. The raw `db` handle (app_user, no GUC) is blocked by RLS.
  */
 export async function getShopCredentials(
+  tx: Tx,
   shopId: string,
 ): Promise<ShopCredentials> {
-  const [row] = await db
+  const [row] = await tx
     .select({ credentials: shops.credentials })
     .from(shops)
     .where(eq(shops.id, shopId))
     .limit(1);
   if (!row) {
-    throw new Error(`Shop not found: ${shopId}`);
+    throw new Error(`Shop not found (or not visible in this context): ${shopId}`);
   }
   return decrypt(row.credentials as Envelope);
 }
 
-/** Encrypt and persist a shop's credentials. */
+/** Encrypt and persist a shop's credentials. Requires an admin/system tx. */
 export async function setShopCredentials(
+  tx: Tx,
   shopId: string,
   credentials: ShopCredentials,
 ): Promise<void> {
-  await db
+  await tx
     .update(shops)
     .set({ credentials: encryptCredentials(credentials) })
     .where(eq(shops.id, shopId));

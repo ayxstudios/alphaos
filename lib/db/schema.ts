@@ -65,6 +65,13 @@ export const assetType = pgEnum("asset_type", [
   "final",
 ]);
 export const assetStorage = pgEnum("asset_storage", ["cdn", "r2"]);
+// How an order_item's figure_count was determined (drives payout trust).
+export const figureCountSource = pgEnum("figure_count_source", [
+  "shop_rule", // matched a per-shop rule (high confidence)
+  "heuristic", // generic pattern match (opt-in per shop)
+  "manual", // set by a human in the review queue
+  "unresolved", // could not determine — excluded from payout
+]);
 export const channelType = pgEnum("channel_type", [
   "inapp",
   "telegram",
@@ -186,6 +193,10 @@ export const shops = pgTable(
     // Never selected directly in app code — read via getShopCredentials().
     credentials: jsonb("credentials").notNull(),
     slaConfig: jsonb("sla_config"),
+    // Non-secret, admin-editable integration config (figure rules, sync cursor,
+    // sync lock). Kept out of the encrypted blob so it can be edited without
+    // decrypting credentials.
+    integrationConfig: jsonb("integration_config"),
     checklistVersion: integer("checklist_version").notNull().default(1),
     active: boolean("active").notNull().default(true),
     createdAt: createdAt(),
@@ -295,6 +306,8 @@ export const orders = pgTable(
     dueAt: timestamp("due_at", { withTimezone: true }),
     placedAt: timestamp("placed_at", { withTimezone: true }),
     uploadToken: text("upload_token").unique(),
+    // Set when an import needs a human: unresolved figure count or missing email.
+    needsReview: boolean("needs_review").notNull().default(false),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
@@ -319,7 +332,13 @@ export const orderItems = pgTable(
       .references(() => orders.id, { onDelete: "cascade" }),
     sku: text("sku"),
     variation: text("variation"),
-    figureCount: integer("figure_count").notNull().default(1),
+    // Nullable: null = unresolved. figureCountSource records how it was set;
+    // payout only trusts shop_rule | heuristic | manual (never a silent default).
+    figureCount: integer("figure_count"),
+    figureCountSource: figureCountSource("figure_count_source"),
+    // Etsy variations stored verbatim so a VA can resolve later and so we can
+    // back-test figure rules against real data.
+    rawVariations: jsonb("raw_variations"),
     style: text("style"),
     productType: productType("product_type").notNull(),
   },

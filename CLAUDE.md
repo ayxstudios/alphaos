@@ -72,8 +72,16 @@ No component may introduce a colour outside these:
   handler, server component). It bypasses tenant scoping. Request-path queries
   MUST go through `withUserContext(user, tx => …)` (`lib/db/index.ts`), which
   opens a transaction and sets the `app.user_id` / `app.role` GUCs the RLS
-  policies read. Raw `db` is only for migrations, seeds, and system jobs. Treat
-  this as a lint-level rule.
+  policies read. Raw `db` is only for migrations and seeds. Treat this as a
+  lint-level rule.
+- `withSystemContext(tx => …)` runs as an admin-scoped RLS context for
+  **background jobs only** — the Etsy sync, cron tasks, and route handlers that
+  act on behalf of no signed-in user. It grants full cross-tenant access, so
+  system-initiated writes set `actor_id = null`. **Never call it from a request
+  path serving a logged-in user** — that silently escalates that request to
+  full access. Those paths use `withUserContext` with the real session user.
+- `shops` has RLS, so `getShopCredentials` / `setShopCredentials` take a `tx`
+  and must run inside `withUserContext` (admin) or `withSystemContext`.
 - RLS is enforced by the app connecting as the non-owner role `app_user`;
   migrations run on the owner connection. See the header of
   `lib/db/migrations/0001_rls_policies.sql` for the required role/DATABASE_URL

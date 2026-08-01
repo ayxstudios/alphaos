@@ -1,6 +1,27 @@
-// Etsy integration — stub.
+// Etsy Open API v3 integration.
 //
-// Etsy API v3 client and per-shop OAuth2 token handling will live here.
-// See ./README.md for setup and the env vars this module expects.
+// - client.ts    rate-limited fetch, backoff, token refresh, logging
+// - oauth.ts     PKCE + token exchange + signed state cookie
+// - receipts.ts  syncShopReceipts: pull receipts -> orders/order_items
+// - figures.ts   figure_count resolution (shop rules -> opt-in heuristic -> unresolved)
 
-export {};
+export { EtsyClient } from "./client";
+export { syncShopReceipts, getShopReceipts, type SyncSummary } from "./receipts";
+export { resolveFigureCount } from "./figures";
+export {
+  buildAuthorizeUrl,
+  exchangeCodeForTokens,
+  refreshTokens,
+  generateCodeVerifier,
+  codeChallenge,
+  signOAuthState,
+  verifyOAuthState,
+  newState,
+} from "./oauth";
+export { ReauthRequiredError, EtsyApiError } from "./errors";
+export {
+  ETSY_SCOPES,
+  type EtsyCredentials,
+  type EtsyIntegrationConfig,
+  type FigureRule,
+} from "./types";
