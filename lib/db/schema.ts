@@ -95,13 +95,28 @@ export const users = pgTable("user", {
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
   name: text("name"),
-  email: text("email").notNull(),
+  // Unique: credentials login keys on email; also prevents duplicate accounts.
+  email: text("email").notNull().unique(),
   emailVerified: timestamp("email_verified", { mode: "date" }),
   image: text("image"),
   // AlphaOS additions:
   role: userRole("role").notNull().default("designer"),
   active: boolean("active").notNull().default(true),
   phone: text("phone"),
+  // bcrypt hash; nullable — not every user has a password set yet.
+  passwordHash: text("password_hash"),
+});
+
+// Database-backed login throttling (no Redis). Keyed by lowercased email so it
+// also covers attempts against non-existent accounts. No RLS — auth support
+// table, written before any session/user context exists.
+export const loginAttempts = pgTable("login_attempts", {
+  email: text("email").primaryKey(),
+  failedCount: integer("failed_count").notNull().default(0),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });
 
 export const accounts = pgTable(

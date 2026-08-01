@@ -15,6 +15,13 @@
       "when": 1785561805216,
       "tag": "0001_rls_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785575182592,
+      "tag": "0002_add_password_and_login_attempts",
+      "breakpoints": true
     }
   ]
 }

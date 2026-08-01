@@ -21,6 +21,10 @@ import ws from "ws";
 
 import * as schema from "../lib/db/schema";
 import { encryptCredentials } from "../lib/db/credentials";
+import { hashPassword } from "../lib/auth/password";
+
+// Dev-only password shared by every seeded user (printed at the end).
+const DEV_PASSWORD = "alphaos123";
 
 config({ path: ".env.local" });
 neonConfig.webSocketConstructor = ws;
@@ -65,13 +69,14 @@ async function main() {
   const d1 = randomUUID();
   const d2 = randomUUID();
   const d3 = randomUUID();
+  const passwordHash = await hashPassword(DEV_PASSWORD);
   await db.insert(schema.users).values([
-    { id: admin, name: "Ada Admin", email: "admin@aystudios.io", role: "admin" },
-    { id: va1, name: "Vic VA", email: "va1@aystudios.io", role: "va" },
-    { id: va2, name: "Val VA", email: "va2@aystudios.io", role: "va" },
-    { id: d1, name: "Dana Designer", email: "d1@aystudios.io", role: "designer" },
-    { id: d2, name: "Deb Designer", email: "d2@aystudios.io", role: "designer" },
-    { id: d3, name: "Dex Designer", email: "d3@aystudios.io", role: "designer" },
+    { id: admin, name: "Ada Admin", email: "admin@aystudios.io", role: "admin", passwordHash },
+    { id: va1, name: "Vic VA", email: "va1@aystudios.io", role: "va", passwordHash },
+    { id: va2, name: "Val VA", email: "va2@aystudios.io", role: "va", passwordHash },
+    { id: d1, name: "Dana Designer", email: "d1@aystudios.io", role: "designer", passwordHash },
+    { id: d2, name: "Deb Designer", email: "d2@aystudios.io", role: "designer", passwordHash },
+    { id: d3, name: "Dex Designer", email: "d3@aystudios.io", role: "designer", passwordHash },
   ]);
 
   await db.insert(schema.designerProfiles).values([
@@ -231,6 +236,20 @@ async function main() {
   `);
   console.log("Seed complete:");
   for (const row of counts.rows) console.log(`  ${row.t}: ${row.n}`);
+
+  // Login credentials for testing each role (dev only).
+  console.log("\nLogin credentials (password is the same for all):");
+  const logins = [
+    ["admin@aystudios.io", "admin"],
+    ["va1@aystudios.io", "va"],
+    ["va2@aystudios.io", "va"],
+    ["d1@aystudios.io", "designer (both businesses)"],
+    ["d2@aystudios.io", "designer (PixArt)"],
+    ["d3@aystudios.io", "designer (Lumina)"],
+  ];
+  for (const [email, role] of logins) {
+    console.log(`  ${email.padEnd(22)} ${DEV_PASSWORD}   ${role}`);
+  }
 
   // Expose the ids the RLS test needs, without hardcoding UUIDs there.
   console.log(

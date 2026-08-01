@@ -1,36 +1,44 @@
 import NextAuth from "next-auth";
-import Google from "next-auth/providers/google";
-import Nodemailer from "next-auth/providers/nodemailer";
+import Credentials from "next-auth/providers/credentials";
+
+import { authConfig, type Role } from "./config";
+import { authenticate } from "./login";
 
 /**
- * Auth.js (NextAuth v5) configuration.
+ * Full Auth.js (NextAuth v5) config: the edge-safe base + the email/password
+ * Credentials provider. Sessions are JWT (no adapter, no session table lookups)
+ * and carry the user's id and role so middleware can gate access on the edge.
  *
- * Providers are configured but NOT yet wired to a database adapter.
- *
- * NOTE: The Nodemailer (magic-link) provider requires a database adapter to
- * persist verification tokens — it will not complete sign-in until an adapter
- * is attached. When ready, add the Drizzle adapter:
- *
- *   import { DrizzleAdapter } from "@auth/drizzle-adapter";
- *   import { db } from "@/lib/db";
- *   ...
- *   adapter: DrizzleAdapter(db),
- *
- * See lib/db/schema.ts for the Auth.js table definitions.
+ * Users are created by an admin or the seed script — there is no signup.
  */
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  // adapter: DrizzleAdapter(db), // TODO: wire up before enabling magic links
+  ...authConfig,
   providers: [
-    Google({
-      clientId: process.env.AUTH_GOOGLE_ID,
-      clientSecret: process.env.AUTH_GOOGLE_SECRET,
-    }),
-    Nodemailer({
-      server: process.env.EMAIL_SERVER,
-      from: process.env.EMAIL_FROM,
+    Credentials({
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      authorize: async (creds) => {
+        const email = creds?.email;
+        const password = creds?.password;
+        if (typeof email !== "string" || typeof password !== "string") {
+          return null;
+        }
+        // Returns the user, null (bad creds), or throws AccountLockedError.
+        return await authenticate(email, password);
+      },
     }),
   ],
-  pages: {
-    signIn: "/login",
-  },
 });
+
+export type SessionUser = { id: string; role: Role };
+
+/**
+ * Current user as a RequestUser for withUserContext, or null if signed out.
+ */
+export async function getSessionUser(): Promise<SessionUser | null> {
+  const session = await auth();
+  if (!session?.user) return null;
+  return { id: session.user.id, role: session.user.role };
+}

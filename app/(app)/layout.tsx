@@ -1,29 +1,52 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
 
-// Authenticated app shell.
-//
-// TODO(auth): gate this layout once the session strategy is finalized, e.g.
-//   import { auth } from "@/lib/auth";
-//   const session = await auth();
-//   if (!session) redirect("/login");
-export default function AppLayout({
+import { auth } from "@/lib/auth";
+import { loadShellData } from "@/lib/shell/context";
+import { Sidebar } from "@/components/shell/sidebar";
+import { TopBar } from "@/components/shell/top-bar";
+
+export const dynamic = "force-dynamic";
+
+export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const session = await auth();
+  if (!session?.user) redirect("/login");
+
+  const user = { id: session.user.id, role: session.user.role };
+  const { options, selected, unread } = await loadShellData(user);
+
   return (
-    <div className="flex flex-1 flex-col">
-      <header className="flex items-center justify-between border-b px-6 py-3">
-        <Link href="/dashboard" className="font-semibold">
-          AlphaOS
-        </Link>
-        <nav className="flex gap-4 text-sm">
-          <Link href="/dashboard" className="opacity-70 hover:opacity-100">
-            Dashboard
-          </Link>
-        </nav>
-      </header>
-      <main className="flex-1 p-6">{children}</main>
+    <div className="flex h-screen flex-col">
+      {/* Accent bar — pigment, signals you're in a scoped context. */}
+      <div className="h-1 shrink-0 bg-pigment" />
+      <div className="flex min-h-0 flex-1">
+        <Sidebar role={user.role} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <TopBar
+            user={{
+              name: session.user.name ?? session.user.email ?? "User",
+              email: session.user.email ?? "",
+              role: user.role,
+            }}
+            options={options}
+            selected={selected}
+            unread={unread}
+          />
+          {/* Active-business indicator, so nobody acts on the wrong shop. */}
+          <div className="flex shrink-0 items-center gap-2 border-b border-line bg-pigment-soft/50 px-6 py-1.5">
+            <span className="size-1.5 rounded-full bg-pigment" />
+            <span className="text-xs font-medium text-pigment">
+              Viewing: {selected.name}
+            </span>
+          </div>
+          <main className="min-h-0 flex-1 overflow-y-auto bg-canvas p-6">
+            {children}
+          </main>
+        </div>
+      </div>
     </div>
   );
 }

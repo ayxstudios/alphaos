@@ -1,55 +1,65 @@
-import { signIn } from "@/lib/auth";
+"use client";
+
+import { useActionState } from "react";
+
+import { Button } from "@/components/ui";
+import { Input } from "@/components/ui";
+import { Card } from "@/components/ui";
+import { AlertTriangle } from "@/components/ui/icons";
+import { loginAction, type LoginState } from "./actions";
+
+const initialState: LoginState = {};
 
 export default function LoginPage() {
+  const [state, formAction, pending] = useActionState(loginAction, initialState);
+
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold">Sign in to AlphaOS</h1>
-        <p className="text-sm opacity-70">
-          Continue with Google or a magic link.
-        </p>
+      <div className="flex flex-col items-center gap-2 text-center">
+        <div className="flex size-10 items-center justify-center rounded-card bg-pigment text-surface font-display text-lg font-bold">
+          A
+        </div>
+        <h1 className="font-display text-2xl font-semibold text-ink">
+          Sign in to AlphaOS
+        </h1>
+        <p className="text-sm text-slate">Internal tool — accounts are issued by an admin.</p>
       </div>
 
-      {/* Google OAuth */}
-      <form
-        action={async () => {
-          "use server";
-          await signIn("google", { redirectTo: "/dashboard" });
-        }}
-      >
-        <button
-          type="submit"
-          className="w-full rounded-md border px-4 py-2 text-sm hover:bg-black/5 dark:hover:bg-white/10"
-        >
-          Continue with Google
-        </button>
-      </form>
+      <Card className="p-6">
+        <form action={formAction} className="flex flex-col gap-4">
+          {state.error && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-input border border-rose/30 bg-rose/10 px-3 py-2 text-sm text-rose"
+            >
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+              <span>{state.error}</span>
+            </div>
+          )}
 
-      {/* Email magic link (Nodemailer provider — requires a DB adapter to work) */}
-      <form
-        action={async (formData: FormData) => {
-          "use server";
-          await signIn("nodemailer", {
-            email: formData.get("email"),
-            redirectTo: "/dashboard",
-          });
-        }}
-        className="flex flex-col gap-2"
-      >
-        <input
-          type="email"
-          name="email"
-          required
-          placeholder="you@example.com"
-          className="rounded-md border px-3 py-2 text-sm"
-        />
-        <button
-          type="submit"
-          className="w-full rounded-md border px-4 py-2 text-sm hover:bg-black/5 dark:hover:bg-white/10"
-        >
-          Send magic link
-        </button>
-      </form>
+          <Input
+            label="Email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            placeholder="you@aystudios.io"
+            required
+            autoFocus
+          />
+          <Input
+            label="Password"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            placeholder="••••••••"
+            required
+          />
+
+          <Button type="submit" size="lg" loading={pending} className="w-full">
+            Sign in
+          </Button>
+        </form>
+      </Card>
     </div>
   );
 }
