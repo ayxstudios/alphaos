@@ -9,7 +9,9 @@ import { loadShellData, ALL_BUSINESSES } from "@/lib/shell/context";
 import { Card, EmptyState } from "@/components/ui";
 import { Settings as SettingsIcon } from "@/components/ui/icons";
 import { EtsyShopCard, type EtsyShopVM } from "@/components/settings/etsy-shop-card";
+import { ShopifyShopCard, type ShopifyShopVM } from "@/components/settings/shopify-shop-card";
 import type { EtsyCredentials, EtsyIntegrationConfig } from "@/lib/integrations/etsy";
+import type { ShopifyCredentials, ShopifyIntegrationConfig } from "@/lib/integrations/shopify";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +70,39 @@ export default async function SettingsPage() {
     }),
   );
 
+  const shopifyShops = await withUserContext(user, (tx) => {
+    const cols = {
+      id: shops.id,
+      name: shops.name,
+      integrationConfig: shops.integrationConfig,
+    };
+    return selected.id === ALL_BUSINESSES
+      ? tx.select(cols).from(shops).where(eq(shops.platform, "shopify"))
+      : tx
+          .select(cols)
+          .from(shops)
+          .where(and(eq(shops.platform, "shopify"), eq(shops.businessId, selected.id)));
+  });
+
+  const shopifyCards: ShopifyShopVM[] = await Promise.all(
+    shopifyShops.map(async (s) => {
+      const creds = (await withUserContext(user, (tx) =>
+        getShopCredentials(tx, s.id),
+      )) as ShopifyCredentials;
+      const cfg = (s.integrationConfig ?? {}) as ShopifyIntegrationConfig;
+      return {
+        id: s.id,
+        name: s.name,
+        hasToken: !!creds.accessToken,
+        status: creds.status === "connected" ? "connected" : "not_connected",
+        shopDomain: creds.shopDomain ?? null,
+        lastSyncCursor: cfg.syncCursor ?? null,
+        allowHeuristic: !!cfg.allowHeuristicFigureCount,
+        ruleCount: cfg.figureRules?.length ?? 0,
+      };
+    }),
+  );
+
   return (
     <div className="flex flex-col gap-6">
       <h1 className="font-display text-2xl font-semibold text-ink">Settings</h1>
@@ -90,6 +125,30 @@ export default async function SettingsPage() {
           <div className="flex flex-col gap-4">
             {cards.map((c) => (
               <EtsyShopCard key={c.id} shop={c} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-4">
+        <div>
+          <h2 className="font-display text-lg font-semibold text-ink">Shopify shops</h2>
+          <p className="text-sm text-slate">
+            Connect each Shopify store with its domain and a custom app Admin API token.
+          </p>
+        </div>
+        {shopifyCards.length === 0 ? (
+          <Card>
+            <EmptyState
+              icon={SettingsIcon}
+              headline="No Shopify shops"
+              body="No Shopify shops in the selected business."
+            />
+          </Card>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {shopifyCards.map((c) => (
+              <ShopifyShopCard key={c.id} shop={c} />
             ))}
           </div>
         )}

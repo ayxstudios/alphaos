@@ -1,5 +1,9 @@
 /** Shapes for the Etsy Open API v3 subset we consume, plus our stored config. */
 
+import type { FigureRule } from "../figures";
+
+export type { FigureRule };
+
 export const ETSY_SCOPES = [
   "transactions_r",
   "transactions_w",
@@ -23,16 +27,6 @@ export type EtsyCredentials = {
   refreshToken?: string;
   refreshTokenExpiresAt?: string; // ISO (now + 90d on each issue)
   status?: "connected" | "needs_reauth";
-};
-
-/** A single figure-count rule (shops.integration_config.figureRules[]). */
-export type FigureRule = {
-  /** Case-insensitive substring matched against the variation's name. */
-  match: string;
-  /** How to derive the count from the variation's value. */
-  type: "integer" | "map";
-  /** For type "map": exact value (lowercased) -> count. */
-  map?: Record<string, number>;
 };
 
 /** Non-secret integration config (shops.integration_config). */
