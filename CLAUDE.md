@@ -66,6 +66,33 @@ No component may introduce a colour outside these:
   not only by UI filtering
 - Credentials encrypted at rest, scoped per shop, never committed
 
+## Data access (RLS)
+
+- **Never use the raw `db` export in a request path** (server action, route
+  handler, server component). It bypasses tenant scoping. Request-path queries
+  MUST go through `withUserContext(user, tx => …)` (`lib/db/index.ts`), which
+  opens a transaction and sets the `app.user_id` / `app.role` GUCs the RLS
+  policies read. Raw `db` is only for migrations, seeds, and system jobs. Treat
+  this as a lint-level rule.
+- RLS is enforced by the app connecting as the non-owner role `app_user`;
+  migrations run on the owner connection. See the header of
+  `lib/db/migrations/0001_rls_policies.sql` for the required role/DATABASE_URL
+  ops steps — until DATABASE_URL points at `app_user`, policies are defined but
+  not enforced.
+- Designers never read the `customers` table; they read the `customer_public`
+  view (id, business_id, first_name only). Admin/VA read `customers`.
+- Shop credentials: read only via `getShopCredentials(shopId)`
+  (`lib/db/credentials.ts`, AES-256-GCM, `ENCRYPTION_KEY`). Never log or return
+  the decrypted value.
+
+## Deadlines
+
+- `orders.due_at` — customer-facing SLA deadline. Set at import; does NOT move
+  on reassignment.
+- `assignments.due_at` — the assigned designer's deadline for their attempt.
+  Reassignment inserts a new assignment row with a fresh `due_at` while
+  `orders.due_at` stays put.
+
 ## Integration rules
 
 - Each of the 9 Etsy accounts has its OWN Seller App: a separate keystring

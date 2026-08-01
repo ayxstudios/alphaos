@@ -1,10 +1,56 @@
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import { Pool, neonConfig } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-serverless";
+import { sql } from "drizzle-orm";
+import ws from "ws";
 
 import * as schema from "./schema";
 
-const sql = neon(process.env.DATABASE_URL!);
+// The neon-http driver has NO transaction support, and per-request RLS needs a
+// transaction to scope the `app.user_id` / `app.role` GUCs (verified: neon-http
+// throws "No transactions support"). The neon-serverless WebSocket Pool driver
+// supports interactive transactions, where `set_config(..., true)` persists
+// across statements — exactly what withUserContext needs.
+neonConfig.webSocketConstructor = ws;
 
-export const db = drizzle(sql, { schema });
+const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
+
+/**
+ * Raw database handle. Connects as `app_user`, so RLS is in force but NO tenant
+ * GUCs are set — every query runs with `app.role` / `app.user_id` unset (NULL),
+ * which the policies treat as "not staff, no businesses" → effectively denied.
+ *
+ * DO NOT use `db` directly in any request path (server action, route handler,
+ * server component). Request-path queries MUST go through `withUserContext`,
+ * which opens a transaction and sets the GUCs the RLS policies read. Direct use
+ * is reserved for migrations/seeds/system jobs that run on the OWNER connection
+ * and intentionally bypass RLS. See CLAUDE.md.
+ */
+export const db = drizzle(pool, { schema });
 
 export { schema };
+
+export type RequestUser = {
+  id: string;
+  role: "admin" | "va" | "designer";
+};
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Run `fn` inside a transaction whose first statement sets the RLS GUCs for
+ * `user`, so every query in `fn` is scoped by the row-level security policies.
+ *
+ * The GUCs are transaction-local (`set_config(..., true)`) and only hold for
+ * the life of this transaction — exactly the queries in `fn`.
+ */
+export function withUserContext<T>(
+  user: RequestUser,
+  fn: (tx: Tx) => Promise<T>,
+): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(
+      sql`select set_config('app.user_id', ${user.id}, true), set_config('app.role', ${user.role}, true)`,
+    );
+    return fn(tx);
+  });
+}
