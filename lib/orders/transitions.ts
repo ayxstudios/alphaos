@@ -196,6 +196,13 @@ async function runTransition(tx: Tx, actor: Actor, input: TransitionInput): Prom
   if (key === "awaiting_qc->in_design") await insertQc(tx, order, actor, "fail", input.metadata);
   if (to === "complete") await createEarnings(tx, order.id, order.businessId);
 
+  // The full checklist snapshot + per-item results live on the qc_checks row
+  // (the audit source of truth); keep the heavy blobs out of activity_log, but
+  // preserve the compact fields (reason, failedItems) that make the log useful.
+  const logMeta: Record<string, unknown> = { edge: key };
+  for (const [k, v] of Object.entries(input.metadata ?? {})) {
+    if (k !== "checklistSnapshot" && k !== "itemResults") logMeta[k] = v;
+  }
   await tx.insert(activityLog).values({
     businessId: order.businessId,
     orderId,
@@ -203,7 +210,7 @@ async function runTransition(tx: Tx, actor: Actor, input: TransitionInput): Prom
     action: `order.${to}`,
     fromState: order.status,
     toState: to,
-    metadata: { edge: key, ...(input.metadata ?? {}) },
+    metadata: logMeta,
   });
 
   return { status: to };
@@ -235,6 +242,10 @@ async function insertQc(
     vaId: actor.role === "system" ? null : actor.id,
     result,
     reason: typeof metadata?.reason === "string" ? metadata.reason : null,
+    // Exact checklist used (versioned) + the VA's per-item verdicts, snapshotted
+    // so a later audit shows which standard applied at the time.
+    checklistSnapshot: metadata?.checklistSnapshot ?? null,
+    itemResults: metadata?.itemResults ?? null,
   });
 }
 

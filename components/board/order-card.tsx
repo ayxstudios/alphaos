@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { AlertTriangle } from "@/components/ui/icons";
 import { Countdown } from "./countdown";
 import type { BoardCard } from "@/lib/orders/board-data";
 
@@ -46,6 +47,24 @@ export function OrderCard({
           </span>
         </div>
       </div>
+
+      {card.qcFail && (
+        <div className="flex flex-col gap-1 rounded-input border border-rose/20 bg-rose/10 p-2">
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-rose">
+            <AlertTriangle size={13} className="shrink-0" /> QC failed — fix &amp; resubmit
+          </span>
+          {card.qcFail.failedItems.length > 0 && (
+            <ul className="ml-1 list-inside list-disc text-xs text-ink">
+              {card.qcFail.failedItems.map((label, i) => (
+                <li key={i} className="truncate">{label}</li>
+              ))}
+            </ul>
+          )}
+          {card.qcFail.reason && (
+            <p className="text-xs italic text-slate">&ldquo;{card.qcFail.reason}&rdquo;</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

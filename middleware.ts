@@ -11,6 +11,7 @@ const PROTECTED = [
   /^\/orders(\/|$)/,
   /^\/board(\/|$)/,
   /^\/queue(\/|$)/,
+  /^\/qc(\/|$)/,
   /^\/customers(\/|$)/,
   /^\/settings(\/|$)/,
 ];

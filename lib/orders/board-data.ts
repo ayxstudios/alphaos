@@ -1,4 +1,4 @@
-import { and, eq, gt, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import {
@@ -9,8 +9,12 @@ import {
   customers,
   customerPublic,
   earnings,
+  qcChecks,
 } from "@/lib/db/schema";
+import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
 import type { OrderStatus } from "./transitions";
+
+export type QcFailInfo = { reason: string | null; failedItems: string[] };
 
 export type BoardCard = {
   orderId: string;
@@ -22,6 +26,8 @@ export type BoardCard = {
   style: string | null;
   customerName: string;
   thumbnailUrl: string | null;
+  /** Latest QC fail (reason + failed items) for revision cards — what to fix. */
+  qcFail: QcFailInfo | null;
 };
 
 type OrderRow = {
@@ -65,6 +71,29 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
   const thumb = new Map<string, string>();
   for (const a of refs) if (a.url && !thumb.has(a.orderId)) thumb.set(a.orderId, a.url);
 
+  // Latest QC fail per in-design order — so revision cards show what to fix.
+  const revisionIds = rows.filter((o) => o.status === "in_design").map((o) => o.id);
+  const qcFail = new Map<string, QcFailInfo>();
+  if (revisionIds.length) {
+    const failRows = await tx
+      .select({
+        orderId: qcChecks.orderId,
+        reason: qcChecks.reason,
+        checklistSnapshot: qcChecks.checklistSnapshot,
+        itemResults: qcChecks.itemResults,
+      })
+      .from(qcChecks)
+      .where(and(inArray(qcChecks.orderId, revisionIds), eq(qcChecks.result, "fail")))
+      .orderBy(desc(qcChecks.createdAt));
+    for (const f of failRows) {
+      if (qcFail.has(f.orderId)) continue; // keep only the most recent fail
+      qcFail.set(f.orderId, {
+        reason: f.reason,
+        failedItems: failedLabels(f.checklistSnapshot, f.itemResults),
+      });
+    }
+  }
+
   const custIds = rows.map((o) => o.customerId).filter((x): x is string => !!x);
   const name = new Map<string, string>();
   if (custIds.length) {
@@ -95,7 +124,16 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
     style: style.get(o.id) ?? null,
     customerName: o.customerId ? (name.get(o.customerId) ?? "—") : "—",
     thumbnailUrl: thumb.get(o.id) ?? null,
+    qcFail: qcFail.get(o.id) ?? null,
   }));
+}
+
+/** Labels of items the VA marked failed, from the qc_checks snapshot + results. */
+function failedLabels(snapshot: unknown, results: unknown): string[] {
+  const items = (snapshot as ChecklistSnapshot | null)?.items;
+  if (!Array.isArray(items)) return [];
+  const res = (results ?? {}) as ItemResults;
+  return items.filter((it) => res[it.key] === false).map((it) => it.label);
 }
 
 export type DesignerBoard = {

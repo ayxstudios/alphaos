@@ -83,9 +83,15 @@ export default async function QueuePage({
             <QueueCard
               key={c.orderId}
               card={c}
-              actions={staffTransitionsFrom(c.status)
-                .filter((to) => to !== "on_hold" && to !== "cancelled")
-                .map((to) => ({ to, label: ACTION_LABEL[to] ?? to }))}
+              // Awaiting-QC orders go through the checklist gate, never a one-click pass.
+              qcHref={c.status === "awaiting_qc" ? `/qc/${c.orderId}` : undefined}
+              actions={
+                c.status === "awaiting_qc"
+                  ? []
+                  : staffTransitionsFrom(c.status)
+                      .filter((to) => to !== "on_hold" && to !== "cancelled")
+                      .map((to) => ({ to, label: ACTION_LABEL[to] ?? to }))
+              }
             />
           ))}
         </div>
