@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import { withSystemContext } from "@/lib/db";
 import { getShopCredentials } from "@/lib/db/credentials";
+import { flushQueued } from "@/lib/email/dispatch";
 import { shops } from "@/lib/db/schema";
 import {
   verifyShopifyHmac,
@@ -73,6 +74,8 @@ export async function POST(req: NextRequest) {
   after(async () => {
     try {
       const result = await importShopifyOrder({ shop: ctx, order: normalizeWebhookOrder(payload), via: "webhook" });
+      // Auto-send the photo request in near-real-time for a webhook import.
+      if (result === "imported") await flushQueued(ctx.businessId);
       console.log(
         JSON.stringify({
           ts: new Date().toISOString(),

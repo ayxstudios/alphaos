@@ -5,6 +5,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { withSystemContext } from "@/lib/db";
 import { getShopCredentials } from "@/lib/db/credentials";
 import { shops, orders, orderItems, customers, assets, activityLog } from "@/lib/db/schema";
+import { queuePhotoRequest, flushQueued } from "@/lib/email/dispatch";
 import type { NormalizedVariation } from "../figures";
 import { ShopifyClient } from "./client";
 import { resolveFigureCount } from "./figures";
@@ -163,6 +164,13 @@ export async function syncShopOrders(shopId: string): Promise<SyncSummary> {
         .set({ integrationConfig: { ...cfg, syncCursor: maxCreated || since, syncingSince: undefined } })
         .where(eq(shops.id, shopId)),
     );
+
+    // Best-effort: auto-send the queued photo-request emails for this business.
+    if (summary.imported > 0) {
+      await flushQueued(shop.businessId).catch((e) =>
+        logShopify(shopId, { level: "error", event: "photo_request_flush_failed", error: String(e) }),
+      );
+    }
     return summary;
   } catch (err) {
     await withSystemContext((tx) =>
@@ -196,6 +204,7 @@ export async function importShopifyOrder(args: {
   const status = anyPhotos ? ("ready_to_assign" as const) : ("awaiting_photos" as const);
   const needsReview = !email || items.some((i) => i.source === "unresolved");
   const dueAt = computeDueAt(order.createdAt, shop.slaConfig);
+  const uploadToken = randomUUID();
 
   return withSystemContext(async (tx) => {
     let customerId: string | null = null;
@@ -222,7 +231,7 @@ export async function importShopifyOrder(args: {
         source: "shopify",
         placedAt: order.createdAt,
         dueAt,
-        uploadToken: randomUUID(),
+        uploadToken,
         needsReview,
       })
       .onConflictDoNothing({ target: [orders.shopId, orders.platformOrderId] })
@@ -279,6 +288,18 @@ export async function importShopifyOrder(args: {
         figures: items.map((i) => ({ count: i.count, source: i.source, note: i.note })),
       },
     });
+
+    // Auto-send exception: queue the photo-request email only when we still need
+    // photos (an order that arrived WITH photos skips straight to ready_to_assign).
+    if (status === "awaiting_photos") {
+      await queuePhotoRequest(tx, {
+        id: orderId,
+        businessId: shop.businessId,
+        customerId,
+        platformOrderId: order.platformOrderId,
+        uploadToken,
+      });
+    }
 
     return "imported";
   });

@@ -7,7 +7,7 @@ import {
 import { eq } from "drizzle-orm";
 
 import type { Tx } from "./index";
-import { shops } from "./schema";
+import { businesses, shops } from "./schema";
 
 /**
  * Per-shop credential storage.
@@ -107,4 +107,39 @@ export async function setShopCredentials(
     .update(shops)
     .set({ credentials: encryptCredentials(credentials) })
     .where(eq(shops.id, shopId));
+}
+
+/**
+ * Decrypt and return a business's Gmail OAuth credentials (client id/secret +
+ * refresh/access token). Same envelope encryption as shop credentials, keyed on
+ * `businesses.gmail_credentials`. Returns `null` when Gmail has never been
+ * configured for the business. The ONLY sanctioned way to read the plaintext;
+ * callers must not log or persist the result.
+ *
+ * Takes a `tx` because `businesses` has RLS: run inside withUserContext (admin)
+ * or withSystemContext.
+ */
+export async function getBusinessGmailCredentials(
+  tx: Tx,
+  businessId: string,
+): Promise<ShopCredentials | null> {
+  const [row] = await tx
+    .select({ gmailCredentials: businesses.gmailCredentials })
+    .from(businesses)
+    .where(eq(businesses.id, businessId))
+    .limit(1);
+  if (!row?.gmailCredentials) return null;
+  return decrypt(row.gmailCredentials as Envelope);
+}
+
+/** Encrypt and persist a business's Gmail credentials. Requires admin/system tx. */
+export async function setBusinessGmailCredentials(
+  tx: Tx,
+  businessId: string,
+  credentials: ShopCredentials,
+): Promise<void> {
+  await tx
+    .update(businesses)
+    .set({ gmailCredentials: encryptCredentials(credentials) })
+    .where(eq(businesses.id, businessId));
 }

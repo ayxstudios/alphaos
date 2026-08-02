@@ -84,6 +84,22 @@ export const messageDirection = pgEnum("message_direction", [
   "inbound",
   "outbound",
 ]);
+// Lifecycle of a message row. Outbound customer email starts as `draft` (the VA
+// approval gate) or `queued` (the two auto-send exceptions: photo request +
+// reminder), then `sent`/`failed`. Inbound replies land as `received`.
+export const messageStatus = pgEnum("message_status", [
+  "draft",
+  "queued",
+  "sent",
+  "failed",
+  "received",
+]);
+// The three editable, per-business email templates.
+export const emailTemplateKey = pgEnum("email_template_key", [
+  "photo_request",
+  "proof_ready",
+  "revision_received",
+]);
 export const printProvider = pgEnum("print_provider", ["lumaprints", "gelato"]);
 export const printMethod = pgEnum("print_method", ["api", "manual"]);
 export const earningsStatus = pgEnum("earnings_status", [
@@ -193,8 +209,41 @@ export const businesses = pgTable("businesses", {
   logoUrl: text("logo_url"),
   gmailTenantDomain: text("gmail_tenant_domain"),
   workspaceSubject: text("workspace_subject"),
+  // Per-business Gmail OAuth. Each business has its OWN Google Cloud project and
+  // OAuth client, so the client id/secret + refresh token live in this
+  // AES-256-GCM envelope (never selected directly — read via
+  // getBusinessGmailCredentials). The sending mailbox address and the inbound
+  // history cursor are non-secret and kept as plain columns.
+  gmailCredentials: jsonb("gmail_credentials"),
+  gmailAddress: text("gmail_address"),
+  gmailHistoryId: text("gmail_history_id"),
   createdAt: createdAt(),
 });
+
+// Per-business, database-backed email templates so copy can change without a
+// deploy. A missing row falls back to the built-in default for that key
+// (lib/email/templates.ts). Bodies use {{variable}} placeholders rendered
+// server-side. Staff-scoped by RLS.
+export const emailTemplates = pgTable(
+  "email_templates",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    key: emailTemplateKey("key").notNull(),
+    subject: text("subject").notNull(),
+    body: text("body").notNull(),
+    updatedBy: text("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("email_templates_business_key_uq").on(t.businessId, t.key)],
+);
 
 export const shops = pgTable(
   "shops",
@@ -511,9 +560,22 @@ export const messages = pgTable(
     }),
     direction: messageDirection("direction").notNull(),
     channel: channelType("channel").notNull(),
+    // Outbound lifecycle / inbound = 'received'. Drafts wait in the VA outbox.
+    status: messageStatus("status").notNull().default("draft"),
+    // Which template produced an outbound message (null for inbound / ad-hoc).
+    templateKey: emailTemplateKey("template_key"),
+    // The proof this email is about, when applicable (proof-ready email).
+    proofId: text("proof_id").references(() => proofs.id, {
+      onDelete: "set null",
+    }),
+    subject: text("subject"),
+    // Recipient for outbound, sender for inbound.
+    address: text("address"),
     gmailThreadId: text("gmail_thread_id"),
     gmailMessageId: text("gmail_message_id"),
     body: text("body"),
+    // Last send error, for a failed outbound message.
+    error: text("error"),
     toneScore: numeric("tone_score", { precision: 5, scale: 2 }),
     approvedBy: text("approved_by").references(() => users.id, {
       onDelete: "set null",
@@ -524,6 +586,8 @@ export const messages = pgTable(
   (t) => [
     index("messages_order_idx").on(t.orderId),
     index("messages_gmail_thread_idx").on(t.gmailThreadId),
+    // The outbox: pending drafts across the tenant, newest first.
+    index("messages_status_idx").on(t.status, t.createdAt),
   ],
 );
 

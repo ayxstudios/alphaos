@@ -11,6 +11,7 @@ import {
   customers,
   activityLog,
 } from "@/lib/db/schema";
+import { queuePhotoRequest, flushQueued } from "@/lib/email/dispatch";
 import { EtsyClient } from "./client";
 import { resolveFigureCount } from "./figures";
 import { ReauthRequiredError } from "./errors";
@@ -152,6 +153,23 @@ export async function syncShopReceipts(shopId: string): Promise<SyncSummary> {
         })
         .where(eq(shops.id, shopId)),
     );
+
+    // Auto-send the queued photo-request emails for this business. Best-effort:
+    // a Gmail hiccup must not fail an otherwise-successful import run.
+    if (summary.imported > 0) {
+      await flushQueued(shop.businessId).catch((err) =>
+        console.log(
+          JSON.stringify({
+            ts: new Date().toISOString(),
+            level: "error",
+            integration: "gmail",
+            businessId: shop.businessId,
+            event: "photo_request_flush_failed",
+            error: String(err),
+          }),
+        ),
+      );
+    }
     return summary;
   } catch (err) {
     // Failure: release the lock but DO NOT advance the cursor (safe resume).
@@ -179,6 +197,7 @@ async function importReceipt(args: {
   const [firstName, lastName] = splitName(receipt.name);
   const placedAt = new Date(receipt.created_timestamp * 1000);
   const dueAt = computeDueAt(placedAt, slaConfig);
+  const uploadToken = randomUUID();
 
   // Resolve figures (pure) before touching the DB.
   const items = receipt.transactions.map((t) => {
@@ -219,7 +238,7 @@ async function importReceipt(args: {
         source: "etsy",
         placedAt,
         dueAt,
-        uploadToken: randomUUID(),
+        uploadToken,
         needsReview,
       })
       .onConflictDoNothing({ target: [orders.shopId, orders.platformOrderId] })
@@ -261,6 +280,16 @@ async function importReceipt(args: {
           note: i.figureNote,
         })),
       },
+    });
+
+    // Auto-send exception: queue the photo-request email (with the upload link).
+    // Actually sent by the flush at the end of the sync run.
+    await queuePhotoRequest(tx, {
+      id: orderId,
+      businessId,
+      customerId,
+      platformOrderId: String(receipt.receipt_id),
+      uploadToken,
     });
 
     return "imported";

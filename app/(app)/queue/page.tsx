@@ -10,6 +10,7 @@ import {
   type VaTab,
 } from "@/lib/orders/board-data";
 import { staffTransitionsFrom, type OrderStatus } from "@/lib/orders/transitions";
+import { getOutboxCount } from "@/lib/email/outbox";
 import { QueueCard } from "@/components/board/queue-card";
 import { Card, EmptyState } from "@/components/ui";
 import { ListChecks } from "@/components/ui/icons";
@@ -48,14 +49,20 @@ export default async function QueuePage({
 
   const { selected } = await loadShellData(user);
   const { cards, counts } = await getVaQueue(user, { businessId: selected.id, tab });
+  const outboxCount = await getOutboxCount(user, { businessId: selected.id });
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
         <h1 className="font-display text-2xl font-semibold text-ink">Queue</h1>
-        <Link href="/queue/review" className="text-sm font-medium text-pigment hover:underline">
-          Review queue →
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link href="/queue/outbox" className="text-sm font-medium text-pigment hover:underline">
+            Outbox{outboxCount > 0 ? ` (${outboxCount})` : ""} →
+          </Link>
+          <Link href="/queue/review" className="text-sm font-medium text-pigment hover:underline">
+            Review queue →
+          </Link>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1 border-b border-line pb-2">

@@ -25,6 +25,7 @@ import {
   type ItemResults,
 } from "@/lib/qc/checklist";
 import { runAutoAssign } from "./assign";
+import { prepareProofForApproval, draftRevisionReceived } from "@/lib/email/dispatch";
 
 export type OrderStatus = (typeof orderStatus.enumValues)[number];
 export type TransitionRole = "admin" | "va" | "designer" | "system";
@@ -163,6 +164,7 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
       id: orders.id,
       businessId: orders.businessId,
       shopId: orders.shopId,
+      customerId: orders.customerId,
       status: orders.status,
       revisionCount: orders.revisionCount,
       platformOrderId: orders.platformOrderId,
@@ -216,6 +218,27 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
   }
   if (qc) await insertQc(tx, order, actor, qc);
   if (to === "complete") await createEarnings(tx, order.id, order.businessId);
+
+  // Email side effects, composed into this transaction so a rolled-back
+  // transition never leaves a stray proof or draft. See lib/email/dispatch.ts.
+  if (to === "awaiting_approval") {
+    // Create the proof + token and draft the "proof ready" email for VA approval.
+    await prepareProofForApproval(tx, {
+      id: order.id,
+      businessId: order.businessId,
+      customerId: order.customerId,
+      platformOrderId: order.platformOrderId,
+    });
+  }
+  if (key === "awaiting_approval->in_design" && input.metadata?.via === "proof_portal") {
+    // Customer-requested revision (not a QC fail): acknowledge it.
+    await draftRevisionReceived(tx, {
+      id: order.id,
+      businessId: order.businessId,
+      customerId: order.customerId,
+      platformOrderId: order.platformOrderId,
+    });
+  }
 
   // The full checklist snapshot + per-item results live on the qc_checks row
   // (the audit source of truth); keep the heavy blobs out of activity_log, but
