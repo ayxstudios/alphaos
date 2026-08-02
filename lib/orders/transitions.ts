@@ -16,8 +16,14 @@ import {
   designerProfiles,
   activityLog,
   users,
+  shops,
   orderStatus,
 } from "@/lib/db/schema";
+import {
+  resolveChecklist,
+  type ChecklistSnapshot,
+  type ItemResults,
+} from "@/lib/qc/checklist";
 import { runAutoAssign } from "./assign";
 
 export type OrderStatus = (typeof orderStatus.enumValues)[number];
@@ -149,6 +155,7 @@ async function runTransition(tx: Tx, actor: Actor, input: TransitionInput): Prom
     .select({
       id: orders.id,
       businessId: orders.businessId,
+      shopId: orders.shopId,
       status: orders.status,
       revisionCount: orders.revisionCount,
       platformOrderId: orders.platformOrderId,
@@ -174,6 +181,14 @@ async function runTransition(tx: Tx, actor: Actor, input: TransitionInput): Prom
   // Preconditions before we mutate anything.
   if (to === "complete") await assertFiguresResolved(tx, orderId, order.platformOrderId);
 
+  // QC gate — enforced HERE, not just in the UI/action, so a crafted request
+  // can't pass QC without every item ticked. The checklist is resolved from the
+  // order's shop (never trusted from the client); the client only supplies the
+  // per-item verdicts. This also produces the authoritative snapshot we persist.
+  let qc: QcOutcome | null = null;
+  if (key === "awaiting_qc->awaiting_approval") qc = await assertQc(tx, order, "pass", input.metadata);
+  if (key === "awaiting_qc->in_design") qc = await assertQc(tx, order, "fail", input.metadata);
+
   // Conditional (compare-and-swap) update — belt to the FOR UPDATE braces.
   const updated = await tx
     .update(orders)
@@ -192,16 +207,26 @@ async function runTransition(tx: Tx, actor: Actor, input: TransitionInput): Prom
   if (to === "ready_to_assign") {
     await runAutoAssign(tx, { orderId, businessId: order.businessId, assignedBy: actor.role === "system" ? null : actor.id });
   }
-  if (key === "awaiting_qc->awaiting_approval") await insertQc(tx, order, actor, "pass", input.metadata);
-  if (key === "awaiting_qc->in_design") await insertQc(tx, order, actor, "fail", input.metadata);
+  if (qc) await insertQc(tx, order, actor, qc);
   if (to === "complete") await createEarnings(tx, order.id, order.businessId);
 
   // The full checklist snapshot + per-item results live on the qc_checks row
   // (the audit source of truth); keep the heavy blobs out of activity_log, but
-  // preserve the compact fields (reason, failedItems) that make the log useful.
+  // preserve the compact fields (reason, failed items) that make the log useful.
   const logMeta: Record<string, unknown> = { edge: key };
   for (const [k, v] of Object.entries(input.metadata ?? {})) {
-    if (k !== "checklistSnapshot" && k !== "itemResults") logMeta[k] = v;
+    if (k !== "checklistSnapshot" && k !== "itemResults" && k !== "reason" && k !== "failedItems") {
+      logMeta[k] = v;
+    }
+  }
+  // For QC edges, log the server-authoritative reason + failed items (never the
+  // client's), so the activity trail matches what was actually enforced.
+  if (qc) {
+    if (qc.reason) logMeta.reason = qc.reason;
+    logMeta.failedItems = qc.checklist.items
+      .filter((it) => qc!.itemResults[it.key] === false)
+      .map((it) => it.label);
+    logMeta.checklistVersion = qc.checklist.version;
   }
   await tx.insert(activityLog).values({
     businessId: order.businessId,
@@ -229,23 +254,81 @@ async function assertFiguresResolved(tx: Tx, orderId: string, platformOrderId: s
   }
 }
 
+type QcOutcome = {
+  result: "pass" | "fail";
+  checklist: ChecklistSnapshot;
+  itemResults: ItemResults;
+  reason: string | null;
+};
+
+/**
+ * The QC gate. Resolves the authoritative checklist from the order's SHOP (never
+ * trusting a client-supplied list), coerces the caller's per-item verdicts
+ * against it, and enforces the pass/fail invariants:
+ *   pass -> every checklist item must be ticked
+ *   fail -> at least one item failed AND a non-empty reason
+ * Returns the server-authoritative outcome to persist. Throws PreconditionError
+ * otherwise, so the transaction rolls back and status never advances.
+ */
+async function assertQc(
+  tx: Tx,
+  order: { shopId: string },
+  result: "pass" | "fail",
+  metadata?: Record<string, unknown>,
+): Promise<QcOutcome> {
+  const [shop] = await tx
+    .select({ checklistVersion: shops.checklistVersion, integrationConfig: shops.integrationConfig })
+    .from(shops)
+    .where(eq(shops.id, order.shopId));
+  const checklist = resolveChecklist({
+    checklistVersion: shop?.checklistVersion ?? 1,
+    integrationConfig: shop?.integrationConfig ?? null,
+  });
+
+  const raw = (metadata?.itemResults ?? {}) as Record<string | number, unknown>;
+  // Normalise to the authoritative items only; anything not strictly true fails.
+  const itemResults: ItemResults = {};
+  for (const it of checklist.items) itemResults[it.key] = raw[it.key] === true;
+
+  if (result === "pass") {
+    const allTicked =
+      checklist.items.length > 0 && checklist.items.every((it) => itemResults[it.key]);
+    if (!allTicked) {
+      throw new PreconditionError(
+        "Cannot pass QC: every checklist item must be ticked.",
+      );
+    }
+    return { result, checklist, itemResults, reason: null };
+  }
+
+  // Fail.
+  const anyFailed = checklist.items.some((it) => !itemResults[it.key]);
+  const reason = typeof metadata?.reason === "string" ? metadata.reason.trim() : "";
+  if (!anyFailed) {
+    throw new PreconditionError("Cannot fail QC: mark at least one checklist item as failed.");
+  }
+  if (!reason) {
+    throw new PreconditionError("Cannot fail QC: a reason for the designer is required.");
+  }
+  return { result, checklist, itemResults, reason };
+}
+
 async function insertQc(
   tx: Tx,
   order: { id: string; businessId: string },
   actor: Actor,
-  result: "pass" | "fail",
-  metadata?: Record<string, unknown>,
+  qc: QcOutcome,
 ): Promise<void> {
   await tx.insert(qcChecks).values({
     businessId: order.businessId,
     orderId: order.id,
     vaId: actor.role === "system" ? null : actor.id,
-    result,
-    reason: typeof metadata?.reason === "string" ? metadata.reason : null,
-    // Exact checklist used (versioned) + the VA's per-item verdicts, snapshotted
-    // so a later audit shows which standard applied at the time.
-    checklistSnapshot: metadata?.checklistSnapshot ?? null,
-    itemResults: metadata?.itemResults ?? null,
+    result: qc.result,
+    reason: qc.reason,
+    // Exact checklist used (versioned) + the per-item verdicts, snapshotted so a
+    // later audit shows which standard applied at the time.
+    checklistSnapshot: qc.checklist,
+    itemResults: qc.itemResults,
   });
 }
 

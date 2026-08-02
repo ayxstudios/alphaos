@@ -54,14 +54,14 @@ export async function submitQcPass(input: {
   }
 
   try {
+    // The transition re-resolves the shop's checklist and re-validates that every
+    // item is ticked — this action's check is only a fast, friendly guard. We
+    // send just the per-item verdicts; the checklist itself is server-authoritative.
     const { status } = await transition(auth, {
       orderId: input.orderId,
       to: "awaiting_approval",
       expectedFrom: input.expectedFrom,
-      metadata: {
-        checklistSnapshot: input.checklist,
-        itemResults: input.itemResults,
-      },
+      metadata: { itemResults: input.itemResults },
     });
     revalidate(input.orderId);
     return { ok: true, status };
@@ -102,21 +102,15 @@ export async function submitQcFail(input: {
   const failedSet = new Set(failed);
   const itemResults: ItemResults = {};
   for (const it of input.checklist.items) itemResults[it.key] = !failedSet.has(it.key);
-  const failedItems = input.checklist.items
-    .filter((it) => failedSet.has(it.key))
-    .map((it) => it.label);
 
   try {
+    // The transition re-resolves the checklist and re-enforces "≥1 failed + reason";
+    // it derives the authoritative failed-item labels from the snapshot itself.
     const { status } = await transition(auth, {
       orderId: input.orderId,
       to: "in_design",
       expectedFrom: input.expectedFrom,
-      metadata: {
-        reason,
-        failedItems,
-        checklistSnapshot: input.checklist,
-        itemResults,
-      },
+      metadata: { reason, itemResults },
     });
     revalidate(input.orderId);
     return { ok: true, status };
