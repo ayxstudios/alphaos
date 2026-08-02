@@ -126,6 +126,21 @@ export const loginAttempts = pgTable("login_attempts", {
     .notNull(),
 });
 
+// Generic fixed-window rate-limit counters (no Redis, mirroring login_attempts).
+// Keyed by an opaque bucket string, e.g. "proof:<ip>" or "proof-token:<token>".
+// No RLS: it holds no tenant data and is written from the public, unauthenticated
+// proof portal where no request user-context exists.
+export const rateLimits = pgTable("rate_limits", {
+  bucket: text("bucket").primaryKey(),
+  hits: integer("hits").notNull().default(0),
+  windowStart: timestamp("window_start", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 export const accounts = pgTable(
   "account",
   {
@@ -174,6 +189,8 @@ export const businesses = pgTable("businesses", {
   id: id(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
+  // Public-facing brand mark, shown on the customer proof portal. Non-secret.
+  logoUrl: text("logo_url"),
   gmailTenantDomain: text("gmail_tenant_domain"),
   workspaceSubject: text("workspace_subject"),
   createdAt: createdAt(),
@@ -453,15 +470,31 @@ export const proofs = pgTable(
     orderId: text("order_id")
       .notNull()
       .references(() => orders.id, { onDelete: "cascade" }),
+    // Dedicated single-purpose proof token: a long random value that grants
+    // token-authenticated access to exactly this proof (never the upload token,
+    // which serves a different flow). Unique + not guessable/enumerable.
     token: text("token").notNull().unique(),
     sentAt: timestamp("sent_at", { withTimezone: true }),
+    // First and most-recent customer view. first_viewed_at is set once; viewed_at
+    // is updated on every view, so a VA can see "opened, last seen 2h ago".
+    firstViewedAt: timestamp("first_viewed_at", { withTimezone: true }),
     viewedAt: timestamp("viewed_at", { withTimezone: true }),
     decision: proofDecision("decision"),
+    // Set the instant a decision is recorded. Its presence makes the proof
+    // read-only: a customer cannot approve and then flip to a revision.
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    // Structured revision detail: the checked common-issue keys and any
+    // annotation pins ({ x, y } in normalised 0..1 image coordinates).
+    failedItems: jsonb("failed_items").$type<string[]>(),
+    annotations: jsonb("annotations").$type<ProofAnnotation[]>(),
     revisionNotes: text("revision_notes"),
     createdAt: createdAt(),
   },
   (t) => [index("proofs_order_idx").on(t.orderId)],
 );
+
+/** A revision pin dropped on the preview, in normalised image coordinates. */
+export type ProofAnnotation = { x: number; y: number };
 
 export const messages = pgTable(
   "messages",

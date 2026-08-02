@@ -147,7 +147,14 @@ export function transitionAsSystem(input: TransitionInput): Promise<{ status: Or
   return withSystemContext((tx) => runTransition(tx, { id: SYSTEM_ACTOR_ID, role: "system" }, input));
 }
 
-async function runTransition(tx: Tx, actor: Actor, input: TransitionInput): Promise<{ status: OrderStatus }> {
+/**
+ * The core transition, run inside a caller-provided transaction. Exported so a
+ * flow that must do extra work atomically with the status change (e.g. the proof
+ * portal claiming its read-only decision lock in the same tx) can compose it,
+ * rather than opening a second transaction. Request/system callers should use
+ * `transition` / `transitionAsSystem`, which open the correctly-scoped tx.
+ */
+export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput): Promise<{ status: OrderStatus }> {
   const { orderId, to, expectedFrom } = input;
 
   // Lock the row; RLS also scopes visibility (designers only see their own).

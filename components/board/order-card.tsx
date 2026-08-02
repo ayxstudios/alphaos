@@ -65,6 +65,26 @@ export function OrderCard({
           )}
         </div>
       )}
+
+      {card.customerRevision && (
+        <div className="flex flex-col gap-1 rounded-input border border-pigment/20 bg-pigment-soft p-2">
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-pigment">
+            <AlertTriangle size={13} className="shrink-0" /> Customer requested changes
+          </span>
+          {card.customerRevision.failedItems.length > 0 && (
+            <ul className="ml-1 list-inside list-disc text-xs text-ink">
+              {card.customerRevision.failedItems.map((label, i) => (
+                <li key={i} className="truncate">{label}</li>
+              ))}
+            </ul>
+          )}
+          {card.customerRevision.reason && (
+            <p className="text-xs italic text-slate">
+              &ldquo;{card.customerRevision.reason}&rdquo;
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

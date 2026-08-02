@@ -10,10 +10,13 @@ import {
   customerPublic,
   earnings,
   qcChecks,
+  proofs,
 } from "@/lib/db/schema";
 import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
+import { issueLabels } from "@/lib/proofs/issues";
 import type { OrderStatus } from "./transitions";
 
+/** A revision the designer must act on — from QC, or from the customer. */
 export type QcFailInfo = { reason: string | null; failedItems: string[] };
 
 export type BoardCard = {
@@ -26,8 +29,13 @@ export type BoardCard = {
   style: string | null;
   customerName: string;
   thumbnailUrl: string | null;
-  /** Latest QC fail (reason + failed items) for revision cards — what to fix. */
+  /**
+   * The most recent revision reason on a revision card — whichever came last:
+   * a failed QC (`qcFail`) or a customer change request (`customerRevision`).
+   * At most one is set, so the designer always sees the current instruction.
+   */
   qcFail: QcFailInfo | null;
+  customerRevision: QcFailInfo | null;
 };
 
 type OrderRow = {
@@ -71,9 +79,12 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
   const thumb = new Map<string, string>();
   for (const a of refs) if (a.url && !thumb.has(a.orderId)) thumb.set(a.orderId, a.url);
 
-  // Latest QC fail per in-design order — so revision cards show what to fix.
+  // Revision detail per in-design order — the reason a card is back in design.
+  // A card can be here from a failed QC (qc_checks) OR a customer change request
+  // (proofs); we surface whichever happened most recently.
   const revisionIds = rows.filter((o) => o.status === "in_design").map((o) => o.id);
   const qcFail = new Map<string, QcFailInfo>();
+  const customerRevision = new Map<string, QcFailInfo>();
   if (revisionIds.length) {
     const failRows = await tx
       .select({
@@ -81,16 +92,42 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
         reason: qcChecks.reason,
         checklistSnapshot: qcChecks.checklistSnapshot,
         itemResults: qcChecks.itemResults,
+        createdAt: qcChecks.createdAt,
       })
       .from(qcChecks)
       .where(and(inArray(qcChecks.orderId, revisionIds), eq(qcChecks.result, "fail")))
       .orderBy(desc(qcChecks.createdAt));
+    const qcAt = new Map<string, Date>();
     for (const f of failRows) {
       if (qcFail.has(f.orderId)) continue; // keep only the most recent fail
       qcFail.set(f.orderId, {
         reason: f.reason,
         failedItems: failedLabels(f.checklistSnapshot, f.itemResults),
       });
+      qcAt.set(f.orderId, f.createdAt);
+    }
+
+    const revRows = await tx
+      .select({
+        orderId: proofs.orderId,
+        revisionNotes: proofs.revisionNotes,
+        failedItems: proofs.failedItems,
+        decidedAt: proofs.decidedAt,
+      })
+      .from(proofs)
+      .where(and(inArray(proofs.orderId, revisionIds), eq(proofs.decision, "revision")))
+      .orderBy(desc(proofs.decidedAt));
+    for (const r of revRows) {
+      if (customerRevision.has(r.orderId)) continue; // most recent request only
+      customerRevision.set(r.orderId, {
+        reason: r.revisionNotes,
+        failedItems: issueLabels(r.failedItems ?? []),
+      });
+      // Keep only the newer of the two: if a QC fail is more recent, drop the
+      // customer request from this card (and vice versa).
+      const qAt = qcAt.get(r.orderId);
+      if (qAt && r.decidedAt && qAt > r.decidedAt) customerRevision.delete(r.orderId);
+      else qcFail.delete(r.orderId);
     }
   }
 
@@ -125,6 +162,7 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
     customerName: o.customerId ? (name.get(o.customerId) ?? "—") : "—",
     thumbnailUrl: thumb.get(o.id) ?? null,
     qcFail: qcFail.get(o.id) ?? null,
+    customerRevision: customerRevision.get(o.id) ?? null,
   }));
 }
 
