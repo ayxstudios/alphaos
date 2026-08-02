@@ -1,0 +1,223 @@
+import { and, eq, gt, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
+
+import { withUserContext, type RequestUser } from "@/lib/db";
+import {
+  orders,
+  orderItems,
+  assignments,
+  assets,
+  customers,
+  customerPublic,
+  earnings,
+} from "@/lib/db/schema";
+import type { OrderStatus } from "./transitions";
+
+export type BoardCard = {
+  orderId: string;
+  platformOrderId: string;
+  status: OrderStatus;
+  dueAt: string | null; // ISO
+  figureCount: number;
+  figuresResolved: boolean;
+  style: string | null;
+  customerName: string;
+  thumbnailUrl: string | null;
+};
+
+type OrderRow = {
+  id: string;
+  platformOrderId: string;
+  status: OrderStatus;
+  dueAt: Date | null;
+  businessId: string;
+  customerId: string | null;
+  revisionCount: number;
+};
+
+type Tx = Parameters<Parameters<typeof withUserContext>[1]>[0];
+
+const OVERDUE_STATES: OrderStatus[] = [
+  "awaiting_photos", "ready_to_assign", "in_design", "awaiting_qc",
+  "awaiting_approval", "approved", "printing", "shipped",
+];
+
+async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<BoardCard[]> {
+  if (!rows.length) return [];
+  const ids = rows.map((o) => o.id);
+
+  const items = await tx
+    .select({ orderId: orderItems.orderId, figureCount: orderItems.figureCount, style: orderItems.style })
+    .from(orderItems)
+    .where(inArray(orderItems.orderId, ids));
+  const fig = new Map<string, number>();
+  const hasNull = new Map<string, boolean>();
+  const style = new Map<string, string>();
+  for (const it of items) {
+    fig.set(it.orderId, (fig.get(it.orderId) ?? 0) + (it.figureCount ?? 0));
+    if (it.figureCount == null) hasNull.set(it.orderId, true);
+    if (it.style && !style.has(it.orderId)) style.set(it.orderId, it.style);
+  }
+
+  const refs = await tx
+    .select({ orderId: assets.orderId, url: assets.url })
+    .from(assets)
+    .where(and(inArray(assets.orderId, ids), eq(assets.type, "reference")));
+  const thumb = new Map<string, string>();
+  for (const a of refs) if (a.url && !thumb.has(a.orderId)) thumb.set(a.orderId, a.url);
+
+  const custIds = rows.map((o) => o.customerId).filter((x): x is string => !!x);
+  const name = new Map<string, string>();
+  if (custIds.length) {
+    if (viewerRole === "designer") {
+      for (const c of await tx
+        .select({ id: customerPublic.id, firstName: customerPublic.firstName })
+        .from(customerPublic)
+        .where(inArray(customerPublic.id, custIds))) {
+        name.set(c.id!, c.firstName ?? "—");
+      }
+    } else {
+      for (const c of await tx
+        .select({ id: customers.id, firstName: customers.firstName, lastName: customers.lastName })
+        .from(customers)
+        .where(inArray(customers.id, custIds))) {
+        name.set(c.id, [c.firstName, c.lastName].filter(Boolean).join(" ") || "—");
+      }
+    }
+  }
+
+  return rows.map((o) => ({
+    orderId: o.id,
+    platformOrderId: o.platformOrderId,
+    status: o.status,
+    dueAt: o.dueAt ? o.dueAt.toISOString() : null,
+    figureCount: fig.get(o.id) ?? 0,
+    figuresResolved: !hasNull.get(o.id),
+    style: style.get(o.id) ?? null,
+    customerName: o.customerId ? (name.get(o.customerId) ?? "—") : "—",
+    thumbnailUrl: thumb.get(o.id) ?? null,
+  }));
+}
+
+export type DesignerBoard = {
+  columns: {
+    myQueue: BoardCard[];
+    inDesign: BoardCard[];
+    awaitingQc: BoardCard[];
+    revisions: BoardCard[];
+    complete: BoardCard[];
+  };
+  dailyEarnings: number;
+};
+
+/** Designer board for `designerId` (self, or a VA viewing ?designer=X). */
+export async function getDesignerBoard(user: RequestUser, designerId?: string): Promise<DesignerBoard> {
+  const target = designerId ?? user.id;
+  return withUserContext(user, async (tx) => {
+    const rows = (await tx
+      .select({
+        id: orders.id,
+        platformOrderId: orders.platformOrderId,
+        status: orders.status,
+        dueAt: orders.dueAt,
+        businessId: orders.businessId,
+        customerId: orders.customerId,
+        revisionCount: orders.revisionCount,
+      })
+      .from(orders)
+      .innerJoin(
+        assignments,
+        and(eq(assignments.orderId, orders.id), eq(assignments.active, true), eq(assignments.designerId, target)),
+      )
+      .where(inArray(orders.status, ["ready_to_assign", "in_design", "awaiting_qc", "complete"]))) as OrderRow[];
+
+    const cards = await enrich(tx, rows, user.role);
+    const meta = new Map(rows.map((r) => [r.id, r]));
+    const pick = (pred: (r: OrderRow) => boolean) => cards.filter((c) => pred(meta.get(c.orderId)!));
+
+    const [e] = await tx
+      .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
+      .from(earnings)
+      .where(and(eq(earnings.designerId, target), gte(earnings.createdAt, sql`date_trunc('day', now())`)));
+
+    return {
+      columns: {
+        myQueue: pick((r) => r.status === "ready_to_assign"),
+        inDesign: pick((r) => r.status === "in_design" && r.revisionCount === 0),
+        awaitingQc: pick((r) => r.status === "awaiting_qc"),
+        revisions: pick((r) => r.status === "in_design" && r.revisionCount > 0),
+        complete: pick((r) => r.status === "complete"),
+      },
+      dailyEarnings: Number(e?.total ?? 0),
+    };
+  });
+}
+
+export const VA_TABS = [
+  "needs_photos", "unassigned", "awaiting_qc", "revisions_in",
+  "awaiting_customer", "ready_to_print", "overdue",
+] as const;
+export type VaTab = (typeof VA_TABS)[number];
+
+export const VA_TAB_LABELS: Record<VaTab, string> = {
+  needs_photos: "Needs Photos",
+  unassigned: "Unassigned",
+  awaiting_qc: "Awaiting QC",
+  revisions_in: "Revisions In",
+  awaiting_customer: "Awaiting Customer",
+  ready_to_print: "Ready to Print",
+  overdue: "Overdue",
+};
+
+function tabWhere(tab: VaTab) {
+  switch (tab) {
+    case "needs_photos": return eq(orders.status, "awaiting_photos");
+    case "unassigned":
+      return and(
+        eq(orders.status, "ready_to_assign"),
+        sql`not exists (select 1 from assignments a where a.order_id = ${orders.id} and a.active)`,
+      );
+    case "awaiting_qc": return eq(orders.status, "awaiting_qc");
+    case "revisions_in": return and(eq(orders.status, "in_design"), gt(orders.revisionCount, 0));
+    case "awaiting_customer": return eq(orders.status, "awaiting_approval");
+    case "ready_to_print": return eq(orders.status, "approved");
+    case "overdue":
+      return and(inArray(orders.status, OVERDUE_STATES), isNotNull(orders.dueAt), lt(orders.dueAt, sql`now()`));
+  }
+}
+
+export type VaQueue = { cards: BoardCard[]; counts: Record<VaTab, number> };
+
+export async function getVaQueue(
+  user: RequestUser,
+  opts: { businessId: string | null; tab: VaTab },
+): Promise<VaQueue> {
+  return withUserContext(user, async (tx) => {
+    const bizFilter = opts.businessId && opts.businessId !== "all" ? eq(orders.businessId, opts.businessId) : undefined;
+
+    const counts = {} as Record<VaTab, number>;
+    for (const t of VA_TABS) {
+      const [c] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(orders)
+        .where(bizFilter ? and(tabWhere(t), bizFilter) : tabWhere(t));
+      counts[t] = Number(c?.n ?? 0);
+    }
+
+    const rows = (await tx
+      .select({
+        id: orders.id,
+        platformOrderId: orders.platformOrderId,
+        status: orders.status,
+        dueAt: orders.dueAt,
+        businessId: orders.businessId,
+        customerId: orders.customerId,
+        revisionCount: orders.revisionCount,
+      })
+      .from(orders)
+      .where(bizFilter ? and(tabWhere(opts.tab), bizFilter) : tabWhere(opts.tab))
+      .orderBy(orders.dueAt)
+      .limit(200)) as OrderRow[];
+
+    return { cards: await enrich(tx, rows, user.role), counts };
+  });
+}

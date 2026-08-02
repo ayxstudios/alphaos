@@ -308,6 +308,10 @@ export const orders = pgTable(
     uploadToken: text("upload_token").unique(),
     // Set when an import needs a human: unresolved figure count or missing email.
     needsReview: boolean("needs_review").notNull().default(false),
+    // Incremented on rework (QC fail / customer revision -> in_design) in the same
+    // transaction as the transition. Distinguishes In Design from Revisions on the
+    // boards without scanning activity_log. 0 = first pass.
+    revisionCount: integer("revision_count").notNull().default(0),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()

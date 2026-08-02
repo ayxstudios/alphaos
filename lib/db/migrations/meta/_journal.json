@@ -29,6 +29,13 @@
       "when": 1785577084765,
       "tag": "0003_etsy_ingestion",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785631157562,
+      "tag": "0004_order_revision_count",
+      "breakpoints": true
     }
   ]
 }

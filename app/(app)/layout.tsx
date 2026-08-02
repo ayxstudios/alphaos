@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { loadShellData } from "@/lib/shell/context";
 import { Sidebar } from "@/components/shell/sidebar";
 import { TopBar } from "@/components/shell/top-bar";
+import { ToastProvider } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ export default async function AppLayout({
             </span>
           </div>
           <main className="min-h-0 flex-1 overflow-y-auto bg-canvas p-6">
-            {children}
+            <ToastProvider>{children}</ToastProvider>
           </main>
         </div>
       </div>
