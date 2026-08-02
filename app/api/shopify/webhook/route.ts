@@ -12,6 +12,8 @@ import {
   importShopifyOrder,
   resolveWebhookOrder,
   ShopifyClient,
+  shopifyWebhookHmacKey,
+  isShopifyConnected,
   type ShopifyWebhookOrder,
   type ShopifyCredentials,
   type ShopifyIntegrationConfig,
@@ -33,7 +35,7 @@ export async function POST(req: NextRequest) {
 
   if (!domain) return new NextResponse("bad request", { status: 400 });
 
-  // Look up the shop (by its myshopify domain) and its webhook secret.
+  // Look up the shop (by its myshopify domain) and its full credentials.
   const found = await withSystemContext(async (tx) => {
     const [shop] = await tx
       .select({
@@ -46,17 +48,16 @@ export async function POST(req: NextRequest) {
       .where(and(eq(shops.platform, "shopify"), eq(shops.externalShopId, domain)));
     if (!shop) return null;
     const creds = (await getShopCredentials(tx, shop.id)) as ShopifyCredentials;
-    return {
-      shop,
-      secret: creds.webhookSecret,
-      accessToken: creds.accessToken,
-      shopDomain: creds.shopDomain,
-    };
+    return { shop, creds };
   });
 
-  // Reject unknown shops or bad signatures.
-  if (!found?.secret) return new NextResponse("unknown shop", { status: 401 });
-  if (!verifyShopifyHmac(raw, hmac, found.secret)) {
+  if (!found) return new NextResponse("unknown shop", { status: 401 });
+
+  // The HMAC key is the client secret for Dev Dashboard apps, or the dedicated
+  // webhook secret for legacy custom apps. Reject unconfigured shops / bad sigs.
+  const hmacKey = shopifyWebhookHmacKey(found.creds);
+  if (!hmacKey) return new NextResponse("unknown shop", { status: 401 });
+  if (!verifyShopifyHmac(raw, hmac, hmacKey)) {
     return new NextResponse("invalid signature", { status: 401 });
   }
 
@@ -86,8 +87,8 @@ export async function POST(req: NextRequest) {
       const fallbackOrder = normalizeWebhookOrder(payload);
       let order = fallbackOrder;
       let resolution: "graphql" | "rest_fallback" = "rest_fallback";
-      if (found.accessToken && found.shopDomain) {
-        const client = new ShopifyClient(ctx.id, found.shopDomain, found.accessToken);
+      if (isShopifyConnected(found.creds)) {
+        const client = new ShopifyClient(ctx.id, found.creds);
         const resolved = await resolveWebhookOrder(client, fallbackOrder);
         order = resolved.order;
         resolution = resolved.resolution;

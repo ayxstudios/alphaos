@@ -11,6 +11,7 @@ import {
   CardContent,
   CardFooter,
   Input,
+  Select,
   Badge,
 } from "@/components/ui";
 import {
@@ -20,20 +21,35 @@ import {
 } from "@/app/(app)/settings/actions";
 import type { SyncSummary } from "@/lib/integrations/shopify";
 
+type AuthMode = "client_credentials" | "legacy";
+
 export type ShopifyShopVM = {
   id: string;
   name: string;
-  hasToken: boolean;
+  authType: AuthMode;
   status: "connected" | "not_connected";
   shopDomain: string | null;
+  hasClientId: boolean;
+  hasClientSecret: boolean;
+  hasToken: boolean;
+  hasWebhookSecret: boolean;
   lastSyncCursor: string | null;
   allowHeuristic: boolean;
   ruleCount: number;
 };
 
+const MODE_LABEL: Record<AuthMode, string> = {
+  client_credentials: "New app (Client ID + secret)",
+  legacy: "Legacy (permanent token)",
+};
+
 export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
+  const [mode, setMode] = useState<AuthMode>(shop.authType);
   const [domain, setDomain] = useState(shop.shopDomain ?? "");
-  const [token, setToken] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
   const [testing, startTest] = useTransition();
   const [syncing, startSync] = useTransition();
   const [test, setTest] = useState<{ ok: boolean; message: string } | null>(null);
@@ -44,7 +60,16 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
     setTest(null);
     startTest(async () => {
       try {
-        setTest(await testShopifyConnection(domain, token));
+        setTest(
+          await testShopifyConnection({
+            shopId: shop.id,
+            authType: mode,
+            domain,
+            clientId,
+            clientSecret,
+            accessToken,
+          }),
+        );
       } catch {
         setTest({ ok: false, message: "Test failed" });
       }
@@ -63,9 +88,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
     });
   }
 
-  const lastSync = shop.lastSyncCursor
-    ? new Date(shop.lastSyncCursor).toLocaleString()
-    : "never";
+  const lastSync = shop.lastSyncCursor ? new Date(shop.lastSyncCursor).toLocaleString() : "never";
 
   return (
     <Card>
@@ -79,7 +102,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
           )}
         </div>
         <CardDescription>
-          {shop.shopDomain ?? "no domain set"} · last sync {lastSync} ·{" "}
+          {shop.shopDomain ?? "no domain set"} · {MODE_LABEL[shop.authType]} · last sync {lastSync} ·{" "}
           {shop.ruleCount} figure rule{shop.ruleCount === 1 ? "" : "s"} · heuristic{" "}
           {shop.allowHeuristic ? "on" : "off"}
         </CardDescription>
@@ -88,6 +111,22 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
       <CardContent>
         <form action={saveShopifyCredentials} className="flex flex-col gap-3">
           <input type="hidden" name="shopId" value={shop.id} />
+          <input type="hidden" name="authType" value={mode} />
+
+          <Select
+            label="App type"
+            value={mode}
+            onChange={(e) => setMode(e.target.value as AuthMode)}
+            hint={
+              mode === "client_credentials"
+                ? "Dev Dashboard app: a Client ID + secret exchanged for a short-lived token. The client secret also verifies webhooks."
+                : "Deprecated admin custom app: a permanent access token plus a separate webhook secret."
+            }
+          >
+            <option value="client_credentials">{MODE_LABEL.client_credentials}</option>
+            <option value="legacy">{MODE_LABEL.legacy}</option>
+          </Select>
+
           <Input
             label="Store domain"
             name="shopDomain"
@@ -97,24 +136,54 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
             autoComplete="off"
             required
           />
-          <Input
-            label="Admin API access token"
-            name="accessToken"
-            type="password"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            placeholder={shop.hasToken ? "•••••••• (set — enter to replace)" : "shpat_..."}
-            autoComplete="off"
-            required
-          />
-          <Input
-            label="Webhook secret (custom app API secret key)"
-            name="webhookSecret"
-            type="password"
-            placeholder={shop.hasToken ? "•••••••• (set — enter to replace)" : "Signs webhook HMAC"}
-            autoComplete="off"
-            required
-          />
+
+          {mode === "client_credentials" ? (
+            <>
+              <Input
+                label="Client ID"
+                name="clientId"
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                placeholder={shop.hasClientId ? "•••••••• (set — enter to replace)" : "Client ID from the Dev Dashboard"}
+                autoComplete="off"
+                required={!shop.hasClientId}
+              />
+              <Input
+                label="Client secret"
+                name="clientSecret"
+                type="password"
+                value={clientSecret}
+                onChange={(e) => setClientSecret(e.target.value)}
+                placeholder={shop.hasClientSecret ? "•••••••• (set — leave blank to keep)" : "Also signs webhook HMAC"}
+                autoComplete="off"
+                required={!shop.hasClientSecret}
+              />
+            </>
+          ) : (
+            <>
+              <Input
+                label="Admin API access token"
+                name="accessToken"
+                type="password"
+                value={accessToken}
+                onChange={(e) => setAccessToken(e.target.value)}
+                placeholder={shop.hasToken ? "•••••••• (set — leave blank to keep)" : "shpat_..."}
+                autoComplete="off"
+                required={!shop.hasToken}
+              />
+              <Input
+                label="Webhook secret (custom app API secret key)"
+                name="webhookSecret"
+                type="password"
+                value={webhookSecret}
+                onChange={(e) => setWebhookSecret(e.target.value)}
+                placeholder={shop.hasWebhookSecret ? "•••••••• (set — leave blank to keep)" : "Signs webhook HMAC"}
+                autoComplete="off"
+                required={!shop.hasWebhookSecret}
+              />
+            </>
+          )}
+
           <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="secondary" size="sm" onClick={onTest} loading={testing}>
               Test connection

@@ -23,8 +23,10 @@ import {
 import {
   syncShopOrders,
   verifyShopifyToken,
+  verifyShopifyClientCredentials,
   type SyncSummary as ShopifySyncSummary,
   type ShopifyCredentials,
+  type ShopifyAuthType,
 } from "@/lib/integrations/shopify";
 
 function normalizeDomain(input: string): string {
@@ -61,40 +63,93 @@ export async function triggerSync(shopId: string): Promise<SyncSummary> {
 
 /* --- Shopify ------------------------------------------------------------ */
 
-/** Verify an Admin API token without saving it. */
-export async function testShopifyConnection(
-  domain: string,
-  token: string,
-): Promise<{ ok: boolean; message: string }> {
-  await requireAdmin();
-  const d = normalizeDomain(domain);
-  if (!d || !token.trim()) return { ok: false, message: "Enter a store domain and access token." };
-  const result = await verifyShopifyToken(d, token.trim());
-  return result.ok
-    ? { ok: true, message: `Connected to "${result.shopName}".` }
-    : { ok: false, message: result.error };
+/**
+ * Verify Shopify credentials without saving, for either auth model. Blank secret
+ * fields fall back to what's already stored (so "Test" works when the admin is
+ * only editing the domain and keeping the saved secret).
+ */
+export async function testShopifyConnection(input: {
+  shopId: string;
+  authType: ShopifyAuthType;
+  domain: string;
+  accessToken?: string;
+  clientId?: string;
+  clientSecret?: string;
+}): Promise<{ ok: boolean; message: string }> {
+  const user = await requireAdmin();
+  const stored = (await withUserContext(user, (tx) =>
+    getShopCredentials(tx, input.shopId),
+  )) as ShopifyCredentials;
+
+  const d = normalizeDomain(input.domain || stored.shopDomain || "");
+  if (!d) return { ok: false, message: "Enter a store domain." };
+
+  if (input.authType === "client_credentials") {
+    const clientId = input.clientId?.trim() || stored.clientId;
+    const clientSecret = input.clientSecret?.trim() || stored.clientSecret;
+    if (!clientId || !clientSecret) {
+      return { ok: false, message: "Enter a Client ID and Client secret." };
+    }
+    const r = await verifyShopifyClientCredentials(d, clientId, clientSecret);
+    return r.ok ? { ok: true, message: `Connected to "${r.shopName}".` } : { ok: false, message: r.error };
+  }
+
+  const token = input.accessToken?.trim() || stored.accessToken;
+  if (!token) return { ok: false, message: "Enter an access token." };
+  const r = await verifyShopifyToken(d, token);
+  return r.ok ? { ok: true, message: `Connected to "${r.shopName}".` } : { ok: false, message: r.error };
 }
 
-/** Save a shop's Shopify credentials (domain + token + webhook secret). Form action. */
+/**
+ * Save a shop's Shopify credentials. Two shapes:
+ * - client_credentials: domain + Client ID + Client secret (2026 Dev Dashboard).
+ * - legacy: domain + permanent access token + webhook secret.
+ * Secret fields left blank keep the stored value. Switching auth type clears the
+ * other model's fields (and any cached token) so stale credentials never linger.
+ */
 export async function saveShopifyCredentials(formData: FormData): Promise<void> {
   const user = await requireAdmin();
   const shopId = String(formData.get("shopId") ?? "");
+  const authType = (String(formData.get("authType") ?? "client_credentials")) as ShopifyAuthType;
   const shopDomain = normalizeDomain(String(formData.get("shopDomain") ?? ""));
-  const accessToken = String(formData.get("accessToken") ?? "").trim();
-  const webhookSecret = String(formData.get("webhookSecret") ?? "").trim();
-  if (!shopId || !shopDomain || !accessToken || !webhookSecret) {
-    throw new Error("Missing fields");
-  }
+  if (!shopId || !shopDomain) throw new Error("Missing fields");
 
   await withUserContext(user, async (tx) => {
     const creds = (await getShopCredentials(tx, shopId)) as ShopifyCredentials;
-    await setShopCredentials(tx, shopId, {
-      ...creds,
-      shopDomain,
-      accessToken,
-      webhookSecret,
-      status: "connected",
-    });
+
+    if (authType === "client_credentials") {
+      const clientId = String(formData.get("clientId") ?? "").trim() || creds.clientId;
+      const clientSecret = String(formData.get("clientSecret") ?? "").trim() || creds.clientSecret;
+      if (!clientId || !clientSecret) throw new Error("Client ID and secret are required");
+      await setShopCredentials(tx, shopId, {
+        ...creds,
+        authType: "client_credentials",
+        shopDomain,
+        clientId,
+        clientSecret,
+        // Clear legacy-only fields and any cached token from a prior model.
+        accessToken: undefined,
+        accessTokenExpiresAt: undefined,
+        webhookSecret: undefined,
+        status: "connected",
+      });
+    } else {
+      const accessToken = String(formData.get("accessToken") ?? "").trim() || creds.accessToken;
+      const webhookSecret = String(formData.get("webhookSecret") ?? "").trim() || creds.webhookSecret;
+      if (!accessToken || !webhookSecret) throw new Error("Access token and webhook secret are required");
+      await setShopCredentials(tx, shopId, {
+        ...creds,
+        authType: "legacy",
+        shopDomain,
+        accessToken,
+        webhookSecret,
+        clientId: undefined,
+        clientSecret: undefined,
+        accessTokenExpiresAt: undefined,
+        status: "connected",
+      });
+    }
+
     // Keep external_shop_id aligned with the domain so the webhook can find it.
     await tx.update(shops).set({ externalShopId: shopDomain }).where(eq(shops.id, shopId));
   });

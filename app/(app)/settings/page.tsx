@@ -15,7 +15,12 @@ import { TemplateEditor, type TemplateVM } from "@/components/settings/template-
 import { DEFAULT_TEMPLATES, TEMPLATE_META, type TemplateKey } from "@/lib/email/templates";
 import { appUrl } from "@/lib/urls";
 import type { EtsyCredentials, EtsyIntegrationConfig } from "@/lib/integrations/etsy";
-import type { ShopifyCredentials, ShopifyIntegrationConfig } from "@/lib/integrations/shopify";
+import {
+  resolveShopifyAuthType,
+  isShopifyConnected,
+  type ShopifyCredentials,
+  type ShopifyIntegrationConfig,
+} from "@/lib/integrations/shopify";
 import type { GmailCredentials } from "@/lib/integrations/gmail";
 
 export const dynamic = "force-dynamic";
@@ -98,9 +103,13 @@ export default async function SettingsPage() {
       return {
         id: s.id,
         name: s.name,
-        hasToken: !!creds.accessToken,
-        status: creds.status === "connected" ? "connected" : "not_connected",
+        authType: resolveShopifyAuthType(creds),
+        status: isShopifyConnected(creds) ? "connected" : "not_connected",
         shopDomain: creds.shopDomain ?? null,
+        hasClientId: !!creds.clientId,
+        hasClientSecret: !!creds.clientSecret,
+        hasToken: !!creds.accessToken,
+        hasWebhookSecret: !!creds.webhookSecret,
         lastSyncCursor: cfg.syncCursor ?? null,
         allowHeuristic: !!cfg.allowHeuristicFigureCount,
         ruleCount: cfg.figureRules?.length ?? 0,

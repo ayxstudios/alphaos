@@ -5,7 +5,13 @@
 // - webhook.ts   HMAC verification + orders/create payload normalization
 // - figures.ts   figure_count resolution via the shared resolver
 
-export { ShopifyClient, verifyShopifyToken } from "./client";
+export { ShopifyClient, verifyShopifyToken, verifyShopifyClientCredentials } from "./client";
+export {
+  resolveShopifyAuthType,
+  shopifyWebhookHmacKey,
+  isShopifyConnected,
+  exchangeClientCredentials,
+} from "./auth";
 export {
   syncShopOrders,
   importShopifyOrder,
@@ -24,6 +30,7 @@ export {
   SHOPIFY_SCOPES,
   SHOPIFY_API_VERSION,
   type ShopifyCredentials,
+  type ShopifyAuthType,
   type ShopifyIntegrationConfig,
   type FigureRule,
 } from "./types";

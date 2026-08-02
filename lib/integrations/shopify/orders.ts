@@ -8,6 +8,7 @@ import { shops, orders, orderItems, customers, assets, activityLog } from "@/lib
 import { queuePhotoRequest, flushQueued } from "@/lib/email/dispatch";
 import type { NormalizedVariation } from "../figures";
 import { ShopifyClient } from "./client";
+import { isShopifyConnected } from "./auth";
 import { resolveFigureCount } from "./figures";
 import type {
   GqlOrder,
@@ -107,7 +108,7 @@ export async function syncShopOrders(shopId: string): Promise<SyncSummary> {
       return { kind: "already_running" as const };
     }
     const creds = (await getShopCredentials(tx, shopId)) as ShopifyCredentials;
-    if (!creds.accessToken || !creds.shopDomain) return { kind: "not_connected" as const };
+    if (!isShopifyConnected(creds)) return { kind: "not_connected" as const };
 
     await tx
       .update(shops)
@@ -127,7 +128,7 @@ export async function syncShopOrders(shopId: string): Promise<SyncSummary> {
     slaConfig: shop.slaConfig as Record<string, unknown> | null,
     config: cfg,
   };
-  const client = new ShopifyClient(shopId, creds.shopDomain!, creds.accessToken!);
+  const client = new ShopifyClient(shopId, creds);
   const summary: SyncSummary = { imported: 0, skipped: 0, failed: 0, errors: [] };
   let maxCreated = cfg.syncCursor ?? "";
 
