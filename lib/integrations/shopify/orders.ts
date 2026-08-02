@@ -305,6 +305,75 @@ export async function importShopifyOrder(args: {
   });
 }
 
+/* --- webhook figure-count resolution ------------------------------------ */
+
+/** Minimal GraphQL surface a resolver needs — satisfied by ShopifyClient. */
+export type GraphqlRunner = {
+  graphql<T>(query: string, variables?: Record<string, unknown>): Promise<T>;
+};
+
+// Same field set as ORDERS_QUERY's node, fetched for ONE order by its GID. The
+// REST webhook payload has no structured variant options (only a joined
+// `variant_title` string), so we re-fetch via GraphQL to get selectedOptions and
+// resolve figure count through the exact same path as the sync.
+const ORDER_BY_ID_QUERY = `
+query($id: ID!) {
+  order(id: $id) {
+    id
+    legacyResourceId
+    createdAt
+    email
+    customer { firstName lastName email }
+    lineItems(first: 50) {
+      nodes {
+        sku
+        title
+        variantTitle
+        quantity
+        requiresShipping
+        variant { selectedOptions { name value } }
+        customAttributes { key value }
+      }
+    }
+  }
+}`;
+
+/** Fetch one order's structured GraphQL representation by its numeric (legacy) id. */
+export async function fetchShopifyOrder(
+  client: GraphqlRunner,
+  legacyResourceId: string,
+): Promise<NormalizedOrder | null> {
+  const data = await client.graphql<{ order: GqlOrder | null }>(ORDER_BY_ID_QUERY, {
+    id: `gid://shopify/Order/${legacyResourceId}`,
+  });
+  return data.order ? normalizeGraphqlOrder(data.order) : null;
+}
+
+/**
+ * Resolve a webhook order's line items to the SAME structured shape the sync
+ * produces. The orders/create REST payload carries only `variant_title`
+ * ("2 Figures / A3 Print") with no option names, so a name-based figure rule
+ * can't match it. We re-fetch the order over GraphQL to get `selectedOptions`
+ * (proper {name,value} pairs) and resolve exactly like the sync — one code path.
+ *
+ * Resilient by design: if the follow-up fetch fails or the order isn't visible
+ * yet, we fall back to the REST-derived order so it still imports. That fallback
+ * won't match a name-based rule, so the order lands unresolved in the review
+ * queue rather than guessing — figure count drives payout.
+ */
+export async function resolveWebhookOrder(
+  client: GraphqlRunner,
+  fallback: NormalizedOrder,
+): Promise<{ order: NormalizedOrder; resolution: "graphql" | "rest_fallback"; error?: string }> {
+  try {
+    const full = await fetchShopifyOrder(client, fallback.platformOrderId);
+    if (full) return { order: full, resolution: "graphql" };
+    return { order: fallback, resolution: "rest_fallback", error: "order not found via GraphQL" };
+  } catch (e) {
+    return { order: fallback, resolution: "rest_fallback", error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /* --- normalization ------------------------------------------------------ */
 export function normalizeGraphqlOrder(o: GqlOrder): NormalizedOrder {
   return {

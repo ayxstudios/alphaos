@@ -10,9 +10,12 @@ export {
   syncShopOrders,
   importShopifyOrder,
   normalizeGraphqlOrder,
+  fetchShopifyOrder,
+  resolveWebhookOrder,
   type SyncSummary,
   type ShopContext,
   type NormalizedOrder,
+  type GraphqlRunner,
 } from "./orders";
 export { verifyShopifyHmac, normalizeWebhookOrder, type ShopifyWebhookOrder } from "./webhook";
 export { resolveFigureCount } from "./figures";

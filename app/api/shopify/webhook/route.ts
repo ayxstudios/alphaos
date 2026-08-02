@@ -10,6 +10,8 @@ import {
   verifyShopifyHmac,
   normalizeWebhookOrder,
   importShopifyOrder,
+  resolveWebhookOrder,
+  ShopifyClient,
   type ShopifyWebhookOrder,
   type ShopifyCredentials,
   type ShopifyIntegrationConfig,
@@ -44,7 +46,12 @@ export async function POST(req: NextRequest) {
       .where(and(eq(shops.platform, "shopify"), eq(shops.externalShopId, domain)));
     if (!shop) return null;
     const creds = (await getShopCredentials(tx, shop.id)) as ShopifyCredentials;
-    return { shop, secret: creds.webhookSecret };
+    return {
+      shop,
+      secret: creds.webhookSecret,
+      accessToken: creds.accessToken,
+      shopDomain: creds.shopDomain,
+    };
   });
 
   // Reject unknown shops or bad signatures.
@@ -73,7 +80,33 @@ export async function POST(req: NextRequest) {
   // re-imported idempotently by a later sync.
   after(async () => {
     try {
-      const result = await importShopifyOrder({ shop: ctx, order: normalizeWebhookOrder(payload), via: "webhook" });
+      // The REST payload has no structured variant options, so re-fetch the order
+      // over GraphQL to resolve figure count through the same path as the sync.
+      // Falls back to the REST payload (→ unresolved / review queue) if that fails.
+      const fallbackOrder = normalizeWebhookOrder(payload);
+      let order = fallbackOrder;
+      let resolution: "graphql" | "rest_fallback" = "rest_fallback";
+      if (found.accessToken && found.shopDomain) {
+        const client = new ShopifyClient(ctx.id, found.shopDomain, found.accessToken);
+        const resolved = await resolveWebhookOrder(client, fallbackOrder);
+        order = resolved.order;
+        resolution = resolved.resolution;
+        if (resolved.error) {
+          console.log(
+            JSON.stringify({
+              ts: new Date().toISOString(),
+              level: "warn",
+              integration: "shopify",
+              shopId: ctx.id,
+              event: "webhook_graphql_refetch_failed",
+              platformOrderId: String(payload.id),
+              error: resolved.error,
+            }),
+          );
+        }
+      }
+
+      const result = await importShopifyOrder({ shop: ctx, order, via: "webhook" });
       // Auto-send the photo request in near-real-time for a webhook import.
       if (result === "imported") await flushQueued(ctx.businessId);
       console.log(
@@ -83,6 +116,7 @@ export async function POST(req: NextRequest) {
           shopId: ctx.id,
           event: "webhook_processed",
           platformOrderId: String(payload.id),
+          resolution,
           result,
         }),
       );
