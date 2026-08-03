@@ -18,6 +18,7 @@ import {
   saveShopifyCredentials,
   testShopifyConnection,
   triggerShopifySync,
+  backfillShopifyShop,
 } from "@/app/(app)/settings/actions";
 import { ResolutionRulesEditor } from "@/components/settings/resolution-rules-editor";
 import type { SyncSummary } from "@/lib/integrations/shopify";
@@ -57,6 +58,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
   const [webhookSecret, setWebhookSecret] = useState("");
   const [testing, startTest] = useTransition();
   const [syncing, startSync] = useTransition();
+  const [backfilling, startBackfill] = useTransition();
   const [test, setTest] = useState<{ ok: boolean; message: string } | null>(null);
   const [summary, setSummary] = useState<SyncSummary | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -89,6 +91,19 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
         setSummary(await triggerShopifySync(shop.id));
       } catch (e) {
         setSyncError(e instanceof Error ? e.message : "Sync failed");
+      }
+    });
+  }
+
+  function onBackfill() {
+    if (!confirm("Backfill re-scans the last 60 days with NO customer emails sent. Continue?")) return;
+    setSyncError(null);
+    setSummary(null);
+    startBackfill(async () => {
+      try {
+        setSummary(await backfillShopifyShop(shop.id));
+      } catch (e) {
+        setSyncError(e instanceof Error ? e.message : "Backfill failed");
       }
     });
   }
@@ -220,6 +235,16 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
             disabled={shop.status !== "connected"}
           >
             Sync now
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onBackfill}
+            loading={backfilling}
+            disabled={shop.status !== "connected"}
+            title="Re-scan 60 days; no customer emails"
+          >
+            Backfill 60d (no email)
           </Button>
           <span className="text-xs text-slate">
             Webhook endpoint: <code className="text-ink">/api/shopify/webhook</code> (register

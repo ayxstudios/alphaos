@@ -42,6 +42,12 @@ export type ShopContext = {
   businessId: string;
   slaConfig: Record<string, unknown> | null;
   config: ShopifyIntegrationConfig;
+  /**
+   * Suppress ALL automated customer email for this import. Set on historical
+   * backfills so re-scanning old orders never messages a customer. The webhook
+   * and normal "Sync now" leave this false.
+   */
+  suppressCustomerEmail?: boolean;
 };
 
 export type NormalizedLineItem = {
@@ -114,8 +120,14 @@ query($cursor: String, $q: String) {
  * Pull orders for a shop and map them to orders + order_items. Same idempotency
  * and per-order-transaction / cursor semantics as the Etsy sync. Used for manual
  * "Sync now" and backfill; the webhook path shares importShopifyOrder.
+ *
+ * `suppressCustomerEmail` (backfills) blocks every automated customer email: no
+ * photo-request is queued at import, and the post-run flush is skipped.
  */
-export async function syncShopOrders(shopId: string): Promise<SyncSummary> {
+export async function syncShopOrders(
+  shopId: string,
+  opts: { suppressCustomerEmail?: boolean } = {},
+): Promise<SyncSummary> {
   const empty: SyncSummary = { imported: 0, skipped: 0, failed: 0, errors: [] };
 
   const claim = await withSystemContext(async (tx) => {
@@ -155,6 +167,7 @@ export async function syncShopOrders(shopId: string): Promise<SyncSummary> {
     businessId: shop.businessId,
     slaConfig: shop.slaConfig as Record<string, unknown> | null,
     config: cfg,
+    suppressCustomerEmail: !!opts.suppressCustomerEmail,
   };
   const client = new ShopifyClient(shopId, creds);
   const summary: SyncSummary = { imported: 0, skipped: 0, failed: 0, errors: [] };
@@ -225,7 +238,8 @@ export async function syncShopOrders(shopId: string): Promise<SyncSummary> {
     });
 
     // Best-effort: auto-send the queued photo-request emails for this business.
-    if (summary.imported > 0) {
+    // Skipped entirely on a backfill so no historical order gets emailed.
+    if (summary.imported > 0 && !opts.suppressCustomerEmail) {
       await flushQueued(shop.businessId).catch((e) =>
         logShopify(shopId, { level: "error", event: "photo_request_flush_failed", error: String(e) }),
       );
@@ -368,7 +382,8 @@ export async function importShopifyOrder(args: {
 
     // Auto-send exception: queue the photo-request email only when we still need
     // photos (an order that arrived WITH photos skips straight to ready_to_assign).
-    if (status === "awaiting_photos") {
+    // Never on a backfill — historical orders must not trigger customer email.
+    if (status === "awaiting_photos" && !shop.suppressCustomerEmail) {
       await queuePhotoRequest(tx, {
         id: orderId,
         businessId: shop.businessId,

@@ -15,7 +15,7 @@ import {
   Badge,
 } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
-import { saveEtsyCredentials, triggerSync } from "@/app/(app)/settings/actions";
+import { saveEtsyCredentials, triggerSync, backfillEtsyShop } from "@/app/(app)/settings/actions";
 import { ResolutionRulesEditor } from "@/components/settings/resolution-rules-editor";
 import type { SyncSummary } from "@/lib/integrations/etsy";
 import type { FigureRule, StyleRule } from "@/lib/integrations/figures";
@@ -42,6 +42,7 @@ function StatusBadge({ status }: { status: EtsyShopVM["status"] }) {
 
 export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
   const [pending, startTransition] = useTransition();
+  const [backfilling, startBackfill] = useTransition();
   const [summary, setSummary] = useState<SyncSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,6 +54,19 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
         setSummary(await triggerSync(shop.id));
       } catch (e) {
         setError(e instanceof Error ? e.message : "Sync failed");
+      }
+    });
+  }
+
+  function onBackfill() {
+    if (!confirm("Backfill re-scans the last 60 days with NO customer emails sent. Continue?")) return;
+    setError(null);
+    setSummary(null);
+    startBackfill(async () => {
+      try {
+        setSummary(await backfillEtsyShop(shop.id));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Backfill failed");
       }
     });
   }
@@ -128,6 +142,16 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
             disabled={shop.status !== "connected"}
           >
             Sync now
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onBackfill}
+            loading={backfilling}
+            disabled={shop.status !== "connected"}
+            title="Re-scan 60 days; no customer emails"
+          >
+            Backfill 60d (no email)
           </Button>
           {!shop.hasKeystring && (
             <span className="text-xs text-slate">Save the keystring before connecting.</span>

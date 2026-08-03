@@ -63,6 +63,15 @@ export async function triggerSync(shopId: string): Promise<SyncSummary> {
   return summary;
 }
 
+/** Backfill an Etsy shop's full history with customer email suppressed. */
+export async function backfillEtsyShop(shopId: string): Promise<SyncSummary> {
+  const user = await requireAdmin();
+  await resetCursor(user, shopId);
+  const summary = await syncShopReceipts(shopId, { suppressCustomerEmail: true });
+  revalidatePath("/settings");
+  return summary;
+}
+
 /* --- Shopify ------------------------------------------------------------ */
 
 /**
@@ -162,6 +171,33 @@ export async function triggerShopifySync(shopId: string): Promise<ShopifySyncSum
   await requireAdmin();
   const summary = await syncShopOrders(shopId);
   revalidatePath("/settings");
+  return summary;
+}
+
+/** Reset a shop's sync cursor and run a full window sync (idempotent). */
+async function resetCursor(user: RequestUser, shopId: string): Promise<void> {
+  await withUserContext(user, async (tx) => {
+    const [s] = await tx.select({ cfg: shops.integrationConfig }).from(shops).where(eq(shops.id, shopId));
+    const cfg = (s?.cfg ?? {}) as Record<string, unknown>;
+    await tx
+      .update(shops)
+      .set({ integrationConfig: { ...cfg, syncCursor: undefined, syncingSince: undefined } })
+      .where(eq(shops.id, shopId));
+  });
+}
+
+/**
+ * Backfill a Shopify shop's full history: reset the cursor and re-scan, with ALL
+ * automated customer email suppressed (a historical import must never message a
+ * customer). Imports are idempotent, so re-scanning is safe.
+ */
+export async function backfillShopifyShop(shopId: string): Promise<ShopifySyncSummary> {
+  const user = await requireAdmin();
+  await resetCursor(user, shopId);
+  const summary = await syncShopOrders(shopId, { suppressCustomerEmail: true });
+  revalidatePath("/settings");
+  revalidatePath("/queue");
+  revalidatePath("/board");
   return summary;
 }
 

@@ -26,7 +26,7 @@ import type {
 const PAGE = 100;
 const STALE_LOCK_MS = 10 * 60 * 1000;
 const OVERLAP_SECS = 60 * 60; // re-scan 1h before the cursor for boundary safety
-const FIRST_WINDOW_SECS = 30 * 24 * 60 * 60; // first sync: last 30 days
+const FIRST_WINDOW_SECS = 60 * 24 * 60 * 60; // first sync: last 60 days (match Shopify)
 const DEFAULT_TURNAROUND_DAYS = 3;
 
 export type SyncSummary = {
@@ -59,8 +59,14 @@ export function getShopReceipts(
  * (ON CONFLICT on (shop_id, platform_order_id)); each receipt commits in its own
  * transaction so a mid-run failure leaves a clean partial import that the next
  * run resumes. The sync cursor advances only after a fully successful run.
+ *
+ * `suppressCustomerEmail` (backfills) blocks every automated customer email: no
+ * photo-request is queued at import, and the post-run flush is skipped.
  */
-export async function syncShopReceipts(shopId: string): Promise<SyncSummary> {
+export async function syncShopReceipts(
+  shopId: string,
+  opts: { suppressCustomerEmail?: boolean } = {},
+): Promise<SyncSummary> {
   const empty: SyncSummary = { imported: 0, skipped: 0, failed: 0, errors: [] };
 
   // 1. Claim the shop (concurrency guard) + load creds/config under a row lock.
@@ -117,6 +123,7 @@ export async function syncShopReceipts(shopId: string): Promise<SyncSummary> {
             slaConfig: shop.slaConfig as Record<string, unknown> | null,
             cfg,
             receipt,
+            suppressCustomerEmail: !!opts.suppressCustomerEmail,
           });
           if (result === "imported") summary.imported++;
           else summary.skipped++;
@@ -155,8 +162,9 @@ export async function syncShopReceipts(shopId: string): Promise<SyncSummary> {
     );
 
     // Auto-send the queued photo-request emails for this business. Best-effort:
-    // a Gmail hiccup must not fail an otherwise-successful import run.
-    if (summary.imported > 0) {
+    // a Gmail hiccup must not fail an otherwise-successful import run. Skipped
+    // entirely on a backfill so no historical order gets emailed.
+    if (summary.imported > 0 && !opts.suppressCustomerEmail) {
       await flushQueued(shop.businessId).catch((err) =>
         console.log(
           JSON.stringify({
@@ -191,8 +199,9 @@ async function importReceipt(args: {
   slaConfig: Record<string, unknown> | null;
   cfg: EtsyIntegrationConfig;
   receipt: EtsyReceipt;
+  suppressCustomerEmail?: boolean;
 }): Promise<"imported" | "skipped"> {
-  const { shopId, businessId, slaConfig, cfg, receipt } = args;
+  const { shopId, businessId, slaConfig, cfg, receipt, suppressCustomerEmail } = args;
   const email = receipt.buyer_email?.trim().toLowerCase() || null;
   const [firstName, lastName] = splitName(receipt.name);
   const placedAt = new Date(receipt.created_timestamp * 1000);
@@ -290,15 +299,17 @@ async function importReceipt(args: {
     });
 
     // Auto-send exception: queue the photo-request email (with the upload link).
-    // Actually sent by the flush at the end of the sync run.
-    await queuePhotoRequest(tx, {
-      id: orderId,
-      businessId,
-      customerId,
-      platformOrderId: String(receipt.receipt_id),
-      platformOrderName: String(receipt.receipt_id),
-      uploadToken,
-    });
+    // Actually sent by the flush at the end of the sync run. Never on a backfill.
+    if (!suppressCustomerEmail) {
+      await queuePhotoRequest(tx, {
+        id: orderId,
+        businessId,
+        customerId,
+        platformOrderId: String(receipt.receipt_id),
+        platformOrderName: String(receipt.receipt_id),
+        uploadToken,
+      });
+    }
 
     return "imported";
   });
