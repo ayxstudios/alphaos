@@ -19,7 +19,9 @@ import type {
 
 const PAGE = 50;
 const STALE_LOCK_MS = 10 * 60 * 1000;
-const FIRST_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+// First sync pulls the widest range read_orders exposes without protected-data
+// approval (last 60 days), so a fresh shop backfills everything reachable.
+const FIRST_WINDOW_MS = 60 * 24 * 60 * 60 * 1000;
 const DEFAULT_TURNAROUND_DAYS = 3;
 
 export type SyncSummary = {
@@ -28,6 +30,10 @@ export type SyncSummary = {
   failed: number;
   skippedRun?: "already_running" | "not_connected";
   errors: { platformOrderId: string; error: string }[];
+  // Context so the UI/logs show the whole picture, not just this run's delta.
+  total?: number; // total orders stored for the shop after this run
+  windowStart?: string; // ISO — start of the range this run scanned
+  windowDays?: number; // days from windowStart to now
 };
 
 /** Everything importShopifyOrder needs about the destination shop. */
@@ -156,8 +162,18 @@ export async function syncShopOrders(shopId: string): Promise<SyncSummary> {
 
   try {
     const since = cfg.syncCursor ?? new Date(Date.now() - FIRST_WINDOW_MS).toISOString();
+    const windowDays = Math.max(1, Math.round((Date.now() - new Date(since).getTime()) / 86_400_000));
     const q = `created_at:>='${since}'`;
     let cursor: string | null = null;
+
+    // Log the exact range this run will cover, so the logs show what was scanned.
+    logShopify(shopId, {
+      event: "sync_start",
+      priorCursor: cfg.syncCursor ?? null,
+      windowStart: since,
+      windowDays,
+      firstSync: !cfg.syncCursor,
+    });
 
     for (;;) {
       const data: GqlOrdersResponse = await client.graphql<GqlOrdersResponse>(ORDERS_QUERY, {
@@ -181,12 +197,32 @@ export async function syncShopOrders(shopId: string): Promise<SyncSummary> {
       cursor = data.orders.pageInfo.endCursor;
     }
 
+    const newCursor = maxCreated || since;
     await withSystemContext((tx) =>
       tx
         .update(shops)
-        .set({ integrationConfig: { ...cfg, syncCursor: maxCreated || since, syncingSince: undefined } })
+        .set({ integrationConfig: { ...cfg, syncCursor: newCursor, syncingSince: undefined } })
         .where(eq(shops.id, shopId)),
     );
+
+    // Total stored for the shop, so the caller can report "N total", not just delta.
+    const [totals] = await withSystemContext((tx) =>
+      tx.select({ n: sql<number>`count(*)::int` }).from(orders).where(eq(orders.shopId, shopId)),
+    );
+    summary.total = Number(totals?.n ?? 0);
+    summary.windowStart = since;
+    summary.windowDays = windowDays;
+
+    logShopify(shopId, {
+      event: "sync_complete",
+      imported: summary.imported,
+      skipped: summary.skipped,
+      failed: summary.failed,
+      total: summary.total,
+      windowStart: since,
+      windowDays,
+      newCursor,
+    });
 
     // Best-effort: auto-send the queued photo-request emails for this business.
     if (summary.imported > 0) {

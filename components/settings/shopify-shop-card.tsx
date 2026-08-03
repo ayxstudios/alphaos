@@ -231,7 +231,10 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
           <p className="text-sm text-slate">
             {summary.skippedRun
               ? `Sync skipped: ${summary.skippedRun.replace("_", " ")}.`
-              : `Imported ${summary.imported}, skipped ${summary.skipped}, failed ${summary.failed}.`}
+              : `Imported ${summary.imported} new` +
+                (summary.failed ? `, ${summary.failed} failed` : "") +
+                ` · ${summary.total ?? "?"} total` +
+                (summary.windowDays ? ` · covering last ${summary.windowDays} days.` : ".")}
           </p>
         )}
       </CardFooter>
