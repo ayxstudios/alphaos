@@ -9,7 +9,11 @@
 
 /** A single figure-count rule (shops.integration_config.figureRules[]). */
 export type FigureRule = {
-  /** Case-insensitive substring matched against the variation's name. */
+  /**
+   * Substring matched against the variation's name. Case-insensitive and
+   * tolerant of trailing punctuation on either side, so a rule "Number of Pets"
+   * matches an option literally named "Number of Pets:".
+   */
   match: string;
   /** How to derive the count from the variation's value. */
   type: "integer" | "map";
@@ -17,11 +21,38 @@ export type FigureRule = {
   map?: Record<string, number>;
 };
 
-/** The figure-resolution slice of a shop's integration config. */
+/**
+ * A single style rule (shops.integration_config.styleRules[]). The matched
+ * option's VALUE becomes the style (optionally remapped). Naming varies per shop
+ * ("Style", "Print On:", "Design"…), so it is configured, never hardcoded.
+ */
+export type StyleRule = {
+  /** Substring matched against the variation's name (same matching as FigureRule). */
+  match: string;
+  /** Optional exact value (lowercased) -> canonical style; unmapped values pass through. */
+  map?: Record<string, string>;
+};
+
+/** The resolution slice of a shop's integration config. */
 export type FigureConfig = {
   figureRules?: FigureRule[];
+  styleRules?: StyleRule[];
   allowHeuristicFigureCount?: boolean; // default false
 };
+
+/**
+ * Normalise a name for matching: lowercase, trim, and strip surrounding
+ * punctuation/whitespace so "Number of Pets:" and "number of pets" compare equal.
+ */
+function normalizeName(s: string): string {
+  return s.toLowerCase().trim().replace(/^[^a-z0-9]+/, "").replace(/[^a-z0-9]+$/, "");
+}
+
+/** Whether a variation name matches a rule's match string (tolerant substring). */
+function nameMatches(variationName: string | undefined, match: string): boolean {
+  if (!variationName) return false;
+  return normalizeName(variationName).includes(normalizeName(match));
+}
 
 /** An integration-agnostic name/value option pair. */
 export type NormalizedVariation = { name: string; value: string };
@@ -53,9 +84,7 @@ export function resolveFigureCount(
 
   // 1. Per-shop rules.
   for (const rule of rules) {
-    const v = variations.find((x) =>
-      x.name?.toLowerCase().includes(rule.match.toLowerCase()),
-    );
+    const v = variations.find((x) => nameMatches(x.name, rule.match));
     if (!v) continue;
     const count = applyRule(rule, v.value);
     if (count != null) {
@@ -108,6 +137,35 @@ function applyRule(rule: FigureRule, rawValue: string): number | null {
   if (!m) return null;
   const n = parseInt(m[0], 10);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export type StyleResolution = {
+  style: string | null;
+  source: "shop_rule" | "unresolved";
+  note: string;
+};
+
+/**
+ * Resolve a line item's style from the shop's styleRules (name-matched like
+ * figure rules). The first matching option's value becomes the style, remapped
+ * through the rule's `map` when present. No rule / no match -> null (the board
+ * simply shows no style; unlike figure count, an unknown style is not blocking).
+ */
+export function resolveStyle(
+  variations: NormalizedVariation[],
+  config: FigureConfig | null | undefined,
+): StyleResolution {
+  const rules = config?.styleRules ?? [];
+  for (const rule of rules) {
+    const v = variations.find((x) => nameMatches(x.name, rule.match));
+    if (!v) continue;
+    const raw = v.value?.trim() ?? "";
+    if (!raw) continue;
+    const mapped = rule.map?.[raw.toLowerCase()];
+    const style = mapped ?? raw;
+    return { style, source: "shop_rule", note: `style rule "${rule.match}" matched "${v.name}: ${v.value}"` };
+  }
+  return { style: null, source: "unresolved", note: rules.length ? "no style rule matched" : "no style rule configured" };
 }
 
 /** Distinct counts inferred from variation values (heuristic only). */

@@ -7,7 +7,7 @@ import { TEMPLATE_META } from "./templates";
 export type OutboxItem = {
   messageId: string;
   orderId: string | null;
-  platformOrderId: string | null;
+  orderNumber: string | null;
   status: "draft" | "failed";
   templateKey: string | null;
   templateLabel: string | null;
@@ -47,6 +47,7 @@ export async function getOutbox(
         createdAt: messages.createdAt,
         customerId: messages.customerId,
         platformOrderId: orders.platformOrderId,
+        platformOrderName: orders.platformOrderName,
       })
       .from(messages)
       .leftJoin(orders, eq(orders.id, messages.orderId))
@@ -73,7 +74,7 @@ export async function getOutbox(
     return rows.map((r) => ({
       messageId: r.id,
       orderId: r.orderId,
-      platformOrderId: r.platformOrderId ?? null,
+      orderNumber: r.platformOrderName ?? r.platformOrderId ?? null,
       status: r.status as "draft" | "failed",
       templateKey: r.templateKey,
       templateLabel: r.templateKey ? TEMPLATE_META[r.templateKey as keyof typeof TEMPLATE_META]?.label ?? null : null,

@@ -1,8 +1,8 @@
 /** Shapes for the Etsy Open API v3 subset we consume, plus our stored config. */
 
-import type { FigureRule } from "../figures";
+import type { FigureRule, StyleRule } from "../figures";
 
-export type { FigureRule };
+export type { FigureRule, StyleRule };
 
 export const ETSY_SCOPES = [
   "transactions_r",
@@ -32,6 +32,7 @@ export type EtsyCredentials = {
 /** Non-secret integration config (shops.integration_config). */
 export type EtsyIntegrationConfig = {
   figureRules?: FigureRule[];
+  styleRules?: StyleRule[];
   allowHeuristicFigureCount?: boolean; // default false
   syncCursor?: string; // ISO of the newest created_timestamp imported
   syncingSince?: string; // ISO; concurrency guard

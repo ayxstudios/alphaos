@@ -7,7 +7,7 @@
 
 export { EtsyClient } from "./client";
 export { syncShopReceipts, getShopReceipts, type SyncSummary } from "./receipts";
-export { resolveFigureCount } from "./figures";
+export { resolveFigureCount, resolveStyle } from "./figures";
 export {
   buildAuthorizeUrl,
   exchangeCodeForTokens,
@@ -24,4 +24,5 @@ export {
   type EtsyCredentials,
   type EtsyIntegrationConfig,
   type FigureRule,
+  type StyleRule,
 } from "./types";

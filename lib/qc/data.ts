@@ -30,7 +30,7 @@ export type QcVersion = {
 
 export type QcContext = {
   orderId: string;
-  platformOrderId: string;
+  orderNumber: string;
   status: OrderStatus;
   /** True only when the order is still awaiting_qc (Pass/Fail are legal). */
   isReviewable: boolean;
@@ -62,6 +62,7 @@ export async function getQcContext(
       .select({
         id: orders.id,
         platformOrderId: orders.platformOrderId,
+        platformOrderName: orders.platformOrderName,
         status: orders.status,
         businessId: orders.businessId,
         shopId: orders.shopId,
@@ -152,7 +153,7 @@ export async function getQcContext(
 
     return {
       orderId: order.id,
-      platformOrderId: order.platformOrderId,
+      orderNumber: order.platformOrderName ?? order.platformOrderId,
       status: order.status,
       isReviewable: order.status === "awaiting_qc",
       customerName,

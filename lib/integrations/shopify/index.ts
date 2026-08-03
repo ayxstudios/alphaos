@@ -18,13 +18,16 @@ export {
   normalizeGraphqlOrder,
   fetchShopifyOrder,
   resolveWebhookOrder,
+  resolverInput,
+  isAddOnLine,
   type SyncSummary,
   type ShopContext,
   type NormalizedOrder,
+  type NormalizedLineItem,
   type GraphqlRunner,
 } from "./orders";
 export { verifyShopifyHmac, normalizeWebhookOrder, type ShopifyWebhookOrder } from "./webhook";
-export { resolveFigureCount } from "./figures";
+export { resolveFigureCount, resolveStyle } from "./figures";
 export { ShopifyApiError } from "./errors";
 export {
   SHOPIFY_SCOPES,
@@ -33,4 +36,5 @@ export {
   type ShopifyAuthType,
   type ShopifyIntegrationConfig,
   type FigureRule,
+  type StyleRule,
 } from "./types";

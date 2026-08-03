@@ -168,6 +168,7 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
       status: orders.status,
       revisionCount: orders.revisionCount,
       platformOrderId: orders.platformOrderId,
+      platformOrderName: orders.platformOrderName,
     })
     .from(orders)
     .where(eq(orders.id, orderId))
@@ -228,6 +229,7 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
       businessId: order.businessId,
       customerId: order.customerId,
       platformOrderId: order.platformOrderId,
+      platformOrderName: order.platformOrderName,
     });
   }
   if (key === "awaiting_approval->in_design" && input.metadata?.via === "proof_portal") {
@@ -237,6 +239,7 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
       businessId: order.businessId,
       customerId: order.customerId,
       platformOrderId: order.platformOrderId,
+      platformOrderName: order.platformOrderName,
     });
   }
 

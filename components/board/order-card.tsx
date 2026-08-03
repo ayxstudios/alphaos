@@ -22,7 +22,7 @@ export function OrderCard({
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-semibold text-ink">{card.platformOrderId}</span>
+        <span className="text-sm font-semibold text-ink">{card.orderNumber}</span>
         <Countdown dueAt={card.dueAt} />
       </div>
 
@@ -47,6 +47,22 @@ export function OrderCard({
           </span>
         </div>
       </div>
+
+      {/* What the designer is making: product title + the options that matter. */}
+      {(card.title || card.options.length > 0) && (
+        <div className="flex flex-col gap-1 rounded-input border border-line bg-canvas p-2">
+          {card.title && <span className="truncate text-xs font-medium text-ink">{card.title}</span>}
+          {card.options.length > 0 && (
+            <ul className="flex flex-col gap-0.5">
+              {card.options.map((o, i) => (
+                <li key={i} className="truncate text-[11px] text-slate">
+                  <span className="text-ink">{o.name}:</span> {o.value}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {card.qcFail && (
         <div className="flex flex-col gap-1 rounded-input border border-rose/20 bg-rose/10 p-2">

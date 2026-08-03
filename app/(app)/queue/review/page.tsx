@@ -31,12 +31,12 @@ export default async function ReviewQueuePage() {
   const { orderRows, itemsByOrder } = await withUserContext(user, async (tx) => {
     const orderRows = await (selected.id === ALL_BUSINESSES
       ? tx
-          .select({ id: orders.id, platformOrderId: orders.platformOrderId, customerId: orders.customerId })
+          .select({ id: orders.id, platformOrderId: orders.platformOrderId, platformOrderName: orders.platformOrderName, customerId: orders.customerId })
           .from(orders)
           .where(eq(orders.needsReview, true))
           .orderBy(orders.createdAt)
       : tx
-          .select({ id: orders.id, platformOrderId: orders.platformOrderId, customerId: orders.customerId })
+          .select({ id: orders.id, platformOrderId: orders.platformOrderId, platformOrderName: orders.platformOrderName, customerId: orders.customerId })
           .from(orders)
           .where(and(eq(orders.needsReview, true), eq(orders.businessId, selected.id)))
           .orderBy(orders.createdAt));
@@ -90,7 +90,7 @@ export default async function ReviewQueuePage() {
             <Card key={o.id}>
               <CardHeader>
                 <div className="flex items-center justify-between gap-2">
-                  <CardTitle>{o.platformOrderId}</CardTitle>
+                  <CardTitle>{o.platformOrderName ?? o.platformOrderId}</CardTitle>
                   {!o.customerId && <Badge variant="warning">No buyer email</Badge>}
                 </div>
               </CardHeader>

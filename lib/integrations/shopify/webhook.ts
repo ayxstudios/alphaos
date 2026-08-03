@@ -22,39 +22,47 @@ type RestLineItem = {
   sku: string | null;
   title: string | null;
   variant_title: string | null;
+  variant_id: number | null; // null on add-on lines (tips/fees)
   quantity: number;
   requires_shipping: boolean;
   properties?: RestProperty[];
 };
 export type ShopifyWebhookOrder = {
   id: number;
+  name: string | null; // human order number, e.g. "PC31972"
   created_at: string;
   email: string | null;
   customer?: { first_name: string | null; last_name: string | null; email: string | null } | null;
   line_items: RestLineItem[];
 };
 
-/** Map the orders/create webhook JSON to our NormalizedOrder. */
+/**
+ * Map the orders/create webhook JSON to our NormalizedOrder. The REST payload
+ * has NO structured selectedOptions (only the joined `variant_title`), so
+ * selectedOptions is left empty here — the webhook re-fetches over GraphQL
+ * (resolveWebhookOrder) to get them. This mapping is the resilient fallback.
+ */
 export function normalizeWebhookOrder(payload: ShopifyWebhookOrder): NormalizedOrder {
   return {
     platformOrderId: String(payload.id),
+    orderName: payload.name ?? null,
     createdAt: new Date(payload.created_at),
     email: payload.email ?? payload.customer?.email ?? null,
     firstName: payload.customer?.first_name ?? null,
     lastName: payload.customer?.last_name ?? null,
     lineItems: (payload.line_items ?? []).map((li) => {
       const props = li.properties ?? [];
-      const options: NormalizedVariation[] = props
-        .filter((p) => p.value != null && !isUrl(p.value))
-        .map((p) => ({ name: p.name, value: p.value as string }));
-      if (li.variant_title) options.push({ name: "Variant", value: li.variant_title });
       return {
         sku: li.sku,
         title: li.title,
         variantTitle: li.variant_title,
         digital: !li.requires_shipping,
         quantity: li.quantity,
-        options,
+        hasVariant: li.variant_id != null,
+        selectedOptions: [] as NormalizedVariation[], // not present in REST; GraphQL refetch fills these
+        properties: props
+          .filter((p) => p.value != null && !isUrl(p.value))
+          .map((p) => ({ name: p.name, value: p.value as string })),
         photoUrls: props.filter((p) => isUrl(p.value)).map((p) => p.value as string),
       };
     }),

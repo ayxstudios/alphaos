@@ -52,7 +52,7 @@ type DraftParams = {
   vars: Omit<TemplateVars, "first_name" | "business_name" | "order_number">;
   proofId?: string;
   ctx: NonNullable<EmailContext>;
-  platformOrderId: string;
+  orderNumber: string; // human-facing order number for the {{order_number}} var
 };
 
 /** Render a template and insert the message row. Returns the new message id. */
@@ -60,7 +60,7 @@ async function insertRendered(tx: Tx, p: DraftParams): Promise<string> {
   const template = await resolveTemplate(tx, p.businessId, p.key);
   const rendered = renderTemplate(template, {
     first_name: p.ctx.firstName,
-    order_number: p.platformOrderId,
+    order_number: p.orderNumber,
     business_name: p.ctx.businessName,
     ...p.vars,
   });
@@ -91,7 +91,7 @@ async function insertRendered(tx: Tx, p: DraftParams): Promise<string> {
  */
 export async function prepareProofForApproval(
   tx: Tx,
-  order: { id: string; businessId: string; customerId: string | null; platformOrderId: string },
+  order: { id: string; businessId: string; customerId: string | null; platformOrderId: string; platformOrderName: string | null },
 ): Promise<void> {
   // Reuse any still-pending proof for this order.
   const [pending] = await tx
@@ -117,7 +117,7 @@ export async function prepareProofForApproval(
     key: "proof_ready",
     status: "draft",
     proofId: proof.id,
-    platformOrderId: order.platformOrderId,
+    orderNumber: order.platformOrderName ?? order.platformOrderId,
     ctx,
     vars: { proof_link: proofUrl(token) },
   });
@@ -135,6 +135,7 @@ export async function queuePhotoRequest(
     businessId: string;
     customerId: string | null;
     platformOrderId: string;
+    platformOrderName?: string | null;
     uploadToken: string;
   },
 ): Promise<string | null> {
@@ -146,7 +147,7 @@ export async function queuePhotoRequest(
     customerId: order.customerId,
     key: "photo_request",
     status: "queued",
-    platformOrderId: order.platformOrderId,
+    orderNumber: order.platformOrderName ?? order.platformOrderId,
     ctx,
     vars: { upload_link: uploadUrl(order.uploadToken) },
   });
@@ -158,7 +159,7 @@ export async function queuePhotoRequest(
  */
 export async function draftRevisionReceived(
   tx: Tx,
-  order: { id: string; businessId: string; customerId: string | null; platformOrderId: string },
+  order: { id: string; businessId: string; customerId: string | null; platformOrderId: string; platformOrderName: string | null },
 ): Promise<void> {
   const ctx = await readEmailContext(tx, order.businessId, order.customerId);
   if (!ctx) return;
@@ -168,7 +169,7 @@ export async function draftRevisionReceived(
     customerId: order.customerId,
     key: "revision_received",
     status: "draft",
-    platformOrderId: order.platformOrderId,
+    orderNumber: order.platformOrderName ?? order.platformOrderId,
     ctx,
     vars: {},
   });

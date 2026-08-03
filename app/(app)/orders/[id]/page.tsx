@@ -25,6 +25,7 @@ export default async function OrderDetailPage({
       .select({
         id: orders.id,
         platformOrderId: orders.platformOrderId,
+        platformOrderName: orders.platformOrderName,
         status: orders.status,
       })
       .from(orders)
@@ -62,7 +63,7 @@ export default async function OrderDetailPage({
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
         <h1 className="font-display text-2xl font-semibold text-ink">
-          {order.platformOrderId}
+          {order.platformOrderName ?? order.platformOrderId}
         </h1>
         <StatusChip status={order.status as OrderStatus} />
       </div>

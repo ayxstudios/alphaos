@@ -1,11 +1,13 @@
 import {
   resolveFigureCount as resolveShared,
+  resolveStyle as resolveStyleShared,
   type FigureConfig,
   type FigureResolution,
+  type StyleResolution,
   type NormalizedVariation,
 } from "../figures";
 
-export type { FigureResolution };
+export type { FigureResolution, StyleResolution };
 
 /**
  * Adapter: Shopify variant options / line-item properties are already
@@ -16,4 +18,11 @@ export function resolveFigureCount(
   config: FigureConfig | null | undefined,
 ): FigureResolution {
   return resolveShared(options ?? [], config);
+}
+
+export function resolveStyle(
+  options: NormalizedVariation[],
+  config: FigureConfig | null | undefined,
+): StyleResolution {
+  return resolveStyleShared(options ?? [], config);
 }

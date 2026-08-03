@@ -38,6 +38,7 @@ export async function getProofView(token: string): Promise<ProofView | null> {
         decidedAt: proofs.decidedAt,
         orderStatus: orders.status,
         platformOrderId: orders.platformOrderId,
+        platformOrderName: orders.platformOrderName,
         businessName: businesses.name,
         businessLogoUrl: businesses.logoUrl,
       })
@@ -52,7 +53,7 @@ export async function getProofView(token: string): Promise<ProofView | null> {
     return {
       businessName: row.businessName,
       businessLogoUrl: row.businessLogoUrl,
-      orderNumber: row.platformOrderId,
+      orderNumber: row.platformOrderName ?? row.platformOrderId,
       actionable: row.orderStatus === "awaiting_approval" && !row.decision,
       decision: row.decision,
       decidedAt: row.decidedAt ? row.decidedAt.toISOString() : null,

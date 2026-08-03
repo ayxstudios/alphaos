@@ -12,6 +12,8 @@ import {
   setBusinessGmailCredentials,
 } from "@/lib/db/credentials";
 import { shops, businesses, emailTemplates } from "@/lib/db/schema";
+import { reresolveShop, type ReresolveSummary } from "@/lib/orders/resolution";
+import type { FigureRule, StyleRule } from "@/lib/integrations/figures";
 import type { GmailCredentials } from "@/lib/integrations/gmail";
 import { pollMailbox, type InboundSummary } from "@/lib/integrations/gmail";
 import { DEFAULT_TEMPLATES, type TemplateKey } from "@/lib/email/templates";
@@ -160,6 +162,86 @@ export async function triggerShopifySync(shopId: string): Promise<ShopifySyncSum
   await requireAdmin();
   const summary = await syncShopOrders(shopId);
   revalidatePath("/settings");
+  return summary;
+}
+
+/* --- Figure/style resolution rules (per shop, Etsy or Shopify) ----------- */
+
+function sanitizeFigureRules(rules: unknown): FigureRule[] {
+  if (!Array.isArray(rules)) return [];
+  const out: FigureRule[] = [];
+  for (const r of rules) {
+    const match = String((r as { match?: unknown })?.match ?? "").trim();
+    if (!match) continue;
+    const type = (r as { type?: unknown })?.type === "map" ? "map" : "integer";
+    if (type === "map") {
+      const map: Record<string, number> = {};
+      const raw = (r as { map?: unknown })?.map;
+      if (raw && typeof raw === "object") {
+        for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+          const n = Number(v);
+          if (k.trim() && Number.isFinite(n) && n > 0) map[k.trim().toLowerCase()] = Math.floor(n);
+        }
+      }
+      out.push({ match, type: "map", map });
+    } else {
+      out.push({ match, type: "integer" });
+    }
+  }
+  return out;
+}
+
+function sanitizeStyleRules(rules: unknown): StyleRule[] {
+  if (!Array.isArray(rules)) return [];
+  const out: StyleRule[] = [];
+  for (const r of rules) {
+    const match = String((r as { match?: unknown })?.match ?? "").trim();
+    if (!match) continue;
+    const rule: StyleRule = { match };
+    const raw = (r as { map?: unknown })?.map;
+    if (raw && typeof raw === "object") {
+      const map: Record<string, string> = {};
+      for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+        const value = String(v ?? "").trim();
+        if (k.trim() && value) map[k.trim().toLowerCase()] = value;
+      }
+      if (Object.keys(map).length) rule.map = map;
+    }
+    out.push(rule);
+  }
+  return out;
+}
+
+/** Save a shop's figure + style resolution rules into its integration config. */
+export async function saveShopResolutionRules(input: {
+  shopId: string;
+  figureRules: FigureRule[];
+  styleRules: StyleRule[];
+}): Promise<void> {
+  const user = await requireAdmin();
+  const figureRules = sanitizeFigureRules(input.figureRules);
+  const styleRules = sanitizeStyleRules(input.styleRules);
+  await withUserContext(user, async (tx) => {
+    const [s] = await tx
+      .select({ cfg: shops.integrationConfig })
+      .from(shops)
+      .where(eq(shops.id, input.shopId));
+    const cfg = (s?.cfg ?? {}) as Record<string, unknown>;
+    await tx
+      .update(shops)
+      .set({ integrationConfig: { ...cfg, figureRules, styleRules } })
+      .where(eq(shops.id, input.shopId));
+  });
+  revalidatePath("/settings");
+}
+
+/** Re-run figure + style resolution against a shop's already-imported orders. */
+export async function reresolveShopOrders(shopId: string): Promise<ReresolveSummary> {
+  const user = await requireAdmin();
+  const summary = await reresolveShop(user, shopId);
+  revalidatePath("/settings");
+  revalidatePath("/queue");
+  revalidatePath("/board");
   return summary;
 }
 

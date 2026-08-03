@@ -9,7 +9,7 @@ import { queuePhotoRequest, flushQueued } from "@/lib/email/dispatch";
 import type { NormalizedVariation } from "../figures";
 import { ShopifyClient } from "./client";
 import { isShopifyConnected } from "./auth";
-import { resolveFigureCount } from "./figures";
+import { resolveFigureCount, resolveStyle } from "./figures";
 import type {
   GqlOrder,
   GqlOrdersResponse,
@@ -40,16 +40,19 @@ export type ShopContext = {
 
 export type NormalizedLineItem = {
   sku: string | null;
-  title: string | null;
+  title: string | null; // product title (what the designer is making)
   variantTitle: string | null;
   digital: boolean;
   quantity: number;
-  options: NormalizedVariation[]; // for figure resolution
+  hasVariant: boolean; // false + no sku => an add-on line (tip/fee), not a product
+  selectedOptions: NormalizedVariation[]; // structured variant options (display + resolution)
+  properties: NormalizedVariation[]; // line-item custom attributes, non-url (pet name, background…)
   photoUrls: string[]; // customer-uploaded reference photos (CDN URLs)
 };
 
 export type NormalizedOrder = {
   platformOrderId: string; // numeric legacy id (consistent across webhook + sync)
+  orderName: string | null; // human order number (Shopify `name`, e.g. "PC31972")
   createdAt: Date;
   email: string | null;
   firstName: string | null;
@@ -57,12 +60,31 @@ export type NormalizedOrder = {
   lineItems: NormalizedLineItem[];
 };
 
+/**
+ * The full variation set the resolver runs against: variant selectedOptions +
+ * line-item properties + the variant title (as a synthetic option). Stored as
+ * raw_variations so a re-resolve reproduces the exact resolution.
+ */
+export function resolverInput(li: NormalizedLineItem): NormalizedVariation[] {
+  return [
+    ...li.selectedOptions,
+    ...li.properties,
+    ...(li.variantTitle ? [{ name: "Variant", value: li.variantTitle }] : []),
+  ];
+}
+
+/** An add-on line (Shopify tip / fee): no variant and no sku. Never a portrait. */
+export function isAddOnLine(li: NormalizedLineItem): boolean {
+  return !li.hasVariant && !li.sku;
+}
+
 const ORDERS_QUERY = `
 query($cursor: String, $q: String) {
   orders(first: ${PAGE}, after: $cursor, sortKey: CREATED_AT, query: $q) {
     pageInfo { hasNextPage endCursor }
     nodes {
       id
+      name
       legacyResourceId
       createdAt
       email
@@ -197,9 +219,18 @@ export async function importShopifyOrder(args: {
   const { shop, order, via } = args;
   const email = order.email?.trim().toLowerCase() || null;
 
-  const items = order.lineItems.map((li) => {
-    const fig = resolveFigureCount(li.options, shop.config);
-    return { li, count: fig.count, source: fig.source, note: fig.note };
+  // Exclude add-on lines (tips/fees: no variant, no sku) from the portrait items;
+  // they'd otherwise import as junk order_items and keep the order unresolved.
+  const realLines = order.lineItems.filter((li) => !isAddOnLine(li));
+  const skippedAddOns = order.lineItems
+    .filter((li) => isAddOnLine(li))
+    .map((li) => ({ title: li.title, sku: li.sku, reason: "no variant and no sku" }));
+
+  const items = realLines.map((li) => {
+    const input = resolverInput(li);
+    const fig = resolveFigureCount(input, shop.config);
+    const style = resolveStyle(input, shop.config);
+    return { li, input, count: fig.count, source: fig.source, note: fig.note, style: style.style };
   });
   const anyPhotos = order.lineItems.some((li) => li.photoUrls.length > 0);
   const status = anyPhotos ? ("ready_to_assign" as const) : ("awaiting_photos" as const);
@@ -228,6 +259,7 @@ export async function importShopifyOrder(args: {
         shopId: shop.id,
         customerId,
         platformOrderId: order.platformOrderId,
+        platformOrderName: order.orderName ?? order.platformOrderId,
         status,
         source: "shopify",
         placedAt: order.createdAt,
@@ -241,22 +273,26 @@ export async function importShopifyOrder(args: {
     if (!inserted.length) return "skipped";
     const orderId = inserted[0].id;
 
-    const itemRows = await tx
-      .insert(orderItems)
-      .values(
-        items.map((i) => ({
-          businessId: shop.businessId,
-          orderId,
-          sku: i.li.sku,
-          variation: summarizeOptions(i.li),
-          figureCount: i.count,
-          figureCountSource: i.source,
-          rawVariations: i.li.options,
-          style: findStyle(i.li),
-          productType: i.li.digital ? ("digital" as const) : ("physical" as const),
-        })),
-      )
-      .returning({ id: orderItems.id });
+    const itemRows = items.length
+      ? await tx
+          .insert(orderItems)
+          .values(
+            items.map((i) => ({
+              businessId: shop.businessId,
+              orderId,
+              sku: i.li.sku,
+              title: i.li.title,
+              variation: summarizeOptions(i.li),
+              options: i.li.selectedOptions,
+              figureCount: i.count,
+              figureCountSource: i.source,
+              rawVariations: i.input,
+              style: i.style,
+              productType: i.li.digital ? ("digital" as const) : ("physical" as const),
+            })),
+          )
+          .returning({ id: orderItems.id })
+      : [];
 
     // Reference photos: store the CDN URL, do NOT re-upload to R2.
     const assetValues = items.flatMap((i, idx) =>
@@ -282,11 +318,15 @@ export async function importShopifyOrder(args: {
         source: "shopify",
         via,
         orderId: order.platformOrderId,
+        orderName: order.orderName,
         itemCount: items.length,
         hasEmail: !!email,
         photoCount: assetValues.length,
         needsReview,
-        figures: items.map((i) => ({ count: i.count, source: i.source, note: i.note })),
+        figures: items.map((i) => ({ count: i.count, source: i.source, note: i.note, style: i.style })),
+        // Add-on lines (tips/fees) deliberately not imported as order_items, logged
+        // here so a real product that unexpectedly lacks a variant is auditable.
+        ...(skippedAddOns.length ? { skippedAddOns } : {}),
       },
     });
 
@@ -298,6 +338,7 @@ export async function importShopifyOrder(args: {
         businessId: shop.businessId,
         customerId,
         platformOrderId: order.platformOrderId,
+        platformOrderName: order.orderName ?? order.platformOrderId,
         uploadToken,
       });
     }
@@ -321,6 +362,7 @@ const ORDER_BY_ID_QUERY = `
 query($id: ID!) {
   order(id: $id) {
     id
+    name
     legacyResourceId
     createdAt
     email
@@ -379,26 +421,24 @@ export async function resolveWebhookOrder(
 export function normalizeGraphqlOrder(o: GqlOrder): NormalizedOrder {
   return {
     platformOrderId: o.legacyResourceId,
+    orderName: o.name ?? null,
     createdAt: new Date(o.createdAt),
     email: o.email ?? o.customer?.email ?? null,
     firstName: o.customer?.firstName ?? null,
     lastName: o.customer?.lastName ?? null,
     lineItems: o.lineItems.nodes.map((li) => {
       const attrs = li.customAttributes ?? [];
-      const options: NormalizedVariation[] = [
-        ...(li.variant?.selectedOptions ?? []).map((s) => ({ name: s.name, value: s.value })),
-        ...attrs
-          .filter((a) => a.value != null && !isUrl(a.value))
-          .map((a) => ({ name: a.key, value: a.value as string })),
-      ];
-      if (li.variantTitle) options.push({ name: "Variant", value: li.variantTitle });
       return {
         sku: li.sku,
         title: li.title,
         variantTitle: li.variantTitle,
         digital: !li.requiresShipping,
         quantity: li.quantity,
-        options,
+        hasVariant: li.variant != null,
+        selectedOptions: (li.variant?.selectedOptions ?? []).map((s) => ({ name: s.name, value: s.value })),
+        properties: attrs
+          .filter((a) => a.value != null && !isUrl(a.value))
+          .map((a) => ({ name: a.key, value: a.value as string })),
         photoUrls: attrs.filter((a) => isUrl(a.value)).map((a) => a.value as string),
       };
     }),
@@ -410,13 +450,8 @@ export function isUrl(v: string | null | undefined): boolean {
 }
 
 function summarizeOptions(li: NormalizedLineItem): string {
-  const parts = li.options.map((o) => `${o.name}: ${o.value}`);
+  const parts = [...li.selectedOptions, ...li.properties].map((o) => `${o.name}: ${o.value}`);
   return parts.length ? parts.join("; ") : (li.variantTitle ?? li.title ?? "");
-}
-
-function findStyle(li: NormalizedLineItem): string | null {
-  const v = li.options.find((o) => o.name?.toLowerCase().includes("style"));
-  return v?.value ?? null;
 }
 
 function computeDueAt(placedAt: Date, slaConfig: Record<string, unknown> | null): Date {

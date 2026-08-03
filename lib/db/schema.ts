@@ -365,6 +365,10 @@ export const orders = pgTable(
       onDelete: "set null",
     }),
     platformOrderId: text("platform_order_id").notNull(),
+    // Human-facing order number shown to staff and customers (Shopify `name` like
+    // "PC31972", Etsy receipt id). platformOrderId stays the internal id used for
+    // idempotency + API refetch; the internal id must never appear in the UI.
+    platformOrderName: text("platform_order_name"),
     status: orderStatus("status").notNull().default("awaiting_photos"),
     source: orderSource("source").notNull(),
     // Customer-facing SLA deadline. Set at import and does NOT move on
@@ -401,19 +405,30 @@ export const orderItems = pgTable(
       .notNull()
       .references(() => orders.id, { onDelete: "cascade" }),
     sku: text("sku"),
+    // Product title (e.g. "Custom Hand-Drawn Cartoon Pet Portrait") — what the
+    // designer is making. Shown on the designer card.
+    title: text("title"),
     variation: text("variation"),
+    // The variant's selectedOptions as structured {name,value} pairs (size, print
+    // type, style, figure option…). Drives the designer card; distinct from the
+    // raw_variations audit blob below.
+    options: jsonb("options").$type<ProductOption[]>(),
     // Nullable: null = unresolved. figureCountSource records how it was set;
     // payout only trusts shop_rule | heuristic | manual (never a silent default).
     figureCount: integer("figure_count"),
     figureCountSource: figureCountSource("figure_count_source"),
-    // Etsy variations stored verbatim so a VA can resolve later and so we can
-    // back-test figure rules against real data.
+    // Every variation/property name/value pair, verbatim (selectedOptions +
+    // line-item properties). The exact input the resolver ran against, so a
+    // re-resolve reproduces resolution and a VA can back-test rules.
     rawVariations: jsonb("raw_variations"),
     style: text("style"),
     productType: productType("product_type").notNull(),
   },
   (t) => [index("order_items_order_idx").on(t.orderId)],
 );
+
+/** A structured variant option / line-item property pair. */
+export type ProductOption = { name: string; value: string };
 
 // ---------------------------------------------------------------------------
 // Assets

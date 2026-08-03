@@ -21,12 +21,16 @@ export type QcFailInfo = { reason: string | null; failedItems: string[] };
 
 export type BoardCard = {
   orderId: string;
-  platformOrderId: string;
+  /** Human order number shown in the UI (Shopify name / Etsy receipt id). */
+  orderNumber: string;
   status: OrderStatus;
   dueAt: string | null; // ISO
   figureCount: number;
   figuresResolved: boolean;
   style: string | null;
+  /** Product title + variant options for the designer ("what am I making"). */
+  title: string | null;
+  options: { name: string; value: string }[];
   customerName: string;
   thumbnailUrl: string | null;
   /**
@@ -41,6 +45,7 @@ export type BoardCard = {
 type OrderRow = {
   id: string;
   platformOrderId: string;
+  platformOrderName: string | null;
   status: OrderStatus;
   dueAt: Date | null;
   businessId: string;
@@ -60,16 +65,28 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
   const ids = rows.map((o) => o.id);
 
   const items = await tx
-    .select({ orderId: orderItems.orderId, figureCount: orderItems.figureCount, style: orderItems.style })
+    .select({
+      orderId: orderItems.orderId,
+      figureCount: orderItems.figureCount,
+      style: orderItems.style,
+      title: orderItems.title,
+      options: orderItems.options,
+    })
     .from(orderItems)
     .where(inArray(orderItems.orderId, ids));
   const fig = new Map<string, number>();
   const hasNull = new Map<string, boolean>();
   const style = new Map<string, string>();
+  const title = new Map<string, string>();
+  const options = new Map<string, { name: string; value: string }[]>();
   for (const it of items) {
     fig.set(it.orderId, (fig.get(it.orderId) ?? 0) + (it.figureCount ?? 0));
     if (it.figureCount == null) hasNull.set(it.orderId, true);
     if (it.style && !style.has(it.orderId)) style.set(it.orderId, it.style);
+    if (it.title && !title.has(it.orderId)) title.set(it.orderId, it.title);
+    if (Array.isArray(it.options) && it.options.length && !options.has(it.orderId)) {
+      options.set(it.orderId, it.options as { name: string; value: string }[]);
+    }
   }
 
   const refs = await tx
@@ -153,12 +170,14 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
 
   return rows.map((o) => ({
     orderId: o.id,
-    platformOrderId: o.platformOrderId,
+    orderNumber: o.platformOrderName ?? o.platformOrderId,
     status: o.status,
     dueAt: o.dueAt ? o.dueAt.toISOString() : null,
     figureCount: fig.get(o.id) ?? 0,
     figuresResolved: !hasNull.get(o.id),
     style: style.get(o.id) ?? null,
+    title: title.get(o.id) ?? null,
+    options: options.get(o.id) ?? [],
     customerName: o.customerId ? (name.get(o.customerId) ?? "—") : "—",
     thumbnailUrl: thumb.get(o.id) ?? null,
     qcFail: qcFail.get(o.id) ?? null,
@@ -193,6 +212,7 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
       .select({
         id: orders.id,
         platformOrderId: orders.platformOrderId,
+        platformOrderName: orders.platformOrderName,
         status: orders.status,
         dueAt: orders.dueAt,
         businessId: orders.businessId,
@@ -283,6 +303,7 @@ export async function getVaQueue(
       .select({
         id: orders.id,
         platformOrderId: orders.platformOrderId,
+        platformOrderName: orders.platformOrderName,
         status: orders.status,
         dueAt: orders.dueAt,
         businessId: orders.businessId,

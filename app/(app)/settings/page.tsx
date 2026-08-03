@@ -13,6 +13,7 @@ import { ShopifyShopCard, type ShopifyShopVM } from "@/components/settings/shopi
 import { GmailBusinessCard, type GmailBusinessVM } from "@/components/settings/gmail-business-card";
 import { TemplateEditor, type TemplateVM } from "@/components/settings/template-editor";
 import { DEFAULT_TEMPLATES, TEMPLATE_META, type TemplateKey } from "@/lib/email/templates";
+import { getShopOptionNames } from "@/lib/orders/resolution";
 import { appUrl } from "@/lib/urls";
 import type { EtsyCredentials, EtsyIntegrationConfig } from "@/lib/integrations/etsy";
 import {
@@ -76,6 +77,9 @@ export default async function SettingsPage() {
         lastSyncCursor: cfg.syncCursor ?? null,
         allowHeuristic: !!cfg.allowHeuristicFigureCount,
         ruleCount: cfg.figureRules?.length ?? 0,
+        figureRules: cfg.figureRules ?? [],
+        styleRules: cfg.styleRules ?? [],
+        optionNames: await getShopOptionNames(user, s.id),
       };
     }),
   );
@@ -113,6 +117,9 @@ export default async function SettingsPage() {
         lastSyncCursor: cfg.syncCursor ?? null,
         allowHeuristic: !!cfg.allowHeuristicFigureCount,
         ruleCount: cfg.figureRules?.length ?? 0,
+        figureRules: cfg.figureRules ?? [],
+        styleRules: cfg.styleRules ?? [],
+        optionNames: await getShopOptionNames(user, s.id),
       };
     }),
   );

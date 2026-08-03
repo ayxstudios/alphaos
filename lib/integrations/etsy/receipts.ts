@@ -13,7 +13,7 @@ import {
 } from "@/lib/db/schema";
 import { queuePhotoRequest, flushQueued } from "@/lib/email/dispatch";
 import { EtsyClient } from "./client";
-import { resolveFigureCount } from "./figures";
+import { resolveFigureCount, resolveStyle } from "./figures";
 import { ReauthRequiredError } from "./errors";
 import type {
   EtsyCredentials,
@@ -199,14 +199,17 @@ async function importReceipt(args: {
   const dueAt = computeDueAt(placedAt, slaConfig);
   const uploadToken = randomUUID();
 
-  // Resolve figures (pure) before touching the DB.
+  // Resolve figures + style (pure) before touching the DB.
   const items = receipt.transactions.map((t) => {
     const fig = resolveFigureCount(t.variations, cfg);
+    const style = resolveStyle(t.variations, cfg);
     return {
       transaction: t,
       figureCount: fig.count,
       figureCountSource: fig.source,
       figureNote: fig.note,
+      style: style.style,
+      options: (t.variations ?? []).map((v) => ({ name: v.formatted_name, value: v.formatted_value })),
     };
   });
   const needsReview = !email || items.some((i) => i.figureCountSource === "unresolved");
@@ -234,6 +237,8 @@ async function importReceipt(args: {
         shopId,
         customerId,
         platformOrderId: String(receipt.receipt_id),
+        // Etsy's human-facing order number IS the receipt id — same value.
+        platformOrderName: String(receipt.receipt_id),
         status: "awaiting_photos",
         source: "etsy",
         placedAt,
@@ -252,11 +257,13 @@ async function importReceipt(args: {
         businessId,
         orderId,
         sku: i.transaction.sku,
+        title: i.transaction.title,
         variation: summarizeVariations(i.transaction),
+        options: i.options,
         figureCount: i.figureCount,
         figureCountSource: i.figureCountSource,
         rawVariations: i.transaction.variations,
-        style: findStyle(i.transaction),
+        style: i.style,
         productType: i.transaction.is_digital ? ("digital" as const) : ("physical" as const),
       })),
     );
@@ -289,6 +296,7 @@ async function importReceipt(args: {
       businessId,
       customerId,
       platformOrderId: String(receipt.receipt_id),
+      platformOrderName: String(receipt.receipt_id),
       uploadToken,
     });
 
@@ -307,11 +315,6 @@ function splitName(name: string | null): [string | null, string | null] {
 function summarizeVariations(t: EtsyTransaction): string {
   const vs = (t.variations ?? []).map((v) => `${v.formatted_name}: ${v.formatted_value}`);
   return vs.length ? vs.join("; ") : (t.title ?? "");
-}
-
-function findStyle(t: EtsyTransaction): string | null {
-  const v = (t.variations ?? []).find((x) => x.formatted_name?.toLowerCase().includes("style"));
-  return v?.formatted_value ?? null;
 }
 
 function computeDueAt(placedAt: Date, slaConfig: Record<string, unknown> | null): Date {

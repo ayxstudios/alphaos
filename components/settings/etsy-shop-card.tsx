@@ -16,7 +16,9 @@ import {
 } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
 import { saveEtsyCredentials, triggerSync } from "@/app/(app)/settings/actions";
+import { ResolutionRulesEditor } from "@/components/settings/resolution-rules-editor";
 import type { SyncSummary } from "@/lib/integrations/etsy";
+import type { FigureRule, StyleRule } from "@/lib/integrations/figures";
 
 export type EtsyShopVM = {
   id: string;
@@ -27,6 +29,9 @@ export type EtsyShopVM = {
   lastSyncCursor: string | null;
   allowHeuristic: boolean;
   ruleCount: number;
+  figureRules: FigureRule[];
+  styleRules: StyleRule[];
+  optionNames: string[];
 };
 
 function StatusBadge({ status }: { status: EtsyShopVM["status"] }) {
@@ -92,6 +97,13 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
             Save app credentials
           </Button>
         </form>
+
+        <ResolutionRulesEditor
+          shopId={shop.id}
+          initialFigureRules={shop.figureRules}
+          initialStyleRules={shop.styleRules}
+          optionNames={shop.optionNames}
+        />
       </CardContent>
 
       <CardFooter className="flex-col items-start gap-3">

@@ -19,7 +19,9 @@ import {
   testShopifyConnection,
   triggerShopifySync,
 } from "@/app/(app)/settings/actions";
+import { ResolutionRulesEditor } from "@/components/settings/resolution-rules-editor";
 import type { SyncSummary } from "@/lib/integrations/shopify";
+import type { FigureRule, StyleRule } from "@/lib/integrations/figures";
 
 type AuthMode = "client_credentials" | "legacy";
 
@@ -36,6 +38,9 @@ export type ShopifyShopVM = {
   lastSyncCursor: string | null;
   allowHeuristic: boolean;
   ruleCount: number;
+  figureRules: FigureRule[];
+  styleRules: StyleRule[];
+  optionNames: string[];
 };
 
 const MODE_LABEL: Record<AuthMode, string> = {
@@ -108,7 +113,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
         </CardDescription>
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="flex flex-col gap-4">
         <form action={saveShopifyCredentials} className="flex flex-col gap-3">
           <input type="hidden" name="shopId" value={shop.id} />
           <input type="hidden" name="authType" value={mode} />
@@ -196,6 +201,13 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
             <p className={test.ok ? "text-sm text-sage" : "text-sm text-rose"}>{test.message}</p>
           )}
         </form>
+
+        <ResolutionRulesEditor
+          shopId={shop.id}
+          initialFigureRules={shop.figureRules}
+          initialStyleRules={shop.styleRules}
+          optionNames={shop.optionNames}
+        />
       </CardContent>
 
       <CardFooter className="flex-col items-start gap-2">

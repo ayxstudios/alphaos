@@ -15,6 +15,7 @@ import {
   normalizeWebhookOrder,
   resolveWebhookOrder,
   resolveFigureCount,
+  resolverInput,
   type GraphqlRunner,
   type ShopifyWebhookOrder,
 } from "../lib/integrations/shopify";
@@ -32,6 +33,7 @@ function report(name: string, pass: boolean, detail: string) {
 // present exactly as Shopify sends them.
 const payload: ShopifyWebhookOrder = {
   id: 5123456789,
+  name: "PC12345",
   created_at: "2026-08-03T10:15:00-04:00",
   email: "buyer@example.com",
   customer: { first_name: "Jamie", last_name: "Lee", email: "buyer@example.com" },
@@ -40,6 +42,7 @@ const payload: ShopifyWebhookOrder = {
       sku: "PET-PORTRAIT",
       title: "Custom Pet Portrait",
       variant_title: "2 Figures / A3 Print",
+      variant_id: 45130071572753,
       quantity: 1,
       requires_shipping: true,
       properties: [{ name: "Uploaded photo", value: "https://cdn.example.com/photo1.jpg" }],
@@ -60,6 +63,7 @@ const structuredClient: GraphqlRunner = {
     return {
       order: {
         id: "gid://shopify/Order/5123456789",
+        name: "PC12345",
         legacyResourceId: "5123456789",
         createdAt: payload.created_at,
         email: payload.email,
@@ -105,14 +109,20 @@ async function main() {
     `resolution=${primary.resolution}${primary.error ? ` error=${primary.error}` : ""}`,
   );
 
-  const options = primary.order.lineItems[0].options;
+  const selectedOptions = primary.order.lineItems[0].selectedOptions;
   report(
     "selectedOptions normalised to {name,value}",
-    options.some((o) => o.name === "Figures" && o.value === "2 Figures"),
-    `options=${JSON.stringify(options)}`,
+    selectedOptions.some((o) => o.name === "Figures" && o.value === "2 Figures"),
+    `selectedOptions=${JSON.stringify(selectedOptions)}`,
+  );
+  report(
+    "order number captured from Shopify `name`",
+    primary.order.orderName === "PC12345",
+    `orderName=${primary.order.orderName}`,
   );
 
-  const fig = resolveFigureCount(options, shopConfig);
+  const input = resolverInput(primary.order.lineItems[0]);
+  const fig = resolveFigureCount(input, shopConfig);
   report(
     "integer rule against variant option -> figure_count = 2",
     fig.count === 2 && fig.source === "shop_rule",
@@ -123,7 +133,7 @@ async function main() {
   const mapCfg: FigureConfig = {
     figureRules: [{ match: "figures", type: "map", map: { "2 figures": 2 } }],
   };
-  const figMap = resolveFigureCount(options, mapCfg);
+  const figMap = resolveFigureCount(input, mapCfg);
   report(
     "map rule against variant option -> figure_count = 2",
     figMap.count === 2 && figMap.source === "shop_rule",
@@ -137,7 +147,7 @@ async function main() {
     fb.resolution === "rest_fallback",
     `resolution=${fb.resolution} error=${fb.error}`,
   );
-  const figFb = resolveFigureCount(fb.order.lineItems[0].options, shopConfig);
+  const figFb = resolveFigureCount(resolverInput(fb.order.lineItems[0]), shopConfig);
   report(
     "REST-only order lands unresolved (review queue), not guessed",
     figFb.count === null && figFb.source === "unresolved",

@@ -1,6 +1,6 @@
-import type { FigureRule } from "../figures";
+import type { FigureRule, StyleRule } from "../figures";
 
-export type { FigureRule };
+export type { FigureRule, StyleRule };
 
 // Admin GraphQL API version (2025-01 or later).
 export const SHOPIFY_API_VERSION = "2025-01";
@@ -48,6 +48,7 @@ export type ShopifyCredentials = {
 /** Non-secret integration config (shops.integration_config). */
 export type ShopifyIntegrationConfig = {
   figureRules?: FigureRule[];
+  styleRules?: StyleRule[];
   allowHeuristicFigureCount?: boolean; // default false
   syncCursor?: string; // ISO of the newest order createdAt imported
   syncingSince?: string; // ISO; concurrency guard
@@ -69,6 +70,7 @@ export type GqlLineItem = {
 
 export type GqlOrder = {
   id: string;
+  name: string | null; // human order number, e.g. "PC31972"
   legacyResourceId: string;
   createdAt: string; // ISO
   email: string | null;

@@ -65,9 +65,9 @@ export function OutboxItemCard({ item }: { item: OutboxItem }) {
               <Badge variant="warning" dot>Draft</Badge>
             )}
           </CardTitle>
-          {item.orderId && item.platformOrderId && (
+          {item.orderId && item.orderNumber && (
             <Link href={`/orders/${item.orderId}`} className="text-sm font-medium text-pigment hover:underline">
-              Order {item.platformOrderId} →
+              Order {item.orderNumber} →
             </Link>
           )}
         </div>
