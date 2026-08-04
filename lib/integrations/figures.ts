@@ -54,6 +54,14 @@ function nameMatches(variationName: string | undefined, match: string): boolean 
   return normalizeName(variationName).includes(normalizeName(match));
 }
 
+/**
+ * Case-insensitive, punctuation-tolerant substring match — reused by the
+ * non-portrait classifier for product titles.
+ */
+export function matchesTolerant(text: string | null | undefined, needle: string): boolean {
+  return nameMatches(text ?? undefined, needle);
+}
+
 /** An integration-agnostic name/value option pair. */
 export type NormalizedVariation = { name: string; value: string };
 

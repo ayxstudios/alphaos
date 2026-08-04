@@ -57,6 +57,11 @@ export const orderStatus = pgEnum("order_status", [
   "complete",
   "on_hold",
   "cancelled",
+  // Non-portrait lifecycles (appended; enum order is not relied upon):
+  // triage: a VA must classify (Shopify draft orders — can't be inferred).
+  // fulfillment_only: non-portrait add-on; may need fulfilment, never design.
+  "triage",
+  "fulfillment_only",
 ]);
 export const productType = pgEnum("product_type", ["digital", "physical"]);
 export const assetType = pgEnum("asset_type", [

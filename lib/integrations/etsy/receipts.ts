@@ -12,6 +12,7 @@ import {
   activityLog,
 } from "@/lib/db/schema";
 import { queuePhotoRequest, flushQueued } from "@/lib/email/dispatch";
+import { classifyOrder, photoRequestEnabled } from "@/lib/integrations/classify";
 import { EtsyClient } from "./client";
 import { resolveFigureCount, resolveStyle } from "./figures";
 import { ReauthRequiredError } from "./errors";
@@ -221,7 +222,16 @@ async function importReceipt(args: {
       options: (t.variations ?? []).map((v) => ({ name: v.formatted_name, value: v.formatted_value })),
     };
   });
-  const needsReview = !email || items.some((i) => i.figureCountSource === "unresolved");
+
+  // Classify: Etsy has no draft orders, so only portrait vs fulfillment_only.
+  const klass = classifyOrder({
+    sourceName: null,
+    lines: items.map((i) => ({ sku: i.transaction.sku, title: i.transaction.title })),
+    config: cfg,
+  });
+  const status = klass === "fulfillment_only" ? ("fulfillment_only" as const) : ("awaiting_photos" as const);
+  const needsReview =
+    !email || (klass === "portrait" && items.some((i) => i.figureCountSource === "unresolved"));
 
   return withSystemContext(async (tx) => {
     // Upsert customer (per-business, by email).
@@ -248,7 +258,7 @@ async function importReceipt(args: {
         platformOrderId: String(receipt.receipt_id),
         // Etsy's human-facing order number IS the receipt id — same value.
         platformOrderName: String(receipt.receipt_id),
-        status: "awaiting_photos",
+        status,
         source: "etsy",
         placedAt,
         dueAt,
@@ -283,10 +293,11 @@ async function importReceipt(args: {
       actorId: null, // system import
       action: "order.imported",
       fromState: null,
-      toState: "awaiting_photos",
+      toState: status,
       metadata: {
         source: "etsy",
         receiptId: receipt.receipt_id,
+        orderClass: klass,
         itemCount: items.length,
         hasEmail: !!email,
         needsReview,
@@ -298,9 +309,10 @@ async function importReceipt(args: {
       },
     });
 
-    // Auto-send exception: queue the photo-request email (with the upload link).
-    // Actually sent by the flush at the end of the sync run. Never on a backfill.
-    if (!suppressCustomerEmail) {
+    // Auto-send exception: queue the photo-request email (with the upload link),
+    // only when this shop enables photo requests (true by default for Etsy) and
+    // photos are actually needed. Actually sent by the flush. Never on a backfill.
+    if (status === "awaiting_photos" && photoRequestEnabled(cfg, "etsy") && !suppressCustomerEmail) {
       await queuePhotoRequest(tx, {
         id: orderId,
         businessId,

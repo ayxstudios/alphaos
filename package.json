@@ -16,7 +16,8 @@
     "test:db": "tsx scripts/test-db.ts",
     "test:rls": "tsx scripts/test-rls.ts",
     "test:transitions": "tsx scripts/test-transitions.ts",
-    "test:shopify-figures": "tsx scripts/test-shopify-figures.ts"
+    "test:shopify-figures": "tsx scripts/test-shopify-figures.ts",
+    "test:nonportrait": "tsx scripts/test-nonportrait-invariants.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

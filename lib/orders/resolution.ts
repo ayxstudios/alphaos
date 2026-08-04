@@ -1,14 +1,15 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { getShopCredentials } from "@/lib/db/credentials";
-import { orders, orderItems, shops, activityLog } from "@/lib/db/schema";
+import { orders, orderItems, shops, activityLog, assets } from "@/lib/db/schema";
 import {
   resolveFigureCount,
   resolveStyle,
   type FigureConfig,
   type NormalizedVariation,
 } from "@/lib/integrations/figures";
+import { classifyOrder, type ClassifyConfig, type OrderClass } from "@/lib/integrations/classify";
 import {
   ShopifyClient,
   isShopifyConnected,
@@ -45,6 +46,31 @@ export async function getShopOptionNames(user: RequestUser, shopId: string): Pro
   });
 }
 
+/** Distinct SKUs + product titles from recent imports — chips for the
+ *  non-portrait classifier editor. */
+export async function getShopSkusAndTitles(
+  user: RequestUser,
+  shopId: string,
+): Promise<{ skus: string[]; titles: string[] }> {
+  return withUserContext(user, async (tx) => {
+    const rows = await tx
+      .select({ sku: orderItems.sku, title: orderItems.title })
+      .from(orderItems)
+      .innerJoin(orders, eq(orders.id, orderItems.orderId))
+      .where(eq(orders.shopId, shopId))
+      .orderBy(desc(orders.createdAt))
+      .limit(500);
+    const skus = new Set<string>();
+    const titles = new Set<string>();
+    for (const r of rows) {
+      if (r.sku) skus.add(r.sku);
+      if (r.title) titles.add(r.title);
+    }
+    const sort = (s: Set<string>) => [...s].sort((a, b) => a.localeCompare(b)).slice(0, 60);
+    return { skus: sort(skus), titles: sort(titles) };
+  });
+}
+
 export type ReresolveSummary = {
   ordersProcessed: number;
   itemsResolved: number;
@@ -52,7 +78,19 @@ export type ReresolveSummary = {
   addOnsRemoved: number;
   namesBackfilled: number;
   refetched: number;
+  reclassified: number; // moved to a different portrait/non-portrait lifecycle
+  reclassifySkipped: number; // would move, but a designer already touched it
 };
+
+/** Coarse lifecycle bucket, for deciding whether re-classification may move an order. */
+type Bucket = "portrait" | "fulfillment_only" | "triage" | "designer";
+function statusBucket(status: string): Bucket {
+  if (status === "awaiting_photos" || status === "ready_to_assign") return "portrait";
+  if (status === "fulfillment_only") return "fulfillment_only";
+  if (status === "triage") return "triage";
+  // in_design and beyond (incl. on_hold / cancelled) — a designer may have touched it.
+  return "designer";
+}
 
 const variationText = (li: NormalizedLineItem) =>
   [...li.selectedOptions, ...li.properties].map((o) => `${o.name}: ${o.value}`).join("; ");
@@ -66,8 +104,14 @@ const variationText = (li: NormalizedLineItem) =>
  * also backfills the human order number, the product title, and structured
  * options that weren't captured at their original import (and drops add-on lines
  * like tips). For Etsy / disconnected shops it recomputes offline from the stored
- * raw_variations. Never touches order status or assignments; recomputes
- * needs_review. Per-order transactions keep API latency out of a long DB lock.
+ * raw_variations.
+ *
+ * It ALSO re-classifies orders under the current non-portrait rules — but only
+ * while they're still pre-design (awaiting_photos / ready_to_assign / triage /
+ * fulfillment_only). If a designer has already touched an order (in_design or
+ * beyond), it is never moved; the skip is logged (order.reclassify_skipped).
+ * Recomputes needs_review. Per-order transactions keep API latency out of a long
+ * DB lock.
  */
 export async function reresolveShop(user: RequestUser, shopId: string): Promise<ReresolveSummary> {
   const shopMeta = await withUserContext(user, async (tx) => {
@@ -78,7 +122,7 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
     return s;
   });
   if (!shopMeta) throw new Error("Shop not found");
-  const cfg = (shopMeta.integrationConfig ?? {}) as FigureConfig;
+  const cfg = (shopMeta.integrationConfig ?? {}) as FigureConfig & ClassifyConfig;
 
   // A Shopify client for re-fetch, when the shop is connected.
   let client: ShopifyClient | null = null;
@@ -95,6 +139,7 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
         platformOrderId: orders.platformOrderId,
         platformOrderName: orders.platformOrderName,
         customerId: orders.customerId,
+        status: orders.status,
       })
       .from(orders)
       .where(eq(orders.shopId, shopId)),
@@ -107,6 +152,8 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
     addOnsRemoved: 0,
     namesBackfilled: 0,
     refetched: 0,
+    reclassified: 0,
+    reclassifySkipped: 0,
   };
 
   for (const o of orderList) {
@@ -123,6 +170,10 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
     }
 
     await withUserContext(user, async (tx) => {
+      // Lines used for (re)classification, and the draft-order signal.
+      let classLines: { sku: string | null; title: string | null }[] = [];
+      const sourceName = fresh?.sourceName ?? null;
+
       if (fresh) {
         summary.refetched++;
         if (fresh.orderName && fresh.orderName !== o.platformOrderName) {
@@ -131,6 +182,7 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
         }
         const realLines = fresh.lineItems.filter((li) => !isAddOnLine(li));
         summary.addOnsRemoved += fresh.lineItems.length - realLines.length;
+        classLines = realLines.map((li) => ({ sku: li.sku, title: li.title }));
 
         // Replace items from fresh data (title/options weren't captured before).
         await tx.delete(orderItems).where(eq(orderItems.orderId, o.id));
@@ -169,6 +221,7 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
           const st = resolveStyle(raw, cfg);
           if (fig.count != null) summary.itemsResolved++;
           else summary.stillUnresolved++;
+          classLines.push({ sku: it.sku, title: it.title });
           await tx
             .update(orderItems)
             .set({ figureCount: fig.count, figureCountSource: fig.source, style: st.style })
@@ -176,12 +229,65 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
         }
       }
 
-      // Recompute needs_review from the resulting items (+ missing customer).
+      // --- Re-classification -------------------------------------------------
+      // Compute the class the order WOULD get under current rules. Offline we
+      // can't see the draft-order source, so triage is only reachable via a
+      // Shopify re-fetch — an already-triaged order left offline stays put.
+      const intended: OrderClass = classifyOrder({ sourceName, lines: classLines, config: cfg });
+      const current = statusBucket(o.status);
+      let newStatus = o.status;
+      let reclassified = false;
+
+      if (current === "designer") {
+        // A designer has touched it — never move. Log only if it WOULD have moved.
+        if (intended !== "portrait") {
+          summary.reclassifySkipped++;
+          await tx.insert(activityLog).values({
+            businessId: o.businessId,
+            orderId: o.id,
+            actorId: user.id,
+            action: "order.reclassify_skipped",
+            fromState: o.status,
+            metadata: { intended, reason: "designer already touched this order" },
+          });
+        }
+      } else if (current !== intended) {
+        // Eligible (pre-design) and the bucket changed — move it.
+        if (intended === "portrait") {
+          const [photo] = await tx
+            .select({ id: assets.id })
+            .from(assets)
+            .where(and(eq(assets.orderId, o.id), eq(assets.type, "reference")))
+            .limit(1);
+          newStatus = photo ? "ready_to_assign" : "awaiting_photos";
+        } else if (intended === "fulfillment_only") {
+          newStatus = "fulfillment_only";
+        } else {
+          newStatus = "triage";
+        }
+        reclassified = newStatus !== o.status;
+        if (reclassified) {
+          summary.reclassified++;
+          await tx.update(orders).set({ status: newStatus }).where(eq(orders.id, o.id));
+          await tx.insert(activityLog).values({
+            businessId: o.businessId,
+            orderId: o.id,
+            actorId: user.id,
+            action: "order.reclassified",
+            fromState: o.status,
+            toState: newStatus,
+            metadata: { intended },
+          });
+        }
+      }
+
+      // Recompute needs_review. Non-portrait never flags on unresolved figures.
       const remaining = await tx
         .select({ figureCount: orderItems.figureCount })
         .from(orderItems)
         .where(eq(orderItems.orderId, o.id));
-      const needsReview = o.customerId == null || remaining.some((r) => r.figureCount == null);
+      const needsReview =
+        o.customerId == null || (intended === "portrait" && remaining.some((r) => r.figureCount == null));
       await tx.update(orders).set({ needsReview }).where(eq(orders.id, o.id));
 
       await tx.insert(activityLog).values({
@@ -189,7 +295,7 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
         orderId: o.id,
         actorId: user.id,
         action: "order.reresolved",
-        metadata: { refetched: !!fresh, needsReview },
+        metadata: { refetched: !!fresh, needsReview, intended, reclassified },
       });
     });
   }

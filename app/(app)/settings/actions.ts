@@ -248,15 +248,34 @@ function sanitizeStyleRules(rules: unknown): StyleRule[] {
   return out;
 }
 
-/** Save a shop's figure + style resolution rules into its integration config. */
+function sanitizeStringList(list: unknown): string[] {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of list) {
+    const s = String(v ?? "").trim();
+    if (s && !seen.has(s.toLowerCase())) {
+      seen.add(s.toLowerCase());
+      out.push(s);
+    }
+  }
+  return out;
+}
+
+/** Save a shop's figure/style rules + non-portrait classification config. */
 export async function saveShopResolutionRules(input: {
   shopId: string;
   figureRules: FigureRule[];
   styleRules: StyleRule[];
+  nonPortraitSkus: string[];
+  nonPortraitTitles: string[];
+  photoRequestEnabled: boolean;
 }): Promise<void> {
   const user = await requireAdmin();
   const figureRules = sanitizeFigureRules(input.figureRules);
   const styleRules = sanitizeStyleRules(input.styleRules);
+  const nonPortraitSkus = sanitizeStringList(input.nonPortraitSkus);
+  const nonPortraitTitles = sanitizeStringList(input.nonPortraitTitles);
   await withUserContext(user, async (tx) => {
     const [s] = await tx
       .select({ cfg: shops.integrationConfig })
@@ -265,7 +284,16 @@ export async function saveShopResolutionRules(input: {
     const cfg = (s?.cfg ?? {}) as Record<string, unknown>;
     await tx
       .update(shops)
-      .set({ integrationConfig: { ...cfg, figureRules, styleRules } })
+      .set({
+        integrationConfig: {
+          ...cfg,
+          figureRules,
+          styleRules,
+          nonPortraitSkus,
+          nonPortraitTitles,
+          photoRequestEnabled: !!input.photoRequestEnabled,
+        },
+      })
       .where(eq(shops.id, input.shopId));
   });
   revalidatePath("/settings");

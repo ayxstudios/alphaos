@@ -42,6 +42,11 @@ export type ShopifyShopVM = {
   figureRules: FigureRule[];
   styleRules: StyleRule[];
   optionNames: string[];
+  nonPortraitSkus: string[];
+  nonPortraitTitles: string[];
+  photoRequestEnabled: boolean;
+  skuSuggestions: string[];
+  titleSuggestions: string[];
 };
 
 const MODE_LABEL: Record<AuthMode, string> = {
@@ -219,9 +224,15 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
 
         <ResolutionRulesEditor
           shopId={shop.id}
+          platform="shopify"
           initialFigureRules={shop.figureRules}
           initialStyleRules={shop.styleRules}
+          initialNonPortraitSkus={shop.nonPortraitSkus}
+          initialNonPortraitTitles={shop.nonPortraitTitles}
+          initialPhotoRequestEnabled={shop.photoRequestEnabled}
           optionNames={shop.optionNames}
+          skuSuggestions={shop.skuSuggestions}
+          titleSuggestions={shop.titleSuggestions}
         />
       </CardContent>
 

@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNotNull, lt, ne, sql } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import {
@@ -249,24 +249,30 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
 }
 
 export const VA_TABS = [
-  "needs_photos", "unassigned", "awaiting_qc", "revisions_in",
-  "awaiting_customer", "ready_to_print", "overdue",
+  "triage", "needs_photos", "shopify_missing_photos", "unassigned", "awaiting_qc",
+  "revisions_in", "awaiting_customer", "fulfilment", "ready_to_print", "overdue",
 ] as const;
 export type VaTab = (typeof VA_TABS)[number];
 
 export const VA_TAB_LABELS: Record<VaTab, string> = {
+  triage: "Triage",
   needs_photos: "Needs Photos",
+  shopify_missing_photos: "Shopify · Missing Photos",
   unassigned: "Unassigned",
   awaiting_qc: "Awaiting QC",
   revisions_in: "Revisions In",
   awaiting_customer: "Awaiting Customer",
+  fulfilment: "Fulfilment",
   ready_to_print: "Ready to Print",
   overdue: "Overdue",
 };
 
 function tabWhere(tab: VaTab) {
   switch (tab) {
-    case "needs_photos": return eq(orders.status, "awaiting_photos");
+    case "triage": return eq(orders.status, "triage");
+    // Etsy/manual orders legitimately await photos; a Shopify one is an anomaly.
+    case "needs_photos": return and(eq(orders.status, "awaiting_photos"), ne(orders.source, "shopify"));
+    case "shopify_missing_photos": return and(eq(orders.status, "awaiting_photos"), eq(orders.source, "shopify"));
     case "unassigned":
       return and(
         eq(orders.status, "ready_to_assign"),
@@ -275,6 +281,7 @@ function tabWhere(tab: VaTab) {
     case "awaiting_qc": return eq(orders.status, "awaiting_qc");
     case "revisions_in": return and(eq(orders.status, "in_design"), gt(orders.revisionCount, 0));
     case "awaiting_customer": return eq(orders.status, "awaiting_approval");
+    case "fulfilment": return eq(orders.status, "fulfillment_only");
     case "ready_to_print": return eq(orders.status, "approved");
     case "overdue":
       return and(inArray(orders.status, OVERDUE_STATES), isNotNull(orders.dueAt), lt(orders.dueAt, sql`now()`));

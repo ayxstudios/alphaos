@@ -27,16 +27,109 @@ function parseNumberMap(text: string): Record<string, number> {
   return map;
 }
 
+/** A tag-list editor: current values as removable chips, an input to add, and
+ *  click-to-add suggestion chips from recent imports. */
+function StringList({
+  label,
+  values,
+  onChange,
+  suggestions,
+  placeholder,
+}: {
+  label: string;
+  values: string[];
+  onChange: (v: string[]) => void;
+  suggestions: string[];
+  placeholder?: string;
+}) {
+  const [input, setInput] = useState("");
+  const add = (v: string) => {
+    const t = v.trim();
+    if (t && !values.some((x) => x.toLowerCase() === t.toLowerCase())) onChange([...values, t]);
+  };
+  const unused = suggestions.filter((s) => !values.some((x) => x.toLowerCase() === s.toLowerCase()));
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs text-slate">{label}</span>
+      {values.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {values.map((v) => (
+            <span key={v} className="inline-flex items-center gap-1 rounded-input bg-pigment-soft px-2 py-0.5 text-xs text-pigment">
+              {v}
+              <button type="button" onClick={() => onChange(values.filter((x) => x !== v))} aria-label={`Remove ${v}`}>
+                <XCircle size={13} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <Input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              add(input);
+              setInput("");
+            }
+          }}
+          placeholder={placeholder}
+          className="flex-1"
+        />
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            add(input);
+            setInput("");
+          }}
+        >
+          Add
+        </Button>
+      </div>
+      {unused.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {unused.slice(0, 30).map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => add(s)}
+              className="rounded-input border border-line bg-canvas px-2 py-0.5 text-xs text-ink hover:bg-pigment-soft"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ResolutionRulesEditor({
   shopId,
+  platform,
   initialFigureRules,
   initialStyleRules,
+  initialNonPortraitSkus,
+  initialNonPortraitTitles,
+  initialPhotoRequestEnabled,
   optionNames,
+  skuSuggestions,
+  titleSuggestions,
 }: {
   shopId: string;
+  platform: "etsy" | "shopify";
   initialFigureRules: FigureRule[];
   initialStyleRules: StyleRule[];
+  initialNonPortraitSkus: string[];
+  initialNonPortraitTitles: string[];
+  initialPhotoRequestEnabled: boolean;
   optionNames: string[];
+  skuSuggestions: string[];
+  titleSuggestions: string[];
 }) {
   const [figure, setFigure] = useState<FigureDraft[]>(
     initialFigureRules.map((r) => ({ match: r.match, type: r.type, mapText: mapToText(r.map) })),
@@ -44,6 +137,9 @@ export function ResolutionRulesEditor({
   const [style, setStyle] = useState<StyleDraft[]>(
     initialStyleRules.map((r) => ({ match: r.match })),
   );
+  const [skus, setSkus] = useState<string[]>(initialNonPortraitSkus);
+  const [titles, setTitles] = useState<string[]>(initialNonPortraitTitles);
+  const [photoReq, setPhotoReq] = useState<boolean>(initialPhotoRequestEnabled);
   const [saving, startSave] = useTransition();
   const [reresolving, startReresolve] = useTransition();
   const [saved, setSaved] = useState<string | null>(null);
@@ -68,7 +164,14 @@ export function ResolutionRulesEditor({
     const styleRules: StyleRule[] = style.filter((r) => r.match.trim()).map((r) => ({ match: r.match.trim() }));
     startSave(async () => {
       try {
-        await saveShopResolutionRules({ shopId, figureRules, styleRules });
+        await saveShopResolutionRules({
+          shopId,
+          figureRules,
+          styleRules,
+          nonPortraitSkus: skus,
+          nonPortraitTitles: titles,
+          photoRequestEnabled: photoReq,
+        });
         setSaved("Rules saved.");
       } catch (e) {
         setError(e instanceof Error ? e.message : "Save failed");
@@ -207,6 +310,47 @@ export function ResolutionRulesEditor({
         </div>
       </div>
 
+      {/* Non-portrait classification */}
+      <div className="flex flex-col gap-2 border-t border-line pt-3">
+        <span className="text-xs font-medium text-ink">Non-portrait orders</span>
+        <p className="text-xs text-slate">
+          Orders whose lines are all non-portrait (add-ons, extra prints) import as
+          &ldquo;fulfilment only&rdquo; — no design, no proof, no photo request.
+        </p>
+        <StringList
+          label="Non-portrait SKUs (exact match)"
+          values={skus}
+          onChange={setSkus}
+          suggestions={skuSuggestions}
+          placeholder="e.g. RUSH-UPGRADE"
+        />
+        <StringList
+          label="Non-portrait product titles (contains)"
+          values={titles}
+          onChange={setTitles}
+          suggestions={titleSuggestions}
+          placeholder="e.g. Priority Upgrade"
+        />
+      </div>
+
+      {/* Photo-request behaviour */}
+      <label className="flex items-start gap-2 border-t border-line pt-3">
+        <input
+          type="checkbox"
+          checked={photoReq}
+          onChange={(e) => setPhotoReq(e.target.checked)}
+          className="mt-0.5"
+        />
+        <span className="text-sm text-ink">
+          Auto-request photos for orders in awaiting-photos
+          <span className="block text-xs text-slate">
+            {platform === "shopify"
+              ? "Off by default for Shopify — photos come from checkout. A Shopify order missing photos is flagged in the queue, not emailed."
+              : "On by default for Etsy — photos arrive via the emailed upload link."}
+          </span>
+        </span>
+      </label>
+
       <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
         <Button type="button" size="sm" onClick={onSave} loading={saving}>
           Save rules
@@ -220,11 +364,12 @@ export function ResolutionRulesEditor({
       {summary && (
         <p className="text-sm text-slate">
           Re-resolved {summary.ordersProcessed} order{summary.ordersProcessed === 1 ? "" : "s"}:{" "}
-          {summary.itemsResolved} item{summary.itemsResolved === 1 ? "" : "s"} resolved,{" "}
-          {summary.stillUnresolved} still unresolved, {summary.addOnsRemoved} add-on line
-          {summary.addOnsRemoved === 1 ? "" : "s"} removed, {summary.namesBackfilled} order number
-          {summary.namesBackfilled === 1 ? "" : "s"} backfilled
-          {summary.refetched > 0 ? ` (${summary.refetched} re-fetched from Shopify).` : "."}
+          {summary.itemsResolved} resolved, {summary.stillUnresolved} still unresolved,{" "}
+          {summary.addOnsRemoved} add-on line{summary.addOnsRemoved === 1 ? "" : "s"} removed,{" "}
+          {summary.namesBackfilled} order number{summary.namesBackfilled === 1 ? "" : "s"} backfilled,{" "}
+          {summary.reclassified} re-classified, {summary.reclassifySkipped} skipped (designer
+          already working)
+          {summary.refetched > 0 ? ` · ${summary.refetched} re-fetched from Shopify.` : "."}
         </p>
       )}
     </div>

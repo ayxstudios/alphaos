@@ -30,6 +30,7 @@ type RestLineItem = {
 export type ShopifyWebhookOrder = {
   id: number;
   name: string | null; // human order number, e.g. "PC31972"
+  source_name: string | null; // "web", "shopify_draft_order", …
   created_at: string;
   email: string | null;
   customer?: { first_name: string | null; last_name: string | null; email: string | null } | null;
@@ -46,6 +47,7 @@ export function normalizeWebhookOrder(payload: ShopifyWebhookOrder): NormalizedO
   return {
     platformOrderId: String(payload.id),
     orderName: payload.name ?? null,
+    sourceName: payload.source_name ?? null,
     createdAt: new Date(payload.created_at),
     email: payload.email ?? payload.customer?.email ?? null,
     firstName: payload.customer?.first_name ?? null,

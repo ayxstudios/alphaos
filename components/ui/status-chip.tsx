@@ -17,7 +17,7 @@ import {
   type IconProps,
 } from "./icons";
 
-/** The 12 order states (see CLAUDE.md). */
+/** The order states (see CLAUDE.md). */
 export type OrderStatus =
   | "awaiting_photos"
   | "ready_to_assign"
@@ -30,7 +30,9 @@ export type OrderStatus =
   | "delivered"
   | "complete"
   | "on_hold"
-  | "cancelled";
+  | "cancelled"
+  | "triage"
+  | "fulfillment_only";
 
 type Tone = "slate" | "pigment" | "amber" | "sage" | "rose";
 
@@ -54,6 +56,8 @@ const STATUS: Record<OrderStatus, StatusMeta> = {
   complete: { label: "Complete", tone: "sage", icon: CheckCircle },
   on_hold: { label: "On hold", tone: "amber", icon: Pause },
   cancelled: { label: "Cancelled", tone: "rose", icon: XCircle },
+  triage: { label: "Triage", tone: "amber", icon: Search },
+  fulfillment_only: { label: "Fulfilment only", tone: "slate", icon: Package },
 };
 
 // Alpha modifiers of palette tokens only — no colours outside the palette.

@@ -10,6 +10,7 @@ import type { NormalizedVariation } from "../figures";
 import { ShopifyClient } from "./client";
 import { isShopifyConnected } from "./auth";
 import { resolveFigureCount, resolveStyle } from "./figures";
+import { classifyOrder, photoRequestEnabled } from "../classify";
 import type {
   GqlOrder,
   GqlOrdersResponse,
@@ -65,6 +66,7 @@ export type NormalizedLineItem = {
 export type NormalizedOrder = {
   platformOrderId: string; // numeric legacy id (consistent across webhook + sync)
   orderName: string | null; // human order number (Shopify `name`, e.g. "PC31972")
+  sourceName: string | null; // order attribution; "shopify_draft_order" => triage
   createdAt: Date;
   email: string | null;
   firstName: string | null;
@@ -97,6 +99,7 @@ query($cursor: String, $q: String) {
     nodes {
       id
       name
+      sourceName
       legacyResourceId
       createdAt
       email
@@ -283,8 +286,26 @@ export async function importShopifyOrder(args: {
     return { li, input, count: fig.count, source: fig.source, note: fig.note, style: style.style };
   });
   const anyPhotos = order.lineItems.some((li) => li.photoUrls.length > 0);
-  const status = anyPhotos ? ("ready_to_assign" as const) : ("awaiting_photos" as const);
-  const needsReview = !email || items.some((i) => i.source === "unresolved");
+
+  // Classify: a Shopify draft order -> triage; all-non-portrait -> fulfillment_only;
+  // otherwise portrait (ready_to_assign if photos are attached, else awaiting_photos).
+  const klass = classifyOrder({
+    sourceName: order.sourceName,
+    lines: realLines.map((li) => ({ sku: li.sku, title: li.title })),
+    config: shop.config,
+  });
+  const status =
+    klass === "triage"
+      ? ("triage" as const)
+      : klass === "fulfillment_only"
+        ? ("fulfillment_only" as const)
+        : anyPhotos
+          ? ("ready_to_assign" as const)
+          : ("awaiting_photos" as const);
+
+  // Figure count only matters for portrait work; non-portrait never blocks review
+  // on an unresolved count (it never pays a designer).
+  const needsReview = !email || (klass === "portrait" && items.some((i) => i.source === "unresolved"));
   const dueAt = computeDueAt(order.createdAt, shop.slaConfig);
   const uploadToken = randomUUID();
 
@@ -369,6 +390,8 @@ export async function importShopifyOrder(args: {
         via,
         orderId: order.platformOrderId,
         orderName: order.orderName,
+        sourceName: order.sourceName,
+        orderClass: klass,
         itemCount: items.length,
         hasEmail: !!email,
         photoCount: assetValues.length,
@@ -381,9 +404,14 @@ export async function importShopifyOrder(args: {
     });
 
     // Auto-send exception: queue the photo-request email only when we still need
-    // photos (an order that arrived WITH photos skips straight to ready_to_assign).
-    // Never on a backfill — historical orders must not trigger customer email.
-    if (status === "awaiting_photos" && !shop.suppressCustomerEmail) {
+    // photos AND this shop enables photo requests (false by default for Shopify —
+    // photos come from checkout). A Shopify order in awaiting_photos is an anomaly
+    // surfaced in the VA queue instead of emailed. Never on a backfill.
+    if (
+      status === "awaiting_photos" &&
+      photoRequestEnabled(shop.config, "shopify") &&
+      !shop.suppressCustomerEmail
+    ) {
       await queuePhotoRequest(tx, {
         id: orderId,
         businessId: shop.businessId,
@@ -414,6 +442,7 @@ query($id: ID!) {
   order(id: $id) {
     id
     name
+    sourceName
     legacyResourceId
     createdAt
     email
@@ -473,6 +502,7 @@ export function normalizeGraphqlOrder(o: GqlOrder): NormalizedOrder {
   return {
     platformOrderId: o.legacyResourceId,
     orderName: o.name ?? null,
+    sourceName: o.sourceName ?? null,
     createdAt: new Date(o.createdAt),
     email: o.email ?? o.customer?.email ?? null,
     firstName: o.customer?.firstName ?? null,

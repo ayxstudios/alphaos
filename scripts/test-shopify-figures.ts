@@ -34,6 +34,7 @@ function report(name: string, pass: boolean, detail: string) {
 const payload: ShopifyWebhookOrder = {
   id: 5123456789,
   name: "PC12345",
+  source_name: "web",
   created_at: "2026-08-03T10:15:00-04:00",
   email: "buyer@example.com",
   customer: { first_name: "Jamie", last_name: "Lee", email: "buyer@example.com" },

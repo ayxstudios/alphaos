@@ -32,6 +32,11 @@ export type EtsyShopVM = {
   figureRules: FigureRule[];
   styleRules: StyleRule[];
   optionNames: string[];
+  nonPortraitSkus: string[];
+  nonPortraitTitles: string[];
+  photoRequestEnabled: boolean;
+  skuSuggestions: string[];
+  titleSuggestions: string[];
 };
 
 function StatusBadge({ status }: { status: EtsyShopVM["status"] }) {
@@ -114,9 +119,15 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
 
         <ResolutionRulesEditor
           shopId={shop.id}
+          platform="etsy"
           initialFigureRules={shop.figureRules}
           initialStyleRules={shop.styleRules}
+          initialNonPortraitSkus={shop.nonPortraitSkus}
+          initialNonPortraitTitles={shop.nonPortraitTitles}
+          initialPhotoRequestEnabled={shop.photoRequestEnabled}
           optionNames={shop.optionNames}
+          skuSuggestions={shop.skuSuggestions}
+          titleSuggestions={shop.titleSuggestions}
         />
       </CardContent>
 

@@ -57,6 +57,13 @@
       "when": 1785720407395,
       "tag": "0007_talented_speed",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785723721332,
+      "tag": "0008_wise_tony_stark",
+      "breakpoints": true
     }
   ]
 }

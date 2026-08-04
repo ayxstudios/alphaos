@@ -33,6 +33,10 @@ export type EtsyCredentials = {
 export type EtsyIntegrationConfig = {
   figureRules?: FigureRule[];
   styleRules?: StyleRule[];
+  // Classification (non-portrait) + photo-request behaviour. See lib/integrations/classify.ts.
+  nonPortraitSkus?: string[];
+  nonPortraitTitles?: string[];
+  photoRequestEnabled?: boolean; // default true for Etsy
   allowHeuristicFigureCount?: boolean; // default false
   syncCursor?: string; // ISO of the newest created_timestamp imported
   syncingSince?: string; // ISO; concurrency guard

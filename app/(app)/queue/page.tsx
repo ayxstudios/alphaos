@@ -20,7 +20,8 @@ export const dynamic = "force-dynamic";
 
 // Human labels for the quick-advance buttons, keyed by target status.
 const ACTION_LABEL: Partial<Record<OrderStatus, string>> = {
-  ready_to_assign: "Reassign",
+  awaiting_photos: "Needs photos",
+  ready_to_assign: "Ready to assign",
   in_design: "Send back",
   awaiting_qc: "Send to QC",
   awaiting_approval: "Pass QC",
@@ -29,6 +30,7 @@ const ACTION_LABEL: Partial<Record<OrderStatus, string>> = {
   shipped: "Mark shipped",
   delivered: "Mark delivered",
   complete: "Mark complete",
+  fulfillment_only: "Fulfil only",
 };
 
 export default async function QueuePage({
@@ -95,9 +97,16 @@ export default async function QueuePage({
               actions={
                 c.status === "awaiting_qc"
                   ? []
-                  : staffTransitionsFrom(c.status)
-                      .filter((to) => to !== "on_hold" && to !== "cancelled")
-                      .map((to) => ({ to, label: ACTION_LABEL[to] ?? to }))
+                  : c.status === "triage"
+                    ? // One click either way — never guess (photos present => straight to assign).
+                      [
+                        { to: (c.thumbnailUrl ? "ready_to_assign" : "awaiting_photos") as OrderStatus, label: "Portrait" },
+                        { to: "fulfillment_only" as OrderStatus, label: "Fulfil only" },
+                        { to: "complete" as OrderStatus, label: "Close (billing)" },
+                      ]
+                    : staffTransitionsFrom(c.status)
+                        .filter((to) => to !== "on_hold" && to !== "cancelled")
+                        .map((to) => ({ to, label: ACTION_LABEL[to] ?? to }))
               }
             />
           ))}

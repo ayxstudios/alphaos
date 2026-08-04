@@ -55,6 +55,16 @@ const GRAPH: Record<string, Edge> = {
   "printing->shipped": { roles: STAFF },
   "shipped->delivered": { roles: STAFF },
   "delivered->complete": { roles: STAFF },
+  // Triage (VA classifies a draft order — one click either way). Portrait routes
+  // rejoin the normal flow; the non-portrait routes never touch design.
+  "triage->awaiting_photos": { roles: STAFF }, // portrait, still needs photos
+  "triage->ready_to_assign": { roles: STAFF }, // portrait, photos already attached
+  "triage->fulfillment_only": { roles: STAFF }, // not portrait, needs fulfilment
+  "triage->complete": { roles: STAFF }, // not portrait, nothing to fulfil (billing)
+  // Fulfilment-only add-ons: fulfil or close. NO edge to in_design/awaiting_qc/
+  // awaiting_approval exists, so these can never reach a designer or a proof.
+  "fulfillment_only->printing": { roles: STAFF },
+  "fulfillment_only->complete": { roles: STAFF },
   // Hold from any active state.
   ...holdEdges(),
   // Resume from hold to any active working state.
@@ -67,6 +77,7 @@ function holdEdges(): Record<string, Edge> {
   const from: OrderStatus[] = [
     "awaiting_photos", "ready_to_assign", "in_design", "awaiting_qc",
     "awaiting_approval", "approved", "printing", "shipped",
+    "triage", "fulfillment_only",
   ];
   return Object.fromEntries(from.map((s) => [`${s}->on_hold`, { roles: STAFF }]));
 }
@@ -74,6 +85,7 @@ function resumeEdges(): Record<string, Edge> {
   const to: OrderStatus[] = [
     "ready_to_assign", "in_design", "awaiting_qc", "awaiting_approval",
     "approved", "printing", "shipped",
+    "triage", "fulfillment_only",
   ];
   return Object.fromEntries(to.map((s) => [`on_hold->${s}`, { roles: STAFF }]));
 }
@@ -81,6 +93,7 @@ function cancelEdges(): Record<string, Edge> {
   const from: OrderStatus[] = [
     "awaiting_photos", "ready_to_assign", "in_design", "awaiting_qc",
     "awaiting_approval", "approved", "printing", "shipped", "delivered", "on_hold",
+    "triage", "fulfillment_only",
   ];
   return Object.fromEntries(from.map((s) => [`${s}->cancelled`, { roles: STAFF }]));
 }
@@ -188,8 +201,16 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
     throw new ForbiddenTransitionError(actor.role, order.status, to);
   }
 
+  // A completion that comes from a non-portrait lifecycle is NOT design work:
+  // figure count is irrelevant and no designer is paid. Gated on the from-state
+  // so it's driven by the state machine, not a flag.
+  const nonPortraitComplete =
+    to === "complete" && (order.status === "triage" || order.status === "fulfillment_only");
+
   // Preconditions before we mutate anything.
-  if (to === "complete") await assertFiguresResolved(tx, orderId, order.platformOrderId);
+  if (to === "complete" && !nonPortraitComplete) {
+    await assertFiguresResolved(tx, orderId, order.platformOrderId);
+  }
 
   // QC gate — enforced HERE, not just in the UI/action, so a crafted request
   // can't pass QC without every item ticked. The checklist is resolved from the
@@ -218,7 +239,9 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
     await runAutoAssign(tx, { orderId, businessId: order.businessId, assignedBy: actor.role === "system" ? null : actor.id });
   }
   if (qc) await insertQc(tx, order, actor, qc);
-  if (to === "complete") await createEarnings(tx, order.id, order.businessId);
+  // Earnings only for design completions. Non-portrait completes never pay
+  // (and have no assignment anyway — createEarnings is a double safeguard).
+  if (to === "complete" && !nonPortraitComplete) await createEarnings(tx, order.id, order.businessId);
 
   // Email side effects, composed into this transaction so a rolled-back
   // transition never leaves a stray proof or draft. See lib/email/dispatch.ts.

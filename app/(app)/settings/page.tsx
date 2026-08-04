@@ -13,7 +13,8 @@ import { ShopifyShopCard, type ShopifyShopVM } from "@/components/settings/shopi
 import { GmailBusinessCard, type GmailBusinessVM } from "@/components/settings/gmail-business-card";
 import { TemplateEditor, type TemplateVM } from "@/components/settings/template-editor";
 import { DEFAULT_TEMPLATES, TEMPLATE_META, type TemplateKey } from "@/lib/email/templates";
-import { getShopOptionNames } from "@/lib/orders/resolution";
+import { getShopOptionNames, getShopSkusAndTitles } from "@/lib/orders/resolution";
+import { photoRequestEnabled as resolvePhotoRequestEnabled } from "@/lib/integrations/classify";
 import { appUrl } from "@/lib/urls";
 import type { EtsyCredentials, EtsyIntegrationConfig } from "@/lib/integrations/etsy";
 import {
@@ -80,6 +81,13 @@ export default async function SettingsPage() {
         figureRules: cfg.figureRules ?? [],
         styleRules: cfg.styleRules ?? [],
         optionNames: await getShopOptionNames(user, s.id),
+        nonPortraitSkus: cfg.nonPortraitSkus ?? [],
+        nonPortraitTitles: cfg.nonPortraitTitles ?? [],
+        photoRequestEnabled: resolvePhotoRequestEnabled(cfg, "etsy"),
+        ...(await getShopSkusAndTitles(user, s.id).then((r) => ({
+          skuSuggestions: r.skus,
+          titleSuggestions: r.titles,
+        }))),
       };
     }),
   );
@@ -120,6 +128,13 @@ export default async function SettingsPage() {
         figureRules: cfg.figureRules ?? [],
         styleRules: cfg.styleRules ?? [],
         optionNames: await getShopOptionNames(user, s.id),
+        nonPortraitSkus: cfg.nonPortraitSkus ?? [],
+        nonPortraitTitles: cfg.nonPortraitTitles ?? [],
+        photoRequestEnabled: resolvePhotoRequestEnabled(cfg, "shopify"),
+        ...(await getShopSkusAndTitles(user, s.id).then((r) => ({
+          skuSuggestions: r.skus,
+          titleSuggestions: r.titles,
+        }))),
       };
     }),
   );

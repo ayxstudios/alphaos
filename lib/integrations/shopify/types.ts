@@ -49,6 +49,10 @@ export type ShopifyCredentials = {
 export type ShopifyIntegrationConfig = {
   figureRules?: FigureRule[];
   styleRules?: StyleRule[];
+  // Classification (non-portrait) + photo-request behaviour. See lib/integrations/classify.ts.
+  nonPortraitSkus?: string[];
+  nonPortraitTitles?: string[];
+  photoRequestEnabled?: boolean; // default false for Shopify
   allowHeuristicFigureCount?: boolean; // default false
   syncCursor?: string; // ISO of the newest order createdAt imported
   syncingSince?: string; // ISO; concurrency guard
@@ -71,6 +75,7 @@ export type GqlLineItem = {
 export type GqlOrder = {
   id: string;
   name: string | null; // human order number, e.g. "PC31972"
+  sourceName: string | null; // "web", "pos", "shopify_draft_order", …
   legacyResourceId: string;
   createdAt: string; // ISO
   email: string | null;
