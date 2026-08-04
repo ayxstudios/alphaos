@@ -312,7 +312,7 @@ async function importReceipt(args: {
     // Auto-send exception: queue the photo-request email (with the upload link),
     // only when this shop enables photo requests (true by default for Etsy) and
     // photos are actually needed. Actually sent by the flush. Never on a backfill.
-    if (status === "awaiting_photos" && photoRequestEnabled(cfg, "etsy") && !suppressCustomerEmail) {
+    if (status === "awaiting_photos" && photoRequestEnabled(cfg) && !suppressCustomerEmail) {
       await queuePhotoRequest(tx, {
         id: orderId,
         businessId,

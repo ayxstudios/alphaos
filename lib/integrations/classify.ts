@@ -54,13 +54,11 @@ export function classifyOrder(input: {
 }
 
 /**
- * Whether automated photo-request email is enabled for a shop. Photo requests are
- * an ETSY concern — Shopify collects photos at checkout — so the default is TRUE
- * for Etsy and FALSE for Shopify, overridable per shop.
+ * Whether automated photo-request email is enabled for a shop. Default is FALSE
+ * for every shop — no shop sends automated photo requests until an admin turns it
+ * on per shop in Settings. The upload link, form, and template stay built, and a
+ * VA can still send one manually; this gate only governs the AUTOMATIC send.
  */
-export function photoRequestEnabled(
-  cfg: ClassifyConfig | null | undefined,
-  platform: "etsy" | "shopify",
-): boolean {
-  return cfg?.photoRequestEnabled ?? platform === "etsy";
+export function photoRequestEnabled(cfg: ClassifyConfig | null | undefined): boolean {
+  return cfg?.photoRequestEnabled ?? false;
 }

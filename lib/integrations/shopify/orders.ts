@@ -409,7 +409,7 @@ export async function importShopifyOrder(args: {
     // surfaced in the VA queue instead of emailed. Never on a backfill.
     if (
       status === "awaiting_photos" &&
-      photoRequestEnabled(shop.config, "shopify") &&
+      photoRequestEnabled(shop.config) &&
       !shop.suppressCustomerEmail
     ) {
       await queuePhotoRequest(tx, {

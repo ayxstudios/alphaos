@@ -342,11 +342,16 @@ export function ResolutionRulesEditor({
           className="mt-0.5"
         />
         <span className="text-sm text-ink">
-          Auto-request photos for orders in awaiting-photos
+          Automatically email a photo request when an order needs photos
+          <span className="ml-1 rounded bg-canvas px-1 text-xs text-slate">
+            {photoReq ? "ON" : "OFF — default"}
+          </span>
           <span className="block text-xs text-slate">
+            Off for every shop until you turn it on here. A VA can still send a photo
+            request manually from an order at any time.
             {platform === "shopify"
-              ? "Off by default for Shopify — photos come from checkout. A Shopify order missing photos is flagged in the queue, not emailed."
-              : "On by default for Etsy — photos arrive via the emailed upload link."}
+              ? " (Shopify collects photos at checkout — a Shopify order missing photos is flagged in the queue.)"
+              : " (Etsy customers upload via the emailed link.)"}
           </span>
         </span>
       </label>

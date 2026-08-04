@@ -83,7 +83,7 @@ export default async function SettingsPage() {
         optionNames: await getShopOptionNames(user, s.id),
         nonPortraitSkus: cfg.nonPortraitSkus ?? [],
         nonPortraitTitles: cfg.nonPortraitTitles ?? [],
-        photoRequestEnabled: resolvePhotoRequestEnabled(cfg, "etsy"),
+        photoRequestEnabled: resolvePhotoRequestEnabled(cfg),
         ...(await getShopSkusAndTitles(user, s.id).then((r) => ({
           skuSuggestions: r.skus,
           titleSuggestions: r.titles,
@@ -130,7 +130,7 @@ export default async function SettingsPage() {
         optionNames: await getShopOptionNames(user, s.id),
         nonPortraitSkus: cfg.nonPortraitSkus ?? [],
         nonPortraitTitles: cfg.nonPortraitTitles ?? [],
-        photoRequestEnabled: resolvePhotoRequestEnabled(cfg, "shopify"),
+        photoRequestEnabled: resolvePhotoRequestEnabled(cfg),
         ...(await getShopSkusAndTitles(user, s.id).then((r) => ({
           skuSuggestions: r.skus,
           titleSuggestions: r.titles,
