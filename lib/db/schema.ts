@@ -383,6 +383,9 @@ export const orders = pgTable(
     uploadToken: text("upload_token").unique(),
     // Set when an import needs a human: unresolved figure count or missing email.
     needsReview: boolean("needs_review").notNull().default(false),
+    // Free-text notes / special requests (from manual entry), shown on the
+    // designer's card so they know what to make.
+    notes: text("notes"),
     // Incremented on rework (QC fail / customer revision -> in_design) in the same
     // transaction as the transition. Distinguishes In Design from Revisions on the
     // boards without scanning activity_log. 0 = first pass.

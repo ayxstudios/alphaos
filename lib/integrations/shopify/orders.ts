@@ -11,6 +11,7 @@ import { ShopifyClient } from "./client";
 import { isShopifyConnected } from "./auth";
 import { resolveFigureCount, resolveStyle } from "./figures";
 import { classifyOrder, photoRequestEnabled } from "../classify";
+import { reconcileManualOrder } from "@/lib/orders/reconcile";
 import type {
   GqlOrder,
   GqlOrdersResponse,
@@ -31,6 +32,7 @@ export type SyncSummary = {
   failed: number;
   skippedRun?: "already_running" | "not_connected";
   errors: { platformOrderId: string; error: string }[];
+  reconciled?: number; // manual orders matched + promoted in place
   // Context so the UI/logs show the whole picture, not just this run's delta.
   total?: number; // total orders stored for the shop after this run
   windowStart?: string; // ISO — start of the range this run scanned
@@ -201,6 +203,7 @@ export async function syncShopOrders(
         try {
           const result = await importShopifyOrder({ shop: ctx, order: normalized, via: "sync" });
           if (result === "imported") summary.imported++;
+          else if (result === "reconciled") summary.reconciled = (summary.reconciled ?? 0) + 1;
           else summary.skipped++;
           if (node.createdAt > maxCreated) maxCreated = node.createdAt;
         } catch (err) {
@@ -268,7 +271,7 @@ export async function importShopifyOrder(args: {
   shop: ShopContext;
   order: NormalizedOrder;
   via: "webhook" | "sync";
-}): Promise<"imported" | "skipped"> {
+}): Promise<"imported" | "skipped" | "reconciled"> {
   const { shop, order, via } = args;
   const email = order.email?.trim().toLowerCase() || null;
 
@@ -322,6 +325,18 @@ export async function importShopifyOrder(args: {
         .where(and(eq(customers.businessId, shop.businessId), eq(customers.email, email)));
       customerId = c?.id ?? null;
     }
+
+    // Reconcile with a VA-entered manual order (matched on the human order
+    // number) BEFORE inserting — promote it in place instead of duplicating.
+    const rec = await reconcileManualOrder(tx, {
+      shopId: shop.id,
+      businessId: shop.businessId,
+      realPlatformOrderId: order.platformOrderId,
+      orderNumber: order.orderName,
+      customerId,
+      photoUrls: order.lineItems.flatMap((li) => li.photoUrls),
+    });
+    if (rec.reconciled) return "reconciled";
 
     const inserted = await tx
       .insert(orders)

@@ -64,6 +64,12 @@ export default async function QueuePage({
           <Link href="/queue/review" className="text-sm font-medium text-pigment hover:underline">
             Review queue →
           </Link>
+          <Link
+            href="/orders/new"
+            className="inline-flex h-9 items-center rounded-input bg-pigment px-3 text-sm font-medium text-surface hover:opacity-90"
+          >
+            + New order
+          </Link>
         </div>
       </div>
 

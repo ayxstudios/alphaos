@@ -22,7 +22,12 @@ export function OrderCard({
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-semibold text-ink">{card.orderNumber}</span>
+        <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
+          {card.orderNumber}
+          {card.source === "manual" && (
+            <span className="rounded bg-amber/10 px-1 text-[10px] font-medium text-amber">Manual</span>
+          )}
+        </span>
         <Countdown dueAt={card.dueAt} />
       </div>
 
@@ -62,6 +67,12 @@ export function OrderCard({
             </ul>
           )}
         </div>
+      )}
+
+      {card.notes && (
+        <p className="whitespace-pre-wrap rounded-input bg-amber/5 p-2 text-[11px] text-ink line-clamp-4">
+          {card.notes}
+        </p>
       )}
 
       {card.qcFail && (

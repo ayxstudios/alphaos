@@ -13,6 +13,7 @@ import {
 } from "@/lib/db/schema";
 import { queuePhotoRequest, flushQueued } from "@/lib/email/dispatch";
 import { classifyOrder, photoRequestEnabled } from "@/lib/integrations/classify";
+import { reconcileManualOrder } from "@/lib/orders/reconcile";
 import { EtsyClient } from "./client";
 import { resolveFigureCount, resolveStyle } from "./figures";
 import { ReauthRequiredError } from "./errors";
@@ -34,6 +35,7 @@ export type SyncSummary = {
   imported: number;
   skipped: number;
   failed: number;
+  reconciled?: number; // manual orders matched + promoted in place
   skippedRun?: "already_running" | "needs_reauth";
   errors: { receiptId: number; error: string }[];
 };
@@ -127,6 +129,7 @@ export async function syncShopReceipts(
             suppressCustomerEmail: !!opts.suppressCustomerEmail,
           });
           if (result === "imported") summary.imported++;
+          else if (result === "reconciled") summary.reconciled = (summary.reconciled ?? 0) + 1;
           else summary.skipped++;
           maxCreated = Math.max(maxCreated, receipt.created_timestamp);
         } catch (err) {
@@ -201,7 +204,7 @@ async function importReceipt(args: {
   cfg: EtsyIntegrationConfig;
   receipt: EtsyReceipt;
   suppressCustomerEmail?: boolean;
-}): Promise<"imported" | "skipped"> {
+}): Promise<"imported" | "skipped" | "reconciled"> {
   const { shopId, businessId, slaConfig, cfg, receipt, suppressCustomerEmail } = args;
   const email = receipt.buyer_email?.trim().toLowerCase() || null;
   const [firstName, lastName] = splitName(receipt.name);
@@ -247,6 +250,18 @@ async function importReceipt(args: {
         .where(and(eq(customers.businessId, businessId), eq(customers.email, email)));
       customerId = c?.id ?? null;
     }
+
+    // Reconcile with a VA-entered manual order (Etsy's receipt id is the human
+    // number a VA would have typed) before inserting a new row.
+    const rec = await reconcileManualOrder(tx, {
+      shopId,
+      businessId,
+      realPlatformOrderId: String(receipt.receipt_id),
+      orderNumber: String(receipt.receipt_id),
+      customerId,
+      photoUrls: [], // Etsy has no photos at import
+    });
+    if (rec.reconciled) return "reconciled";
 
     // Idempotent insert — skip if this receipt is already imported.
     const inserted = await tx

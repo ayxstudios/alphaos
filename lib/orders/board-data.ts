@@ -14,6 +14,7 @@ import {
 } from "@/lib/db/schema";
 import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
 import { issueLabels } from "@/lib/proofs/issues";
+import { isR2Configured, publicUrl } from "@/lib/storage/r2";
 import type { OrderStatus } from "./transitions";
 
 /** A revision the designer must act on — from QC, or from the customer. */
@@ -31,6 +32,10 @@ export type BoardCard = {
   /** Product title + variant options for the designer ("what am I making"). */
   title: string | null;
   options: { name: string; value: string }[];
+  /** Free-text notes / special requests (manual orders). */
+  notes: string | null;
+  /** Order origin — 'manual' orders are badged so staff can tell at a glance. */
+  source: "etsy" | "shopify" | "manual";
   customerName: string;
   thumbnailUrl: string | null;
   /**
@@ -51,6 +56,8 @@ type OrderRow = {
   businessId: string;
   customerId: string | null;
   revisionCount: number;
+  source: "etsy" | "shopify" | "manual";
+  notes: string | null;
 };
 
 type Tx = Parameters<Parameters<typeof withUserContext>[1]>[0];
@@ -90,11 +97,16 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
   }
 
   const refs = await tx
-    .select({ orderId: assets.orderId, url: assets.url })
+    .select({ orderId: assets.orderId, url: assets.url, storage: assets.storage, r2Key: assets.r2Key })
     .from(assets)
     .where(and(inArray(assets.orderId, ids), eq(assets.type, "reference")));
+  const r2Ok = isR2Configured();
   const thumb = new Map<string, string>();
-  for (const a of refs) if (a.url && !thumb.has(a.orderId)) thumb.set(a.orderId, a.url);
+  for (const a of refs) {
+    if (thumb.has(a.orderId)) continue;
+    const url = a.url ?? (a.storage === "r2" && a.r2Key && r2Ok ? publicUrl(a.r2Key) : null);
+    if (url) thumb.set(a.orderId, url);
+  }
 
   // Revision detail per in-design order — the reason a card is back in design.
   // A card can be here from a failed QC (qc_checks) OR a customer change request
@@ -178,6 +190,8 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
     style: style.get(o.id) ?? null,
     title: title.get(o.id) ?? null,
     options: options.get(o.id) ?? [],
+    notes: o.notes,
+    source: o.source,
     customerName: o.customerId ? (name.get(o.customerId) ?? "—") : "—",
     thumbnailUrl: thumb.get(o.id) ?? null,
     qcFail: qcFail.get(o.id) ?? null,
@@ -218,6 +232,8 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
         businessId: orders.businessId,
         customerId: orders.customerId,
         revisionCount: orders.revisionCount,
+        source: orders.source,
+        notes: orders.notes,
       })
       .from(orders)
       .innerJoin(
@@ -316,6 +332,8 @@ export async function getVaQueue(
         businessId: orders.businessId,
         customerId: orders.customerId,
         revisionCount: orders.revisionCount,
+        source: orders.source,
+        notes: orders.notes,
       })
       .from(orders)
       .where(bizFilter ? and(tabWhere(opts.tab), bizFilter) : tabWhere(opts.tab))
