@@ -5,11 +5,11 @@ import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
 import { getShopCredentials, setShopCredentials } from "@/lib/db/credentials";
 import {
+  discoverEtsyShopId,
   exchangeCodeForTokens,
   verifyOAuthState,
   type EtsyCredentials,
 } from "@/lib/integrations/etsy";
-import { ETSY_API_BASE } from "@/lib/integrations/etsy/types";
 
 export const runtime = "nodejs";
 const OAUTH_COOKIE = "etsy_oauth";
@@ -50,20 +50,12 @@ export async function GET(req: NextRequest) {
       redirectUri: process.env.ETSY_OAUTH_REDIRECT_URI!,
     });
 
-    // Etsy access tokens are "<user_id>.<random>"; the prefix is the user id.
     const etsyUserId = tok.access_token.split(".")[0];
-    let etsyShopId = creds.etsyShopId;
-    try {
-      const r = await fetch(`${ETSY_API_BASE}/users/${etsyUserId}/shops`, {
-        headers: { "x-api-key": creds.keystring, Authorization: `Bearer ${tok.access_token}` },
-      });
-      if (r.ok) {
-        const d = await r.json();
-        etsyShopId = String(d?.shop_id ?? d?.results?.[0]?.shop_id ?? etsyShopId ?? "");
-      }
-    } catch {
-      // best-effort; falls back to shops.external_shop_id during sync
-    }
+    const etsyShopId = await discoverEtsyShopId({
+      ...creds,
+      accessToken: tok.access_token,
+      etsyUserId,
+    });
 
     const now = Date.now();
     const updated: EtsyCredentials = {

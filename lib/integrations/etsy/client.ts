@@ -15,6 +15,47 @@ const REFRESH_TOKEN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+type EtsyShopsResponse = {
+  shop_id?: number | string;
+  results?: { shop_id?: number | string }[];
+};
+
+export function etsyApiKey(creds: Pick<EtsyCredentials, "keystring" | "sharedSecret">): string {
+  if (!creds.keystring || !creds.sharedSecret) {
+    throw new ReauthRequiredError("Missing Etsy keystring or shared secret");
+  }
+  return `${creds.keystring}:${creds.sharedSecret}`;
+}
+
+function extractNumericShopId(data: EtsyShopsResponse): string {
+  const shopId = String(data.shop_id ?? data.results?.[0]?.shop_id ?? "");
+  if (!/^\d+$/.test(shopId)) {
+    throw new EtsyApiError(0, "Etsy shop lookup did not return a numeric shop_id");
+  }
+  return shopId;
+}
+
+export async function discoverEtsyShopId(creds: EtsyCredentials): Promise<string> {
+  if (!creds.accessToken) throw new ReauthRequiredError("Missing Etsy access token");
+
+  const etsyUserId = creds.etsyUserId ?? creds.accessToken.split(".")[0];
+  if (!etsyUserId) throw new ReauthRequiredError("Missing Etsy user id");
+
+  const res = await fetch(`${ETSY_API_BASE}/users/${etsyUserId}/shops`, {
+    headers: {
+      "x-api-key": etsyApiKey(creds),
+      Authorization: `Bearer ${creds.accessToken}`,
+      Accept: "application/json",
+    },
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    throw new EtsyApiError(res.status, `Etsy shop lookup failed: ${res.status} ${body.slice(0, 200)}`);
+  }
+
+  return extractNumericShopId(JSON.parse(body) as EtsyShopsResponse);
+}
+
 /**
  * Etsy Open API v3 client for one shop. Handles: 5/sec rate limiting,
  * exponential backoff on 429/5xx, structured logging of every call, and access
@@ -41,7 +82,7 @@ export class EtsyClient {
       const start = Date.now();
       const res = await fetch(`${ETSY_API_BASE}${path}`, {
         headers: {
-          "x-api-key": this.creds.keystring!,
+          "x-api-key": etsyApiKey(this.creds),
           Authorization: `Bearer ${token}`,
           Accept: "application/json",
         },
@@ -78,6 +119,14 @@ export class EtsyClient {
 
   get credentials(): EtsyCredentials {
     return this.creds;
+  }
+
+  async discoverShopId(): Promise<string> {
+    const etsyUserId = this.creds.etsyUserId ?? this.creds.accessToken?.split(".")[0];
+    if (!etsyUserId) throw new ReauthRequiredError("Missing Etsy user id");
+    return extractNumericShopId(
+      await this.apiGet<EtsyShopsResponse>(`/users/${etsyUserId}/shops`),
+    );
   }
 
   /* --- token lifecycle -------------------------------------------------- */

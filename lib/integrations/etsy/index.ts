@@ -5,7 +5,7 @@
 // - receipts.ts  syncShopReceipts: pull receipts -> orders/order_items
 // - figures.ts   figure_count resolution (shop rules -> opt-in heuristic -> unresolved)
 
-export { EtsyClient } from "./client";
+export { EtsyClient, discoverEtsyShopId, etsyApiKey } from "./client";
 export { syncShopReceipts, getShopReceipts, type SyncSummary } from "./receipts";
 export { resolveFigureCount, resolveStyle } from "./figures";
 export {

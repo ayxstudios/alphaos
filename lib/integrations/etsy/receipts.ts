@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 
 import { withSystemContext } from "@/lib/db";
-import { getShopCredentials } from "@/lib/db/credentials";
+import { getShopCredentials, setShopCredentials } from "@/lib/db/credentials";
 import { shops, orders, customers, activityLog } from "@/lib/db/schema";
 import { reconcileManualOrder } from "@/lib/orders/reconcile";
 import { EtsyClient } from "./client";
@@ -20,6 +20,10 @@ const STALE_LOCK_MS = 10 * 60 * 1000;
 const OVERLAP_SECS = 60 * 60; // re-scan 1h before the cursor for boundary safety
 const FIRST_WINDOW_SECS = 60 * 24 * 60 * 60; // first sync: last 60 days (match Shopify)
 const DEFAULT_TURNAROUND_DAYS = 3;
+
+function isNumericShopId(value: string | undefined): value is string {
+  return typeof value === "string" && /^\d+$/.test(value);
+}
 
 export type SyncSummary = {
   imported: number;
@@ -93,8 +97,14 @@ export async function syncShopReceipts(shopId: string): Promise<SyncSummary> {
   if (claim.kind === "needs_reauth") return { ...empty, skippedRun: "needs_reauth" };
 
   const { shop, cfg, creds } = claim;
-  const etsyShopId = creds.etsyShopId ?? shop.externalShopId;
   const client = new EtsyClient(shopId, shop.businessId, creds);
+  let etsyShopId = isNumericShopId(creds.etsyShopId) ? creds.etsyShopId : undefined;
+  if (!etsyShopId) {
+    etsyShopId = await client.discoverShopId();
+    await withSystemContext((tx) =>
+      setShopCredentials(tx, shopId, { ...client.credentials, etsyShopId }),
+    );
+  }
   const summary: SyncSummary = { imported: 0, skipped: 0, failed: 0, errors: [] };
   let maxCreated = cfg.syncCursor ? Number(cfg.syncCursor) : 0;
 
