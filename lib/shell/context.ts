@@ -6,12 +6,10 @@ import { withUserContext, type RequestUser } from "@/lib/db";
 import { businesses as businessesTable, notifications } from "@/lib/db/schema";
 import { BUSINESS_COOKIE } from "@/lib/shell/constants";
 
-export const ALL_BUSINESSES = "all";
-
 export type BusinessOption = { id: string; name: string };
 
 export type ShellData = {
-  /** Options for the switcher (includes "All Businesses" for admin). */
+  /** Options for the switcher. Staff work in one business at a time. */
   options: BusinessOption[];
   /** The active selection, resolved from the cookie (validated). */
   selected: BusinessOption;
@@ -21,7 +19,7 @@ export type ShellData = {
 
 /**
  * Loads everything the app shell needs. All reads go through withUserContext so
- * RLS scopes them: admin/va see all businesses, a designer only their own.
+ * RLS scopes the business list to what this user may access.
  *
  * Wrapped in React `cache()` keyed on the user's id+role (primitives, so the
  * memo actually hits) — the layout and the page both call this in the same
@@ -47,16 +45,12 @@ const loadShellCached = cache(
       return { businesses, unread: unreadRow?.n ?? 0 };
     });
 
-    // Only admin gets the cross-business "All Businesses" view.
-    const options: BusinessOption[] =
-      role === "admin"
-        ? [{ id: ALL_BUSINESSES, name: "All Businesses" }, ...businesses]
-        : businesses;
+    const options: BusinessOption[] = businesses;
 
     const cookieVal = (await cookies()).get(BUSINESS_COOKIE)?.value;
     const selected =
       options.find((o) => o.id === cookieVal) ??
-      options[0] ?? { id: ALL_BUSINESSES, name: "All Businesses" };
+      options[0] ?? { id: "", name: "No workspace" };
 
     return { options, selected, unread };
   },

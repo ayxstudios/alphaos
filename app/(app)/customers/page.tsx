@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
 import { customers, orders } from "@/lib/db/schema";
-import { loadShellData, ALL_BUSINESSES } from "@/lib/shell/context";
+import { loadShellData } from "@/lib/shell/context";
 import {
   EmptyState,
   FilterBar,
@@ -38,10 +38,7 @@ export default async function CustomersPage({
   const { selected } = await loadShellData(user);
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
-  const businessFilter =
-    selected.id === ALL_BUSINESSES
-      ? sql`true`
-      : eq(customers.businessId, selected.id);
+  const businessFilter = eq(customers.businessId, selected.id);
   const queryFilter = q
     ? sql`(${customers.email} ilike ${`%${q}%`} or concat_ws(' ', ${customers.firstName}, ${customers.lastName}) ilike ${`%${q}%`})`
     : sql`true`;
@@ -58,7 +55,7 @@ export default async function CustomersPage({
       })
       .from(customers)
       .leftJoin(orders, eq(orders.customerId, customers.id))
-      .where(sql`${businessFilter} and ${queryFilter}`)
+      .where(and(businessFilter, queryFilter))
       .groupBy(customers.id)
       .orderBy(desc(sql`max(${orders.createdAt})`))
       .limit(100),

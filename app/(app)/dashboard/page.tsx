@@ -4,7 +4,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
-import { loadShellData, ALL_BUSINESSES } from "@/lib/shell/context";
+import { loadShellData } from "@/lib/shell/context";
 import { customers, orderItems, orders, shops } from "@/lib/db/schema";
 import {
   Badge,
@@ -38,10 +38,7 @@ export default async function DashboardPage() {
   const user = { id: session.user.id, role: session.user.role };
   const { selected } = await loadShellData(user);
   const now = new Date();
-  const businessFilter =
-    selected.id === ALL_BUSINESSES
-      ? sql`true`
-      : eq(orders.businessId, selected.id);
+  const businessFilter = eq(orders.businessId, selected.id);
 
   const [stats] = await withUserContext(user, (tx) =>
     tx

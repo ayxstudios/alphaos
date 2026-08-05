@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
-import { shops, businesses } from "@/lib/db/schema";
+import { shops } from "@/lib/db/schema";
+import { loadShellData } from "@/lib/shell/context";
 import { isR2Configured } from "@/lib/storage/r2";
 import { NewOrderForm, type ShopOption } from "@/components/orders/new-order-form";
 import { Page, PageHeader } from "@/components/ui";
@@ -15,6 +16,7 @@ export default async function NewOrderPage() {
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
   if (user.role === "designer") redirect("/board");
+  const { selected } = await loadShellData(user);
 
   const rows = await withUserContext(user, (tx) =>
     tx
@@ -22,19 +24,17 @@ export default async function NewOrderPage() {
         id: shops.id,
         name: shops.name,
         platform: shops.platform,
-        businessName: businesses.name,
         slaConfig: shops.slaConfig,
         styles: shops.styles,
       })
       .from(shops)
-      .innerJoin(businesses, eq(businesses.id, shops.businessId))
-      .where(eq(shops.active, true))
-      .orderBy(businesses.name, shops.name),
+      .where(and(eq(shops.active, true), eq(shops.businessId, selected.id)))
+      .orderBy(shops.name),
   );
 
   const options: ShopOption[] = rows.map((r) => ({
     id: r.id,
-    label: `${r.businessName} — ${r.name}`,
+    label: r.name,
     platform: r.platform,
     turnaroundDays:
       typeof (r.slaConfig as { turnaroundDays?: number } | null)?.turnaroundDays === "number"
@@ -47,7 +47,7 @@ export default async function NewOrderPage() {
     <Page className="max-w-2xl">
       <PageHeader
         title="New order"
-        description="Create a manual order without changing imported marketplace workflows."
+        description={`Create a manual order for ${selected.name}.`}
       />
       <NewOrderForm shops={options} r2Enabled={isR2Configured()} />
     </Page>

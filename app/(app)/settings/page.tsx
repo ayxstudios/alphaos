@@ -9,7 +9,7 @@ import {
   getBusinessGmailCredentials,
   getShopCredentials,
 } from "@/lib/db/credentials";
-import { loadShellData, ALL_BUSINESSES } from "@/lib/shell/context";
+import { loadShellData } from "@/lib/shell/context";
 import { DataPanel, EmptyState, Page, PageHeader, SectionHeader } from "@/components/ui";
 import { Settings as SettingsIcon } from "@/components/ui/icons";
 import {
@@ -97,14 +97,12 @@ export default async function SettingsPage({
       name: shops.name,
       integrationConfig: shops.integrationConfig,
     };
-    return selected.id === ALL_BUSINESSES
-      ? tx.select(cols).from(shops).where(eq(shops.platform, "etsy"))
-      : tx
-          .select(cols)
-          .from(shops)
-          .where(
-            and(eq(shops.platform, "etsy"), eq(shops.businessId, selected.id)),
-          );
+    return tx
+      .select(cols)
+      .from(shops)
+      .where(
+        and(eq(shops.platform, "etsy"), eq(shops.businessId, selected.id)),
+      );
   });
 
   const cards: EtsyShopVM[] = await Promise.all(
@@ -142,14 +140,12 @@ export default async function SettingsPage({
       name: shops.name,
       integrationConfig: shops.integrationConfig,
     };
-    return selected.id === ALL_BUSINESSES
-      ? tx.select(cols).from(shops).where(eq(shops.platform, "shopify"))
-      : tx
-          .select(cols)
-          .from(shops)
-          .where(
-            and(eq(shops.platform, "shopify"), eq(shops.businessId, selected.id)),
-          );
+    return tx
+      .select(cols)
+      .from(shops)
+      .where(
+        and(eq(shops.platform, "shopify"), eq(shops.businessId, selected.id)),
+      );
   });
 
   const shopifyCards: ShopifyShopVM[] = await Promise.all(
@@ -186,55 +182,52 @@ export default async function SettingsPage({
   );
 
   // --- Customer email (Gmail + templates), per business -------------------
-  // Only meaningful for a single selected business (each has its own OAuth
-  // client + mailbox), so we skip it under the cross-business "All" view.
+  // Each business has its own OAuth client and mailbox.
   let gmailVM: GmailBusinessVM | null = null;
   let templateVMs: TemplateVM[] = [];
-  if (selected.id !== ALL_BUSINESSES) {
-    const creds = (await withUserContext(user, (tx) =>
-      getBusinessGmailCredentials(tx, selected.id),
-    )) as GmailCredentials | null;
-    const [biz] = await withUserContext(user, (tx) =>
-      tx
-        .select({ address: businesses.gmailAddress })
-        .from(businesses)
-        .where(eq(businesses.id, selected.id)),
-    );
-    gmailVM = {
-      businessId: selected.id,
-      name: selected.name,
-      hasClient: !!creds?.clientId,
-      hasSecret: !!creds?.clientSecret,
-      status: creds?.status ?? "not_connected",
-      address: creds?.address ?? biz?.address ?? null,
-      redirectUri: appUrl("/api/gmail/callback"),
-    };
+  const creds = (await withUserContext(user, (tx) =>
+    getBusinessGmailCredentials(tx, selected.id),
+  )) as GmailCredentials | null;
+  const [biz] = await withUserContext(user, (tx) =>
+    tx
+      .select({ address: businesses.gmailAddress })
+      .from(businesses)
+      .where(eq(businesses.id, selected.id)),
+  );
+  gmailVM = {
+    businessId: selected.id,
+    name: selected.name,
+    hasClient: !!creds?.clientId,
+    hasSecret: !!creds?.clientSecret,
+    status: creds?.status ?? "not_connected",
+    address: creds?.address ?? biz?.address ?? null,
+    redirectUri: appUrl("/api/gmail/callback"),
+  };
 
-    const overrides = await withUserContext(user, (tx) =>
-      tx
-        .select({
-          key: emailTemplates.key,
-          subject: emailTemplates.subject,
-          body: emailTemplates.body,
-        })
-        .from(emailTemplates)
-        .where(eq(emailTemplates.businessId, selected.id)),
-    );
-    const overrideMap = new Map(overrides.map((o) => [o.key, o]));
-    templateVMs = (Object.keys(DEFAULT_TEMPLATES) as TemplateKey[]).map((key) => {
-      const o = overrideMap.get(key);
-      const meta = TEMPLATE_META[key];
-      return {
-        key,
-        label: meta.label,
-        description: meta.description,
-        variables: meta.variables,
-        subject: o?.subject ?? DEFAULT_TEMPLATES[key].subject,
-        body: o?.body ?? DEFAULT_TEMPLATES[key].body,
-        customized: !!o,
-      };
-    });
-  }
+  const overrides = await withUserContext(user, (tx) =>
+    tx
+      .select({
+        key: emailTemplates.key,
+        subject: emailTemplates.subject,
+        body: emailTemplates.body,
+      })
+      .from(emailTemplates)
+      .where(eq(emailTemplates.businessId, selected.id)),
+  );
+  const overrideMap = new Map(overrides.map((o) => [o.key, o]));
+  templateVMs = (Object.keys(DEFAULT_TEMPLATES) as TemplateKey[]).map((key) => {
+    const o = overrideMap.get(key);
+    const meta = TEMPLATE_META[key];
+    return {
+      key,
+      label: meta.label,
+      description: meta.description,
+      variables: meta.variables,
+      subject: o?.subject ?? DEFAULT_TEMPLATES[key].subject,
+      body: o?.body ?? DEFAULT_TEMPLATES[key].body,
+      customized: !!o,
+    };
+  });
 
   // Portrait styles each shop offers — the catalog designer styles are drawn from.
   const styleShops: ShopStylesVM[] = (
@@ -245,9 +238,7 @@ export default async function SettingsPage({
         platform: shops.platform,
         styles: shops.styles,
       };
-      return selected.id === ALL_BUSINESSES
-        ? tx.select(cols).from(shops).orderBy(shops.name)
-        : tx.select(cols).from(shops).where(eq(shops.businessId, selected.id)).orderBy(shops.name);
+      return tx.select(cols).from(shops).where(eq(shops.businessId, selected.id)).orderBy(shops.name);
     })
   ).map((s) => ({ id: s.id, name: s.name, platform: s.platform, styles: s.styles ?? [] }));
 

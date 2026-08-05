@@ -5,7 +5,7 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql, type SQL } fro
 
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
-import { loadShellData, ALL_BUSINESSES } from "@/lib/shell/context";
+import { loadShellData } from "@/lib/shell/context";
 import {
   assignments,
   customers,
@@ -289,18 +289,13 @@ export default async function OrdersPage({
     ? requestedPageSize
     : 20;
   const requestedPage = intParam(params.page, 1);
-  const businessFilter =
-    selected.id === ALL_BUSINESSES
-      ? undefined
-      : eq(orders.businessId, selected.id);
+  const businessFilter = eq(orders.businessId, selected.id);
 
   const countRow = await withUserContext(user, async (tx) => {
     const countSel = Object.fromEntries(
       VIEWS.map((view) => [view.key, sql<number>`count(*) filter (where ${viewWhere(view.key)})::int`]),
     ) as Record<ViewKey, SQL<number>>;
-    const [row] = businessFilter
-      ? await tx.select(countSel).from(orders).where(businessFilter)
-      : await tx.select(countSel).from(orders);
+    const [row] = await tx.select(countSel).from(orders).where(businessFilter);
     const counts = {} as Record<ViewKey, number>;
     for (const view of VIEWS) counts[view.key] = Number(row?.[view.key] ?? 0);
     return counts;
@@ -508,7 +503,7 @@ export default async function OrdersPage({
     const shopsForFilter = await tx
       .select({ id: shops.id, name: shops.name, platform: shops.platform })
       .from(shops)
-      .where(businessFilter ? eq(shops.businessId, selected.id) : undefined)
+      .where(eq(shops.businessId, selected.id))
       .orderBy(asc(shops.name));
     const designersForFilter = await tx
       .select({ id: users.id, name: users.name, email: users.email })
