@@ -106,7 +106,7 @@ export default async function CustomersPage({
             {rows.map((row) => (
               <Link
                 key={row.id}
-                href={`/customers?q=${encodeURIComponent(row.email)}`}
+                href={`/customers/${row.id}`}
                 className="grid gap-1 px-4 py-3 transition-colors hover:bg-canvas md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_8rem_10rem] md:items-center md:gap-4"
               >
                 <p className="truncate text-sm font-semibold text-ink">
