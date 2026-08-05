@@ -504,6 +504,8 @@ export default async function OrdersPage({
       const action =
         timer.followUpDue
           ? { href: `/orders/${order.id}`, label: "Follow up" }
+          : order.status === "awaiting_photos"
+            ? { href: `/orders/${order.id}/complete`, label: "Add photos" }
           : order.status === "awaiting_details"
           ? { href: `/orders/${order.id}/complete`, label: "Complete details" }
           : order.status === "awaiting_qc"

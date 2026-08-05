@@ -35,6 +35,7 @@ export default async function CompleteOrderPage({
         id: orders.id,
         shopId: orders.shopId,
         status: orders.status,
+        source: orders.source,
         platformOrderName: orders.platformOrderName,
         dueAt: orders.dueAt,
         placedAt: orders.placedAt,
@@ -51,8 +52,6 @@ export default async function CompleteOrderPage({
       .where(eq(orders.id, id)),
   );
   if (!order) notFound();
-  // Only awaiting_details orders are completed here; anything else already has details.
-  if (order.status !== "awaiting_details") redirect(`/orders/${id}`);
 
   let customerName = "";
   let customerEmail = "";
@@ -98,6 +97,7 @@ export default async function CompleteOrderPage({
     shopLabel: `${order.businessName} — ${order.shopName}`,
     orderNumber: order.platformOrderName ?? "",
     status: order.status,
+    source: order.source,
     customerName,
     customerEmail,
     dueAt: order.dueAt ? order.dueAt.toISOString().slice(0, 10) : "",
@@ -113,12 +113,13 @@ export default async function CompleteOrderPage({
     photoCount: photoCountRow?.count ?? 0,
     rawImport: order.rawImport,
   };
+  const editingImportedDetails = order.status === "awaiting_details";
 
   return (
     <Page className="max-w-5xl">
       <PageHeader
-        title="Complete order details"
-        description={`${existing.shopLabel} · Etsy order ${existing.orderNumber}`}
+        title={editingImportedDetails ? "Complete order details" : "Edit order details"}
+        description={`${existing.shopLabel} · ${order.source === "etsy" ? "Etsy" : order.source === "shopify" ? "Shopify" : "Manual"} order ${existing.orderNumber}`}
         actions={<StatusChip status={order.status as OrderStatus} />}
       />
       <NewOrderForm shops={[]} r2Enabled={isR2Configured()} existing={existing} />

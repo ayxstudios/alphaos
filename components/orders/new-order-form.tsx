@@ -33,6 +33,7 @@ export type ExistingOrder = {
   shopLabel: string;
   orderNumber: string;
   status: string;
+  source: "etsy" | "shopify" | "manual";
   customerName: string;
   customerEmail: string;
   dueAt: string; // yyyy-mm-dd
@@ -132,10 +133,8 @@ export function NewOrderForm({
       const trimmed = option.trim();
       if (trimmed) map.set(trimmed.toLowerCase(), trimmed);
     }
-    const current = style.trim();
-    if (current) map.set(current.toLowerCase(), current);
     return [...map.values()];
-  }, [existing, shop?.styles, style]);
+  }, [existing, shop?.styles]);
   const [dueAt, setDueAt] = useState(existing?.dueAt ?? dueDefault(shop?.turnaroundDays ?? 3));
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [urlInput, setUrlInput] = useState("");
@@ -280,12 +279,23 @@ export function NewOrderForm({
   }
 
   const done = mode === "complete" && flash;
-  const completeAction = photos.length > 0 ? "Save & send to production" : "Save details → Awaiting photos";
+  const totalPhotoCount = effectivePhotoCount;
+  const completeAction =
+    existing?.status === "awaiting_details"
+      ? totalPhotoCount > 0
+        ? "Save & send to production"
+        : "Save details → Awaiting photos"
+      : existing?.status === "awaiting_photos" && photos.length > 0
+        ? "Save & send to production"
+        : "Save changes";
+  const hasImportedEtsySummary =
+    existing?.source === "etsy" &&
+    (etsyReview.receiptNumber || etsyReview.buyerName || etsyReview.transactions.length > 0);
 
   return (
     <Card>
       <CardContent className="flex flex-col gap-3 py-4" onKeyDown={onKeyDown}>
-        {mode === "complete" && existing ? (
+        {mode === "complete" && existing && hasImportedEtsySummary ? (
           <>
             <section className="flex flex-col gap-3 rounded-input border border-line bg-canvas p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -374,6 +384,18 @@ export function NewOrderForm({
               )}
             </section>
           </>
+        ) : mode === "complete" && existing ? (
+          <section className="flex flex-col gap-2 rounded-input border border-line bg-canvas p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="text-sm font-semibold text-ink">Order details</h2>
+                <p className="text-xs text-slate">
+                  Edit customer, product, style, fulfilment, due date, notes, and reference photos.
+                </p>
+              </div>
+              <Badge variant="neutral">{existing.shopLabel}</Badge>
+            </div>
+          </section>
         ) : (
           <>
             <Select label="Business & shop" value={shopId} onChange={(e) => onShopChange(e.target.value)}>
@@ -411,18 +433,14 @@ export function NewOrderForm({
 
         <div className="grid gap-3 sm:grid-cols-5">
           <Input label="Figures" type="number" min={1} value={figureCount} onChange={(e) => setFigureCount(e.target.value)} />
-          {styleOptions.length > 0 ? (
-            <Select label="Style" value={style} onChange={(e) => setStyle(e.target.value)}>
-              <option value="">Select style</option>
-              {styleOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </Select>
-          ) : (
-            <Input label="Style" value={style} onChange={(e) => setStyle(e.target.value)} autoComplete="off" />
-          )}
+          <Select label="Style" value={style} onChange={(e) => setStyle(e.target.value)} disabled={styleOptions.length === 0}>
+            <option value="">{styleOptions.length ? "Select style" : "No styles configured"}</option>
+            {styleOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </Select>
           <Input label="Product/category" value={productTitle} onChange={(e) => setProductTitle(e.target.value)} autoComplete="off" />
           <Select label="Fulfilment" value={productType} onChange={(e) => setProductType(e.target.value as "physical" | "digital")}>
             <option value="physical">Physical</option>

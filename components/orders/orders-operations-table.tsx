@@ -10,6 +10,7 @@ import {
   type BulkActionResult,
 } from "@/app/(app)/orders/actions";
 import { Badge, Button, useToast, type OrderStatus } from "@/components/ui";
+import { Inbox, Pencil } from "@/components/ui/icons";
 import { formatStageRemaining, type StageTimer } from "@/lib/orders/stage-timers";
 import { cn } from "@/lib/utils";
 
@@ -250,93 +251,115 @@ export function OrdersOperationsTable({
         </div>
       </div>
 
-      <div className="hidden grid-cols-[2.25rem_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_8.5rem_8rem_7.5rem_9rem_8rem_8rem] gap-3 border-b border-line px-4 py-2 text-xs font-medium uppercase text-slate xl:grid">
-        <label className="flex items-center">
-          <input
-            type="checkbox"
-            checked={allSelected}
-            onChange={toggleAll}
-            aria-label="Select all visible orders"
-            className="size-4 rounded border-line text-pigment focus:ring-pigment"
-          />
-        </label>
-        <SortableHeader currentParams={currentParams} sort="order" activeSort={sort} dir={dir}>Order</SortableHeader>
-        <SortableHeader currentParams={currentParams} sort="customer" activeSort={sort} dir={dir}>Customer</SortableHeader>
-        <SortableHeader currentParams={currentParams} sort="source" activeSort={sort} dir={dir}>Source</SortableHeader>
-        <SortableHeader currentParams={currentParams} sort="status" activeSort={sort} dir={dir}>Status</SortableHeader>
-        <SortableHeader currentParams={currentParams} sort="owner" activeSort={sort} dir={dir}>Owner</SortableHeader>
-        <SortableHeader currentParams={currentParams} sort="ordered" activeSort={sort} dir={dir}>Ordered</SortableHeader>
-        <SortableHeader currentParams={currentParams} sort="due" activeSort={sort} dir={dir}>Due</SortableHeader>
-        <span>Stage time</span>
-        <span>Action</span>
-      </div>
-
-      <div className="divide-y divide-line">
-        {rows.map((row) => (
-          <div
-            key={row.id}
-            className={cn(
-              "grid gap-3 px-4 py-3 transition-colors hover:bg-canvas xl:grid-cols-[2.25rem_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_8.5rem_8rem_7.5rem_9rem_8rem_8rem] xl:items-center xl:gap-3",
-              (row.stageTimer.isOverdue || row.isOverdue) &&
-                "bg-rose/5 ring-1 ring-inset ring-rose/20 hover:bg-rose/10",
-            )}
-          >
+      <div className="xl:overflow-x-auto">
+        <div className="xl:min-w-[88rem]">
+          <div className="hidden grid-cols-[2.25rem_minmax(13rem,1.15fr)_minmax(12rem,0.95fr)_minmax(9rem,0.75fr)_9rem_9rem_8rem_8.5rem_9rem_12rem] gap-3 border-b border-line px-4 py-2 text-xs font-medium uppercase text-slate xl:grid">
             <label className="flex items-center">
               <input
                 type="checkbox"
-                checked={selected.has(row.id)}
-                onChange={() => toggleOne(row.id)}
-                aria-label={`Select order ${row.orderNumber}`}
+                checked={allSelected}
+                onChange={toggleAll}
+                aria-label="Select all visible orders"
                 className="size-4 rounded border-line text-pigment focus:ring-pigment"
               />
             </label>
-            <div className="min-w-0">
-              <Link href={`/orders/${row.id}`} className="truncate text-sm font-semibold text-ink hover:text-pigment">
-                {row.orderNumber}
-              </Link>
-              <p className="truncate text-xs text-slate">{row.itemTitle}</p>
-              {row.itemSummary && <p className="truncate text-xs text-slate">{row.itemSummary}</p>}
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-ink">{row.customer}</p>
-              <p className="truncate text-xs text-slate">{row.customerEmail ?? "No email"}</p>
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm text-ink">{row.source}</p>
-              <p className="text-xs text-slate">{row.platform}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={statusTone(row)} dot>{row.derivedStatus}</Badge>
-            </div>
-            <p className="truncate text-sm text-slate">{row.assignee}</p>
-            <div className="min-w-0">
-              <p className="text-sm text-slate">{fmtDateTime(row.placedAt ?? row.createdAt)}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {row.isOverdue && <Badge variant="danger" dot>Overdue</Badge>}
-              <span className="text-sm text-slate">{fmtDate(row.dueAt)}</span>
-            </div>
-            <div className="min-w-0">
-              <p className={cn("text-sm font-medium", row.stageTimer.isOverdue ? "text-rose" : "text-ink")}>
-                {formatStageRemaining(row.stageTimer)}
-              </p>
-              <p className="truncate text-xs text-slate">
-                {row.stageTimer.followUpLabel ?? row.stageTimer.label}
-              </p>
-            </div>
-            <Link
-              href={row.action.href}
-              className={cn(
-                "inline-flex h-8 items-center justify-center rounded-input px-2 text-sm font-medium transition-colors",
-                row.action.label === "Open"
-                  ? "text-pigment hover:bg-pigment-soft"
-                  : "bg-pigment text-surface hover:opacity-90",
-              )}
-            >
-              {row.action.label}
-            </Link>
+            <SortableHeader currentParams={currentParams} sort="order" activeSort={sort} dir={dir}>Order</SortableHeader>
+            <SortableHeader currentParams={currentParams} sort="customer" activeSort={sort} dir={dir}>Customer</SortableHeader>
+            <SortableHeader currentParams={currentParams} sort="source" activeSort={sort} dir={dir}>Source</SortableHeader>
+            <SortableHeader currentParams={currentParams} sort="status" activeSort={sort} dir={dir}>Status</SortableHeader>
+            <SortableHeader currentParams={currentParams} sort="owner" activeSort={sort} dir={dir}>Owner</SortableHeader>
+            <SortableHeader currentParams={currentParams} sort="ordered" activeSort={sort} dir={dir}>Ordered</SortableHeader>
+            <SortableHeader currentParams={currentParams} sort="due" activeSort={sort} dir={dir}>Due</SortableHeader>
+            <span>Stage time</span>
+            <span>Actions</span>
           </div>
-        ))}
+
+          <div className="divide-y divide-line">
+            {rows.map((row) => (
+              <div
+                key={row.id}
+                className={cn(
+                  "grid gap-3 px-4 py-3 transition-colors hover:bg-canvas xl:grid-cols-[2.25rem_minmax(13rem,1.15fr)_minmax(12rem,0.95fr)_minmax(9rem,0.75fr)_9rem_9rem_8rem_8.5rem_9rem_12rem] xl:items-center xl:gap-3",
+                  (row.stageTimer.isOverdue || row.isOverdue) &&
+                    "bg-rose/5 ring-1 ring-inset ring-rose/20 hover:bg-rose/10",
+                )}
+              >
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(row.id)}
+                    onChange={() => toggleOne(row.id)}
+                    aria-label={`Select order ${row.orderNumber}`}
+                    className="size-4 rounded border-line text-pigment focus:ring-pigment"
+                  />
+                </label>
+                <div className="min-w-0">
+                  <Link href={`/orders/${row.id}`} className="truncate text-sm font-semibold text-ink hover:text-pigment">
+                    {row.orderNumber}
+                  </Link>
+                  <p className="truncate text-xs text-slate">{row.itemTitle}</p>
+                  {row.itemSummary && <p className="truncate text-xs text-slate">{row.itemSummary}</p>}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-ink">{row.customer}</p>
+                  <p className="truncate text-xs text-slate">{row.customerEmail ?? "No email"}</p>
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm text-ink">{row.source}</p>
+                  <p className="text-xs text-slate">{row.platform}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={statusTone(row)} dot>{row.derivedStatus}</Badge>
+                </div>
+                <p className="truncate text-sm text-slate">{row.assignee}</p>
+                <div className="min-w-0">
+                  <p className="text-sm text-slate">{fmtDateTime(row.placedAt ?? row.createdAt)}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {row.isOverdue && <Badge variant="danger" dot>Overdue</Badge>}
+                  <span className="text-sm text-slate">{fmtDate(row.dueAt)}</span>
+                </div>
+                <div className="min-w-0">
+                  <p className={cn("text-sm font-medium", row.stageTimer.isOverdue ? "text-rose" : "text-ink")}>
+                    {formatStageRemaining(row.stageTimer)}
+                  </p>
+                  <p className="truncate text-xs text-slate">
+                    {row.stageTimer.followUpLabel ?? row.stageTimer.label}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Link
+                    href={`/orders/${row.id}/complete`}
+                    aria-label={`Edit order ${row.orderNumber}`}
+                    title="Edit order"
+                    className="inline-flex size-8 items-center justify-center rounded-input text-slate transition-colors hover:bg-canvas hover:text-ink"
+                  >
+                    <Pencil size={15} />
+                  </Link>
+                  <Link
+                    href={`/orders/${row.id}#notes`}
+                    aria-label={`Add note for order ${row.orderNumber}`}
+                    title="Notes"
+                    className="inline-flex size-8 items-center justify-center rounded-input text-slate transition-colors hover:bg-canvas hover:text-ink"
+                  >
+                    <Inbox size={15} />
+                  </Link>
+                  <Link
+                    href={row.action.href}
+                    className={cn(
+                      "inline-flex h-8 items-center justify-center whitespace-nowrap rounded-input px-3 text-sm font-medium transition-colors",
+                      row.action.label === "Open"
+                        ? "text-pigment hover:bg-pigment-soft"
+                        : "bg-pigment text-surface hover:opacity-90",
+                    )}
+                  >
+                    {row.action.label}
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2 text-sm text-slate">

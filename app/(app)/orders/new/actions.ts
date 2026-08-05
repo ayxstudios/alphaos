@@ -101,6 +101,12 @@ function splitName(name: string | undefined): [string | null, string | null] {
   return parts.length === 1 ? [parts[0], null] : [parts[0], parts.slice(1).join(" ")];
 }
 
+function styleAllowed(inputStyle: string | null | undefined, styles: string[] | null): boolean {
+  const style = inputStyle?.trim();
+  if (!style) return true;
+  return (styles ?? []).some((option) => option.trim().toLowerCase() === style.toLowerCase());
+}
+
 /**
  * Create a manual (VA-entered) order. Lands ready_to_assign if any reference
  * photo was attached (R2 upload or pasted URL), else awaiting_photos. source =
@@ -130,10 +136,13 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
   try {
     return await withUserContext(user, async (tx) => {
       const [shop] = await tx
-        .select({ businessId: shops.businessId, slaConfig: shops.slaConfig })
+        .select({ businessId: shops.businessId, slaConfig: shops.slaConfig, styles: shops.styles })
         .from(shops)
         .where(eq(shops.id, input.shopId));
       if (!shop) return { ok: false as const, message: "Shop not found" };
+      if (!styleAllowed(input.style, shop.styles)) {
+        return { ok: false as const, message: "Choose one of this shop's configured portrait styles." };
+      }
       const businessId = shop.businessId;
 
       // Duplicate-number guard (manual OR already-imported) within the shop.
@@ -198,12 +207,12 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
       });
 
       await tx.insert(orderItems).values({
-        businessId,
-        orderId,
-        title: input.productTitle?.trim() || null,
+          businessId,
+          orderId,
+          title: input.productTitle?.trim() || null,
         figureCount,
         figureCountSource: figureCount != null ? "manual" : null,
-        style: input.style?.trim() || null,
+          style: input.style?.trim() || null,
         productType: input.productType,
       });
 
@@ -287,6 +296,7 @@ export async function completeOrderDetails(input: {
         .select({
           id: orders.id,
           businessId: orders.businessId,
+          shopId: orders.shopId,
           status: orders.status,
           customerId: orders.customerId,
           platformOrderName: orders.platformOrderName,
@@ -295,15 +305,21 @@ export async function completeOrderDetails(input: {
         .where(eq(orders.id, input.orderId))
         .for("update");
       if (!order) return { ok: false as const, message: "Order not found" };
-      if (order.status !== "awaiting_details") {
-        return { ok: false as const, message: "This order is no longer awaiting details." };
-      }
       const businessId = order.businessId;
 
-      // Link a customer if the VA supplied an email and none is set.
+      const [shop] = await tx
+        .select({ styles: shops.styles })
+        .from(shops)
+        .where(eq(shops.id, order.shopId));
+      if (!styleAllowed(input.style, shop?.styles ?? null)) {
+        return { ok: false as const, message: "Choose one of this shop's configured portrait styles." };
+      }
+
+      // Link or relink the customer whenever the VA supplies an email. Customer
+      // uniqueness is per business, so this never merges across tenants.
       let customerId = order.customerId;
       const email = input.customerEmail?.trim().toLowerCase() || null;
-      if (!customerId && email) {
+      if (email) {
         const [firstName, lastName] = splitName(input.customerName);
         await tx
           .insert(customers)
@@ -357,6 +373,11 @@ export async function completeOrderDetails(input: {
       ];
       if (assetRows.length) await tx.insert(assets).values(assetRows);
 
+      const [assetCount] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(assets)
+        .where(eq(assets.orderId, order.id));
+
       await tx
         .update(orders)
         .set({
@@ -366,14 +387,34 @@ export async function completeOrderDetails(input: {
         })
         .where(eq(orders.id, order.id));
 
-      // Enter the pipeline via the state machine (auto-assigns on ready_to_assign).
-      const to = assetRows.length > 0 ? "ready_to_assign" : "awaiting_photos";
-      await runTransition(tx, { id: user.id, role: user.role }, {
-        orderId: order.id,
-        to,
-        expectedFrom: "awaiting_details",
-        metadata: { via: "manual_complete" },
-      });
+      // Enter or resume the pipeline via existing legal state-machine edges.
+      const hasPhotos = Number(assetCount?.count ?? 0) > 0;
+      if (order.status === "awaiting_details") {
+        const to = hasPhotos ? "ready_to_assign" : "awaiting_photos";
+        await runTransition(tx, { id: user.id, role: user.role }, {
+          orderId: order.id,
+          to,
+          expectedFrom: "awaiting_details",
+          metadata: { via: "manual_complete" },
+        });
+      } else if (order.status === "awaiting_photos" && hasPhotos) {
+        await runTransition(tx, { id: user.id, role: user.role }, {
+          orderId: order.id,
+          to: "ready_to_assign",
+          expectedFrom: "awaiting_photos",
+          metadata: { via: "manual_photo_upload" },
+        });
+      } else {
+        await tx.insert(activityLog).values({
+          businessId,
+          orderId: order.id,
+          actorId: user.id,
+          action: "order.details_updated",
+          fromState: order.status,
+          toState: order.status,
+          metadata: { photoCount: Number(assetCount?.count ?? 0), style: input.style ?? null },
+        });
+      }
 
       revalidatePath("/orders");
       revalidatePath("/board");

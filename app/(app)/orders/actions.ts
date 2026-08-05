@@ -17,6 +17,7 @@ import {
   OrderTransitionError,
   type OrderStatus,
 } from "@/lib/orders/transitions";
+import { addComment } from "@/lib/orders/card-detail";
 
 type BulkSkipped = {
   orderId: string;
@@ -26,6 +27,10 @@ type BulkSkipped = {
 
 export type BulkActionResult =
   | { ok: true; changed: number; skipped: BulkSkipped[] }
+  | { ok: false; message: string };
+
+export type CommentResult =
+  | { ok: true }
   | { ok: false; message: string };
 
 const REASSIGNABLE_STATUSES = new Set<OrderStatus>([
@@ -187,4 +192,17 @@ export async function bulkReassignOrders(
   revalidatePath("/orders");
   revalidatePath("/board");
   return result;
+}
+
+export async function addOrderComment(orderId: string, body: string): Promise<CommentResult> {
+  const user = await requireStaff();
+  if ("error" in user) return { ok: false, message: user.error };
+  const text = body.trim();
+  if (!orderId || !text) return { ok: false, message: "Write a note first." };
+  if (text.length > 2000) return { ok: false, message: "Notes must be 2,000 characters or fewer." };
+
+  await addComment(user, orderId, text);
+  revalidatePath(`/orders/${orderId}`);
+  revalidatePath("/orders");
+  return { ok: true };
 }
