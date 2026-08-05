@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 import type { Role } from "@/lib/auth/config";
@@ -10,8 +10,6 @@ import { Menu, X } from "@/components/ui/icons";
 import { focusRing } from "@/components/ui/styles";
 import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
-import { DesignerRail } from "@/components/board/designer-rail";
-import type { RailDesigner } from "@/lib/designers/roster";
 
 /** Cookie the sidebar collapse preference persists in (read by the layout). */
 export const SIDEBAR_COOKIE = "sidebar_collapsed";
@@ -23,8 +21,6 @@ type AppShellProps = {
   selected: BusinessOption;
   unread: number;
   initialCollapsed?: boolean;
-  /** Designer roster for the right-hand rail (staff only; empty otherwise). */
-  designers?: RailDesigner[];
 };
 
 export function AppShell({
@@ -34,9 +30,7 @@ export function AppShell({
   selected,
   unread,
   initialCollapsed = false,
-  designers = [],
 }: AppShellProps) {
-  const showRail = user.role !== "designer";
   const [collapsed, setCollapsed] = useState(initialCollapsed);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -112,14 +106,6 @@ export function AppShell({
           <ToastProvider>{children}</ToastProvider>
         </main>
       </div>
-
-      {showRail && (
-        <div className="hidden lg:block">
-          <Suspense fallback={<div className="h-screen w-60 border-l border-line bg-surface" />}>
-            <DesignerRail designers={designers} />
-          </Suspense>
-        </div>
-      )}
     </div>
   );
 }

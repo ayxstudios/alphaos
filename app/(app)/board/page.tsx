@@ -5,6 +5,7 @@ import { getDesignerBoard } from "@/lib/orders/board-data";
 import { getRailDesigners } from "@/lib/designers/roster";
 import { DesignerBoard } from "@/components/board/designer-board";
 import { DesignerPicker } from "@/components/board/designer-picker";
+import { DesignerRail } from "@/components/board/designer-rail";
 import { EmptyState, Page, PageHeader, StatCard } from "@/components/ui";
 import { Columns } from "@/components/ui/icons";
 
@@ -61,17 +62,24 @@ export default async function BoardPage({
         }
       />
 
-      {board ? (
-        <DesignerBoard initial={board.columns} />
-      ) : (
-        <div className="rounded-card border border-line bg-surface shadow-sm">
-          <EmptyState
-            icon={Columns}
-            headline="Select a designer"
-            body="Pick a designer from the list on the right to view and manage their board."
-          />
+      <div className="flex gap-4">
+        {/* Left-hand designer switcher (staff only). */}
+        {isStaff && <DesignerRail designers={designers} current={targetId} />}
+
+        <div className="min-w-0 flex-1">
+          {board ? (
+            <DesignerBoard initial={board.columns} />
+          ) : (
+            <div className="rounded-card border border-line bg-surface shadow-sm">
+              <EmptyState
+                icon={Columns}
+                headline="Select a designer"
+                body="Pick a designer from the list on the left to view and manage their board."
+              />
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </Page>
   );
 }

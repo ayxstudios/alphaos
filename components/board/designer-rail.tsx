@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui";
@@ -13,16 +12,18 @@ import type { RailDesigner } from "@/lib/designers/roster";
 const COLLAPSE_KEY = "board.rail.collapsed";
 
 /**
- * App-wide right sidebar for switching designer boards. Shown on every page for
- * staff — click a designer to jump to their board (Links prefetch, so it's
- * instant). Filter by name when the roster is long; collapse to a thin avatar
- * strip. The active highlight tracks the ?designer param on the board page.
+ * Left-hand panel on the board page for switching designer boards. Lists every
+ * designer (ordered by rank) with today's load, filterable by name, and
+ * collapsible to a thin avatar strip (remembered per browser). Links prefetch,
+ * so switching boards is instant; the active designer is highlighted.
  */
-export function DesignerRail({ designers }: { designers: RailDesigner[] }) {
-  const pathname = usePathname();
-  const params = useSearchParams();
-  const current = pathname === "/board" ? params.get("designer") ?? undefined : undefined;
-
+export function DesignerRail({
+  designers,
+  current,
+}: {
+  designers: RailDesigner[];
+  current?: string;
+}) {
   const [collapsed, setCollapsed] = useState(false);
   const [q, setQ] = useState("");
 
@@ -44,17 +45,17 @@ export function DesignerRail({ designers }: { designers: RailDesigner[] }) {
 
   if (collapsed) {
     return (
-      <aside className="flex h-screen w-14 shrink-0 flex-col items-center gap-1 overflow-y-auto border-l border-line bg-surface p-2">
+      <aside className="sticky top-0 hidden h-fit max-h-[calc(100vh-7rem)] w-14 shrink-0 flex-col items-center gap-1 self-start overflow-y-auto rounded-card border border-line bg-surface p-2 lg:flex">
         <button
           type="button"
           onClick={toggle}
-          aria-label="Expand designer rail"
+          aria-label="Expand designer panel"
           className={cn(
             "mb-1 flex size-9 items-center justify-center rounded-input text-slate hover:bg-canvas hover:text-ink",
             focusRing,
           )}
         >
-          <ChevronDown size={16} className="rotate-90" />
+          <ChevronDown size={16} className="-rotate-90" />
         </button>
         {designers.map((d) => (
           <Link
@@ -76,19 +77,19 @@ export function DesignerRail({ designers }: { designers: RailDesigner[] }) {
   }
 
   return (
-    <aside className="flex h-screen w-60 shrink-0 flex-col border-l border-line bg-surface">
-      <div className="flex items-center justify-between border-b border-line px-3 py-3">
+    <aside className="sticky top-0 hidden h-fit max-h-[calc(100vh-7rem)] w-60 shrink-0 flex-col self-start overflow-hidden rounded-card border border-line bg-surface lg:flex">
+      <div className="flex items-center justify-between border-b border-line px-3 py-2.5">
         <span className="text-sm font-semibold text-ink">Designers</span>
         <button
           type="button"
           onClick={toggle}
-          aria-label="Collapse designer rail"
+          aria-label="Collapse designer panel"
           className={cn(
             "flex size-7 items-center justify-center rounded-input text-slate hover:bg-canvas hover:text-ink",
             focusRing,
           )}
         >
-          <ChevronDown size={16} className="-rotate-90" />
+          <ChevronDown size={16} className="rotate-90" />
         </button>
       </div>
 
