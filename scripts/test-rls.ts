@@ -143,17 +143,26 @@ async function main() {
 
   // -- 4. VA sees all orders across all businesses ---------------------------
   {
+    const adminRows = await withUserContext(asUser(admin, "admin"), (tx) =>
+      tx
+        .select({ id: schema.orders.id, businessId: schema.orders.businessId })
+        .from(schema.orders),
+    );
     const rows = await withUserContext(asUser(va1, "va"), (tx) =>
       tx
         .select({ id: schema.orders.id, businessId: schema.orders.businessId })
         .from(schema.orders),
     );
+    const adminBusinesses = new Set(adminRows.map((r) => r.businessId));
     const businesses = new Set(rows.map((r) => r.businessId));
-    const pass = rows.length === 20 && businesses.size === 2;
+    const pass =
+      rows.length === adminRows.length &&
+      businesses.size === adminBusinesses.size &&
+      businesses.size >= 2;
     report(
       "VA sees all orders across all businesses",
       pass,
-      `VA saw ${rows.length} orders across ${businesses.size} businesses (expected 20 / 2)`,
+      `VA saw ${rows.length}/${adminRows.length} admin-visible orders across ${businesses.size}/${adminBusinesses.size} businesses`,
     );
   }
 

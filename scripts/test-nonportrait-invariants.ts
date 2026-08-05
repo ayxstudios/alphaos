@@ -10,7 +10,7 @@
  */
 import "./load-env";
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { withSystemContext, type RequestUser } from "../lib/db";
 import { orders, orderItems, assignments, earnings, proofs, users, shops } from "../lib/db/schema";

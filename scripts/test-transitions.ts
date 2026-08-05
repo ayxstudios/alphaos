@@ -10,6 +10,7 @@ import { and, eq } from "drizzle-orm";
 
 import { withSystemContext, type RequestUser } from "../lib/db";
 import { orders, orderItems, assignments, users, shops, designerBusinesses } from "../lib/db/schema";
+import { DEFAULT_CHECKLIST } from "../lib/qc/checklist";
 import {
   transition,
   OrderTransitionError,
@@ -23,6 +24,10 @@ function report(name: string, pass: boolean, detail: string) {
   console.log(`      ${detail}`);
   if (!pass) failures += 1;
 }
+
+const passingItemResults = Object.fromEntries(
+  DEFAULT_CHECKLIST.map((item) => [item.key, true]),
+);
 
 async function statusOf(orderId: string): Promise<string> {
   return withSystemContext(async (tx) => {
@@ -118,7 +123,12 @@ async function main() {
   report("stale expectedFrom is rejected", stale, stale ? "StaleTransitionError thrown" : "no stale error");
 
   console.log("=== positive control: VA can pass QC ===");
-  await transition(va, { orderId: ctx.orderId, to: "awaiting_approval", expectedFrom: "awaiting_qc" });
+  await transition(va, {
+    orderId: ctx.orderId,
+    to: "awaiting_approval",
+    expectedFrom: "awaiting_qc",
+    metadata: { itemResults: passingItemResults },
+  });
   report("VA awaiting_qc -> awaiting_approval", (await statusOf(ctx.orderId)) === "awaiting_approval", `status now ${await statusOf(ctx.orderId)}`);
 
   console.log("=== even after QC, designer cannot approve ===");
