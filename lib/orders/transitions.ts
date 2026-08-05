@@ -25,6 +25,7 @@ import {
   type ItemResults,
 } from "@/lib/qc/checklist";
 import { runAutoAssign } from "./assign";
+import { bustQueueCounts } from "./board-data";
 import { prepareProofForApproval, draftRevisionReceived } from "@/lib/email/dispatch";
 
 export type OrderStatus = (typeof orderStatus.enumValues)[number];
@@ -297,6 +298,12 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
     toState: to,
     metadata: logMeta,
   });
+
+  // A status change moves the order between queue tabs, so the cached counts are
+  // now stale — drop them (harmless even if this tx later rolls back; the next
+  // read just recomputes). Covers every transition path: board/queue moves, QC,
+  // complete-details, and the proof portal.
+  bustQueueCounts();
 
   return { status: to };
 }

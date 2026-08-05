@@ -48,12 +48,13 @@ export default async function QueuePage({
       ? (sp.tab as VaTab)
       : "needs_photos";
 
+  // Shell (cached — shared with the layout) resolves the workspace; the queue
+  // data and outbox count then load concurrently.
   const { selected } = await loadShellData(user);
-  const { cards, counts } = await getVaQueue(user, {
-    businessId: selected.id,
-    tab,
-  });
-  const outboxCount = await getOutboxCount(user, { businessId: selected.id });
+  const [{ cards, counts }, outboxCount] = await Promise.all([
+    getVaQueue(user, { businessId: selected.id, tab }),
+    getOutboxCount(user, { businessId: selected.id }),
+  ]);
 
   return (
     <Page className="max-w-none">

@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, sql, type SQL } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import {
@@ -319,20 +319,69 @@ function tabWhere(tab: VaTab) {
 
 export type VaQueue = { cards: BoardCard[]; counts: Record<VaTab, number> };
 
+// ---------------------------------------------------------------------------
+// Queue-count cache
+// ---------------------------------------------------------------------------
+// Rapid tab-flipping re-renders the queue on every click; the tab counts barely
+// change between those clicks. This is a short-TTL, per-process cache of the
+// counts keyed on viewer + workspace, so consecutive tab switches reuse the
+// counts and only the (always-fresh) cards query runs. The key includes the
+// user id, so an entry never crosses the RLS scope it was computed under. It is
+// best-effort: not shared across server instances and reset on redeploy — the
+// cards are never cached, and `bustQueueCounts()` clears it the instant an order
+// moves, so a stale count is at most COUNTS_TTL_MS old and never wrong after an
+// action the user just took.
+const COUNTS_TTL_MS = 12_000;
+type CountsEntry = { counts: Record<VaTab, number>; expires: number };
+const countsCache = new Map<string, CountsEntry>();
+
+function readCounts(key: string): Record<VaTab, number> | null {
+  const entry = countsCache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expires) {
+    countsCache.delete(key);
+    return null;
+  }
+  return entry.counts;
+}
+
+function writeCounts(key: string, counts: Record<VaTab, number>): void {
+  countsCache.set(key, { counts, expires: Date.now() + COUNTS_TTL_MS });
+  // Bound memory: sweep expired entries once the map grows.
+  if (countsCache.size > 200) {
+    const now = Date.now();
+    for (const [k, v] of countsCache) if (now > v.expires) countsCache.delete(k);
+  }
+}
+
+/** Drop all cached queue counts — call after any order status change. */
+export function bustQueueCounts(): void {
+  countsCache.clear();
+}
+
 export async function getVaQueue(
   user: RequestUser,
   opts: { businessId: string | null; tab: VaTab },
 ): Promise<VaQueue> {
+  const cacheKey = `${user.id}:${opts.businessId ?? "all"}`;
+  const cachedCounts = readCounts(cacheKey);
+
   return withUserContext(user, async (tx) => {
     const bizFilter = opts.businessId && opts.businessId !== "all" ? eq(orders.businessId, opts.businessId) : undefined;
 
-    const counts = {} as Record<VaTab, number>;
-    for (const t of VA_TABS) {
-      const [c] = await tx
-        .select({ n: sql<number>`count(*)::int` })
-        .from(orders)
-        .where(bizFilter ? and(tabWhere(t), bizFilter) : tabWhere(t));
-      counts[t] = Number(c?.n ?? 0);
+    // Counts: served from the short-TTL cache when warm; otherwise computed as a
+    // single pass over `orders` via conditional aggregation (all 11 tab counts
+    // as FILTER expressions on one scan) and cached. The cards below are never
+    // cached — they always reflect live data.
+    let counts = cachedCounts;
+    if (!counts) {
+      const countSel = Object.fromEntries(
+        VA_TABS.map((t) => [t, sql<number>`count(*) filter (where ${tabWhere(t)})::int`]),
+      ) as Record<VaTab, SQL<number>>;
+      const [countRow] = await tx.select(countSel).from(orders).where(bizFilter);
+      counts = {} as Record<VaTab, number>;
+      for (const t of VA_TABS) counts[t] = Number(countRow?.[t] ?? 0);
+      writeCounts(cacheKey, counts);
     }
 
     const rows = (await tx

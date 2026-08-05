@@ -59,8 +59,10 @@ export default async function BoardPage({
 
   // Designers can only ever see their own board.
   const targetId = isStaff ? designerParam! : user.id;
-  const board = await getDesignerBoard(user, targetId);
-  const designers = isStaff ? await listDesigners() : [];
+  const [board, designers] = await Promise.all([
+    getDesignerBoard(user, targetId),
+    isStaff ? listDesigners() : Promise.resolve([]),
+  ]);
 
   return (
     <Page className="max-w-none">
