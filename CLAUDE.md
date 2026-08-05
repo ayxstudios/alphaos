@@ -1,5 +1,9 @@
 # AlphaOS
 
+> This file applies to any AI coding assistant working in this repository (Claude
+> Code, Codex, or otherwise), not just Claude Code. It is the source of truth for
+> project context, conventions, and constraints.
+
 Order management for a multi-shop portrait business. Replaces Trello. Single
 source of truth for every order from intake to delivery.
 

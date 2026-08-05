@@ -14,11 +14,26 @@ import { deleteObject } from "./r2";
  * Callable now (see /api/assets/sweep); wire onto a nightly schedule later.
  */
 const RETENTION_DAYS = 180;
+const DEFAULT_BUDGET_MS = 50_000; // stay under a 60s function limit
+const BATCH = 500;
 
-export type SweepSummary = { scanned: number; objectsDeleted: number; rowsMarked: number; errors: number };
+export type SweepSummary = {
+  scanned: number;
+  objectsDeleted: number;
+  rowsMarked: number;
+  errors: number;
+  incomplete: boolean; // true => more remain; the next nightly run resumes
+};
 
-export async function sweepExpiredAssets(): Promise<SweepSummary> {
-  const summary: SweepSummary = { scanned: 0, objectsDeleted: 0, rowsMarked: 0, errors: 0 };
+/**
+ * Batch-and-resume: oldest-expired first, bounded by a wall-clock budget. Marked
+ * rows (deleted_at) are excluded from the next query, so re-running continues
+ * where this left off — a backlog drains over successive nightly runs.
+ */
+export async function sweepExpiredAssets(opts: { budgetMs?: number } = {}): Promise<SweepSummary> {
+  const budgetMs = opts.budgetMs ?? DEFAULT_BUDGET_MS;
+  const summary: SweepSummary = { scanned: 0, objectsDeleted: 0, rowsMarked: 0, errors: 0, incomplete: false };
+  const start = Date.now();
 
   const expired = await withSystemContext((tx) =>
     tx
@@ -31,10 +46,15 @@ export async function sweepExpiredAssets(): Promise<SweepSummary> {
           lt(assets.createdAt, sql`now() - interval '${sql.raw(String(RETENTION_DAYS))} days'`),
         ),
       )
-      .limit(1000),
+      .orderBy(assets.createdAt)
+      .limit(BATCH),
   );
 
   for (const a of expired) {
+    if (Date.now() - start > budgetMs) {
+      summary.incomplete = true;
+      break;
+    }
     summary.scanned++;
     try {
       if (a.r2Key) {
@@ -59,6 +79,9 @@ export async function sweepExpiredAssets(): Promise<SweepSummary> {
       );
     }
   }
+
+  // A full batch likely means more remain even if we didn't hit the time budget.
+  if (expired.length === BATCH) summary.incomplete = true;
 
   console.log(
     JSON.stringify({ ts: new Date().toISOString(), component: "retention", event: "sweep_complete", ...summary }),
