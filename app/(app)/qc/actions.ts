@@ -29,7 +29,7 @@ async function requireVa(): Promise<RequestUser | { error: QcResult }> {
 }
 
 function revalidate(orderId: string) {
-  revalidatePath("/queue");
+  revalidatePath("/orders");
   revalidatePath("/board");
   revalidatePath(`/qc/${orderId}`);
 }

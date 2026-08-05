@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import {
@@ -61,11 +61,6 @@ type OrderRow = {
 };
 
 type Tx = Parameters<Parameters<typeof withUserContext>[1]>[0];
-
-const OVERDUE_STATES: OrderStatus[] = [
-  "awaiting_photos", "ready_to_assign", "in_design", "awaiting_qc",
-  "awaiting_approval", "approved", "printing", "shipped", "awaiting_details",
-];
 
 async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<BoardCard[]> {
   if (!rows.length) return [];
@@ -272,136 +267,5 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
       },
       dailyEarnings: Number(e?.total ?? 0),
     };
-  });
-}
-
-export const VA_TABS = [
-  "triage", "needs_details", "needs_photos", "shopify_missing_photos", "unassigned",
-  "awaiting_qc", "revisions_in", "awaiting_customer", "fulfilment", "ready_to_print", "overdue",
-] as const;
-export type VaTab = (typeof VA_TABS)[number];
-
-export const VA_TAB_LABELS: Record<VaTab, string> = {
-  triage: "Triage",
-  needs_details: "Needs Details",
-  needs_photos: "Needs Photos",
-  shopify_missing_photos: "Shopify · Missing Photos",
-  unassigned: "Unassigned",
-  awaiting_qc: "Awaiting QC",
-  revisions_in: "Revisions In",
-  awaiting_customer: "Awaiting Customer",
-  fulfilment: "Fulfilment",
-  ready_to_print: "Ready to Print",
-  overdue: "Overdue",
-};
-
-function tabWhere(tab: VaTab) {
-  switch (tab) {
-    case "triage": return eq(orders.status, "triage");
-    case "needs_details": return eq(orders.status, "awaiting_details");
-    // Etsy/manual orders legitimately await photos; a Shopify one is an anomaly.
-    case "needs_photos": return and(eq(orders.status, "awaiting_photos"), ne(orders.source, "shopify"));
-    case "shopify_missing_photos": return and(eq(orders.status, "awaiting_photos"), eq(orders.source, "shopify"));
-    case "unassigned":
-      return and(
-        eq(orders.status, "ready_to_assign"),
-        sql`not exists (select 1 from assignments a where a.order_id = ${orders.id} and a.active)`,
-      );
-    case "awaiting_qc": return eq(orders.status, "awaiting_qc");
-    case "revisions_in": return and(eq(orders.status, "in_design"), gt(orders.revisionCount, 0));
-    case "awaiting_customer": return eq(orders.status, "awaiting_approval");
-    case "fulfilment": return eq(orders.status, "fulfillment_only");
-    case "ready_to_print": return eq(orders.status, "approved");
-    case "overdue":
-      return and(inArray(orders.status, OVERDUE_STATES), isNotNull(orders.dueAt), lt(orders.dueAt, sql`now()`));
-  }
-}
-
-export type VaQueue = { cards: BoardCard[]; counts: Record<VaTab, number> };
-
-// ---------------------------------------------------------------------------
-// Queue-count cache
-// ---------------------------------------------------------------------------
-// Rapid tab-flipping re-renders the queue on every click; the tab counts barely
-// change between those clicks. This is a short-TTL, per-process cache of the
-// counts keyed on viewer + workspace, so consecutive tab switches reuse the
-// counts and only the (always-fresh) cards query runs. The key includes the
-// user id, so an entry never crosses the RLS scope it was computed under. It is
-// best-effort: not shared across server instances and reset on redeploy — the
-// cards are never cached, and `bustQueueCounts()` clears it the instant an order
-// moves, so a stale count is at most COUNTS_TTL_MS old and never wrong after an
-// action the user just took.
-const COUNTS_TTL_MS = 12_000;
-type CountsEntry = { counts: Record<VaTab, number>; expires: number };
-const countsCache = new Map<string, CountsEntry>();
-
-function readCounts(key: string): Record<VaTab, number> | null {
-  const entry = countsCache.get(key);
-  if (!entry) return null;
-  if (Date.now() > entry.expires) {
-    countsCache.delete(key);
-    return null;
-  }
-  return entry.counts;
-}
-
-function writeCounts(key: string, counts: Record<VaTab, number>): void {
-  countsCache.set(key, { counts, expires: Date.now() + COUNTS_TTL_MS });
-  // Bound memory: sweep expired entries once the map grows.
-  if (countsCache.size > 200) {
-    const now = Date.now();
-    for (const [k, v] of countsCache) if (now > v.expires) countsCache.delete(k);
-  }
-}
-
-/** Drop all cached queue counts — call after any order status change. */
-export function bustQueueCounts(): void {
-  countsCache.clear();
-}
-
-export async function getVaQueue(
-  user: RequestUser,
-  opts: { businessId: string | null; tab: VaTab },
-): Promise<VaQueue> {
-  const cacheKey = `${user.id}:${opts.businessId ?? "all"}`;
-  const cachedCounts = readCounts(cacheKey);
-
-  return withUserContext(user, async (tx) => {
-    const bizFilter = opts.businessId && opts.businessId !== "all" ? eq(orders.businessId, opts.businessId) : undefined;
-
-    // Counts: served from the short-TTL cache when warm; otherwise computed as a
-    // single pass over `orders` via conditional aggregation (all 11 tab counts
-    // as FILTER expressions on one scan) and cached. The cards below are never
-    // cached — they always reflect live data.
-    let counts = cachedCounts;
-    if (!counts) {
-      const countSel = Object.fromEntries(
-        VA_TABS.map((t) => [t, sql<number>`count(*) filter (where ${tabWhere(t)})::int`]),
-      ) as Record<VaTab, SQL<number>>;
-      const [countRow] = await tx.select(countSel).from(orders).where(bizFilter);
-      counts = {} as Record<VaTab, number>;
-      for (const t of VA_TABS) counts[t] = Number(countRow?.[t] ?? 0);
-      writeCounts(cacheKey, counts);
-    }
-
-    const rows = (await tx
-      .select({
-        id: orders.id,
-        platformOrderId: orders.platformOrderId,
-        platformOrderName: orders.platformOrderName,
-        status: orders.status,
-        dueAt: orders.dueAt,
-        businessId: orders.businessId,
-        customerId: orders.customerId,
-        revisionCount: orders.revisionCount,
-        source: orders.source,
-        notes: orders.notes,
-      })
-      .from(orders)
-      .where(bizFilter ? and(tabWhere(opts.tab), bizFilter) : tabWhere(opts.tab))
-      .orderBy(orders.dueAt)
-      .limit(200)) as OrderRow[];
-
-    return { cards: await enrich(tx, rows, user.role), counts };
   });
 }

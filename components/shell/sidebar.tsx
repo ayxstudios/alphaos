@@ -12,9 +12,7 @@ import {
   Grid,
   Package,
   Columns,
-  ListChecks,
   Users,
-  Palette,
   Settings,
   type IconProps,
 } from "@/components/ui/icons";
@@ -25,8 +23,6 @@ const STAFF_NAV: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: Grid },
   { label: "Orders", href: "/orders", icon: Package },
   { label: "Board", href: "/board", icon: Columns },
-  { label: "Designers", href: "/designers", icon: Palette },
-  { label: "Queue", href: "/queue", icon: ListChecks },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Settings", href: "/settings", icon: Settings },
 ];

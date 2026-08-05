@@ -494,7 +494,7 @@ export function NewOrderForm({
           {flash && <Badge variant="success" dot>{flash}</Badge>}
           {error && <span className="text-sm text-rose">{error}</span>}
           {done && (
-            <Link href="/queue" className="text-sm font-medium text-pigment underline">Back to queue →</Link>
+            <Link href="/orders" className="text-sm font-medium text-pigment underline">Back to orders →</Link>
           )}
         </div>
 

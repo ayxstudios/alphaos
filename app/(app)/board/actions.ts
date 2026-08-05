@@ -38,7 +38,7 @@ export async function moveOrder(
   try {
     const { status } = await transition(user, { orderId, to, expectedFrom, metadata });
     revalidatePath("/board");
-    revalidatePath("/queue");
+    revalidatePath("/orders");
     return { ok: true, status };
   } catch (err) {
     if (err instanceof OrderTransitionError) {

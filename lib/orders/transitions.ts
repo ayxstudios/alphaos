@@ -25,7 +25,6 @@ import {
   type ItemResults,
 } from "@/lib/qc/checklist";
 import { runAutoAssign } from "./assign";
-import { bustQueueCounts } from "./board-data";
 import { prepareProofForApproval, draftRevisionReceived } from "@/lib/email/dispatch";
 
 export type OrderStatus = (typeof orderStatus.enumValues)[number];
@@ -299,12 +298,6 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
     metadata: logMeta,
   });
 
-  // A status change moves the order between queue tabs, so the cached counts are
-  // now stale — drop them (harmless even if this tx later rolls back; the next
-  // read just recomputes). Covers every transition path: board/queue moves, QC,
-  // complete-details, and the proof portal.
-  bustQueueCounts();
-
   return { status: to };
 }
 
@@ -316,7 +309,7 @@ async function assertFiguresResolved(tx: Tx, orderId: string, platformOrderId: s
     .where(eq(orderItems.orderId, orderId));
   if (items.some((i) => i.figureCount == null)) {
     throw new PreconditionError(
-      `Cannot complete order ${platformOrderId}: it has an unresolved figure count. Resolve it at /queue/review first (figure count drives payout).`,
+      `Cannot complete order ${platformOrderId}: it has an unresolved figure count. Resolve it from Orders first (figure count drives payout).`,
     );
   }
 }

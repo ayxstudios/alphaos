@@ -241,7 +241,7 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
         await runAutoAssign(tx, { orderId, businessId, assignedBy: user.id });
       }
 
-      revalidatePath("/queue");
+      revalidatePath("/orders");
       revalidatePath("/board");
       revalidatePath("/orders");
       return { ok: true as const, orderNumber: platformOrderName ?? "(no number)", orderId };
@@ -375,7 +375,7 @@ export async function completeOrderDetails(input: {
         metadata: { via: "manual_complete" },
       });
 
-      revalidatePath("/queue");
+      revalidatePath("/orders");
       revalidatePath("/board");
       revalidatePath(`/orders/${order.id}`);
       return { ok: true as const, orderNumber: order.platformOrderName ?? "(no number)", orderId: order.id };

@@ -230,7 +230,7 @@ export async function backfillShopifyShop(shopId: string): Promise<ShopifySyncSu
   await resetCursor(user, shopId);
   const summary = await syncShopOrders(shopId, { suppressCustomerEmail: true });
   revalidatePath("/settings");
-  revalidatePath("/queue");
+  revalidatePath("/orders");
   revalidatePath("/board");
   return summary;
 }
@@ -338,7 +338,7 @@ export async function reresolveShopOrders(shopId: string): Promise<ReresolveSumm
   const user = await requireAdmin();
   const summary = await reresolveShop(user, shopId);
   revalidatePath("/settings");
-  revalidatePath("/queue");
+  revalidatePath("/orders");
   revalidatePath("/board");
   return summary;
 }

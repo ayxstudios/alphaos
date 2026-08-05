@@ -67,7 +67,7 @@ export function QcScreen({ ctx, queueIds }: { ctx: QcContext; queueIds: string[]
   const goTo = useCallback((id: string) => router.push(`/qc/${id}`), [router]);
   const advance = useCallback(() => {
     if (nextId) router.push(`/qc/${nextId}`);
-    else router.push("/queue?tab=awaiting_qc");
+    else router.push("/orders?view=awaiting_qc");
   }, [nextId, router]);
 
   const toggle = useCallback(

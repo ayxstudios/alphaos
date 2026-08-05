@@ -85,7 +85,7 @@ export default async function DashboardPage() {
       .limit(8),
   );
 
-  const queueTotal =
+  const actionTotal =
     (stats?.awaitingDetails ?? 0) +
     (stats?.awaitingPhotos ?? 0) +
     (stats?.qc ?? 0);
@@ -112,7 +112,7 @@ export default async function DashboardPage() {
           value={stats?.overdue ?? 0}
           tone={(stats?.overdue ?? 0) > 0 ? "danger" : "neutral"}
         />
-        <StatCard label="VA queue" value={queueTotal} tone="info" />
+        <StatCard label="VA actions" value={actionTotal} tone="info" />
         <StatCard label="QC waiting" value={stats?.qc ?? 0} tone="warning" />
       </div>
 
@@ -176,21 +176,21 @@ export default async function DashboardPage() {
         </DataPanel>
 
         <DataPanel className="p-4">
-          <SectionHeader title="Current queue" />
+          <SectionHeader title="Orders workload" />
           <div className="mt-4 flex flex-col gap-3">
-            <QueueLine
+            <WorkloadLine
               label="Complete details"
               value={stats?.awaitingDetails ?? 0}
             />
-            <QueueLine label="Awaiting photos" value={stats?.awaitingPhotos ?? 0} />
-            <QueueLine label="Quality control" value={stats?.qc ?? 0} />
+            <WorkloadLine label="Awaiting photos" value={stats?.awaitingPhotos ?? 0} />
+            <WorkloadLine label="Quality control" value={stats?.qc ?? 0} />
           </div>
           <Link
-            href="/queue"
+            href="/orders?view=active"
             className="mt-5 inline-flex h-10 w-full items-center justify-center gap-2 rounded-input border border-line bg-surface text-sm font-medium text-ink transition-colors hover:bg-canvas"
           >
             <ListChecks size={16} />
-            Open VA queue
+            Open orders
           </Link>
         </DataPanel>
       </div>
@@ -198,7 +198,7 @@ export default async function DashboardPage() {
   );
 }
 
-function QueueLine({ label, value }: { label: string; value: number }) {
+function WorkloadLine({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex items-center justify-between gap-3">
       <span className="flex items-center gap-2 text-sm text-slate">
