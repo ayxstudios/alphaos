@@ -12,13 +12,12 @@ import {
 import { staffTransitionsFrom, type OrderStatus } from "@/lib/orders/transitions";
 import { getOutboxCount } from "@/lib/email/outbox";
 import { QueueCard } from "@/components/board/queue-card";
-import { Card, EmptyState } from "@/components/ui";
-import { ListChecks } from "@/components/ui/icons";
+import { EmptyState, FilterBar, Page, PageHeader } from "@/components/ui";
+import { ListChecks, Plus } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-// Human labels for the quick-advance buttons, keyed by target status.
 const ACTION_LABEL: Partial<Record<OrderStatus, string>> = {
   awaiting_photos: "Needs photos",
   ready_to_assign: "Ready to assign",
@@ -50,67 +49,103 @@ export default async function QueuePage({
       : "needs_photos";
 
   const { selected } = await loadShellData(user);
-  const { cards, counts } = await getVaQueue(user, { businessId: selected.id, tab });
+  const { cards, counts } = await getVaQueue(user, {
+    businessId: selected.id,
+    tab,
+  });
   const outboxCount = await getOutboxCount(user, { businessId: selected.id });
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="font-display text-2xl font-semibold text-ink">Queue</h1>
-        <div className="flex items-center gap-4">
-          <Link href="/queue/outbox" className="text-sm font-medium text-pigment hover:underline">
-            Outbox{outboxCount > 0 ? ` (${outboxCount})` : ""} →
-          </Link>
-          <Link href="/queue/review" className="text-sm font-medium text-pigment hover:underline">
-            Review queue →
-          </Link>
-          <Link
-            href="/orders/new"
-            className="inline-flex h-9 items-center rounded-input bg-pigment px-3 text-sm font-medium text-surface hover:opacity-90"
-          >
-            + New order
-          </Link>
-        </div>
-      </div>
+    <Page className="max-w-none">
+      <PageHeader
+        title="Queue"
+        description="Prioritized VA work for the selected workspace."
+        actions={
+          <>
+            <Link
+              href="/queue/outbox"
+              className="inline-flex h-10 items-center rounded-input px-3 text-sm font-medium text-pigment transition-colors hover:bg-pigment-soft"
+            >
+              Outbox{outboxCount > 0 ? ` (${outboxCount})` : ""}
+            </Link>
+            <Link
+              href="/queue/review"
+              className="inline-flex h-10 items-center rounded-input px-3 text-sm font-medium text-pigment transition-colors hover:bg-pigment-soft"
+            >
+              Review queue
+            </Link>
+            <Link
+              href="/orders/new"
+              className="inline-flex h-10 items-center gap-2 rounded-input bg-pigment px-3 text-sm font-medium text-surface transition-opacity hover:opacity-90"
+            >
+              <Plus size={16} />
+              New order
+            </Link>
+          </>
+        }
+      />
 
-      <div className="flex flex-wrap gap-1 border-b border-line pb-2">
-        {VA_TABS.map((t) => (
-          <Link
-            key={t}
-            href={`/queue?tab=${t}`}
-            className={cn(
-              "rounded-input px-3 py-1.5 text-sm transition-colors motion-hover",
-              t === tab ? "bg-pigment-soft font-medium text-pigment" : "text-slate hover:bg-canvas",
-            )}
-          >
-            {VA_TAB_LABELS[t]} <span className="text-xs text-slate">({counts[t]})</span>
-          </Link>
-        ))}
-      </div>
+      <FilterBar className="gap-1">
+        {VA_TABS.map((t) => {
+          const active = t === tab;
+          return (
+            <Link
+              key={t}
+              href={`/queue?tab=${t}`}
+              className={cn(
+                "inline-flex h-9 items-center gap-2 rounded-input px-3 text-sm font-medium transition-colors motion-hover",
+                active
+                  ? "bg-pigment text-surface"
+                  : "text-slate hover:bg-canvas hover:text-ink",
+              )}
+            >
+              {VA_TAB_LABELS[t]}
+              <span
+                className={cn(
+                  "rounded-full px-1.5 text-xs",
+                  active ? "bg-surface/20" : "bg-canvas text-slate",
+                )}
+              >
+                {counts[t]}
+              </span>
+            </Link>
+          );
+        })}
+      </FilterBar>
 
       {cards.length === 0 ? (
-        <Card>
-          <EmptyState icon={ListChecks} headline="Nothing here" body={`No orders in ${VA_TAB_LABELS[tab]}.`} />
-        </Card>
+        <div className="rounded-card border border-line bg-surface shadow-sm">
+          <EmptyState
+            icon={ListChecks}
+            headline="Nothing here"
+            body={`No orders in ${VA_TAB_LABELS[tab]}.`}
+          />
+        </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {cards.map((c) => (
             <QueueCard
               key={c.orderId}
               card={c}
-              // Awaiting-QC orders go through the checklist gate, never a one-click pass.
               qcHref={c.status === "awaiting_qc" ? `/qc/${c.orderId}` : undefined}
-              // Etsy needs-details orders open the manual completion form.
-              completeHref={c.status === "awaiting_details" ? `/orders/${c.orderId}/complete` : undefined}
+              completeHref={
+                c.status === "awaiting_details"
+                  ? `/orders/${c.orderId}/complete`
+                  : undefined
+              }
               actions={
                 c.status === "awaiting_qc" || c.status === "awaiting_details"
                   ? []
                   : c.status === "triage"
-                    ? // One click either way — never guess (photos present => straight to assign).
-                      [
-                        { to: (c.thumbnailUrl ? "ready_to_assign" : "awaiting_photos") as OrderStatus, label: "Portrait" },
+                    ? [
+                        {
+                          to: (c.thumbnailUrl
+                            ? "ready_to_assign"
+                            : "awaiting_photos") as OrderStatus,
+                          label: "Portrait",
+                        },
                         { to: "fulfillment_only" as OrderStatus, label: "Fulfil only" },
-                        { to: "complete" as OrderStatus, label: "Close (billing)" },
+                        { to: "complete" as OrderStatus, label: "Close" },
                       ]
                     : staffTransitionsFrom(c.status)
                         .filter((to) => to !== "on_hold" && to !== "cancelled")
@@ -120,6 +155,6 @@ export default async function QueuePage({
           ))}
         </div>
       )}
-    </div>
+    </Page>
   );
 }

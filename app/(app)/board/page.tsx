@@ -7,7 +7,7 @@ import { users } from "@/lib/db/schema";
 import { getDesignerBoard } from "@/lib/orders/board-data";
 import { DesignerBoard } from "@/components/board/designer-board";
 import { DesignerPicker } from "@/components/board/designer-picker";
-import { Card, EmptyState } from "@/components/ui";
+import { DataPanel, EmptyState, Page, PageHeader, StatCard } from "@/components/ui";
 import { Columns } from "@/components/ui/icons";
 
 export const dynamic = "force-dynamic";
@@ -33,17 +33,27 @@ export default async function BoardPage({
   if (isStaff && !designerParam) {
     const designers = await listDesigners();
     return (
-      <div className="flex flex-col gap-4">
-        <h1 className="font-display text-2xl font-semibold text-ink">Designer boards</h1>
-        <DesignerPicker designers={designers.map((d) => ({ id: d.id, name: d.name ?? d.id }))} />
-        <Card>
+      <Page>
+        <PageHeader
+          title="Designer boards"
+          description="Select a designer to view assigned work and move cards through design."
+          actions={
+            <DesignerPicker
+              designers={designers.map((d) => ({
+                id: d.id,
+                name: d.name ?? d.id,
+              }))}
+            />
+          }
+        />
+        <DataPanel>
           <EmptyState
             icon={Columns}
             headline="Select a designer"
             body="Pick a designer to view and manage their board."
           />
-        </Card>
-      </div>
+        </DataPanel>
+      </Page>
     );
   }
 
@@ -53,25 +63,32 @@ export default async function BoardPage({
   const designers = isStaff ? await listDesigners() : [];
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="font-display text-2xl font-semibold text-ink">
-          {isStaff ? "Designer board" : "My board"}
-        </h1>
-        <div className="flex items-center gap-4">
+    <Page className="max-w-none">
+      <PageHeader
+        title={isStaff ? "Designer board" : "My board"}
+        description="Drag work from queue to design, then submit it for QC."
+        actions={
+          <>
           {isStaff && (
             <DesignerPicker
-              designers={designers.map((d) => ({ id: d.id, name: d.name ?? d.id }))}
+              designers={designers.map((d) => ({
+                id: d.id,
+                name: d.name ?? d.id,
+              }))}
               current={targetId}
             />
           )}
-          <div className="rounded-card border border-line bg-surface px-3 py-1.5 text-right">
-            <div className="text-xs text-slate">Earned today</div>
-            <div className="text-sm font-semibold text-sage">${board.dailyEarnings.toFixed(2)}</div>
-          </div>
-        </div>
-      </div>
+            <div className="w-36">
+              <StatCard
+                label="Earned today"
+                value={`$${board.dailyEarnings.toFixed(2)}`}
+                tone="success"
+              />
+            </div>
+          </>
+        }
+      />
       <DesignerBoard initial={board.columns} />
-    </div>
+    </Page>
   );
 }

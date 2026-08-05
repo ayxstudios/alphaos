@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { AlertTriangle } from "@/components/ui/icons";
+import { AlertTriangle, Camera } from "@/components/ui/icons";
 import { Countdown } from "./countdown";
 import type { BoardCard } from "@/lib/orders/board-data";
 
@@ -16,16 +16,18 @@ export function OrderCard({
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-card border border-line bg-surface p-3",
-        overlay ? "rotate-2 shadow-lg" : "shadow-sm",
+        "flex flex-col gap-2 rounded-card border border-line bg-surface p-2.5 transition-shadow duration-150",
+        overlay ? "rotate-2 shadow-lg" : "shadow-sm hover:shadow-md",
         dragging && "opacity-40",
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
-          {card.orderNumber}
+        <span className="min-w-0 text-sm font-semibold text-ink">
+          <span className="block truncate">{card.orderNumber}</span>
           {card.source === "manual" && (
-            <span className="rounded bg-amber/10 px-1 text-[10px] font-medium text-amber">Manual</span>
+            <span className="mt-0.5 inline-flex rounded bg-amber/10 px-1 text-[10px] font-medium text-amber">
+              Manual
+            </span>
           )}
         </span>
         <Countdown dueAt={card.dueAt} />
@@ -40,8 +42,8 @@ export function OrderCard({
             className="size-10 shrink-0 rounded-input border border-line object-cover"
           />
         ) : (
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-input border border-dashed border-line text-[10px] text-slate">
-            no photo
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-input border border-dashed border-line text-slate">
+            <Camera size={15} />
           </div>
         )}
         <div className="flex min-w-0 flex-col">
@@ -55,12 +57,19 @@ export function OrderCard({
 
       {/* What the designer is making: product title + the options that matter. */}
       {(card.title || card.options.length > 0) && (
-        <div className="flex flex-col gap-1 rounded-input border border-line bg-canvas p-2">
-          {card.title && <span className="truncate text-xs font-medium text-ink">{card.title}</span>}
+        <div className="flex flex-col gap-1">
+          {card.title && (
+            <span className="truncate text-xs font-medium text-ink">
+              {card.title}
+            </span>
+          )}
           {card.options.length > 0 && (
-            <ul className="flex flex-col gap-0.5">
-              {card.options.map((o, i) => (
-                <li key={i} className="truncate text-[11px] text-slate">
+            <ul className="flex flex-wrap gap-1">
+              {card.options.slice(0, 3).map((o, i) => (
+                <li
+                  key={i}
+                  className="max-w-full truncate rounded bg-canvas px-1.5 py-0.5 text-[11px] text-slate"
+                >
                   <span className="text-ink">{o.name}:</span> {o.value}
                 </li>
               ))}
@@ -70,7 +79,7 @@ export function OrderCard({
       )}
 
       {card.notes && (
-        <p className="whitespace-pre-wrap rounded-input bg-amber/5 p-2 text-[11px] text-ink line-clamp-4">
+        <p className="whitespace-pre-wrap rounded-input bg-amber/5 px-2 py-1.5 text-[11px] text-ink line-clamp-3">
           {card.notes}
         </p>
       )}
@@ -78,7 +87,7 @@ export function OrderCard({
       {card.qcFail && (
         <div className="flex flex-col gap-1 rounded-input border border-rose/20 bg-rose/10 p-2">
           <span className="flex items-center gap-1.5 text-xs font-semibold text-rose">
-            <AlertTriangle size={13} className="shrink-0" /> QC failed — fix &amp; resubmit
+            <AlertTriangle size={13} className="shrink-0" /> QC failed
           </span>
           {card.qcFail.failedItems.length > 0 && (
             <ul className="ml-1 list-inside list-disc text-xs text-ink">
@@ -96,7 +105,7 @@ export function OrderCard({
       {card.customerRevision && (
         <div className="flex flex-col gap-1 rounded-input border border-pigment/20 bg-pigment-soft p-2">
           <span className="flex items-center gap-1.5 text-xs font-semibold text-pigment">
-            <AlertTriangle size={13} className="shrink-0" /> Customer requested changes
+            <AlertTriangle size={13} className="shrink-0" /> Revision requested
           </span>
           {card.customerRevision.failedItems.length > 0 && (
             <ul className="ml-1 list-inside list-disc text-xs text-ink">

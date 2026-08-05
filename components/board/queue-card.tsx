@@ -45,7 +45,11 @@ export function QueueCard({
     <div className="flex flex-col gap-2">
       <OrderCard card={card} />
       {completeHref ? (
-        <Button size="sm" variant="primary" onClick={() => router.push(completeHref)}>
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={() => router.push(completeHref)}
+        >
           <Pencil size={14} /> Complete details
         </Button>
       ) : qcHref ? (
@@ -55,7 +59,13 @@ export function QueueCard({
       ) : actions.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {actions.map((a) => (
-            <Button key={a.to} size="sm" variant="secondary" loading={pending} onClick={() => go(a.to)}>
+            <Button
+              key={a.to}
+              size="sm"
+              variant="secondary"
+              loading={pending}
+              onClick={() => go(a.to)}
+            >
               {a.label}
             </Button>
           ))}
