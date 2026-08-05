@@ -1,11 +1,13 @@
 import { notFound, redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
-import { orders, shops, businesses, customers } from "@/lib/db/schema";
+import { orders, shops, businesses, customers, orderItems, assets } from "@/lib/db/schema";
 import { isR2Configured } from "@/lib/storage/r2";
 import { NewOrderForm, type ExistingOrder } from "@/components/orders/new-order-form";
+import { StatusChip } from "@/components/ui";
+import type { OrderStatus } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +26,8 @@ export default async function CompleteOrderPage({ params }: { params: Promise<{ 
         status: orders.status,
         platformOrderName: orders.platformOrderName,
         dueAt: orders.dueAt,
+        placedAt: orders.placedAt,
+        notes: orders.notes,
         rawImport: orders.rawImport,
         customerId: orders.customerId,
         shopName: shops.name,
@@ -53,20 +57,58 @@ export default async function CompleteOrderPage({ params }: { params: Promise<{ 
     }
   }
 
+  const [item] = await withUserContext(user, (tx) =>
+    tx
+      .select({
+        title: orderItems.title,
+        figureCount: orderItems.figureCount,
+        style: orderItems.style,
+        productType: orderItems.productType,
+      })
+      .from(orderItems)
+      .where(eq(orderItems.orderId, order.id))
+      .limit(1),
+  );
+  const [photoCountRow] = await withUserContext(user, (tx) =>
+    tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(assets)
+      .where(eq(assets.orderId, order.id)),
+  );
+
   const existing: ExistingOrder = {
     orderId: order.id,
     shopId: order.shopId,
     shopLabel: `${order.businessName} — ${order.shopName}`,
     orderNumber: order.platformOrderName ?? "",
+    status: order.status,
     customerName,
     customerEmail,
     dueAt: order.dueAt ? order.dueAt.toISOString().slice(0, 10) : "",
+    dueAtIso: order.dueAt?.toISOString() ?? null,
+    dueDateSource: "internal_sla",
+    placedAtIso: order.placedAt?.toISOString() ?? null,
+    savedProductTitle: item?.title ?? "",
+    savedFigureCount: item?.figureCount ?? null,
+    savedStyle: item?.style ?? "",
+    savedProductType: item?.productType ?? null,
+    savedNotes: order.notes ?? "",
+    photoCount: photoCountRow?.count ?? 0,
     rawImport: order.rawImport,
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-      <h1 className="font-display text-2xl font-semibold text-ink">Complete order details</h1>
+    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="font-display text-2xl font-semibold text-ink">Complete order details</h1>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-slate">
+            <span className="font-medium text-ink">Etsy order {existing.orderNumber}</span>
+            <span>{existing.shopLabel}</span>
+          </div>
+        </div>
+        <StatusChip status={order.status as OrderStatus} />
+      </div>
       <NewOrderForm shops={[]} r2Enabled={isR2Configured()} existing={existing} />
     </div>
   );

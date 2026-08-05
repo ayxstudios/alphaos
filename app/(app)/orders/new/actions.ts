@@ -27,6 +27,7 @@ export type NewOrderInput = {
   customerEmail?: string;
   figureCount?: number | null;
   style?: string | null;
+  productTitle?: string | null;
   productType: "digital" | "physical";
   notes?: string;
   dueAt?: string; // ISO (date)
@@ -199,6 +200,7 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
       await tx.insert(orderItems).values({
         businessId,
         orderId,
+        title: input.productTitle?.trim() || null,
         figureCount,
         figureCountSource: figureCount != null ? "manual" : null,
         style: input.style?.trim() || null,
@@ -259,6 +261,7 @@ export async function completeOrderDetails(input: {
   orderId: string;
   figureCount?: number | null;
   style?: string | null;
+  productTitle?: string | null;
   productType: "digital" | "physical";
   notes?: string;
   dueAt?: string;
@@ -289,7 +292,8 @@ export async function completeOrderDetails(input: {
           platformOrderName: orders.platformOrderName,
         })
         .from(orders)
-        .where(eq(orders.id, input.orderId));
+        .where(eq(orders.id, input.orderId))
+        .for("update");
       if (!order) return { ok: false as const, message: "Order not found" };
       if (order.status !== "awaiting_details") {
         return { ok: false as const, message: "This order is no longer awaiting details." };
@@ -312,14 +316,26 @@ export async function completeOrderDetails(input: {
         customerId = c?.id ?? null;
       }
 
-      await tx.insert(orderItems).values({
+      const [existingItem] = await tx
+        .select({ id: orderItems.id })
+        .from(orderItems)
+        .where(eq(orderItems.orderId, order.id))
+        .for("update")
+        .limit(1);
+      const itemValues = {
         businessId,
         orderId: order.id,
+        title: input.productTitle?.trim() || null,
         figureCount,
-        figureCountSource: figureCount != null ? "manual" : null,
+        figureCountSource: figureCount != null ? ("manual" as const) : null,
         style: input.style?.trim() || null,
         productType: input.productType,
-      });
+      };
+      if (existingItem) {
+        await tx.update(orderItems).set(itemValues).where(eq(orderItems.id, existingItem.id));
+      } else {
+        await tx.insert(orderItems).values(itemValues);
+      }
 
       const assetRows = [
         ...r2Keys.map((r2Key) => ({
