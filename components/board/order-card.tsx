@@ -1,126 +1,129 @@
 import { cn } from "@/lib/utils";
 import { AlertTriangle, Camera } from "@/components/ui/icons";
 import { Countdown } from "./countdown";
+import { cardLabels, LABEL_CLASS } from "./card-meta";
 import type { BoardCard } from "@/lib/orders/board-data";
 
-/** Presentational order card. Drag behaviour is applied by the parent. */
+/**
+ * Presentational order card — Trello-style with a cover photo, colour labels
+ * and a compact footer. Drag behaviour and click-to-open are wired by the
+ * parent (`onOpen` fires on a genuine click, never at the end of a drag).
+ */
 export function OrderCard({
   card,
   dragging = false,
   overlay = false,
+  onOpen,
 }: {
   card: BoardCard;
   dragging?: boolean;
   overlay?: boolean;
+  onOpen?: () => void;
 }) {
+  const labels = cardLabels(card);
+  const revision = card.qcFail ?? card.customerRevision;
+  const revisionTone = card.qcFail ? "rose" : "pigment";
+
   return (
     <div
+      onClick={onOpen}
       className={cn(
-        "flex flex-col gap-2 rounded-card border border-line bg-surface p-2.5 transition-shadow duration-150",
+        "group flex flex-col overflow-hidden rounded-card border border-line bg-surface transition-shadow duration-150",
         overlay ? "rotate-2 shadow-lg" : "shadow-sm hover:shadow-md",
         dragging && "opacity-40",
+        onOpen && "cursor-pointer",
       )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <span className="min-w-0 text-sm font-semibold text-ink">
-          <span className="block truncate">{card.orderNumber}</span>
-          {card.source === "manual" && (
-            <span className="mt-0.5 inline-flex rounded bg-amber/10 px-1 text-[10px] font-medium text-amber">
-              Manual
-            </span>
-          )}
-        </span>
-        <Countdown dueAt={card.dueAt} />
-      </div>
+      {/* Cover photo — the hero of the card. */}
+      {card.thumbnailUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={card.thumbnailUrl}
+          alt=""
+          className="h-32 w-full object-cover"
+          draggable={false}
+        />
+      ) : (
+        <div className="flex h-16 w-full items-center justify-center gap-1.5 border-b border-dashed border-line bg-canvas text-slate">
+          <Camera size={15} />
+          <span className="text-xs">No photo yet</span>
+        </div>
+      )}
 
-      <div className="flex items-center gap-2">
-        {card.thumbnailUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={card.thumbnailUrl}
-            alt=""
-            className="size-10 shrink-0 rounded-input border border-line object-cover"
-          />
-        ) : (
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-input border border-dashed border-line text-slate">
-            <Camera size={15} />
+      <div className="flex flex-col gap-2 p-3">
+        {labels.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {labels.map((l, i) => (
+              <span
+                key={i}
+                className={cn(
+                  "inline-flex max-w-full truncate rounded px-1.5 py-0.5 text-[11px] font-medium",
+                  LABEL_CLASS[l.tone],
+                )}
+              >
+                {l.text}
+              </span>
+            ))}
           </div>
         )}
-        <div className="flex min-w-0 flex-col">
-          <span className="truncate text-sm text-ink">{card.customerName}</span>
-          <span className="truncate text-xs text-slate">
-            {card.figuresResolved ? `${card.figureCount} figure${card.figureCount === 1 ? "" : "s"}` : "figures: ?"}
-            {card.style ? ` · ${card.style}` : ""}
+
+        <div className="flex items-start justify-between gap-2">
+          <span className="min-w-0 truncate text-sm font-semibold text-ink">
+            {card.orderNumber}
+          </span>
+          <Countdown dueAt={card.dueAt} />
+        </div>
+
+        {card.title && (
+          <p className="line-clamp-2 text-sm text-ink">{card.title}</p>
+        )}
+
+        {card.options.length > 0 && (
+          <ul className="flex flex-wrap gap-1">
+            {card.options.slice(0, 3).map((o, i) => (
+              <li
+                key={i}
+                className="max-w-full truncate rounded bg-canvas px-1.5 py-0.5 text-[11px] text-slate"
+              >
+                <span className="text-ink">{o.name}:</span> {o.value}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {/* Compact revision cue — the full reason + failed items live in the modal. */}
+        {revision && (
+          <div
+            className={cn(
+              "flex items-start gap-1.5 rounded-input p-2 text-xs",
+              revisionTone === "rose"
+                ? "border border-rose/20 bg-rose/10 text-rose"
+                : "border border-pigment/20 bg-pigment-soft text-pigment",
+            )}
+          >
+            <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+            <span className="min-w-0">
+              <span className="font-semibold">
+                {card.qcFail ? "QC failed" : "Revision requested"}
+              </span>
+              {revision.reason && (
+                <span className="line-clamp-2 font-normal italic text-slate">
+                  &ldquo;{revision.reason}&rdquo;
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between gap-2 border-t border-line pt-2 text-xs text-slate">
+          <span className="truncate text-ink">{card.customerName}</span>
+          <span className="shrink-0 tabular-nums">
+            {card.figuresResolved
+              ? `${card.figureCount} figure${card.figureCount === 1 ? "" : "s"}`
+              : "figures: ?"}
           </span>
         </div>
       </div>
-
-      {/* What the designer is making: product title + the options that matter. */}
-      {(card.title || card.options.length > 0) && (
-        <div className="flex flex-col gap-1">
-          {card.title && (
-            <span className="truncate text-xs font-medium text-ink">
-              {card.title}
-            </span>
-          )}
-          {card.options.length > 0 && (
-            <ul className="flex flex-wrap gap-1">
-              {card.options.slice(0, 3).map((o, i) => (
-                <li
-                  key={i}
-                  className="max-w-full truncate rounded bg-canvas px-1.5 py-0.5 text-[11px] text-slate"
-                >
-                  <span className="text-ink">{o.name}:</span> {o.value}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-
-      {card.notes && (
-        <p className="whitespace-pre-wrap rounded-input bg-amber/5 px-2 py-1.5 text-[11px] text-ink line-clamp-3">
-          {card.notes}
-        </p>
-      )}
-
-      {card.qcFail && (
-        <div className="flex flex-col gap-1 rounded-input border border-rose/20 bg-rose/10 p-2">
-          <span className="flex items-center gap-1.5 text-xs font-semibold text-rose">
-            <AlertTriangle size={13} className="shrink-0" /> QC failed
-          </span>
-          {card.qcFail.failedItems.length > 0 && (
-            <ul className="ml-1 list-inside list-disc text-xs text-ink">
-              {card.qcFail.failedItems.map((label, i) => (
-                <li key={i} className="truncate">{label}</li>
-              ))}
-            </ul>
-          )}
-          {card.qcFail.reason && (
-            <p className="text-xs italic text-slate">&ldquo;{card.qcFail.reason}&rdquo;</p>
-          )}
-        </div>
-      )}
-
-      {card.customerRevision && (
-        <div className="flex flex-col gap-1 rounded-input border border-pigment/20 bg-pigment-soft p-2">
-          <span className="flex items-center gap-1.5 text-xs font-semibold text-pigment">
-            <AlertTriangle size={13} className="shrink-0" /> Revision requested
-          </span>
-          {card.customerRevision.failedItems.length > 0 && (
-            <ul className="ml-1 list-inside list-disc text-xs text-ink">
-              {card.customerRevision.failedItems.map((label, i) => (
-                <li key={i} className="truncate">{label}</li>
-              ))}
-            </ul>
-          )}
-          {card.customerRevision.reason && (
-            <p className="text-xs italic text-slate">
-              &ldquo;{card.customerRevision.reason}&rdquo;
-            </p>
-          )}
-        </div>
-      )}
     </div>
   );
 }

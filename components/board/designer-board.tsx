@@ -15,6 +15,7 @@ import {
 import { useToast } from "@/components/ui";
 import { OrderCard } from "./order-card";
 import { BoardColumn } from "./board-column";
+import { CardModal } from "./card-modal";
 import { moveOrder } from "@/app/(app)/board/actions";
 import type { BoardCard, DesignerBoard as BoardData } from "@/lib/orders/board-data";
 import type { OrderStatus } from "@/lib/orders/transitions";
@@ -48,8 +49,22 @@ export function DesignerBoard({ initial }: { initial: Cols }) {
   const toast = useToast();
   const [cols, setCols] = useState<Cols>(initial);
   const [active, setActive] = useState<BoardCard | null>(null);
+  const [openCard, setOpenCard] = useState<BoardCard | null>(null);
 
   useEffect(() => setCols(initial), [initial]);
+
+  // Keep the open modal's card in sync after a router.refresh reloads the board
+  // (e.g. its status changed while open); close it if the card is gone.
+  useEffect(() => {
+    if (!openCard) return;
+    for (const k of Object.keys(cols) as ColKey[]) {
+      const found = cols[k].find((c) => c.orderId === openCard.orderId);
+      if (found) {
+        if (found !== openCard) setOpenCard(found);
+        return;
+      }
+    }
+  }, [cols, openCard]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -104,10 +119,12 @@ export function DesignerBoard({ initial }: { initial: Cols }) {
             cards={cols[col.key]}
             droppable={DROP_TARGETS.has(col.key)}
             draggable={DRAG_SOURCES.has(col.key)}
+            onOpen={setOpenCard}
           />
         ))}
       </div>
       <DragOverlay>{active ? <OrderCard card={active} overlay /> : null}</DragOverlay>
+      {openCard && <CardModal card={openCard} onClose={() => setOpenCard(null)} />}
     </DndContext>
   );
 }

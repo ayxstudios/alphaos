@@ -8,6 +8,12 @@ import {
   OrderTransitionError,
   type OrderStatus,
 } from "@/lib/orders/transitions";
+import {
+  getCardDetail,
+  addComment,
+  type CardDetail,
+  type CardEvent,
+} from "@/lib/orders/card-detail";
 
 export type MoveResult =
   | { ok: true; status: OrderStatus }
@@ -40,4 +46,29 @@ export async function moveOrder(
     }
     throw err;
   }
+}
+
+/** Lazy-load a card's history feed + images when its modal opens. */
+export async function loadCard(orderId: string): Promise<CardDetail> {
+  const session = await auth();
+  if (!session?.user) throw new Error("Not signed in");
+  const user = { id: session.user.id, role: session.user.role };
+  return getCardDetail(user, orderId);
+}
+
+export type CommentResult =
+  | { ok: true; event: CardEvent }
+  | { ok: false; message: string };
+
+/** Post a team comment (admin / VA / designer) onto a card's history. */
+export async function postComment(orderId: string, body: string): Promise<CommentResult> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, message: "Not signed in" };
+  const text = body.trim();
+  if (!text) return { ok: false, message: "Message is empty" };
+  if (text.length > 5000) return { ok: false, message: "Message is too long" };
+  const user = { id: session.user.id, role: session.user.role };
+  const event = await addComment(user, orderId, text);
+  revalidatePath("/board");
+  return { ok: true, event };
 }

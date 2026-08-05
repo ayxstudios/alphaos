@@ -16,12 +16,14 @@ export function BoardColumn({
   cards,
   droppable,
   draggable,
+  onOpen,
 }: {
   id: string;
   title: string;
   cards: BoardCard[];
   droppable: boolean; // accepts dropped cards
   draggable: boolean; // its cards can be picked up
+  onOpen?: (card: BoardCard) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id, disabled: !droppable });
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -30,12 +32,12 @@ export function BoardColumn({
   const virtualizer = useVirtualizer({
     count: cards.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 96,
-    overscan: 8,
+    estimateSize: () => 320,
+    overscan: 6,
   });
 
   return (
-    <div className="flex w-[17rem] shrink-0 flex-col rounded-card bg-canvas">
+    <div className="flex w-[20rem] shrink-0 flex-col rounded-card bg-canvas">
       <div className="flex items-center justify-between px-3 py-2">
         <span className="text-sm font-semibold text-ink">{title}</span>
         <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-slate">
@@ -74,6 +76,7 @@ export function BoardColumn({
                     card={cards[vi.index]}
                     from={id}
                     disabled={!draggable}
+                    onOpen={onOpen}
                   />
                 </div>
               ))}
@@ -87,6 +90,7 @@ export function BoardColumn({
                 card={c}
                 from={id}
                 disabled={!draggable}
+                onOpen={onOpen}
               />
             ))}
             {cards.length === 0 && (
