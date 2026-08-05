@@ -6,6 +6,7 @@ import type { ComponentType } from "react";
 
 import { cn } from "@/lib/utils";
 import { focusRing } from "@/components/ui/styles";
+import { Tooltip } from "@/components/ui";
 import type { Role } from "@/lib/auth/config";
 import {
   Grid,
@@ -32,45 +33,117 @@ const DESIGNER_NAV: NavItem[] = [
   { label: "My Board", href: "/board", icon: Columns },
 ];
 
-export function Sidebar({ role }: { role: Role }) {
+type SidebarProps = {
+  role: Role;
+  collapsed?: boolean;
+  mobile?: boolean;
+  onToggle?: () => void;
+  onNavigate?: () => void;
+};
+
+export function Sidebar({
+  role,
+  collapsed = false,
+  mobile = false,
+  onToggle,
+  onNavigate,
+}: SidebarProps) {
   const pathname = usePathname();
   const nav = role === "designer" ? DESIGNER_NAV : STAFF_NAV;
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col border-r border-line bg-surface">
-      <div className="flex h-14 items-center gap-2 px-4">
-        <span className="flex size-8 items-center justify-center rounded-input bg-pigment text-surface font-display text-base font-bold">
+    <aside
+      className={cn(
+        "flex h-screen shrink-0 flex-col border-r border-line bg-surface transition-[width] duration-150 ease-standard",
+        collapsed && !mobile ? "w-[4.5rem]" : "w-60",
+      )}
+    >
+      <div
+        className={cn(
+          "flex h-16 items-center gap-3 px-4",
+          collapsed && !mobile && "justify-center px-3",
+        )}
+      >
+        <Link
+          href="/dashboard"
+          onClick={onNavigate}
+          aria-label="AlphaOS dashboard"
+          className={cn(
+            "flex size-9 shrink-0 items-center justify-center rounded-input bg-pigment text-surface font-display text-base font-bold",
+            focusRing,
+          )}
+        >
           A
-        </span>
-        <span className="font-display text-lg font-semibold text-ink">
-          AlphaOS
-        </span>
+        </Link>
+        {(!collapsed || mobile) && (
+          <div className="min-w-0">
+            <p className="font-display text-lg font-semibold leading-5 text-ink">
+              AlphaOS
+            </p>
+            <p className="text-xs text-slate">Operations</p>
+          </div>
+        )}
       </div>
-      <nav className="flex flex-col gap-0.5 p-2">
+
+      <nav className="flex flex-1 flex-col gap-1 px-2 py-2">
         {nav.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(item.href + "/");
           const Glyph = item.icon;
-          return (
+          const link = (
             <Link
               key={item.href}
               href={item.href}
+              onClick={onNavigate}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "flex items-center gap-3 rounded-input px-3 py-2 text-sm font-medium",
-                "transition-colors motion-hover",
+                "group relative flex h-10 items-center gap-3 rounded-input px-3 text-sm font-medium",
+                "transition-colors duration-150 ease-standard motion-hover",
                 focusRing,
+                collapsed && !mobile && "justify-center px-0",
                 active
-                  ? "bg-pigment-soft text-pigment"
+                  ? "text-pigment"
                   : "text-slate hover:bg-canvas hover:text-ink",
               )}
             >
+              <span
+                className={cn(
+                  "absolute left-0 top-2 h-6 w-0.5 rounded-full bg-pigment opacity-0 transition-opacity",
+                  active && "opacity-100",
+                )}
+              />
               <Glyph size={18} className="shrink-0" />
-              {item.label}
+              {(!collapsed || mobile) && <span>{item.label}</span>}
             </Link>
+          );
+          return collapsed && !mobile ? (
+            <Tooltip key={item.href} content={item.label} side="right">
+              {link}
+            </Tooltip>
+          ) : (
+            link
           );
         })}
       </nav>
+
+      <div className="border-t border-line p-2">
+        {onToggle && !mobile && (
+          <button
+            type="button"
+            onClick={onToggle}
+            className={cn(
+              "flex h-10 w-full items-center justify-center rounded-input text-sm font-medium text-slate transition-colors hover:bg-canvas hover:text-ink",
+              focusRing,
+            )}
+          >
+            <span className="sr-only">
+              {collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            </span>
+            <Columns size={17} className={cn(collapsed && "rotate-180")} />
+            {!collapsed && <span className="ml-2">Collapse</span>}
+          </button>
+        )}
+      </div>
     </aside>
   );
 }

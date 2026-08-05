@@ -136,6 +136,13 @@ export const Undo = (p: IconProps) => (
     <path d="M20 20v-7a4 4 0 0 0-4-4H4" />
   </Icon>
 );
+export const Menu = (p: IconProps) => (
+  <Icon {...p}>
+    <line x1="3" y1="6" x2="21" y2="6" />
+    <line x1="3" y1="12" x2="21" y2="12" />
+    <line x1="3" y1="18" x2="21" y2="18" />
+  </Icon>
+);
 
 /* --- Navigation / shell icons ------------------------------------------- */
 export const Grid = (p: IconProps) => (

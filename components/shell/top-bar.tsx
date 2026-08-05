@@ -1,12 +1,19 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 
 import { cn } from "@/lib/utils";
 import { Avatar, Badge } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
-import { Bell, Building, ChevronDown, Check, LogOut } from "@/components/ui/icons";
+import {
+  Bell,
+  Building,
+  ChevronDown,
+  Check,
+  LogOut,
+  Search,
+} from "@/components/ui/icons";
 import type { Role } from "@/lib/auth/config";
 import type { BusinessOption } from "@/lib/shell/context";
 import { Popover } from "./popover";
@@ -17,6 +24,7 @@ type TopBarProps = {
   options: BusinessOption[];
   selected: BusinessOption;
   unread: number;
+  mobileMenuButton?: React.ReactNode;
 };
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -25,9 +33,16 @@ const ROLE_LABEL: Record<Role, string> = {
   designer: "Designer",
 };
 
-export function TopBar({ user, options, selected, unread }: TopBarProps) {
+export function TopBar({
+  user,
+  options,
+  selected,
+  unread,
+  mobileMenuButton,
+}: TopBarProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [query, setQuery] = useState("");
 
   function choose(id: string, close: () => void) {
     close();
@@ -37,56 +52,86 @@ export function TopBar({ user, options, selected, unread }: TopBarProps) {
     });
   }
 
+  function submitSearch(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = query.trim();
+    router.push(
+      trimmed ? `/orders?q=${encodeURIComponent(trimmed)}` : "/orders",
+    );
+  }
+
   return (
-    <header className="flex h-14 items-center justify-between gap-3 border-b border-line bg-surface px-4">
-      {/* Business switcher */}
-      <Popover
-        align="start"
-        ariaLabel="Switch business"
-        triggerClassName={cn(
-          "inline-flex items-center gap-2 rounded-input border border-line bg-surface py-1.5 pl-2 pr-2.5 text-sm font-medium text-ink",
-          "border-l-2 border-l-pigment transition-colors motion-hover hover:bg-canvas",
-          pending && "opacity-60",
-        )}
-        trigger={
-          <>
-            <Building size={16} className="text-pigment" />
-            <span className="max-w-[12rem] truncate">{selected.name}</span>
-            <ChevronDown size={15} className="text-slate" />
-          </>
-        }
-      >
-        {(close) => (
-          <div className="flex flex-col">
-            <p className="px-2 py-1.5 text-xs font-medium uppercase tracking-wide text-slate">
-              Business
-            </p>
-            {options.map((o) => {
-              const active = o.id === selected.id;
-              return (
-                <button
-                  key={o.id}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => choose(o.id, close)}
-                  className={cn(
-                    "flex items-center justify-between gap-3 rounded-input px-2 py-1.5 text-left text-sm",
-                    "transition-colors motion-hover hover:bg-canvas",
-                    focusRing,
-                    active ? "text-pigment" : "text-ink",
-                  )}
-                >
-                  <span className="truncate">{o.name}</span>
-                  {active && <Check size={15} className="shrink-0" />}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </Popover>
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-line bg-surface/95 px-4 backdrop-blur-none sm:px-5">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        {mobileMenuButton}
+        <Popover
+          align="start"
+          ariaLabel="Switch workspace"
+          triggerClassName={cn(
+            "inline-flex h-10 max-w-[13rem] items-center gap-2 rounded-input border border-line bg-surface px-2.5 text-sm font-medium text-ink",
+            "transition-colors duration-150 ease-standard motion-hover hover:bg-canvas",
+            pending && "opacity-60",
+          )}
+          trigger={
+            <>
+              <Building size={16} className="shrink-0 text-pigment" />
+              <span className="truncate">{selected.name}</span>
+              <ChevronDown size={15} className="shrink-0 text-slate" />
+            </>
+          }
+        >
+          {(close) => (
+            <div className="flex flex-col">
+              <p className="px-2 py-1.5 text-xs font-medium uppercase text-slate">
+                Workspace
+              </p>
+              {options.map((o) => {
+                const active = o.id === selected.id;
+                return (
+                  <button
+                    key={o.id}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => choose(o.id, close)}
+                    className={cn(
+                      "flex items-center justify-between gap-3 rounded-input px-2 py-1.5 text-left text-sm",
+                      "transition-colors motion-hover hover:bg-canvas",
+                      focusRing,
+                      active ? "text-pigment" : "text-ink",
+                    )}
+                  >
+                    <span className="truncate">{o.name}</span>
+                    {active && <Check size={15} className="shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </Popover>
+
+        <form
+          role="search"
+          onSubmit={submitSearch}
+          className="relative hidden w-full max-w-md sm:block"
+        >
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate"
+          />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search orders or customers"
+            className={cn(
+              "h-10 w-full rounded-input border border-line bg-canvas pl-9 pr-3 text-sm text-ink placeholder:text-slate/75",
+              "transition-colors focus:bg-surface",
+              focusRing,
+            )}
+          />
+        </form>
+      </div>
 
       <div className="flex items-center gap-2">
-        {/* Notification bell */}
         <Popover
           ariaLabel={`Notifications${unread ? `, ${unread} unread` : ""}`}
           triggerClassName={cn(
@@ -126,6 +171,9 @@ export function TopBar({ user, options, selected, unread }: TopBarProps) {
           trigger={
             <>
               <Avatar name={user.name} size="sm" />
+              <span className="hidden max-w-28 truncate text-sm font-medium text-ink md:inline">
+                {user.name}
+              </span>
               <ChevronDown size={15} className="text-slate" />
             </>
           }

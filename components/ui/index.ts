@@ -22,4 +22,13 @@ export { ToastProvider, useToast } from "./toast";
 export { Skeleton } from "./skeleton";
 export { EmptyState } from "./empty-state";
 export { Tooltip } from "./tooltip";
+export {
+  Page,
+  PageHeader,
+  SectionHeader,
+  StatCard,
+  DataPanel,
+  FilterBar,
+  TableShell,
+} from "./page";
 export * as Icons from "./icons";
