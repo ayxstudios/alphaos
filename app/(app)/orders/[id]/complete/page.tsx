@@ -3,15 +3,26 @@ import { eq, sql } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
-import { orders, shops, businesses, customers, orderItems, assets } from "@/lib/db/schema";
+import {
+  orders,
+  shops,
+  businesses,
+  customers,
+  orderItems,
+  assets,
+} from "@/lib/db/schema";
 import { isR2Configured } from "@/lib/storage/r2";
 import { NewOrderForm, type ExistingOrder } from "@/components/orders/new-order-form";
-import { StatusChip } from "@/components/ui";
+import { Page, PageHeader, StatusChip } from "@/components/ui";
 import type { OrderStatus } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
-export default async function CompleteOrderPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function CompleteOrderPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
@@ -47,7 +58,11 @@ export default async function CompleteOrderPage({ params }: { params: Promise<{ 
   if (order.customerId) {
     const [c] = await withUserContext(user, (tx) =>
       tx
-        .select({ firstName: customers.firstName, lastName: customers.lastName, email: customers.email })
+        .select({
+          firstName: customers.firstName,
+          lastName: customers.lastName,
+          email: customers.email,
+        })
         .from(customers)
         .where(eq(customers.id, order.customerId!)),
     );
@@ -98,18 +113,13 @@ export default async function CompleteOrderPage({ params }: { params: Promise<{ 
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <h1 className="font-display text-2xl font-semibold text-ink">Complete order details</h1>
-          <div className="flex flex-wrap items-center gap-2 text-sm text-slate">
-            <span className="font-medium text-ink">Etsy order {existing.orderNumber}</span>
-            <span>{existing.shopLabel}</span>
-          </div>
-        </div>
-        <StatusChip status={order.status as OrderStatus} />
-      </div>
+    <Page className="max-w-5xl">
+      <PageHeader
+        title="Complete order details"
+        description={`${existing.shopLabel} · Etsy order ${existing.orderNumber}`}
+        actions={<StatusChip status={order.status as OrderStatus} />}
+      />
       <NewOrderForm shops={[]} r2Enabled={isR2Configured()} existing={existing} />
-    </div>
+    </Page>
   );
 }

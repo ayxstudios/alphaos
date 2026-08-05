@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import { loadShellData } from "@/lib/shell/context";
 import { getOutbox } from "@/lib/email/outbox";
 import { OutboxItemCard } from "@/components/queue/outbox-item";
-import { Card, EmptyState } from "@/components/ui";
+import { EmptyState, Page, PageHeader } from "@/components/ui";
 import { Inbox } from "@/components/ui/icons";
 
 export const dynamic = "force-dynamic";
@@ -20,26 +20,32 @@ export default async function OutboxPage() {
   const items = await getOutbox(user, { businessId: selected.id });
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="font-display text-2xl font-semibold text-ink">Outbox</h1>
-        <Link href="/queue" className="text-sm font-medium text-pigment hover:underline">
-          ← Back to queue
-        </Link>
-      </div>
-      <p className="text-sm text-slate">
-        Customer emails awaiting approval. Review, edit if needed, then send. Photo
-        requests and reminders send automatically and never appear here.
+    <Page>
+      <PageHeader
+        title="Outbox"
+        description="Customer emails waiting for VA approval."
+        actions={
+          <Link
+            href="/queue"
+            className="inline-flex h-10 items-center rounded-input px-3 text-sm font-medium text-pigment transition-colors hover:bg-pigment-soft"
+          >
+            Back to queue
+          </Link>
+        }
+      />
+      <p className="max-w-2xl text-sm text-slate">
+        Review, edit if needed, then send. Automatic photo requests and reminders
+        do not appear here.
       </p>
 
       {items.length === 0 ? (
-        <Card>
+        <div className="rounded-card border border-line bg-surface shadow-sm">
           <EmptyState
             icon={Inbox}
             headline="Nothing to approve"
-            body="No drafts are waiting. New proof-ready emails will land here for review."
+            body="New proof-ready emails will land here for review."
           />
-        </Card>
+        </div>
       ) : (
         <div className="flex flex-col gap-4">
           {items.map((item) => (
@@ -47,6 +53,6 @@ export default async function OutboxPage() {
           ))}
         </div>
       )}
-    </div>
+    </Page>
   );
 }

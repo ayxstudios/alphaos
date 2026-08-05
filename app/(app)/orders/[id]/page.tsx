@@ -4,8 +4,17 @@ import { and, desc, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
 import { messages, orders } from "@/lib/db/schema";
-import { Card, CardContent, CardHeader, CardTitle, StatusChip, Badge } from "@/components/ui";
-import type { OrderStatus } from "@/components/ui";
+import {
+  Badge,
+  DataPanel,
+  EmptyState,
+  Page,
+  PageHeader,
+  SectionHeader,
+  StatusChip,
+  type OrderStatus,
+} from "@/components/ui";
+import { Inbox } from "@/components/ui/icons";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +28,6 @@ export default async function OrderDetailPage({
   const user = { id: session.user.id, role: session.user.role };
   const { id } = await params;
 
-  // RLS scopes this: a designer only sees orders they are actively assigned.
   const [order] = await withUserContext(user, (tx) =>
     tx
       .select({
@@ -27,6 +35,8 @@ export default async function OrderDetailPage({
         platformOrderId: orders.platformOrderId,
         platformOrderName: orders.platformOrderName,
         status: orders.status,
+        dueAt: orders.dueAt,
+        notes: orders.notes,
       })
       .from(orders)
       .where(eq(orders.id, id)),
@@ -34,8 +44,6 @@ export default async function OrderDetailPage({
 
   if (!order) notFound();
 
-  // Email timeline for this order: sent outbound + received inbound, newest last.
-  // RLS scopes visibility (a designer sees only their assigned order's messages).
   const timeline = await withUserContext(user, (tx) =>
     tx
       .select({
@@ -49,76 +57,87 @@ export default async function OrderDetailPage({
         createdAt: messages.createdAt,
       })
       .from(messages)
-      .where(
-        and(
-          eq(messages.orderId, id),
-          eq(messages.channel, "email"),
-        ),
-      )
+      .where(and(eq(messages.orderId, id), eq(messages.channel, "email")))
       .orderBy(desc(messages.createdAt))
       .limit(50),
   );
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <h1 className="font-display text-2xl font-semibold text-ink">
-          {order.platformOrderName ?? order.platformOrderId}
-        </h1>
-        <StatusChip status={order.status as OrderStatus} />
-      </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Order detail</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-slate">
-            Full order detail, assets, proofs, and activity will render here.
-          </p>
-        </CardContent>
-      </Card>
+    <Page>
+      <PageHeader
+        title={order.platformOrderName ?? order.platformOrderId}
+        description={
+          order.dueAt
+            ? `Due ${new Intl.DateTimeFormat("en-AU", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+              }).format(order.dueAt)}`
+            : "No due date"
+        }
+        actions={<StatusChip status={order.status as OrderStatus} />}
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Customer email</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {timeline.length === 0 ? (
-            <p className="text-sm text-slate">No customer email on this order yet.</p>
-          ) : (
-            <ul className="flex flex-col gap-3">
-              {timeline.map((m) => {
-                const inbound = m.direction === "inbound";
-                const when = m.sentAt ?? m.createdAt;
-                return (
-                  <li
-                    key={m.id}
-                    className={`rounded-card border border-line p-3 ${inbound ? "bg-pigment-soft/40" : "bg-canvas"}`}
-                  >
-                    <div className="mb-1 flex flex-wrap items-center gap-2">
-                      <Badge variant={inbound ? "info" : "neutral"} dot>
-                        {inbound ? "Reply from customer" : "Sent to customer"}
+      <DataPanel className="p-4">
+        <SectionHeader title="Order" />
+        <p className="mt-3 text-sm text-slate">
+          Full assets, proofs, and activity will appear here as the workflow
+          expands.
+        </p>
+        {order.notes && (
+          <p className="mt-3 rounded-input bg-canvas p-3 text-sm text-ink">
+            {order.notes}
+          </p>
+        )}
+      </DataPanel>
+
+      <DataPanel className="overflow-hidden">
+        <div className="border-b border-line px-4 py-3">
+          <SectionHeader title="Customer email" />
+        </div>
+        {timeline.length === 0 ? (
+          <EmptyState
+            icon={Inbox}
+            headline="No customer email yet"
+            body="Messages sent from this order will appear here."
+          />
+        ) : (
+          <ul className="divide-y divide-line">
+            {timeline.map((m) => {
+              const inbound = m.direction === "inbound";
+              const when = m.sentAt ?? m.createdAt;
+              return (
+                <li key={m.id} className="px-4 py-3">
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <Badge variant={inbound ? "info" : "neutral"} dot>
+                      {inbound ? "Customer reply" : "Sent"}
+                    </Badge>
+                    {!inbound && m.status !== "sent" && (
+                      <Badge
+                        variant={m.status === "failed" ? "danger" : "warning"}
+                        dot
+                      >
+                        {m.status}
                       </Badge>
-                      {!inbound && m.status !== "sent" && (
-                        <Badge variant={m.status === "failed" ? "danger" : "warning"} dot>
-                          {m.status}
-                        </Badge>
-                      )}
-                      <span className="text-xs text-slate">
-                        {when ? new Date(when).toLocaleString() : ""}
-                      </span>
-                    </div>
-                    {m.subject && <p className="text-sm font-medium text-ink">{m.subject}</p>}
-                    {m.body && (
-                      <p className="mt-0.5 whitespace-pre-wrap text-sm text-slate line-clamp-6">{m.body}</p>
                     )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+                    <span className="text-xs text-slate">
+                      {when ? new Date(when).toLocaleString() : ""}
+                    </span>
+                  </div>
+                  {m.subject && (
+                    <p className="text-sm font-medium text-ink">{m.subject}</p>
+                  )}
+                  {m.body && (
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-slate line-clamp-5">
+                      {m.body}
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </DataPanel>
+    </Page>
   );
 }

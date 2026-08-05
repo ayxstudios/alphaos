@@ -6,6 +6,7 @@ import { withUserContext } from "@/lib/db";
 import { shops, businesses } from "@/lib/db/schema";
 import { isR2Configured } from "@/lib/storage/r2";
 import { NewOrderForm, type ShopOption } from "@/components/orders/new-order-form";
+import { Page, PageHeader } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -41,9 +42,12 @@ export default async function NewOrderPage() {
   }));
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-      <h1 className="font-display text-2xl font-semibold text-ink">New order</h1>
+    <Page className="max-w-2xl">
+      <PageHeader
+        title="New order"
+        description="Create a manual order without changing imported marketplace workflows."
+      />
       <NewOrderForm shops={options} r2Enabled={isR2Configured()} />
-    </div>
+    </Page>
   );
 }

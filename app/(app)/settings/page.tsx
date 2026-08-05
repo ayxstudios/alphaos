@@ -3,20 +3,39 @@ import { and, eq } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
-import { shops, businesses, emailTemplates } from "@/lib/db/schema";
-import { getShopCredentials, getBusinessGmailCredentials } from "@/lib/db/credentials";
+import { businesses, emailTemplates, shops } from "@/lib/db/schema";
+import {
+  getBusinessGmailCredentials,
+  getShopCredentials,
+} from "@/lib/db/credentials";
 import { loadShellData, ALL_BUSINESSES } from "@/lib/shell/context";
-import { Card, EmptyState } from "@/components/ui";
+import { DataPanel, EmptyState, Page, PageHeader, SectionHeader } from "@/components/ui";
 import { Settings as SettingsIcon } from "@/components/ui/icons";
-import { EtsyShopCard, type EtsyShopVM } from "@/components/settings/etsy-shop-card";
-import { ShopifyShopCard, type ShopifyShopVM } from "@/components/settings/shopify-shop-card";
-import { GmailBusinessCard, type GmailBusinessVM } from "@/components/settings/gmail-business-card";
+import {
+  EtsyShopCard,
+  type EtsyShopVM,
+} from "@/components/settings/etsy-shop-card";
+import {
+  ShopifyShopCard,
+  type ShopifyShopVM,
+} from "@/components/settings/shopify-shop-card";
+import {
+  GmailBusinessCard,
+  type GmailBusinessVM,
+} from "@/components/settings/gmail-business-card";
 import { TemplateEditor, type TemplateVM } from "@/components/settings/template-editor";
-import { DEFAULT_TEMPLATES, TEMPLATE_META, type TemplateKey } from "@/lib/email/templates";
+import {
+  DEFAULT_TEMPLATES,
+  TEMPLATE_META,
+  type TemplateKey,
+} from "@/lib/email/templates";
 import { getShopOptionNames, getShopSkusAndTitles } from "@/lib/orders/resolution";
 import { photoRequestEnabled as resolvePhotoRequestEnabled } from "@/lib/integrations/classify";
 import { appUrl } from "@/lib/urls";
-import type { EtsyCredentials, EtsyIntegrationConfig } from "@/lib/integrations/etsy";
+import type {
+  EtsyCredentials,
+  EtsyIntegrationConfig,
+} from "@/lib/integrations/etsy";
 import {
   resolveShopifyAuthType,
   isShopifyConnected,
@@ -34,16 +53,16 @@ export default async function SettingsPage() {
 
   if (user.role !== "admin") {
     return (
-      <div className="flex flex-col gap-4">
-        <h1 className="font-display text-2xl font-semibold text-ink">Settings</h1>
-        <Card>
+      <Page>
+        <PageHeader title="Settings" />
+        <DataPanel>
           <EmptyState
             icon={SettingsIcon}
             headline="Managed by an admin"
             body="Shop connections and integration settings are configured by an admin."
           />
-        </Card>
-      </div>
+        </DataPanel>
+      </Page>
     );
   }
 
@@ -60,7 +79,9 @@ export default async function SettingsPage() {
       : tx
           .select(cols)
           .from(shops)
-          .where(and(eq(shops.platform, "etsy"), eq(shops.businessId, selected.id)));
+          .where(
+            and(eq(shops.platform, "etsy"), eq(shops.businessId, selected.id)),
+          );
   });
 
   const cards: EtsyShopVM[] = await Promise.all(
@@ -103,7 +124,9 @@ export default async function SettingsPage() {
       : tx
           .select(cols)
           .from(shops)
-          .where(and(eq(shops.platform, "shopify"), eq(shops.businessId, selected.id)));
+          .where(
+            and(eq(shops.platform, "shopify"), eq(shops.businessId, selected.id)),
+          );
   });
 
   const shopifyCards: ShopifyShopVM[] = await Promise.all(
@@ -149,7 +172,10 @@ export default async function SettingsPage() {
       getBusinessGmailCredentials(tx, selected.id),
     )) as GmailCredentials | null;
     const [biz] = await withUserContext(user, (tx) =>
-      tx.select({ address: businesses.gmailAddress }).from(businesses).where(eq(businesses.id, selected.id)),
+      tx
+        .select({ address: businesses.gmailAddress })
+        .from(businesses)
+        .where(eq(businesses.id, selected.id)),
     );
     gmailVM = {
       businessId: selected.id,
@@ -163,7 +189,11 @@ export default async function SettingsPage() {
 
     const overrides = await withUserContext(user, (tx) =>
       tx
-        .select({ key: emailTemplates.key, subject: emailTemplates.subject, body: emailTemplates.body })
+        .select({
+          key: emailTemplates.key,
+          subject: emailTemplates.subject,
+          body: emailTemplates.body,
+        })
         .from(emailTemplates)
         .where(eq(emailTemplates.businessId, selected.id)),
     );
@@ -184,86 +214,112 @@ export default async function SettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <h1 className="font-display text-2xl font-semibold text-ink">Settings</h1>
-      <section className="flex flex-col gap-4">
-        <div>
-          <h2 className="font-display text-lg font-semibold text-ink">Etsy shops</h2>
-          <p className="text-sm text-slate">
-            Connect each Etsy shop with its own app credentials, then import orders.
-          </p>
-        </div>
-        {cards.length === 0 ? (
-          <Card>
-            <EmptyState
-              icon={SettingsIcon}
-              headline="No Etsy shops"
-              body="No Etsy shops in the selected business."
-            />
-          </Card>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {cards.map((c) => (
-              <EtsyShopCard key={c.id} shop={c} />
-            ))}
-          </div>
-        )}
-      </section>
+    <Page className="grid gap-6 lg:grid-cols-[12rem_minmax(0,1fr)]">
+      <aside className="hidden lg:block">
+        <nav className="sticky top-20 flex flex-col gap-1 text-sm">
+          <a
+            href="#etsy"
+            className="rounded-input px-2 py-1.5 text-slate hover:bg-surface hover:text-ink"
+          >
+            Etsy
+          </a>
+          <a
+            href="#shopify"
+            className="rounded-input px-2 py-1.5 text-slate hover:bg-surface hover:text-ink"
+          >
+            Shopify
+          </a>
+          <a
+            href="#email"
+            className="rounded-input px-2 py-1.5 text-slate hover:bg-surface hover:text-ink"
+          >
+            Email
+          </a>
+        </nav>
+      </aside>
+      <div className="flex min-w-0 flex-col gap-6">
+        <PageHeader
+          title="Settings"
+          description="Manage shop connections, import rules, Gmail, and customer templates."
+        />
 
-      <section className="flex flex-col gap-4">
-        <div>
-          <h2 className="font-display text-lg font-semibold text-ink">Shopify shops</h2>
-          <p className="text-sm text-slate">
-            Connect each Shopify store with its domain and a custom app Admin API token.
-          </p>
-        </div>
-        {shopifyCards.length === 0 ? (
-          <Card>
-            <EmptyState
-              icon={SettingsIcon}
-              headline="No Shopify shops"
-              body="No Shopify shops in the selected business."
-            />
-          </Card>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {shopifyCards.map((c) => (
-              <ShopifyShopCard key={c.id} shop={c} />
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="flex flex-col gap-4">
-        <div>
-          <h2 className="font-display text-lg font-semibold text-ink">Customer email (Gmail)</h2>
-          <p className="text-sm text-slate">
-            Connect each business&apos;s own Google Workspace mailbox and edit the templates
-            customers receive.
-          </p>
-        </div>
-        {gmailVM ? (
-          <>
-            <GmailBusinessCard gmail={gmailVM} />
-            <div>
-              <h3 className="font-display text-base font-semibold text-ink">Email templates</h3>
-              <p className="text-sm text-slate">
-                Edit without a deploy. Variables render server-side; a customized template
-                overrides the built-in default.
-              </p>
+        <section id="etsy" className="flex scroll-mt-20 flex-col gap-4">
+          <SectionHeader
+            title="Etsy shops"
+            description="Connect each Etsy shop with its own app credentials, then import orders."
+          />
+          {cards.length === 0 ? (
+            <DataPanel>
+              <EmptyState
+                icon={SettingsIcon}
+                headline="No Etsy shops"
+                body="No Etsy shops in the selected business."
+              />
+            </DataPanel>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {cards.map((c) => (
+                <EtsyShopCard key={c.id} shop={c} />
+              ))}
             </div>
-            <TemplateEditor businessId={gmailVM.businessId} templates={templateVMs} />
-          </>
-        ) : (
-          <Card>
-            <EmptyState
-              icon={SettingsIcon}
-              headline="Pick a business"
-              body="Select a single business (top bar) to configure its mailbox and email templates."
-            />
-          </Card>
-        )}
-      </section>
-    </div>
+          )}
+        </section>
+
+        <section id="shopify" className="flex scroll-mt-20 flex-col gap-4">
+          <SectionHeader
+            title="Shopify shops"
+            description="Connect each store with its domain and custom app Admin API token."
+          />
+          {shopifyCards.length === 0 ? (
+            <DataPanel>
+              <EmptyState
+                icon={SettingsIcon}
+                headline="No Shopify shops"
+                body="No Shopify shops in the selected business."
+              />
+            </DataPanel>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {shopifyCards.map((c) => (
+                <ShopifyShopCard key={c.id} shop={c} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section id="email" className="flex scroll-mt-20 flex-col gap-4">
+          <SectionHeader
+            title="Customer email"
+            description="Connect the business mailbox and edit customer-facing templates."
+          />
+          {gmailVM ? (
+            <>
+              <GmailBusinessCard gmail={gmailVM} />
+              <div>
+                <h3 className="text-base font-semibold text-ink">
+                  Email templates
+                </h3>
+                <p className="text-sm text-slate">
+                  Edit without a deploy. Variables render server-side; a
+                  customized template overrides the built-in default.
+                </p>
+              </div>
+              <TemplateEditor
+                businessId={gmailVM.businessId}
+                templates={templateVMs}
+              />
+            </>
+          ) : (
+            <DataPanel>
+              <EmptyState
+                icon={SettingsIcon}
+                headline="Pick a business"
+                body="Select a single business (top bar) to configure its mailbox and email templates."
+              />
+            </DataPanel>
+          )}
+        </section>
+      </div>
+    </Page>
   );
 }

@@ -5,7 +5,17 @@ import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
 import { orders, orderItems } from "@/lib/db/schema";
 import { loadShellData, ALL_BUSINESSES } from "@/lib/shell/context";
-import { Card, CardContent, CardHeader, CardTitle, EmptyState, Badge } from "@/components/ui";
+import {
+  Badge,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  DataPanel,
+  EmptyState,
+  Page,
+  PageHeader,
+} from "@/components/ui";
 import { ListChecks } from "@/components/ui/icons";
 import { ResolveFigureForm } from "@/components/queue/resolve-figure-form";
 
@@ -31,14 +41,26 @@ export default async function ReviewQueuePage() {
   const { orderRows, itemsByOrder } = await withUserContext(user, async (tx) => {
     const orderRows = await (selected.id === ALL_BUSINESSES
       ? tx
-          .select({ id: orders.id, platformOrderId: orders.platformOrderId, platformOrderName: orders.platformOrderName, customerId: orders.customerId })
+          .select({
+            id: orders.id,
+            platformOrderId: orders.platformOrderId,
+            platformOrderName: orders.platformOrderName,
+            customerId: orders.customerId,
+          })
           .from(orders)
           .where(eq(orders.needsReview, true))
           .orderBy(orders.createdAt)
       : tx
-          .select({ id: orders.id, platformOrderId: orders.platformOrderId, platformOrderName: orders.platformOrderName, customerId: orders.customerId })
+          .select({
+            id: orders.id,
+            platformOrderId: orders.platformOrderId,
+            platformOrderName: orders.platformOrderName,
+            customerId: orders.customerId,
+          })
           .from(orders)
-          .where(and(eq(orders.needsReview, true), eq(orders.businessId, selected.id)))
+          .where(
+            and(eq(orders.needsReview, true), eq(orders.businessId, selected.id)),
+          )
           .orderBy(orders.createdAt));
 
     const ids = orderRows.map((o) => o.id);
@@ -67,27 +89,24 @@ export default async function ReviewQueuePage() {
   });
 
   return (
-    <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="font-display text-2xl font-semibold text-ink">Review queue</h1>
-        <p className="text-sm text-slate">
-          Orders where the figure count couldn&apos;t be resolved automatically. Set it
-          manually — this drives designer payout, so confirm against the variation.
-        </p>
-      </div>
+    <Page>
+      <PageHeader
+        title="Review queue"
+        description="Resolve figure counts that could not be determined automatically."
+      />
 
       {orderRows.length === 0 ? (
-        <Card>
+        <DataPanel>
           <EmptyState
             icon={ListChecks}
             headline="Nothing to review"
             body="Imported orders with an unresolved figure count will appear here."
           />
-        </Card>
+        </DataPanel>
       ) : (
         <div className="flex flex-col gap-4">
           {orderRows.map((o) => (
-            <Card key={o.id}>
+            <Card key={o.id} className="shadow-sm">
               <CardHeader>
                 <div className="flex items-center justify-between gap-2">
                   <CardTitle>{o.platformOrderName ?? o.platformOrderId}</CardTitle>
@@ -104,7 +123,9 @@ export default async function ReviewQueuePage() {
                       <span className="text-sm font-medium text-ink">
                         {item.variation || "(no variation)"}
                       </span>
-                      <Badge variant={item.productType === "digital" ? "info" : "neutral"}>
+                      <Badge
+                        variant={item.productType === "digital" ? "info" : "neutral"}
+                      >
                         {item.productType}
                       </Badge>
                       {item.figureCountSource === "unresolved" ? (
@@ -128,6 +149,6 @@ export default async function ReviewQueuePage() {
           ))}
         </div>
       )}
-    </div>
+    </Page>
   );
 }
