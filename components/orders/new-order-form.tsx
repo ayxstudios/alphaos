@@ -23,6 +23,7 @@ export type ShopOption = {
   label: string;
   platform: "etsy" | "shopify";
   turnaroundDays: number;
+  styles: string[];
 };
 
 /** Set in "complete" mode: an existing awaiting_details order the VA is filling in. */
@@ -41,6 +42,7 @@ export type ExistingOrder = {
   savedProductTitle: string;
   savedFigureCount: number | null;
   savedStyle: string;
+  styleOptions: string[];
   savedProductType: "physical" | "digital" | null;
   savedNotes: string;
   photoCount: number;
@@ -123,6 +125,17 @@ export function NewOrderForm({
   const [productType, setProductType] = useState<"physical" | "digital">(initial?.productType ?? "physical");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const shop = shops.find((s) => s.id === shopId);
+  const styleOptions = useMemo(() => {
+    const source = existing ? existing.styleOptions : (shop?.styles ?? []);
+    const map = new Map<string, string>();
+    for (const option of source) {
+      const trimmed = option.trim();
+      if (trimmed) map.set(trimmed.toLowerCase(), trimmed);
+    }
+    const current = style.trim();
+    if (current) map.set(current.toLowerCase(), current);
+    return [...map.values()];
+  }, [existing, shop?.styles, style]);
   const [dueAt, setDueAt] = useState(existing?.dueAt ?? dueDefault(shop?.turnaroundDays ?? 3));
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [urlInput, setUrlInput] = useState("");
@@ -398,7 +411,18 @@ export function NewOrderForm({
 
         <div className="grid gap-3 sm:grid-cols-5">
           <Input label="Figures" type="number" min={1} value={figureCount} onChange={(e) => setFigureCount(e.target.value)} />
-          <Input label="Style" value={style} onChange={(e) => setStyle(e.target.value)} autoComplete="off" />
+          {styleOptions.length > 0 ? (
+            <Select label="Style" value={style} onChange={(e) => setStyle(e.target.value)}>
+              <option value="">Select style</option>
+              {styleOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </Select>
+          ) : (
+            <Input label="Style" value={style} onChange={(e) => setStyle(e.target.value)} autoComplete="off" />
+          )}
           <Input label="Product/category" value={productTitle} onChange={(e) => setProductTitle(e.target.value)} autoComplete="off" />
           <Select label="Fulfilment" value={productType} onChange={(e) => setProductType(e.target.value as "physical" | "digital")}>
             <option value="physical">Physical</option>

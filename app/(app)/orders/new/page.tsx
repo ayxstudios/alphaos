@@ -24,6 +24,7 @@ export default async function NewOrderPage() {
         platform: shops.platform,
         businessName: businesses.name,
         slaConfig: shops.slaConfig,
+        styles: shops.styles,
       })
       .from(shops)
       .innerJoin(businesses, eq(businesses.id, shops.businessId))
@@ -39,6 +40,7 @@ export default async function NewOrderPage() {
       typeof (r.slaConfig as { turnaroundDays?: number } | null)?.turnaroundDays === "number"
         ? (r.slaConfig as { turnaroundDays: number }).turnaroundDays
         : 3,
+    styles: r.styles ?? [],
   }));
 
   return (

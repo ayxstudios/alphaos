@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { and, eq } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
@@ -47,10 +48,31 @@ import type { GmailCredentials } from "@/lib/integrations/gmail";
 
 export const dynamic = "force-dynamic";
 
-export default async function SettingsPage() {
+const SETTINGS_SECTIONS = [
+  { key: "etsy", label: "Etsy" },
+  { key: "shopify", label: "Shopify" },
+  { key: "portrait-styles", label: "Portrait Styles" },
+  { key: "email", label: "Customer Email" },
+] as const;
+
+type SettingsSection = (typeof SETTINGS_SECTIONS)[number]["key"];
+
+function isSettingsSection(value: unknown): value is SettingsSection {
+  return SETTINGS_SECTIONS.some((section) => section.key === value);
+}
+
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ section?: string }>;
+}) {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
+  const sp = await searchParams;
+  const activeSection: SettingsSection = isSettingsSection(sp.section)
+    ? sp.section
+    : "etsy";
 
   if (user.role !== "admin") {
     return (
@@ -231,32 +253,22 @@ export default async function SettingsPage() {
 
   return (
     <Page className="grid gap-6 lg:grid-cols-[12rem_minmax(0,1fr)]">
-      <aside className="hidden lg:block">
-        <nav className="sticky top-20 flex flex-col gap-1 text-sm">
-          <a
-            href="#etsy"
-            className="rounded-input px-2 py-1.5 text-slate hover:bg-surface hover:text-ink"
-          >
-            Etsy
-          </a>
-          <a
-            href="#shopify"
-            className="rounded-input px-2 py-1.5 text-slate hover:bg-surface hover:text-ink"
-          >
-            Shopify
-          </a>
-          <a
-            href="#styles"
-            className="rounded-input px-2 py-1.5 text-slate hover:bg-surface hover:text-ink"
-          >
-            Styles
-          </a>
-          <a
-            href="#email"
-            className="rounded-input px-2 py-1.5 text-slate hover:bg-surface hover:text-ink"
-          >
-            Email
-          </a>
+      <aside>
+        <nav className="sticky top-20 flex gap-1 overflow-x-auto text-sm lg:flex-col lg:overflow-visible">
+          {SETTINGS_SECTIONS.map((section) => (
+            <Link
+              key={section.key}
+              href={`/settings?section=${section.key}`}
+              aria-current={activeSection === section.key ? "page" : undefined}
+              className={
+                activeSection === section.key
+                  ? "shrink-0 rounded-input bg-pigment text-surface px-3 py-2 font-medium"
+                  : "shrink-0 rounded-input px-3 py-2 text-slate hover:bg-surface hover:text-ink"
+              }
+            >
+              {section.label}
+            </Link>
+          ))}
         </nav>
       </aside>
       <div className="flex min-w-0 flex-col gap-6">
@@ -265,102 +277,110 @@ export default async function SettingsPage() {
           description="Manage shop connections, import rules, Gmail, and customer templates."
         />
 
-        <section id="etsy" className="flex scroll-mt-20 flex-col gap-4">
-          <SectionHeader
-            title="Etsy shops"
-            description="Connect each Etsy shop with its own app credentials, then import orders."
-          />
-          {cards.length === 0 ? (
-            <DataPanel>
-              <EmptyState
-                icon={SettingsIcon}
-                headline="No Etsy shops"
-                body="No Etsy shops in the selected business."
-              />
-            </DataPanel>
-          ) : (
-            <div className="flex flex-col gap-4">
-              {cards.map((c) => (
-                <EtsyShopCard key={c.id} shop={c} />
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section id="shopify" className="flex scroll-mt-20 flex-col gap-4">
-          <SectionHeader
-            title="Shopify shops"
-            description="Connect each store with its domain and custom app Admin API token."
-          />
-          {shopifyCards.length === 0 ? (
-            <DataPanel>
-              <EmptyState
-                icon={SettingsIcon}
-                headline="No Shopify shops"
-                body="No Shopify shops in the selected business."
-              />
-            </DataPanel>
-          ) : (
-            <div className="flex flex-col gap-4">
-              {shopifyCards.map((c) => (
-                <ShopifyShopCard key={c.id} shop={c} />
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section id="styles" className="flex scroll-mt-20 flex-col gap-4">
-          <SectionHeader
-            title="Portrait styles"
-            description="Set the styles each shop offers. Designers can only be assigned styles from this catalog, and auto-assign routes styled orders to matching designers."
-          />
-          {styleShops.length === 0 ? (
-            <DataPanel>
-              <EmptyState
-                icon={SettingsIcon}
-                headline="No shops"
-                body="No shops in the selected business."
-              />
-            </DataPanel>
-          ) : (
-            <DataPanel className="px-4 py-1">
-              <ShopStylesPanel shops={styleShops} />
-            </DataPanel>
-          )}
-        </section>
-
-        <section id="email" className="flex scroll-mt-20 flex-col gap-4">
-          <SectionHeader
-            title="Customer email"
-            description="Connect the business mailbox and edit customer-facing templates."
-          />
-          {gmailVM ? (
-            <>
-              <GmailBusinessCard gmail={gmailVM} />
-              <div>
-                <h3 className="text-base font-semibold text-ink">
-                  Email templates
-                </h3>
-                <p className="text-sm text-slate">
-                  Edit without a deploy. Variables render server-side; a
-                  customized template overrides the built-in default.
-                </p>
+        {activeSection === "etsy" && (
+          <section className="flex flex-col gap-4">
+            <SectionHeader
+              title="Etsy shops"
+              description="Connect each Etsy shop with its own app credentials, then import orders."
+            />
+            {cards.length === 0 ? (
+              <DataPanel>
+                <EmptyState
+                  icon={SettingsIcon}
+                  headline="No Etsy shops"
+                  body="No Etsy shops in the selected business."
+                />
+              </DataPanel>
+            ) : (
+              <div className="flex flex-col gap-4">
+                {cards.map((c) => (
+                  <EtsyShopCard key={c.id} shop={c} />
+                ))}
               </div>
-              <TemplateEditor
-                businessId={gmailVM.businessId}
-                templates={templateVMs}
-              />
-            </>
-          ) : (
-            <DataPanel>
-              <EmptyState
-                icon={SettingsIcon}
-                headline="Pick a business"
-                body="Select a single business (top bar) to configure its mailbox and email templates."
-              />
-            </DataPanel>
-          )}
-        </section>
+            )}
+          </section>
+        )}
+
+        {activeSection === "shopify" && (
+          <section className="flex flex-col gap-4">
+            <SectionHeader
+              title="Shopify shops"
+              description="Connect each store with its domain and custom app Admin API token."
+            />
+            {shopifyCards.length === 0 ? (
+              <DataPanel>
+                <EmptyState
+                  icon={SettingsIcon}
+                  headline="No Shopify shops"
+                  body="No Shopify shops in the selected business."
+                />
+              </DataPanel>
+            ) : (
+              <div className="flex flex-col gap-4">
+                {shopifyCards.map((c) => (
+                  <ShopifyShopCard key={c.id} shop={c} />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {activeSection === "portrait-styles" && (
+          <section className="flex flex-col gap-4">
+            <SectionHeader
+              title="Portrait Styles"
+              description="List the portrait styles this business sells. These are the styles staff can select on orders and designers can be assigned to."
+            />
+            {styleShops.length === 0 ? (
+              <DataPanel>
+                <EmptyState
+                  icon={SettingsIcon}
+                  headline="No shops"
+                  body="No shops in the selected business."
+                />
+              </DataPanel>
+            ) : (
+              <DataPanel className="px-4 py-1">
+                <ShopStylesPanel shops={styleShops} />
+              </DataPanel>
+            )}
+          </section>
+        )}
+
+        {activeSection === "email" && (
+          <section className="flex flex-col gap-4">
+            <SectionHeader
+              title="Customer email"
+              description="Connect the business mailbox and edit customer-facing templates."
+            />
+            {gmailVM ? (
+              <>
+                <GmailBusinessCard gmail={gmailVM} />
+                <div>
+                  <h3 className="text-base font-semibold text-ink">
+                    Email templates
+                  </h3>
+                  <p className="text-sm text-slate">
+                    Edit without a deploy. Variables render server-side; a
+                    customized template overrides the built-in default.
+                  </p>
+                </div>
+                <TemplateEditor
+                  businessId={gmailVM.businessId}
+                  templates={templateVMs}
+                />
+              </>
+            ) : (
+              <DataPanel>
+                <EmptyState
+                  icon={SettingsIcon}
+                  headline="Pick a business"
+                  body="Select a single business (top bar) to configure its mailbox and email templates."
+                />
+              </DataPanel>
+            )}
+          </section>
+        )}
       </div>
     </Page>
   );

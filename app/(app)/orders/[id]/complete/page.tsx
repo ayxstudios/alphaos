@@ -43,6 +43,7 @@ export default async function CompleteOrderPage({
         customerId: orders.customerId,
         shopName: shops.name,
         businessName: businesses.name,
+        styles: shops.styles,
       })
       .from(orders)
       .innerJoin(shops, eq(shops.id, orders.shopId))
@@ -106,6 +107,7 @@ export default async function CompleteOrderPage({
     savedProductTitle: item?.title ?? "",
     savedFigureCount: item?.figureCount ?? null,
     savedStyle: item?.style ?? "",
+    styleOptions: order.styles ?? [],
     savedProductType: item?.productType ?? null,
     savedNotes: order.notes ?? "",
     photoCount: photoCountRow?.count ?? 0,
