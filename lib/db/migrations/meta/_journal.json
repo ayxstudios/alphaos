@@ -85,6 +85,13 @@
       "when": 1785895849589,
       "tag": "0011_right_inhumans",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1785914567521,
+      "tag": "0012_add_designer_rank",
+      "breakpoints": true
     }
   ]
 }

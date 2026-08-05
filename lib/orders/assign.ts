@@ -16,6 +16,8 @@ const DESIGNER_SLA_HOURS = 24;
 export type Candidate = {
   designerId: string;
   styles: string[];
+  /** Manual priority — LOWER wins. Set by staff on the Designers page. */
+  rank: number;
   dailyCapacity: number;
   ordersAssignedToday: number;
   wipCount: number;
@@ -30,8 +32,14 @@ export type RankedCandidate = Candidate & {
 /**
  * PURE ranker (no DB) — testable in isolation.
  *
- * Hard filter: only designers under their daily capacity are eligible.
- * Rank: style match (soft boost, never excludes) -> most remaining capacity ->
+ * Hard filters (both must pass to be eligible):
+ *  1. Under the daily capacity (a limit of 15 = at most 15 assigned today).
+ *  2. STRICT style match — when the order has a style, only designers who list
+ *     that style are eligible. An order with no style is open to everyone.
+ *     (If no eligible designer exists the order stays unassigned — the caller
+ *     surfaces it in the VA "Unassigned" tab.)
+ *
+ * Order among the eligible: manual rank (asc) -> most remaining capacity ->
  * lowest work-in-progress -> best 30-day on-time rate.
  */
 export function rankCandidates(
@@ -41,16 +49,21 @@ export function rankCandidates(
   const style = order.style?.trim().toLowerCase() || null;
 
   const eligible = candidates
-    .filter((c) => c.ordersAssignedToday < c.dailyCapacity)
     .map((c) => ({
       ...c,
       styleMatch: !!style && c.styles.some((s) => s.trim().toLowerCase() === style),
       remainingCapacity: c.dailyCapacity - c.ordersAssignedToday,
-    }));
+    }))
+    .filter(
+      (c) =>
+        c.ordersAssignedToday < c.dailyCapacity &&
+        // Strict: a styled order goes only to a matching designer.
+        (style === null || c.styleMatch),
+    );
 
   eligible.sort(
     (a, b) =>
-      Number(b.styleMatch) - Number(a.styleMatch) ||
+      a.rank - b.rank ||
       b.remainingCapacity - a.remainingCapacity ||
       a.wipCount - b.wipCount ||
       b.onTimeRate30d - a.onTimeRate30d,
@@ -81,6 +94,7 @@ export async function runAutoAssign(
       designerId: designerProfiles.userId,
       dailyCapacity: designerProfiles.dailyCapacity,
       styles: designerProfiles.styles,
+      rank: designerProfiles.rank,
     })
     .from(designerBusinesses)
     .innerJoin(
@@ -138,6 +152,7 @@ export async function runAutoAssign(
   const candidates: Candidate[] = roster.map((r) => ({
     designerId: r.designerId,
     styles: r.styles ?? [],
+    rank: r.rank,
     dailyCapacity: r.dailyCapacity,
     ordersAssignedToday: assignedToday.get(r.designerId) ?? 0,
     wipCount: wip.get(r.designerId) ?? 0,

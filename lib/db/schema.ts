@@ -292,6 +292,10 @@ export const designerProfiles = pgTable("designer_profiles", {
   dailyCapacity: integer("daily_capacity").notNull().default(0),
   perFigureRate: numeric("per_figure_rate", { precision: 10, scale: 2 }),
   styles: text("styles").array(),
+  // Manual priority for auto-assign — LOWER wins (rank 0 is picked first). Staff
+  // reorder designers on the Designers page; the ranker uses this as the primary
+  // ordering among eligible, style-matched candidates.
+  rank: integer("rank").notNull().default(1000),
   createdAt: createdAt(),
 });
 

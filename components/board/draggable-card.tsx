@@ -32,7 +32,10 @@ export function DraggableCard({
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      onPointerDown={(e) => {
+      // Capture phase: record the press position WITHOUT overriding dnd-kit's own
+      // onPointerDown (spread above) — using onPointerDown here would clobber the
+      // sensor and break dragging entirely.
+      onPointerDownCapture={(e) => {
         down.current = { x: e.clientX, y: e.clientY };
       }}
       onClick={(e) => {

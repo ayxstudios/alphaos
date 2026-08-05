@@ -235,3 +235,13 @@ export const Spinner = ({ size = 16, className, ...props }: IconProps) => (
     />
   </svg>
 );
+
+/* --- Designers ---------------------------------------------------------- */
+export const Palette = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 21a9 9 0 1 1 0-18c4.97 0 9 3.58 9 8 0 2.5-2 3.5-3.5 3.5H15a2 2 0 0 0-1.4 3.42A1.5 1.5 0 0 1 12 21Z" />
+    <circle cx="7.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="7.5" r="1" fill="currentColor" stroke="none" />
+    <circle cx="16.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
+  </Icon>
+);

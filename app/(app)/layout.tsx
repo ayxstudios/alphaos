@@ -1,8 +1,9 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
 import { loadShellData } from "@/lib/shell/context";
-import { AppShell } from "@/components/shell/app-shell";
+import { AppShell, SIDEBAR_COOKIE } from "@/components/shell/app-shell";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,11 @@ export default async function AppLayout({
   if (!session?.user) redirect("/login");
 
   const user = { id: session.user.id, role: session.user.role };
-  const { options, selected, unread } = await loadShellData(user);
+  const [{ options, selected, unread }, cookieStore] = await Promise.all([
+    loadShellData(user),
+    cookies(),
+  ]);
+  const initialCollapsed = cookieStore.get(SIDEBAR_COOKIE)?.value === "1";
 
   return (
     <AppShell
@@ -27,6 +32,7 @@ export default async function AppLayout({
       options={options}
       selected={selected}
       unread={unread}
+      initialCollapsed={initialCollapsed}
     >
       {children}
     </AppShell>

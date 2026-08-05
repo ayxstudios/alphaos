@@ -1,13 +1,12 @@
 import { redirect } from "next/navigation";
-import { eq } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
-import { withUserContext } from "@/lib/db";
-import { users } from "@/lib/db/schema";
 import { getDesignerBoard } from "@/lib/orders/board-data";
+import { listDesignersRanked } from "@/lib/designers/roster";
 import { DesignerBoard } from "@/components/board/designer-board";
 import { DesignerPicker } from "@/components/board/designer-picker";
-import { DataPanel, EmptyState, Page, PageHeader, StatCard } from "@/components/ui";
+import { DesignerRail } from "@/components/board/designer-rail";
+import { EmptyState, Page, PageHeader, StatCard } from "@/components/ui";
 import { Columns } from "@/components/ui/icons";
 
 export const dynamic = "force-dynamic";
@@ -24,45 +23,15 @@ export default async function BoardPage({
   const designerParam = typeof sp.designer === "string" ? sp.designer : undefined;
   const isStaff = user.role !== "designer";
 
-  const listDesigners = () =>
-    withUserContext(user, (tx) =>
-      tx.select({ id: users.id, name: users.name }).from(users).where(eq(users.role, "designer")),
-    );
+  // Designers can only ever see their own board; staff pick one (rail / dropdown).
+  const targetId = isStaff ? designerParam : user.id;
 
-  // Staff must pick a designer first.
-  if (isStaff && !designerParam) {
-    const designers = await listDesigners();
-    return (
-      <Page>
-        <PageHeader
-          title="Designer boards"
-          description="Select a designer to view assigned work and move cards through design."
-          actions={
-            <DesignerPicker
-              designers={designers.map((d) => ({
-                id: d.id,
-                name: d.name ?? d.id,
-              }))}
-            />
-          }
-        />
-        <DataPanel>
-          <EmptyState
-            icon={Columns}
-            headline="Select a designer"
-            body="Pick a designer to view and manage their board."
-          />
-        </DataPanel>
-      </Page>
-    );
-  }
-
-  // Designers can only ever see their own board.
-  const targetId = isStaff ? designerParam! : user.id;
   const [board, designers] = await Promise.all([
-    getDesignerBoard(user, targetId),
-    isStaff ? listDesigners() : Promise.resolve([]),
+    targetId ? getDesignerBoard(user, targetId) : Promise.resolve(null),
+    isStaff ? listDesignersRanked(user) : Promise.resolve([]),
   ]);
+
+  const pickerDesigners = designers.map((d) => ({ id: d.id, name: d.name }));
 
   return (
     <Page className="max-w-none">
@@ -71,26 +40,42 @@ export default async function BoardPage({
         description="Drag work from queue to design, then submit it for QC."
         actions={
           <>
-          {isStaff && (
-            <DesignerPicker
-              designers={designers.map((d) => ({
-                id: d.id,
-                name: d.name ?? d.id,
-              }))}
-              current={targetId}
-            />
-          )}
-            <div className="w-36">
-              <StatCard
-                label="Earned today"
-                value={`$${board.dailyEarnings.toFixed(2)}`}
-                tone="success"
-              />
-            </div>
+            {isStaff && (
+              // Mobile / narrow screens: the rail is hidden, so keep a dropdown.
+              <div className="lg:hidden">
+                <DesignerPicker designers={pickerDesigners} current={targetId} />
+              </div>
+            )}
+            {board && (
+              <div className="w-36">
+                <StatCard
+                  label="Earned today"
+                  value={`$${board.dailyEarnings.toFixed(2)}`}
+                  tone="success"
+                />
+              </div>
+            )}
           </>
         }
       />
-      <DesignerBoard initial={board.columns} />
+
+      <div className="flex gap-4">
+        <div className="min-w-0 flex-1">
+          {board ? (
+            <DesignerBoard initial={board.columns} />
+          ) : (
+            <div className="rounded-card border border-line bg-surface shadow-sm">
+              <EmptyState
+                icon={Columns}
+                headline="Select a designer"
+                body="Pick a designer from the list to view and manage their board."
+              />
+            </div>
+          )}
+        </div>
+
+        {isStaff && <DesignerRail designers={designers} current={targetId} />}
+      </div>
     </Page>
   );
 }

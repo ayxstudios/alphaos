@@ -11,12 +11,16 @@ import { focusRing } from "@/components/ui/styles";
 import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
 
+/** Cookie the sidebar collapse preference persists in (read by the layout). */
+export const SIDEBAR_COOKIE = "sidebar_collapsed";
+
 type AppShellProps = {
   children: React.ReactNode;
   user: { name: string; email: string; role: Role };
   options: BusinessOption[];
   selected: BusinessOption;
   unread: number;
+  initialCollapsed?: boolean;
 };
 
 export function AppShell({
@@ -25,9 +29,19 @@ export function AppShell({
   options,
   selected,
   unread,
+  initialCollapsed = false,
 }: AppShellProps) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Persist the collapse preference so it survives reloads and matches SSR.
+  function toggleCollapsed() {
+    setCollapsed((value) => {
+      const next = !value;
+      document.cookie = `${SIDEBAR_COOKIE}=${next ? "1" : "0"}; path=/; max-age=31536000; samesite=lax`;
+      return next;
+    });
+  }
 
   return (
     <div className="flex min-h-screen bg-canvas text-ink">
@@ -35,7 +49,7 @@ export function AppShell({
         <Sidebar
           role={user.role}
           collapsed={collapsed}
-          onToggle={() => setCollapsed((value) => !value)}
+          onToggle={toggleCollapsed}
         />
       </div>
 
