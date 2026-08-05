@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
 import {
   assignments,
   customers,
+  designerBusinesses,
   messages,
   orderItems,
   orders,
@@ -29,6 +30,8 @@ import { Camera, Inbox, Pencil, Plus } from "@/components/ui/icons";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
 import { getCardDetail } from "@/lib/orders/card-detail";
 import { OrderCommentForm } from "@/components/orders/order-comment-form";
+import { OrderRevisionForm } from "@/components/orders/order-revision-form";
+import { OrderReassignForm } from "@/components/orders/order-reassign-form";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +66,15 @@ function titleCase(value: string | null | undefined) {
   if (!value) return "Unknown";
   return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
+
+const REVISION_FROM_STATUSES = new Set<OrderStatus>([
+  "awaiting_approval",
+  "approved",
+  "printing",
+  "shipped",
+  "delivered",
+  "complete",
+]);
 
 export default async function OrderDetailPage({
   params,
@@ -104,7 +116,7 @@ export default async function OrderDetailPage({
 
   if (!order) notFound();
 
-  const [items, assignment, qcRows, printRows, timeline, detail] = await Promise.all([
+  const [items, assignment, qcRows, printRows, timeline, detail, designers] = await Promise.all([
     withUserContext(user, (tx) =>
       tx
         .select({
@@ -172,6 +184,18 @@ export default async function OrderDetailPage({
         .limit(50),
     ),
     getCardDetail(user, id),
+    withUserContext(user, (tx) =>
+      tx
+        .select({ id: users.id, name: users.name, email: users.email })
+        .from(users)
+        .innerJoin(designerBusinesses, eq(designerBusinesses.userId, users.id))
+        .where(and(
+          eq(users.role, "designer"),
+          eq(users.active, true),
+          eq(designerBusinesses.businessId, order.businessId),
+        ))
+        .orderBy(asc(users.name), asc(users.email)),
+    ),
   ]);
 
   const customerName = customerDisplay({
@@ -185,6 +209,10 @@ export default async function OrderDetailPage({
   const references = detail.images.filter((image) => image.type === "reference");
   const sourceLabel = `${order.shopName} · ${titleCase(order.shopPlatform ?? order.source)}`;
   const editable = user.role === "admin" || user.role === "va";
+  const canCreateRevision = editable && REVISION_FROM_STATUSES.has(order.status as OrderStatus);
+  const revisionStarter =
+    timeline.find((m) => m.direction === "inbound" && m.body)?.body ??
+    "Customer requested a revision.";
 
   return (
     <Page className="max-w-6xl">
@@ -314,6 +342,33 @@ export default async function OrderDetailPage({
         </div>
 
         <aside className="flex flex-col gap-4">
+          {editable && (
+            <DataPanel className="p-4">
+              <SectionHeader title="Workflow actions" />
+              <div className="mt-3 flex flex-col gap-4">
+                <div className="rounded-input bg-canvas p-3">
+                  <OrderRevisionForm
+                    orderId={order.id}
+                    initialNote={revisionStarter}
+                    disabled={!canCreateRevision}
+                  />
+                  {!canCreateRevision && (
+                    <p className="mt-2 text-xs text-slate">
+                      Revision can be created from awaiting customer, approved, print, shipped, delivered or complete orders.
+                    </p>
+                  )}
+                </div>
+                <OrderReassignForm
+                  orderId={order.id}
+                  designers={designers.map((designer) => ({
+                    id: designer.id,
+                    name: designer.name ?? designer.email,
+                  }))}
+                />
+              </div>
+            </DataPanel>
+          )}
+
           <DataPanel className="p-4">
             <SectionHeader title="Reference photos" />
             {references.length === 0 ? (
@@ -394,6 +449,21 @@ export default async function OrderDetailPage({
                       </div>
                       {m.subject && <p className="text-sm font-medium text-ink">{m.subject}</p>}
                       {m.body && <p className="mt-1 whitespace-pre-wrap text-sm text-slate line-clamp-5">{m.body}</p>}
+                      {editable && inbound && m.body && (
+                        <details className="mt-3 rounded-input bg-canvas p-2">
+                          <summary className="cursor-pointer text-xs font-medium text-pigment">
+                            Create revision from this email
+                          </summary>
+                          <div className="mt-2">
+                            <OrderRevisionForm
+                              orderId={order.id}
+                              initialNote={m.body}
+                              buttonLabel="Create revision"
+                              disabled={!canCreateRevision}
+                            />
+                          </div>
+                        </details>
+                      )}
                     </li>
                   );
                 })}

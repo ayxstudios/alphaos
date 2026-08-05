@@ -34,9 +34,29 @@ export type CommentResult =
   | { ok: false; message: string };
 
 const REASSIGNABLE_STATUSES = new Set<OrderStatus>([
+  "awaiting_details",
+  "awaiting_photos",
   "ready_to_assign",
   "in_design",
   "awaiting_qc",
+  "awaiting_approval",
+  "approved",
+  "printing",
+  "shipped",
+  "delivered",
+  "complete",
+  "on_hold",
+  "triage",
+  "fulfillment_only",
+]);
+
+const REVISION_FROM_STATUSES = new Set<OrderStatus>([
+  "awaiting_approval",
+  "approved",
+  "printing",
+  "shipped",
+  "delivered",
+  "complete",
 ]);
 
 async function requireStaff(): Promise<RequestUser | { error: string }> {
@@ -204,5 +224,57 @@ export async function addOrderComment(orderId: string, body: string): Promise<Co
   await addComment(user, orderId, text);
   revalidatePath(`/orders/${orderId}`);
   revalidatePath("/orders");
+  return { ok: true };
+}
+
+export async function createOrderRevision(
+  orderId: string,
+  body: string,
+): Promise<CommentResult> {
+  const user = await requireStaff();
+  if ("error" in user) return { ok: false, message: user.error };
+  const note = body.trim();
+  if (!orderId || !note) return { ok: false, message: "Write the revision request first." };
+  if (note.length > 2000) return { ok: false, message: "Revision notes must be 2,000 characters or fewer." };
+
+  const [order] = await withUserContext(user, (tx) =>
+    tx
+      .select({
+        id: orders.id,
+        status: orders.status,
+        number: orders.platformOrderName,
+        fallbackNumber: orders.platformOrderId,
+      })
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1),
+  );
+  if (!order) return { ok: false, message: "Order not found." };
+  if (!REVISION_FROM_STATUSES.has(order.status)) {
+    return {
+      ok: false,
+      message: `Cannot create a revision while this order is ${order.status.replace(/_/g, " ")}.`,
+    };
+  }
+
+  try {
+    await transition(user, {
+      orderId,
+      to: "in_design",
+      expectedFrom: order.status,
+      metadata: {
+        via: "va_created_revision",
+        revisionReason: note,
+        orderNumber: order.number ?? order.fallbackNumber,
+      },
+    });
+  } catch (err) {
+    if (err instanceof OrderTransitionError) return { ok: false, message: err.message };
+    throw err;
+  }
+
+  revalidatePath(`/orders/${orderId}`);
+  revalidatePath("/orders");
+  revalidatePath("/board");
   return { ok: true };
 }

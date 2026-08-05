@@ -36,6 +36,16 @@ async function statusOf(orderId: string): Promise<string> {
   });
 }
 
+async function statusRevisionOf(orderId: string): Promise<{ status: string; revisionCount: number }> {
+  return withSystemContext(async (tx) => {
+    const [o] = await tx
+      .select({ status: orders.status, revisionCount: orders.revisionCount })
+      .from(orders)
+      .where(eq(orders.id, orderId));
+    return { status: o?.status ?? "(missing)", revisionCount: o?.revisionCount ?? -1 };
+  });
+}
+
 async function expectThrow(
   name: string,
   orderId: string,
@@ -67,12 +77,22 @@ async function main() {
       .limit(1);
 
     const orderId = randomUUID();
+    const lateOrderId = randomUUID();
     await tx.insert(orders).values({
       id: orderId,
       businessId: shop.businessId,
       shopId: shop.id,
       platformOrderId: `TEST-${Date.now()}`,
       status: "in_design",
+      source: "manual",
+      uploadToken: randomUUID(),
+    });
+    await tx.insert(orders).values({
+      id: lateOrderId,
+      businessId: shop.businessId,
+      shopId: shop.id,
+      platformOrderId: `LATE-${Date.now()}`,
+      status: "complete",
       source: "manual",
       uploadToken: randomUUID(),
     });
@@ -83,6 +103,13 @@ async function main() {
       figureCountSource: "manual",
       productType: "digital",
     });
+    await tx.insert(orderItems).values({
+      businessId: shop.businessId,
+      orderId: lateOrderId,
+      figureCount: 1,
+      figureCountSource: "manual",
+      productType: "digital",
+    });
     await tx.insert(assignments).values({
       businessId: shop.businessId,
       orderId,
@@ -90,7 +117,14 @@ async function main() {
       active: true,
       dueAt: new Date(Date.now() + 86400000),
     });
-    return { orderId, d2: d2.id, va: va.id };
+    await tx.insert(assignments).values({
+      businessId: shop.businessId,
+      orderId: lateOrderId,
+      designerId: d2.id,
+      active: true,
+      dueAt: new Date(Date.now() + 86400000),
+    });
+    return { orderId, lateOrderId, d2: d2.id, va: va.id };
   });
 
   const designer: RequestUser = { id: ctx.d2, role: "designer" };
@@ -134,9 +168,24 @@ async function main() {
   console.log("=== even after QC, designer cannot approve ===");
   await expectThrow("designer awaiting_approval -> approved", ctx.orderId, t(designer, "approved", "awaiting_approval"), "awaiting_approval");
 
+  console.log("=== VA can create a late revision from completed work ===");
+  await transition(va, {
+    orderId: ctx.lateOrderId,
+    to: "in_design",
+    expectedFrom: "complete",
+    metadata: { via: "va_created_revision", revisionReason: "Customer emailed a late change." },
+  });
+  const late = await statusRevisionOf(ctx.lateOrderId);
+  report(
+    "VA complete -> in_design revision",
+    late.status === "in_design" && late.revisionCount === 1,
+    `status ${late.status}, revisionCount ${late.revisionCount}`,
+  );
+
   // --- cleanup -------------------------------------------------------------
   await withSystemContext(async (tx) => {
     await tx.delete(orders).where(eq(orders.id, ctx.orderId)); // cascades items/assignments
+    await tx.delete(orders).where(eq(orders.id, ctx.lateOrderId)); // cascades items/assignments
   });
 
   console.log(`\n${failures === 0 ? "ALL PASSED" : failures + " FAILED"}`);

@@ -204,7 +204,7 @@ function viewWhere(view: ViewKey): SQL {
     case "awaiting_qc":
       return eq(orders.status, "awaiting_qc");
     case "revisions":
-      return and(eq(orders.status, "in_design"), sql`${orders.revisionCount} > 0`)!;
+      return and(eq(orders.status, "in_design"), sql`${orders.revisionCount} > 0`, sql`not ${latestQcFailedSql()}`)!;
     case "failed_qc":
       return and(eq(orders.status, "in_design"), latestQcFailedSql())!;
     case "awaiting_customer":

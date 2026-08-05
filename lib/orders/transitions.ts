@@ -50,6 +50,11 @@ const GRAPH: Record<string, Edge> = {
   "awaiting_qc->in_design": { roles: STAFF, revision: true }, // QC fail
   "awaiting_approval->approved": { roles: STAFF }, // customer/VA approves
   "awaiting_approval->in_design": { roles: STAFF, revision: true }, // customer revision
+  "approved->in_design": { roles: STAFF, revision: true }, // late customer revision
+  "printing->in_design": { roles: STAFF, revision: true }, // late customer revision
+  "shipped->in_design": { roles: STAFF, revision: true }, // late customer revision
+  "delivered->in_design": { roles: STAFF, revision: true }, // late customer revision
+  "complete->in_design": { roles: STAFF, revision: true }, // late customer revision
   "approved->printing": { roles: STAFF }, // physical
   "approved->complete": { roles: STAFF }, // digital shortcut
   "printing->shipped": { roles: STAFF },

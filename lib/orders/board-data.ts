@@ -5,6 +5,7 @@ import {
   orders,
   orderItems,
   assignments,
+  activityLog,
   assets,
   customers,
   customerPublic,
@@ -120,6 +121,7 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
   const revisionIds = rows.filter((o) => o.status === "in_design").map((o) => o.id);
   const qcFail = new Map<string, QcFailInfo>();
   const customerRevision = new Map<string, QcFailInfo>();
+  const customerRevisionAt = new Map<string, Date>();
   if (revisionIds.length) {
     const failRows = await tx
       .select({
@@ -158,11 +160,35 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
         reason: r.revisionNotes,
         failedItems: issueLabels(r.failedItems ?? []),
       });
+      if (r.decidedAt) customerRevisionAt.set(r.orderId, r.decidedAt);
       // Keep only the newer of the two: if a QC fail is more recent, drop the
       // customer request from this card (and vice versa).
       const qAt = qcAt.get(r.orderId);
       if (qAt && r.decidedAt && qAt > r.decidedAt) customerRevision.delete(r.orderId);
       else qcFail.delete(r.orderId);
+    }
+
+    const vaRevisionRows = await tx
+      .select({
+        orderId: activityLog.orderId,
+        metadata: activityLog.metadata,
+        createdAt: activityLog.createdAt,
+      })
+      .from(activityLog)
+      .where(and(inArray(activityLog.orderId, revisionIds), eq(activityLog.action, "order.in_design")))
+      .orderBy(desc(activityLog.createdAt));
+    for (const r of vaRevisionRows) {
+      if (!r.orderId) continue;
+      const meta = (r.metadata ?? {}) as Record<string, unknown>;
+      const reason = typeof meta.revisionReason === "string" ? meta.revisionReason.trim() : "";
+      if (!reason) continue;
+      const existingAt = customerRevisionAt.get(r.orderId);
+      if (existingAt && existingAt > r.createdAt) continue;
+      const qAt = qcAt.get(r.orderId);
+      if (qAt && qAt > r.createdAt) continue;
+      customerRevision.set(r.orderId, { reason, failedItems: [] });
+      customerRevisionAt.set(r.orderId, r.createdAt);
+      qcFail.delete(r.orderId);
     }
   }
 
