@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql, type SQL } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
@@ -51,7 +51,6 @@ type ViewKey =
   | "overdue"
   | "needs_details"
   | "needs_photos"
-  | "triage"
   | "unassigned"
   | "awaiting_qc"
   | "revisions"
@@ -84,7 +83,6 @@ const ACTIVE_STATES = [
 ] as const;
 const STATUS_FILTERS = [
   "awaiting_details",
-  "triage",
   "awaiting_photos",
   "ready_to_assign",
   "in_design",
@@ -105,7 +103,6 @@ const VIEWS: { key: ViewKey; label: string; description: string }[] = [
   { key: "overdue", label: "Overdue", description: "Past the customer SLA" },
   { key: "needs_details", label: "Needs Details", description: "VA must complete imported order details" },
   { key: "needs_photos", label: "Needs Photos", description: "Waiting on reference photos" },
-  { key: "triage", label: "Triage", description: "Needs portrait or fulfilment classification" },
   { key: "unassigned", label: "Unassigned", description: "Ready but no active designer" },
   { key: "awaiting_qc", label: "Awaiting QC", description: "Ready for VA quality review" },
   { key: "revisions", label: "Revision", description: "Back in design after a revision" },
@@ -190,8 +187,6 @@ function viewWhere(view: ViewKey): SQL {
       return eq(orders.status, "awaiting_details");
     case "needs_photos":
       return eq(orders.status, "awaiting_photos");
-    case "triage":
-      return or(eq(orders.status, "triage"), eq(orders.needsReview, true))!;
     case "unassigned":
       return and(
         eq(orders.status, "ready_to_assign"),
@@ -453,7 +448,9 @@ export default async function OrdersPage({
       const hasPrintJob = prints.length > 0;
       const isFailedQc = order.status === "in_design" && qc?.result === "fail";
       const derivedStatus =
-        isFailedQc
+        order.status === "triage" || order.needsReview
+          ? "Needs Review"
+          : isFailedQc
           ? "Failed QC"
           : order.status === "in_design" && order.revisionCount > 0
             ? "Revision"

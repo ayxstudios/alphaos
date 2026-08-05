@@ -57,7 +57,7 @@ const STATUS: Record<OrderStatus, StatusMeta> = {
   complete: { label: "Complete", tone: "sage", icon: CheckCircle },
   on_hold: { label: "On hold", tone: "amber", icon: Pause },
   cancelled: { label: "Cancelled", tone: "rose", icon: XCircle },
-  triage: { label: "Triage", tone: "amber", icon: Search },
+  triage: { label: "Needs review", tone: "amber", icon: Search },
   fulfillment_only: { label: "Fulfilment only", tone: "slate", icon: Package },
   awaiting_details: { label: "Needs details", tone: "amber", icon: Pencil },
 };

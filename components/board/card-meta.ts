@@ -42,7 +42,7 @@ const STATE_LABEL: Record<OrderStatus, string> = {
   complete: "Complete",
   on_hold: "On hold",
   cancelled: "Cancelled",
-  triage: "Triage",
+  triage: "Needs review",
   fulfillment_only: "Fulfilment",
   awaiting_details: "Awaiting details",
 };

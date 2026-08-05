@@ -9,7 +9,7 @@ import {
   bulkReassignOrders,
   type BulkActionResult,
 } from "@/app/(app)/orders/actions";
-import { Badge, Button, StatusChip, useToast, type OrderStatus } from "@/components/ui";
+import { Badge, Button, useToast, type OrderStatus } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
 export type OrdersDashboardRow = {
@@ -95,6 +95,7 @@ function statusTone(row: OrdersDashboardRow) {
     row.derivedStatus === "Revision" ||
     row.derivedStatus === "Awaiting Qc" ||
     row.derivedStatus === "Awaiting Customer" ||
+    row.derivedStatus === "Needs Review" ||
     row.needsReview
   ) {
     return "warning";
@@ -288,11 +289,6 @@ export function OrdersOperationsTable({
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={statusTone(row)} dot>{row.derivedStatus}</Badge>
-              {row.status !== "awaiting_details" && row.status !== "in_design" && row.status !== "approved" && (
-                <span className="sr-only">
-                  <StatusChip status={row.status as OrderStatus} />
-                </span>
-              )}
             </div>
             <p className="truncate text-sm text-slate">{row.assignee}</p>
             <div className="flex flex-wrap items-center gap-2">
