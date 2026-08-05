@@ -63,11 +63,11 @@ export async function triggerSync(shopId: string): Promise<SyncSummary> {
   return summary;
 }
 
-/** Backfill an Etsy shop's full history with customer email suppressed. */
+/** Backfill an Etsy shop's full history (re-scan from the widened window). */
 export async function backfillEtsyShop(shopId: string): Promise<SyncSummary> {
   const user = await requireAdmin();
   await resetCursor(user, shopId);
-  const summary = await syncShopReceipts(shopId, { suppressCustomerEmail: true });
+  const summary = await syncShopReceipts(shopId);
   revalidatePath("/settings");
   return summary;
 }

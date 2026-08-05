@@ -29,6 +29,7 @@ export async function reconcileManualOrder(
     orderNumber: string | null; // human number from the import
     customerId: string | null; // import's customer, to fill a gap
     photoUrls: string[]; // import's reference photos, to fill a gap
+    rawImport?: unknown; // raw platform payload, to fill a gap (e.g. Etsy receipt)
   },
 ): Promise<{ reconciled: boolean; orderId?: string }> {
   if (!args.orderNumber) return { reconciled: false };
@@ -36,7 +37,7 @@ export async function reconcileManualOrder(
 
   // A not-yet-linked manual order in this shop with a matching number.
   const [manual] = await tx
-    .select({ id: orders.id, customerId: orders.customerId })
+    .select({ id: orders.id, customerId: orders.customerId, rawImport: orders.rawImport })
     .from(orders)
     .where(
       and(
@@ -57,6 +58,7 @@ export async function reconcileManualOrder(
     .set({
       platformOrderId: args.realPlatformOrderId,
       ...(manual.customerId == null && args.customerId ? { customerId: args.customerId } : {}),
+      ...(args.rawImport && manual.rawImport == null ? { rawImport: args.rawImport } : {}),
       updatedAt: new Date(),
     })
     .where(eq(orders.id, manual.id));

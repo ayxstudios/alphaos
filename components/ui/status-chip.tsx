@@ -32,7 +32,8 @@ export type OrderStatus =
   | "on_hold"
   | "cancelled"
   | "triage"
-  | "fulfillment_only";
+  | "fulfillment_only"
+  | "awaiting_details";
 
 type Tone = "slate" | "pigment" | "amber" | "sage" | "rose";
 
@@ -58,6 +59,7 @@ const STATUS: Record<OrderStatus, StatusMeta> = {
   cancelled: { label: "Cancelled", tone: "rose", icon: XCircle },
   triage: { label: "Triage", tone: "amber", icon: Search },
   fulfillment_only: { label: "Fulfilment only", tone: "slate", icon: Package },
+  awaiting_details: { label: "Needs details", tone: "amber", icon: Pencil },
 };
 
 // Alpha modifiers of palette tokens only — no colours outside the palette.

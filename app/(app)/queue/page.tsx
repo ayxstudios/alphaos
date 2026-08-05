@@ -100,8 +100,10 @@ export default async function QueuePage({
               card={c}
               // Awaiting-QC orders go through the checklist gate, never a one-click pass.
               qcHref={c.status === "awaiting_qc" ? `/qc/${c.orderId}` : undefined}
+              // Etsy needs-details orders open the manual completion form.
+              completeHref={c.status === "awaiting_details" ? `/orders/${c.orderId}/complete` : undefined}
               actions={
-                c.status === "awaiting_qc"
+                c.status === "awaiting_qc" || c.status === "awaiting_details"
                   ? []
                   : c.status === "triage"
                     ? // One click either way — never guess (photos present => straight to assign).

@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { shops, orders, orderItems, customers, assets, activityLog } from "@/lib/db/schema";
 import { runAutoAssign } from "@/lib/orders/assign";
+import { runTransition } from "@/lib/orders/transitions";
 import { normalizeOrderNumber } from "@/lib/orders/reconcile";
 import {
   assetKey,
@@ -246,4 +247,153 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Could not create order" };
   }
+}
+
+/**
+ * Complete an imported `awaiting_details` order (the Etsy Case-1 flow): a VA fills
+ * figure count / style / product / notes / photos on the same manual form, and it
+ * enters the pipeline (ready_to_assign + auto-assign if photos, else
+ * awaiting_photos). The order header (number, customer, date) is not touched.
+ */
+export async function completeOrderDetails(input: {
+  orderId: string;
+  figureCount?: number | null;
+  style?: string | null;
+  productType: "digital" | "physical";
+  notes?: string;
+  dueAt?: string;
+  customerName?: string;
+  customerEmail?: string;
+  r2Keys?: string[];
+  photoUrls?: string[];
+}): Promise<NewOrderResult> {
+  const authed = await requireVa();
+  if ("error" in authed) return { ok: false, message: authed.error };
+  const user = authed;
+  if (input.productType !== "digital" && input.productType !== "physical") {
+    return { ok: false, message: "Choose a product type" };
+  }
+  const figureCount =
+    typeof input.figureCount === "number" && input.figureCount > 0 ? Math.floor(input.figureCount) : null;
+  const r2Keys = (input.r2Keys ?? []).filter(Boolean);
+  const photoUrls = (input.photoUrls ?? []).map((u) => u.trim()).filter(Boolean);
+
+  try {
+    return await withUserContext(user, async (tx) => {
+      const [order] = await tx
+        .select({
+          id: orders.id,
+          businessId: orders.businessId,
+          status: orders.status,
+          customerId: orders.customerId,
+          platformOrderName: orders.platformOrderName,
+        })
+        .from(orders)
+        .where(eq(orders.id, input.orderId));
+      if (!order) return { ok: false as const, message: "Order not found" };
+      if (order.status !== "awaiting_details") {
+        return { ok: false as const, message: "This order is no longer awaiting details." };
+      }
+      const businessId = order.businessId;
+
+      // Link a customer if the VA supplied an email and none is set.
+      let customerId = order.customerId;
+      const email = input.customerEmail?.trim().toLowerCase() || null;
+      if (!customerId && email) {
+        const [firstName, lastName] = splitName(input.customerName);
+        await tx
+          .insert(customers)
+          .values({ businessId, email, firstName, lastName })
+          .onConflictDoNothing({ target: [customers.businessId, customers.email] });
+        const [c] = await tx
+          .select({ id: customers.id })
+          .from(customers)
+          .where(and(eq(customers.businessId, businessId), eq(customers.email, email)));
+        customerId = c?.id ?? null;
+      }
+
+      await tx.insert(orderItems).values({
+        businessId,
+        orderId: order.id,
+        figureCount,
+        figureCountSource: figureCount != null ? "manual" : null,
+        style: input.style?.trim() || null,
+        productType: input.productType,
+      });
+
+      const assetRows = [
+        ...r2Keys.map((r2Key) => ({
+          businessId,
+          orderId: order.id,
+          type: "reference" as const,
+          storage: "r2" as const,
+          r2Key,
+          uploadedBy: user.id,
+        })),
+        ...photoUrls.map((url) => ({
+          businessId,
+          orderId: order.id,
+          type: "reference" as const,
+          storage: "cdn" as const,
+          url,
+          uploadedBy: user.id,
+        })),
+      ];
+      if (assetRows.length) await tx.insert(assets).values(assetRows);
+
+      await tx
+        .update(orders)
+        .set({
+          customerId,
+          notes: input.notes?.trim() || null,
+          ...(input.dueAt ? { dueAt: new Date(input.dueAt) } : {}),
+        })
+        .where(eq(orders.id, order.id));
+
+      // Enter the pipeline via the state machine (auto-assigns on ready_to_assign).
+      const to = assetRows.length > 0 ? "ready_to_assign" : "awaiting_photos";
+      await runTransition(tx, { id: user.id, role: user.role }, {
+        orderId: order.id,
+        to,
+        expectedFrom: "awaiting_details",
+        metadata: { via: "manual_complete" },
+      });
+
+      revalidatePath("/queue");
+      revalidatePath("/board");
+      revalidatePath(`/orders/${order.id}`);
+      return { ok: true as const, orderNumber: order.platformOrderName ?? "(no number)", orderId: order.id };
+    });
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Could not complete order" };
+  }
+}
+
+export type OrderLookup =
+  | { found: false }
+  | { found: true; orderId: string; status: string; platformOrderName: string | null };
+
+/**
+ * Case-3 duplicate guard: as a VA types an order number in the New-order form,
+ * look it up in the shop (normalised for whitespace / leading #) so we can point
+ * them at the existing order instead of letting them create a duplicate.
+ */
+export async function lookupOrderByNumber(input: {
+  shopId: string;
+  orderNumber: string;
+}): Promise<OrderLookup> {
+  const authed = await requireVa();
+  if ("error" in authed) return { found: false };
+  const num = normalizeOrderNumber(input.orderNumber ?? "");
+  if (!input.shopId || !num) return { found: false };
+  const [row] = await withUserContext(authed, (tx) =>
+    tx
+      .select({ id: orders.id, status: orders.status, platformOrderName: orders.platformOrderName })
+      .from(orders)
+      .where(and(eq(orders.shopId, input.shopId), sql`lower(${orders.platformOrderName}) = ${num}`))
+      .limit(1),
+  );
+  return row
+    ? { found: true, orderId: row.id, status: row.status, platformOrderName: row.platformOrderName }
+    : { found: false };
 }

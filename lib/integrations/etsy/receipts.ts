@@ -4,25 +4,15 @@ import { and, eq, sql } from "drizzle-orm";
 
 import { withSystemContext } from "@/lib/db";
 import { getShopCredentials } from "@/lib/db/credentials";
-import {
-  shops,
-  orders,
-  orderItems,
-  customers,
-  activityLog,
-} from "@/lib/db/schema";
-import { queuePhotoRequest, flushQueued } from "@/lib/email/dispatch";
-import { classifyOrder, photoRequestEnabled } from "@/lib/integrations/classify";
+import { shops, orders, customers, activityLog } from "@/lib/db/schema";
 import { reconcileManualOrder } from "@/lib/orders/reconcile";
 import { EtsyClient } from "./client";
-import { resolveFigureCount, resolveStyle } from "./figures";
 import { ReauthRequiredError } from "./errors";
 import type {
   EtsyCredentials,
   EtsyIntegrationConfig,
   EtsyReceipt,
   EtsyReceiptsResponse,
-  EtsyTransaction,
 } from "./types";
 
 const PAGE = 100;
@@ -63,13 +53,10 @@ export function getShopReceipts(
  * transaction so a mid-run failure leaves a clean partial import that the next
  * run resumes. The sync cursor advances only after a fully successful run.
  *
- * `suppressCustomerEmail` (backfills) blocks every automated customer email: no
- * photo-request is queued at import, and the post-run flush is skipped.
+ * Etsy imports never send automated email (a VA completes details first), so
+ * there is no email-suppression flag as there is for Shopify backfills.
  */
-export async function syncShopReceipts(
-  shopId: string,
-  opts: { suppressCustomerEmail?: boolean } = {},
-): Promise<SyncSummary> {
+export async function syncShopReceipts(shopId: string): Promise<SyncSummary> {
   const empty: SyncSummary = { imported: 0, skipped: 0, failed: 0, errors: [] };
 
   // 1. Claim the shop (concurrency guard) + load creds/config under a row lock.
@@ -124,9 +111,7 @@ export async function syncShopReceipts(
             shopId,
             businessId: shop.businessId,
             slaConfig: shop.slaConfig as Record<string, unknown> | null,
-            cfg,
             receipt,
-            suppressCustomerEmail: !!opts.suppressCustomerEmail,
           });
           if (result === "imported") summary.imported++;
           else if (result === "reconciled") summary.reconciled = (summary.reconciled ?? 0) + 1;
@@ -165,23 +150,8 @@ export async function syncShopReceipts(
         .where(eq(shops.id, shopId)),
     );
 
-    // Auto-send the queued photo-request emails for this business. Best-effort:
-    // a Gmail hiccup must not fail an otherwise-successful import run. Skipped
-    // entirely on a backfill so no historical order gets emailed.
-    if (summary.imported > 0 && !opts.suppressCustomerEmail) {
-      await flushQueued(shop.businessId).catch((err) =>
-        console.log(
-          JSON.stringify({
-            ts: new Date().toISOString(),
-            level: "error",
-            integration: "gmail",
-            businessId: shop.businessId,
-            event: "photo_request_flush_failed",
-            error: String(err),
-          }),
-        ),
-      );
-    }
+    // Etsy sends no automated customer email (photos come after a VA completes
+    // details), so there is nothing to flush here.
     return summary;
   } catch (err) {
     // Failure: release the lock but DO NOT advance the cursor (safe resume).
@@ -196,48 +166,34 @@ export async function syncShopReceipts(
   }
 }
 
-/** Import one receipt in its own transaction (atomic; idempotent). */
+/**
+ * Import ONE Etsy receipt as an order HEADER only — deliberately minimal.
+ *
+ * Etsy's job is "never miss an order". Figure count, style, product type, and
+ * line-item detail live in personalization / notes that need a human to read, so
+ * we do NOT resolve them here: no order_items, no figure/style resolution, no
+ * needs_review (nothing was attempted), no customer email. The full receipt is
+ * stored in raw_import so a VA can read it, and the order lands in
+ * `awaiting_details` for a VA to complete via the manual form. (The Etsy resolver
+ * code is kept, just unused, in case we automate later.)
+ *
+ * Idempotent (ON CONFLICT on shop_id+platform_order_id); reconciles onto a
+ * VA-entered manual order when one already exists (fills blanks, never overwrites).
+ */
 async function importReceipt(args: {
   shopId: string;
   businessId: string;
   slaConfig: Record<string, unknown> | null;
-  cfg: EtsyIntegrationConfig;
   receipt: EtsyReceipt;
-  suppressCustomerEmail?: boolean;
 }): Promise<"imported" | "skipped" | "reconciled"> {
-  const { shopId, businessId, slaConfig, cfg, receipt, suppressCustomerEmail } = args;
+  const { shopId, businessId, slaConfig, receipt } = args;
   const email = receipt.buyer_email?.trim().toLowerCase() || null;
   const [firstName, lastName] = splitName(receipt.name);
   const placedAt = new Date(receipt.created_timestamp * 1000);
   const dueAt = computeDueAt(placedAt, slaConfig);
-  const uploadToken = randomUUID();
-
-  // Resolve figures + style (pure) before touching the DB.
-  const items = receipt.transactions.map((t) => {
-    const fig = resolveFigureCount(t.variations, cfg);
-    const style = resolveStyle(t.variations, cfg);
-    return {
-      transaction: t,
-      figureCount: fig.count,
-      figureCountSource: fig.source,
-      figureNote: fig.note,
-      style: style.style,
-      options: (t.variations ?? []).map((v) => ({ name: v.formatted_name, value: v.formatted_value })),
-    };
-  });
-
-  // Classify: Etsy has no draft orders, so only portrait vs fulfillment_only.
-  const klass = classifyOrder({
-    sourceName: null,
-    lines: items.map((i) => ({ sku: i.transaction.sku, title: i.transaction.title })),
-    config: cfg,
-  });
-  const status = klass === "fulfillment_only" ? ("fulfillment_only" as const) : ("awaiting_photos" as const);
-  const needsReview =
-    !email || (klass === "portrait" && items.some((i) => i.figureCountSource === "unresolved"));
 
   return withSystemContext(async (tx) => {
-    // Upsert customer (per-business, by email).
+    // Customer, only when Etsy actually gave us an email.
     let customerId: string | null = null;
     if (email) {
       await tx
@@ -251,8 +207,8 @@ async function importReceipt(args: {
       customerId = c?.id ?? null;
     }
 
-    // Reconcile with a VA-entered manual order (Etsy's receipt id is the human
-    // number a VA would have typed) before inserting a new row.
+    // Reconcile with a VA-entered manual order (Etsy receipt id is the number a
+    // VA types) before inserting. Fills blanks only; the VA's data always wins.
     const rec = await reconcileManualOrder(tx, {
       shopId,
       businessId,
@@ -260,25 +216,26 @@ async function importReceipt(args: {
       orderNumber: String(receipt.receipt_id),
       customerId,
       photoUrls: [], // Etsy has no photos at import
+      rawImport: receipt,
     });
     if (rec.reconciled) return "reconciled";
 
-    // Idempotent insert — skip if this receipt is already imported.
     const inserted = await tx
       .insert(orders)
       .values({
         businessId,
         shopId,
         customerId,
+        // Etsy's human-facing order number IS the receipt id — same value for both.
         platformOrderId: String(receipt.receipt_id),
-        // Etsy's human-facing order number IS the receipt id — same value.
         platformOrderName: String(receipt.receipt_id),
-        status,
+        status: "awaiting_details",
         source: "etsy",
         placedAt,
         dueAt,
-        uploadToken,
-        needsReview,
+        uploadToken: randomUUID(),
+        needsReview: false,
+        rawImport: receipt,
       })
       .onConflictDoNothing({ target: [orders.shopId, orders.platformOrderId] })
       .returning({ id: orders.id });
@@ -286,57 +243,20 @@ async function importReceipt(args: {
     if (!inserted.length) return "skipped";
     const orderId = inserted[0].id;
 
-    await tx.insert(orderItems).values(
-      items.map((i) => ({
-        businessId,
-        orderId,
-        sku: i.transaction.sku,
-        title: i.transaction.title,
-        variation: summarizeVariations(i.transaction),
-        options: i.options,
-        figureCount: i.figureCount,
-        figureCountSource: i.figureCountSource,
-        rawVariations: i.transaction.variations,
-        style: i.style,
-        productType: i.transaction.is_digital ? ("digital" as const) : ("physical" as const),
-      })),
-    );
-
     await tx.insert(activityLog).values({
       businessId,
       orderId,
       actorId: null, // system import
       action: "order.imported",
       fromState: null,
-      toState: status,
+      toState: "awaiting_details",
       metadata: {
         source: "etsy",
         receiptId: receipt.receipt_id,
-        orderClass: klass,
-        itemCount: items.length,
         hasEmail: !!email,
-        needsReview,
-        figures: items.map((i) => ({
-          count: i.figureCount,
-          source: i.figureCountSource,
-          note: i.figureNote,
-        })),
+        transactionCount: receipt.transactions?.length ?? 0,
       },
     });
-
-    // Auto-send exception: queue the photo-request email (with the upload link),
-    // only when this shop enables photo requests (true by default for Etsy) and
-    // photos are actually needed. Actually sent by the flush. Never on a backfill.
-    if (status === "awaiting_photos" && photoRequestEnabled(cfg) && !suppressCustomerEmail) {
-      await queuePhotoRequest(tx, {
-        id: orderId,
-        businessId,
-        customerId,
-        platformOrderId: String(receipt.receipt_id),
-        platformOrderName: String(receipt.receipt_id),
-        uploadToken,
-      });
-    }
 
     return "imported";
   });
@@ -348,11 +268,6 @@ function splitName(name: string | null): [string | null, string | null] {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return [parts[0], null];
   return [parts[0], parts.slice(1).join(" ")];
-}
-
-function summarizeVariations(t: EtsyTransaction): string {
-  const vs = (t.variations ?? []).map((v) => `${v.formatted_name}: ${v.formatted_value}`);
-  return vs.length ? vs.join("; ") : (t.title ?? "");
 }
 
 function computeDueAt(placedAt: Date, slaConfig: Record<string, unknown> | null): Date {

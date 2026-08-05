@@ -62,6 +62,9 @@ export const orderStatus = pgEnum("order_status", [
   // fulfillment_only: non-portrait add-on; may need fulfilment, never design.
   "triage",
   "fulfillment_only",
+  // awaiting_details: imported from Etsy with only the order header; a VA must
+  // open it and fill in figure count / style / photos before it enters design.
+  "awaiting_details",
 ]);
 export const productType = pgEnum("product_type", ["digital", "physical"]);
 export const assetType = pgEnum("asset_type", [
@@ -386,6 +389,9 @@ export const orders = pgTable(
     // Free-text notes / special requests (from manual entry), shown on the
     // designer's card so they know what to make.
     notes: text("notes"),
+    // Raw platform payload kept for reference — e.g. the full Etsy receipt so a
+    // VA can read the personalization / note-to-seller while completing details.
+    rawImport: jsonb("raw_import"),
     // Incremented on rework (QC fail / customer revision -> in_design) in the same
     // transaction as the transition. Distinguishes In Design from Revisions on the
     // boards without scanning activity_log. 0 = first pass.

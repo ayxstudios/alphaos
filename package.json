@@ -17,7 +17,8 @@
     "test:rls": "tsx scripts/test-rls.ts",
     "test:transitions": "tsx scripts/test-transitions.ts",
     "test:shopify-figures": "tsx scripts/test-shopify-figures.ts",
-    "test:nonportrait": "tsx scripts/test-nonportrait-invariants.ts"
+    "test:nonportrait": "tsx scripts/test-nonportrait-invariants.ts",
+    "test:reconcile": "tsx scripts/test-reconcile.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1102.0",

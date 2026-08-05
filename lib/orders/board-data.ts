@@ -64,7 +64,7 @@ type Tx = Parameters<Parameters<typeof withUserContext>[1]>[0];
 
 const OVERDUE_STATES: OrderStatus[] = [
   "awaiting_photos", "ready_to_assign", "in_design", "awaiting_qc",
-  "awaiting_approval", "approved", "printing", "shipped",
+  "awaiting_approval", "approved", "printing", "shipped", "awaiting_details",
 ];
 
 async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<BoardCard[]> {
@@ -276,13 +276,14 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
 }
 
 export const VA_TABS = [
-  "triage", "needs_photos", "shopify_missing_photos", "unassigned", "awaiting_qc",
-  "revisions_in", "awaiting_customer", "fulfilment", "ready_to_print", "overdue",
+  "triage", "needs_details", "needs_photos", "shopify_missing_photos", "unassigned",
+  "awaiting_qc", "revisions_in", "awaiting_customer", "fulfilment", "ready_to_print", "overdue",
 ] as const;
 export type VaTab = (typeof VA_TABS)[number];
 
 export const VA_TAB_LABELS: Record<VaTab, string> = {
   triage: "Triage",
+  needs_details: "Needs Details",
   needs_photos: "Needs Photos",
   shopify_missing_photos: "Shopify · Missing Photos",
   unassigned: "Unassigned",
@@ -297,6 +298,7 @@ export const VA_TAB_LABELS: Record<VaTab, string> = {
 function tabWhere(tab: VaTab) {
   switch (tab) {
     case "triage": return eq(orders.status, "triage");
+    case "needs_details": return eq(orders.status, "awaiting_details");
     // Etsy/manual orders legitimately await photos; a Shopify one is an anomaly.
     case "needs_photos": return and(eq(orders.status, "awaiting_photos"), ne(orders.source, "shopify"));
     case "shopify_missing_photos": return and(eq(orders.status, "awaiting_photos"), eq(orders.source, "shopify"));

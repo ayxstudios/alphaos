@@ -65,6 +65,10 @@ const GRAPH: Record<string, Edge> = {
   // awaiting_approval exists, so these can never reach a designer or a proof.
   "fulfillment_only->printing": { roles: STAFF },
   "fulfillment_only->complete": { roles: STAFF },
+  // Etsy imports land here; a VA completes the details (manual form) and it
+  // enters the normal pipeline.
+  "awaiting_details->ready_to_assign": { roles: STAFF }, // details + photos entered
+  "awaiting_details->awaiting_photos": { roles: STAFF }, // details entered, no photos yet
   // Hold from any active state.
   ...holdEdges(),
   // Resume from hold to any active working state.
@@ -77,7 +81,7 @@ function holdEdges(): Record<string, Edge> {
   const from: OrderStatus[] = [
     "awaiting_photos", "ready_to_assign", "in_design", "awaiting_qc",
     "awaiting_approval", "approved", "printing", "shipped",
-    "triage", "fulfillment_only",
+    "triage", "fulfillment_only", "awaiting_details",
   ];
   return Object.fromEntries(from.map((s) => [`${s}->on_hold`, { roles: STAFF }]));
 }
@@ -85,7 +89,7 @@ function resumeEdges(): Record<string, Edge> {
   const to: OrderStatus[] = [
     "ready_to_assign", "in_design", "awaiting_qc", "awaiting_approval",
     "approved", "printing", "shipped",
-    "triage", "fulfillment_only",
+    "triage", "fulfillment_only", "awaiting_details",
   ];
   return Object.fromEntries(to.map((s) => [`on_hold->${s}`, { roles: STAFF }]));
 }
@@ -93,7 +97,7 @@ function cancelEdges(): Record<string, Edge> {
   const from: OrderStatus[] = [
     "awaiting_photos", "ready_to_assign", "in_design", "awaiting_qc",
     "awaiting_approval", "approved", "printing", "shipped", "delivered", "on_hold",
-    "triage", "fulfillment_only",
+    "triage", "fulfillment_only", "awaiting_details",
   ];
   return Object.fromEntries(from.map((s) => [`${s}->cancelled`, { roles: STAFF }]));
 }

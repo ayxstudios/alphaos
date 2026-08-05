@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button, useToast } from "@/components/ui";
-import { Search } from "@/components/ui/icons";
+import { Search, Pencil } from "@/components/ui/icons";
 import { OrderCard } from "./order-card";
 import { moveOrder } from "@/app/(app)/board/actions";
 import type { BoardCard } from "@/lib/orders/board-data";
@@ -14,11 +14,14 @@ export function QueueCard({
   card,
   actions,
   qcHref,
+  completeHref,
 }: {
   card: BoardCard;
   actions: { to: OrderStatus; label: string }[];
   /** When set (Awaiting QC tab), the card opens the QC screen instead of quick actions. */
   qcHref?: string;
+  /** When set (Needs Details tab), the card opens the complete-details form. */
+  completeHref?: string;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -41,7 +44,11 @@ export function QueueCard({
   return (
     <div className="flex flex-col gap-2">
       <OrderCard card={card} />
-      {qcHref ? (
+      {completeHref ? (
+        <Button size="sm" variant="primary" onClick={() => router.push(completeHref)}>
+          <Pencil size={14} /> Complete details
+        </Button>
+      ) : qcHref ? (
         <Button size="sm" variant="primary" onClick={() => router.push(qcHref)}>
           <Search size={14} /> Review in QC
         </Button>
