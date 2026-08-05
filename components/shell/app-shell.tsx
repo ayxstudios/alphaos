@@ -44,8 +44,8 @@ export function AppShell({
   }
 
   return (
-    <div className="flex min-h-screen bg-canvas text-ink">
-      <div className="hidden lg:block">
+    <div className="flex h-screen overflow-hidden bg-canvas text-ink">
+      <div className="hidden h-screen shrink-0 lg:block">
         <Sidebar
           role={user.role}
           collapsed={collapsed}
@@ -82,7 +82,7 @@ export function AppShell({
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <TopBar
           user={user}
           options={options}

@@ -28,7 +28,12 @@ import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ q?: string; status?: string }>;
+type SearchParams = Promise<{
+  q?: string;
+  status?: string;
+  page?: string;
+  pageSize?: string;
+}>;
 
 const STATUS_FILTERS = [
   { value: "all", label: "All" },
@@ -40,6 +45,8 @@ const STATUS_FILTERS = [
   { value: "awaiting_approval", label: "Approval" },
 ] as const;
 
+const PAGE_SIZES = [20, 50, 100] as const;
+
 function fmtDate(date: Date | null) {
   if (!date) return "No due date";
   return new Intl.DateTimeFormat("en-AU", {
@@ -47,6 +54,12 @@ function fmtDate(date: Date | null) {
     month: "short",
     year: "numeric",
   }).format(date);
+}
+
+function intParam(value: string | undefined, fallback: number) {
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 export default async function OrdersPage({
@@ -60,6 +73,13 @@ export default async function OrdersPage({
   const { selected } = await loadShellData(user);
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
+  const requestedPageSize = intParam(params.pageSize, 20);
+  const pageSize = PAGE_SIZES.includes(
+    requestedPageSize as (typeof PAGE_SIZES)[number],
+  )
+    ? requestedPageSize
+    : 20;
+  const requestedPage = intParam(params.page, 1);
   const status =
     STATUS_FILTERS.some((filter) => filter.value === params.status) &&
     params.status !== "all"
@@ -73,7 +93,21 @@ export default async function OrdersPage({
   const queryFilter = q
     ? sql`(${orders.platformOrderName} ilike ${`%${q}%`} or ${orders.platformOrderId} ilike ${`%${q}%`} or ${customers.email} ilike ${`%${q}%`} or concat_ws(' ', ${customers.firstName}, ${customers.lastName}) ilike ${`%${q}%`})`
     : sql`true`;
-  const statusFilter = status ? eq(orders.status, status as OrderStatus) : sql`true`;
+  const statusFilter = status
+    ? eq(orders.status, status as OrderStatus)
+    : sql`true`;
+
+  const [countRow] = await withUserContext(user, (tx) =>
+    tx
+      .select({ count: sql<number>`count(distinct ${orders.id})::int` })
+      .from(orders)
+      .leftJoin(customers, eq(customers.id, orders.customerId))
+      .where(and(businessFilter, queryFilter, statusFilter)),
+  );
+  const total = countRow?.count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(Math.max(requestedPage, 1), totalPages);
+  const offset = (page - 1) * pageSize;
 
   const rows = await withUserContext(user, (tx) =>
     tx
@@ -103,10 +137,32 @@ export default async function OrdersPage({
       .leftJoin(users, eq(users.id, assignments.designerId))
       .where(and(businessFilter, queryFilter, statusFilter))
       .orderBy(desc(orders.createdAt))
-      .limit(100),
+      .limit(pageSize)
+      .offset(offset),
   );
 
   const now = new Date();
+  const firstResult = total === 0 ? 0 : offset + 1;
+  const lastResult = Math.min(offset + rows.length, total);
+
+  function ordersHref(overrides: {
+    q?: string;
+    status?: string;
+    page?: number;
+    pageSize?: number;
+  }) {
+    const nextQ = overrides.q ?? q;
+    const nextStatus = overrides.status ?? status;
+    const nextPage = overrides.page ?? page;
+    const nextPageSize = overrides.pageSize ?? pageSize;
+    const sp = new URLSearchParams();
+    if (nextQ) sp.set("q", nextQ);
+    if (nextStatus) sp.set("status", nextStatus);
+    if (nextPage > 1) sp.set("page", String(nextPage));
+    if (nextPageSize !== 20) sp.set("pageSize", String(nextPageSize));
+    const suffix = sp.toString();
+    return suffix ? `/orders?${suffix}` : "/orders";
+  }
 
   return (
     <Page>
@@ -137,16 +193,17 @@ export default async function OrdersPage({
             className="h-10 w-full rounded-input border border-line bg-canvas pl-9 pr-3 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-pigment"
           />
           {status && <input type="hidden" name="status" value={status} />}
+          {pageSize !== 20 && (
+            <input type="hidden" name="pageSize" value={pageSize} />
+          )}
         </form>
         <div className="flex flex-wrap gap-1">
           {STATUS_FILTERS.map((filter) => {
             const active = (status || "all") === filter.value;
             const href =
               filter.value === "all"
-                ? q
-                  ? `/orders?q=${encodeURIComponent(q)}`
-                  : "/orders"
-                : `/orders?status=${filter.value}${q ? `&q=${encodeURIComponent(q)}` : ""}`;
+                ? ordersHref({ status: "", page: 1 })
+                : ordersHref({ status: filter.value, page: 1 });
             return (
               <Link
                 key={filter.value}
@@ -163,6 +220,24 @@ export default async function OrdersPage({
             );
           })}
         </div>
+        <div className="ml-auto flex flex-wrap items-center gap-1">
+          <span className="px-2 text-xs font-medium text-slate">Rows</span>
+          {PAGE_SIZES.map((size) => (
+            <Link
+              key={size}
+              href={ordersHref({ page: 1, pageSize: size })}
+              aria-current={pageSize === size ? "true" : undefined}
+              className={cn(
+                "inline-flex h-9 min-w-10 items-center justify-center rounded-input px-2 text-sm font-medium transition-colors",
+                pageSize === size
+                  ? "bg-ink text-surface"
+                  : "text-slate hover:bg-canvas hover:text-ink",
+              )}
+            >
+              {size}
+            </Link>
+          ))}
+        </div>
       </FilterBar>
 
       {rows.length === 0 ? (
@@ -175,6 +250,40 @@ export default async function OrdersPage({
         </TableShell>
       ) : (
         <TableShell>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2 text-sm text-slate">
+            <span>
+              Showing {firstResult}-{lastResult} of {total}
+            </span>
+            <div className="flex items-center gap-2">
+              <Link
+                href={ordersHref({ page: page - 1 })}
+                aria-disabled={page <= 1}
+                className={cn(
+                  "inline-flex h-8 items-center rounded-input px-2 text-sm font-medium transition-colors",
+                  page <= 1
+                    ? "pointer-events-none text-slate/40"
+                    : "text-pigment hover:bg-pigment-soft",
+                )}
+              >
+                Previous
+              </Link>
+              <span className="text-xs tabular-nums text-slate">
+                Page {page} of {totalPages}
+              </span>
+              <Link
+                href={ordersHref({ page: page + 1 })}
+                aria-disabled={page >= totalPages}
+                className={cn(
+                  "inline-flex h-8 items-center rounded-input px-2 text-sm font-medium transition-colors",
+                  page >= totalPages
+                    ? "pointer-events-none text-slate/40"
+                    : "text-pigment hover:bg-pigment-soft",
+                )}
+              >
+                Next
+              </Link>
+            </div>
+          </div>
           <div className="hidden grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_9rem_8rem_8rem] gap-4 border-b border-line px-4 py-2 text-xs font-medium uppercase text-slate md:grid">
             <span>Order</span>
             <span>Item</span>
@@ -225,6 +334,40 @@ export default async function OrdersPage({
                 </Link>
               );
             })}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2 text-sm text-slate">
+            <span>
+              Showing {firstResult}-{lastResult} of {total}
+            </span>
+            <div className="flex items-center gap-2">
+              <Link
+                href={ordersHref({ page: page - 1 })}
+                aria-disabled={page <= 1}
+                className={cn(
+                  "inline-flex h-8 items-center rounded-input px-2 text-sm font-medium transition-colors",
+                  page <= 1
+                    ? "pointer-events-none text-slate/40"
+                    : "text-pigment hover:bg-pigment-soft",
+                )}
+              >
+                Previous
+              </Link>
+              <span className="text-xs tabular-nums text-slate">
+                Page {page} of {totalPages}
+              </span>
+              <Link
+                href={ordersHref({ page: page + 1 })}
+                aria-disabled={page >= totalPages}
+                className={cn(
+                  "inline-flex h-8 items-center rounded-input px-2 text-sm font-medium transition-colors",
+                  page >= totalPages
+                    ? "pointer-events-none text-slate/40"
+                    : "text-pigment hover:bg-pigment-soft",
+                )}
+              >
+                Next
+              </Link>
+            </div>
           </div>
         </TableShell>
       )}
