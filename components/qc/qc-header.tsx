@@ -54,10 +54,12 @@ export function QcHeader({
   onNext: () => void;
 }) {
   return (
-    <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-line pb-3">
+    <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-card border border-line bg-surface px-4 py-3 shadow-sm">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <div className="flex items-center gap-3">
-          <h1 className="font-display text-xl font-semibold text-ink">{ctx.orderNumber}</h1>
+          <h1 className="font-display text-xl font-semibold text-ink">
+            {ctx.orderNumber}
+          </h1>
           <StatusChip status={ctx.status as OrderStatus} />
           <TimeInQc since={ctx.enteredQcAt} />
         </div>

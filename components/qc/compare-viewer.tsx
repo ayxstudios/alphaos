@@ -119,7 +119,7 @@ export function CompareViewer({
       </div>
 
       {/* Panes */}
-      <div className="grid min-h-0 flex-1 grid-cols-2 gap-3">
+      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-2">
         <Pane
           label="Reference"
           image={reference}
@@ -217,7 +217,7 @@ function Pane({
   }, [onZoom]);
 
   return (
-    <div className="flex min-h-0 flex-col overflow-hidden rounded-card border border-line bg-surface">
+    <div className="flex min-h-[20rem] flex-col overflow-hidden rounded-card border border-line bg-surface shadow-sm">
       <div className="flex items-center justify-between border-b border-line px-3 py-1.5">
         <span className="text-xs font-medium text-slate">{label}</span>
       </div>

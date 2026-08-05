@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Badge, Button, useToast } from "@/components/ui";
+import { Badge, Button, Page, useToast } from "@/components/ui";
 import { Check, XCircle } from "@/components/ui/icons";
 import { shortcutFor, type ItemResults } from "@/lib/qc/checklist";
 import type { QcContext } from "@/lib/qc/data";
@@ -197,7 +197,7 @@ export function QcScreen({ ctx, queueIds }: { ctx: QcContext; queueIds: string[]
   const initialFailedKeys = items.filter((it) => !checked[it.key]).map((it) => it.key);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
+    <Page className="max-w-none gap-3">
       <QcHeader
         ctx={ctx}
         position={index + 1}
@@ -220,8 +220,7 @@ export function QcScreen({ ctx, queueIds }: { ctx: QcContext; queueIds: string[]
         </div>
       )}
 
-      {/* Compare + checklist */}
-      <div className="flex min-h-0 flex-1 gap-3">
+      <div className="grid min-h-[38rem] flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_380px]">
         <CompareViewer
           key={ctx.orderId}
           references={ctx.references}
@@ -229,7 +228,7 @@ export function QcScreen({ ctx, queueIds }: { ctx: QcContext; queueIds: string[]
           portraitLabel={portraitLabel}
         />
 
-        <aside className="flex w-[380px] shrink-0 flex-col rounded-card border border-line bg-surface p-3">
+        <aside className="flex min-h-[28rem] flex-col rounded-card border border-line bg-surface p-3 shadow-sm">
           <div className="min-h-0 flex-1">
             <ChecklistPanel
               items={items}
@@ -272,7 +271,6 @@ export function QcScreen({ ctx, queueIds }: { ctx: QcContext; queueIds: string[]
         </aside>
       </div>
 
-      {/* Version history */}
       <div className="shrink-0">
         <div className="flex items-center justify-between pb-1">
           <span className="text-xs font-medium text-slate">Version history</span>
@@ -304,6 +302,6 @@ export function QcScreen({ ctx, queueIds }: { ctx: QcContext; queueIds: string[]
       ) : (
         <LegendToggle onClick={openLegend} />
       )}
-    </div>
+    </Page>
   );
 }
