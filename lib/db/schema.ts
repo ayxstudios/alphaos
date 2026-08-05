@@ -462,6 +462,10 @@ export const assets = pgTable(
     uploadedBy: text("uploaded_by").references(() => users.id, {
       onDelete: "set null",
     }),
+    // Retention: the R2 object is hard-deleted after 180 days and the row is
+    // marked here (kept for the order's audit trail — the bytes are gone, the
+    // record persists). Non-null => the asset no longer resolves.
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [

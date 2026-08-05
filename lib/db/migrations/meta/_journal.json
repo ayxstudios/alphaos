@@ -71,6 +71,13 @@
       "when": 1785831979909,
       "tag": "0009_flawless_calypso",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785894461451,
+      "tag": "0010_outgoing_the_call",
+      "breakpoints": true
     }
   ]
 }

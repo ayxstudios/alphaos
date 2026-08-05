@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 
 import { withSystemContext, type Tx } from "@/lib/db";
 import { activityLog, assets, businesses, orders, proofs } from "@/lib/db/schema";
@@ -138,7 +138,9 @@ async function resolvePreviewAsset(
   const rows = await tx
     .select({ url: assets.url, type: assets.type, createdAt: assets.createdAt })
     .from(assets)
-    .where(and(eq(assets.orderId, orderId), inArray(assets.type, [...PREVIEW_TYPES])))
+    .where(
+      and(eq(assets.orderId, orderId), inArray(assets.type, [...PREVIEW_TYPES]), isNull(assets.deletedAt)),
+    )
     .orderBy(desc(assets.createdAt));
   if (!rows.length) return null;
   // Prefer a "final" if one exists; otherwise the newest submission.

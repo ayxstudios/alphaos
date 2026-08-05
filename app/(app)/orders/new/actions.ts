@@ -9,6 +9,14 @@ import { withUserContext, type RequestUser } from "@/lib/db";
 import { shops, orders, orderItems, customers, assets, activityLog } from "@/lib/db/schema";
 import { runAutoAssign } from "@/lib/orders/assign";
 import { normalizeOrderNumber } from "@/lib/orders/reconcile";
+import {
+  assetKey,
+  extFor,
+  presignUpload,
+  isR2Configured,
+  MAX_UPLOAD_BYTES,
+  ALLOWED_IMAGE_TYPES,
+} from "@/lib/storage/r2";
 
 export type NewOrderInput = {
   orderId: string; // client-minted (also the R2 key namespace)
@@ -29,14 +37,59 @@ export type NewOrderResult =
   | { ok: true; orderNumber: string; orderId: string }
   | { ok: false; message: string };
 
-async function requireVa(): Promise<RequestUser | { error: NewOrderResult }> {
+async function requireVa(): Promise<RequestUser | { error: string }> {
   const session = await auth();
   const role = session?.user?.role;
-  if (!session?.user) return { error: { ok: false, message: "Not signed in" } };
-  if (role !== "admin" && role !== "va") {
-    return { error: { ok: false, message: "Manual entry is VA/admin only" } };
-  }
+  if (!session?.user) return { error: "Not signed in" };
+  if (role !== "admin" && role !== "va") return { error: "Manual entry is VA/admin only" };
   return { id: session.user.id, role };
+}
+
+export type PresignResult =
+  | { ok: true; uploads: { key: string; uploadUrl: string }[] }
+  | { ok: false; message: string };
+
+/**
+ * Issue presigned PUT URLs for reference-photo uploads, so file bytes go direct
+ * from the browser to R2 and never touch our server. VA/admin only; the caller
+ * must be able to see the shop (RLS derives businessId). Each file is validated
+ * server-side BEFORE a URL is issued: image content type + 25 MB cap.
+ */
+export async function presignReferenceUploads(input: {
+  shopId: string;
+  orderId: string;
+  files: { filename: string; contentType: string; size: number }[];
+}): Promise<PresignResult> {
+  const authed = await requireVa();
+  if ("error" in authed) return { ok: false, message: authed.error };
+  if (!isR2Configured()) return { ok: false, message: "File storage is not configured" };
+  if (!input.shopId || !input.orderId || !Array.isArray(input.files) || input.files.length === 0) {
+    return { ok: false, message: "Nothing to upload" };
+  }
+  if (input.files.length > 20) return { ok: false, message: "Too many files (max 20)" };
+
+  const [shop] = await withUserContext(authed, (tx) =>
+    tx.select({ businessId: shops.businessId }).from(shops).where(eq(shops.id, input.shopId)),
+  );
+  if (!shop) return { ok: false, message: "Shop not found" };
+
+  try {
+    const uploads = await Promise.all(
+      input.files.map(async (f) => {
+        if (!ALLOWED_IMAGE_TYPES.test(f.contentType)) {
+          throw new Error(`${f.filename}: not an image`);
+        }
+        if (typeof f.size !== "number" || f.size <= 0 || f.size > MAX_UPLOAD_BYTES) {
+          throw new Error(`${f.filename}: over 25 MB`);
+        }
+        const key = assetKey(shop.businessId, input.orderId, "reference", extFor(f.filename, f.contentType));
+        return { key, uploadUrl: await presignUpload({ key, contentType: f.contentType }) };
+      }),
+    );
+    return { ok: true, uploads };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Could not prepare upload" };
+  }
 }
 
 function splitName(name: string | undefined): [string | null, string | null] {
@@ -59,7 +112,7 @@ function splitName(name: string | undefined): [string | null, string | null] {
  */
 export async function createManualOrder(input: NewOrderInput): Promise<NewOrderResult> {
   const authed = await requireVa();
-  if ("error" in authed) return authed.error;
+  if ("error" in authed) return { ok: false, message: authed.error };
   const user = authed;
 
   if (input.productType !== "digital" && input.productType !== "physical") {

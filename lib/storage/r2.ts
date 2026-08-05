@@ -3,30 +3,34 @@ import { randomUUID } from "node:crypto";
 import {
   S3Client,
   DeleteObjectCommand,
+  GetObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 /**
- * Cloudflare R2 (S3-compatible) object storage for customer-uploaded reference
- * photos. Uploads go DIRECT from the browser via a presigned PUT — bytes never
- * route through our server. Objects are served from the bucket's public custom
- * domain (R2_PUBLIC_URL). Shopify CDN URLs are stored as references and NEVER
- * copied here, so only real uploads consume storage.
+ * Cloudflare R2 (S3-compatible) object storage for VA-uploaded reference photos.
  *
- * Env (see .env.local): R2_ENDPOINT, R2_BUCKET_NAME, R2_ACCESS_KEY_ID,
- * R2_SECRET_ACCESS_KEY, R2_PUBLIC_URL.
+ * The bucket is PRIVATE and stays private. Uploads go direct from the browser via
+ * a presigned PUT (bytes never touch our server); reads are served via short-
+ * lived presigned GET URLs. Shopify CDN URLs are stored as `storage:'cdn'`
+ * references and never copied here — only real uploads consume storage.
+ *
+ * Env: R2_ENDPOINT, R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
  */
 
-const UPLOAD_TTL_SECONDS = 300; // presigned PUT validity
+export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
+export const ALLOWED_IMAGE_TYPES = /^image\/(jpeg|png|webp|gif|heic|heif)$/i;
+
+const PUT_TTL_SECONDS = 300; // presigned PUT validity
+const GET_TTL_SECONDS = 300; // presigned GET validity (short — bucket is private)
 
 let cached: S3Client | null = null;
 function client(): S3Client {
   if (cached) return cached;
-  const endpoint = requireEnv("R2_ENDPOINT");
   cached = new S3Client({
     region: "auto",
-    endpoint,
+    endpoint: requireEnv("R2_ENDPOINT"),
     forcePathStyle: true,
     credentials: {
       accessKeyId: requireEnv("R2_ACCESS_KEY_ID"),
@@ -46,39 +50,55 @@ function requireEnv(name: string): string {
 export function isR2Configured(): boolean {
   return !!(
     process.env.R2_ENDPOINT &&
-    process.env.R2_BUCKET_NAME &&
+    process.env.R2_BUCKET &&
     process.env.R2_ACCESS_KEY_ID &&
-    process.env.R2_SECRET_ACCESS_KEY &&
-    process.env.R2_PUBLIC_URL
+    process.env.R2_SECRET_ACCESS_KEY
   );
 }
 
-const bucket = () => requireEnv("R2_BUCKET_NAME");
+const bucket = () => requireEnv("R2_BUCKET");
 
-/** Namespace keys by business + order so retention + access are easy to reason about. */
-export function assetKey(businessId: string, orderId: string, filename: string): string {
-  const safe = filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-80);
-  return `business/${businessId}/order/${orderId}/${randomUUID()}-${safe}`;
+const EXT_BY_TYPE: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "image/heic": "heic",
+  "image/heif": "heif",
+};
+
+/** File extension from the original name, falling back to the content type. */
+export function extFor(filename: string, contentType: string): string {
+  const m = filename.match(/\.([a-z0-9]{1,5})$/i);
+  if (m) return m[1].toLowerCase();
+  return EXT_BY_TYPE[contentType.toLowerCase()] ?? "bin";
+}
+
+/** Key layout: {businessId}/{orderId}/{assetType}/{uuid}.{ext}. */
+export function assetKey(
+  businessId: string,
+  orderId: string,
+  assetType: "reference" | "submission" | "final",
+  ext: string,
+): string {
+  return `${businessId}/${orderId}/${assetType}/${randomUUID()}.${ext}`;
 }
 
 /** A short-lived presigned PUT the browser uploads to directly. */
-export async function presignUpload(opts: {
-  key: string;
-  contentType: string;
-}): Promise<string> {
+export function presignUpload(opts: { key: string; contentType: string }): Promise<string> {
   return getSignedUrl(
     client(),
     new PutObjectCommand({ Bucket: bucket(), Key: opts.key, ContentType: opts.contentType }),
-    { expiresIn: UPLOAD_TTL_SECONDS },
+    { expiresIn: PUT_TTL_SECONDS },
   );
 }
 
-/** Public URL for a stored object (bucket's custom domain). */
-export function publicUrl(key: string): string {
-  return `${requireEnv("R2_PUBLIC_URL").replace(/\/+$/, "")}/${key}`;
+/** A short-lived presigned GET for reading a private object (thumbnails, previews). */
+export function presignGet(key: string, expiresIn = GET_TTL_SECONDS): Promise<string> {
+  return getSignedUrl(client(), new GetObjectCommand({ Bucket: bucket(), Key: key }), { expiresIn });
 }
 
-/** Hard-delete an object (retention sweep). Missing keys are ignored. */
+/** Hard-delete an object (retention sweep). */
 export async function deleteObject(key: string): Promise<void> {
   await client().send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }));
 }

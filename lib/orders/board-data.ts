@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, gte, inArray, isNotNull, lt, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import {
@@ -14,7 +14,7 @@ import {
 } from "@/lib/db/schema";
 import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
 import { issueLabels } from "@/lib/proofs/issues";
-import { isR2Configured, publicUrl } from "@/lib/storage/r2";
+import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import type { OrderStatus } from "./transitions";
 
 /** A revision the designer must act on — from QC, or from the customer. */
@@ -99,14 +99,25 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
   const refs = await tx
     .select({ orderId: assets.orderId, url: assets.url, storage: assets.storage, r2Key: assets.r2Key })
     .from(assets)
-    .where(and(inArray(assets.orderId, ids), eq(assets.type, "reference")));
+    .where(and(inArray(assets.orderId, ids), eq(assets.type, "reference"), isNull(assets.deletedAt)));
+  // First reference photo per order; CDN urls resolve directly, R2 via a
+  // short-lived presigned GET (private bucket).
+  const firstRef = new Map<string, { url: string | null; storage: string; r2Key: string | null }>();
+  for (const a of refs) if (!firstRef.has(a.orderId)) firstRef.set(a.orderId, a);
   const r2Ok = isR2Configured();
   const thumb = new Map<string, string>();
-  for (const a of refs) {
-    if (thumb.has(a.orderId)) continue;
-    const url = a.url ?? (a.storage === "r2" && a.r2Key && r2Ok ? publicUrl(a.r2Key) : null);
-    if (url) thumb.set(a.orderId, url);
-  }
+  await Promise.all(
+    [...firstRef.entries()].map(async ([orderId, a]) => {
+      if (a.url) thumb.set(orderId, a.url);
+      else if (a.storage === "r2" && a.r2Key && r2Ok) {
+        try {
+          thumb.set(orderId, await presignGet(a.r2Key));
+        } catch {
+          /* leave without a thumbnail rather than fail the board */
+        }
+      }
+    }),
+  );
 
   // Revision detail per in-design order — the reason a card is back in design.
   // A card can be here from a failed QC (qc_checks) OR a customer change request

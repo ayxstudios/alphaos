@@ -4,7 +4,7 @@ import { useRef, useState, useTransition } from "react";
 
 import { Button, Card, CardContent, Input, Textarea, Select, Badge } from "@/components/ui";
 import { XCircle, Camera } from "@/components/ui/icons";
-import { createManualOrder } from "@/app/(app)/orders/new/actions";
+import { createManualOrder, presignReferenceUploads } from "@/app/(app)/orders/new/actions";
 
 export type ShopOption = {
   id: string;
@@ -13,7 +13,10 @@ export type ShopOption = {
   turnaroundDays: number;
 };
 
-type Photo = { kind: "r2"; key: string; url: string; name: string } | { kind: "url"; url: string };
+// Preview for an R2 upload uses a local object URL (bucket is private — no public
+// URL). Only the `key` is sent on submit.
+type Photo = { kind: "r2"; key: string; previewUrl: string; name: string } | { kind: "url"; url: string };
+const MAX_BYTES = 25 * 1024 * 1024;
 
 function newId() {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
@@ -52,24 +55,32 @@ export function NewOrderForm({ shops, r2Enabled }: { shops: ShopOption[]; r2Enab
 
   async function uploadFiles(files: File[]) {
     if (!shopId) return setError("Pick a shop first.");
+    const tooBig = files.find((f) => f.size > MAX_BYTES);
+    if (tooBig) return setError(`${tooBig.name} is over 25 MB.`);
     setError(null);
     setUploading(true);
     try {
-      const res = await fetch("/api/uploads/presign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ shopId, orderId, files: files.map((f) => ({ filename: f.name, contentType: f.type })) }),
+      const res = await presignReferenceUploads({
+        shopId,
+        orderId,
+        files: files.map((f) => ({ filename: f.name, contentType: f.type, size: f.size })),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Upload failed");
-      const uploads: { key: string; uploadUrl: string; publicUrl: string }[] = data.uploads;
+      if (!res.ok) throw new Error(res.message);
       await Promise.all(
-        uploads.map(async (u, i) => {
+        res.uploads.map(async (u, i) => {
           const put = await fetch(u.uploadUrl, { method: "PUT", headers: { "Content-Type": files[i].type }, body: files[i] });
           if (!put.ok) throw new Error(`Upload failed for ${files[i].name}`);
         }),
       );
-      setPhotos((p) => [...p, ...uploads.map((u, i) => ({ kind: "r2" as const, key: u.key, url: u.publicUrl, name: files[i].name }))]);
+      setPhotos((p) => [
+        ...p,
+        ...res.uploads.map((u, i) => ({
+          kind: "r2" as const,
+          key: u.key,
+          previewUrl: URL.createObjectURL(files[i]),
+          name: files[i].name,
+        })),
+      ]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
@@ -222,7 +233,11 @@ export function NewOrderForm({ shops, r2Enabled }: { shops: ShopOption[]; r2Enab
               {photos.map((p, i) => (
                 <span key={i} className="relative inline-block">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.url} alt="" className="size-14 rounded-input border border-line object-cover" />
+                  <img
+                    src={p.kind === "r2" ? p.previewUrl : p.url}
+                    alt=""
+                    className="size-14 rounded-input border border-line object-cover"
+                  />
                   <button
                     type="button"
                     onClick={() => setPhotos((ps) => ps.filter((_, j) => j !== i))}
