@@ -27,18 +27,20 @@ type ColKey = keyof Cols;
 const COLUMN_TO_STATUS: Record<ColKey, OrderStatus> = {
   myQueue: "ready_to_assign",
   inDesign: "in_design",
+  failedQc: "in_design",
   awaitingQc: "awaiting_qc",
   revisions: "in_design",
   complete: "complete",
 };
 // A designer's only legal moves: start (My Queue → In Design) and submit
 // (In Design → Awaiting QC). So only these columns drag/drop.
-const DRAG_SOURCES = new Set<ColKey>(["myQueue", "inDesign"]);
+const DRAG_SOURCES = new Set<ColKey>(["myQueue", "inDesign", "failedQc", "revisions"]);
 const DROP_TARGETS = new Set<ColKey>(["inDesign", "awaitingQc"]);
 
 const COLUMNS: { key: ColKey; title: string }[] = [
   { key: "myQueue", title: "My Queue" },
   { key: "inDesign", title: "In Design" },
+  { key: "failedQc", title: "Failed QC" },
   { key: "awaitingQc", title: "Awaiting QC" },
   { key: "revisions", title: "Revisions" },
   { key: "complete", title: "Complete" },

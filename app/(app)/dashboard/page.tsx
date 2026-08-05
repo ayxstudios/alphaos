@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
 import { loadShellData } from "@/lib/shell/context";
 import { customers, orderItems, orders, shops } from "@/lib/db/schema";
+import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
 import {
   Badge,
   DataPanel,
@@ -66,6 +67,7 @@ export default async function DashboardPage() {
         customerEmail: customers.email,
         customerFirst: customers.firstName,
         customerLast: customers.lastName,
+        rawImport: orders.rawImport,
         title: orderItems.title,
       })
       .from(orders)
@@ -134,7 +136,10 @@ export default async function DashboardPage() {
                   const customerName =
                     [order.customerFirst, order.customerLast]
                       .filter(Boolean)
-                      .join(" ") || order.customerEmail || "No customer linked";
+                      .join(" ") ||
+                    order.customerEmail ||
+                    parseEtsyReceiptReview(order.rawImport).buyerName ||
+                    "Unknown customer";
                   const overdue = order.dueAt ? order.dueAt < now : false;
                   return (
                     <Link

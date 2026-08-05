@@ -17,7 +17,15 @@ import { ShortcutLegend, LegendToggle } from "./shortcut-legend";
 
 const LEGEND_KEY = "qc-legend-dismissed";
 
-export function QcScreen({ ctx, queueIds }: { ctx: QcContext; queueIds: string[] }) {
+export function QcScreen({
+  ctx,
+  queueIds,
+  reviewerName,
+}: {
+  ctx: QcContext;
+  queueIds: string[];
+  reviewerName: string;
+}) {
   const router = useRouter();
   const toast = useToast();
   const [pending, start] = useTransition();
@@ -52,6 +60,7 @@ export function QcScreen({ ctx, queueIds }: { ctx: QcContext; queueIds: string[]
 
   const allChecked = items.length > 0 && items.every((it) => checked[it.key] === true);
   const doneCount = items.filter((it) => checked[it.key]).length;
+  const failedCount = items.filter((it) => checked[it.key] === false).length;
 
   const shortcutMap = useMemo(() => {
     const m: Record<string, number> = {};
@@ -71,7 +80,17 @@ export function QcScreen({ ctx, queueIds }: { ctx: QcContext; queueIds: string[]
   }, [nextId, router]);
 
   const toggle = useCallback(
-    (key: number) => setChecked((prev) => ({ ...prev, [key]: !prev[key] })),
+    (key: number) =>
+      setChecked((prev) => {
+        const next = { ...prev };
+        if (next[key] === true) delete next[key];
+        else next[key] = true;
+        return next;
+      }),
+    [],
+  );
+  const mark = useCallback(
+    (key: number, value: boolean) => setChecked((prev) => ({ ...prev, [key]: value })),
     [],
   );
   const tickAll = useCallback(() => {
@@ -230,22 +249,27 @@ export function QcScreen({ ctx, queueIds }: { ctx: QcContext; queueIds: string[]
 
         <aside className="flex min-h-[28rem] flex-col rounded-card border border-line bg-surface p-3 shadow-sm">
           <div className="min-h-0 flex-1">
-            <ChecklistPanel
-              items={items}
-              checked={checked}
-              onToggle={toggle}
-              onTickAll={tickAll}
-              disabled={!ctx.isReviewable || pending}
-            />
+              <ChecklistPanel
+                items={items}
+                checked={checked}
+                onToggle={toggle}
+                onMark={mark}
+                onTickAll={tickAll}
+                disabled={!ctx.isReviewable || pending}
+              />
           </div>
 
           <div className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
             {ctx.isReviewable && !allChecked && (
               <p className="text-xs text-slate">
-                Tick all {items.length} items to enable Pass.{" "}
+                Mark every item Pass to enable Pass. Use X for anything the designer missed.{" "}
                 <Badge variant="neutral">{doneCount}/{items.length}</Badge>
+                {failedCount > 0 && <Badge variant="danger">{failedCount} X</Badge>}
               </p>
             )}
+            <div className="rounded-input bg-canvas px-3 py-2 text-xs text-slate">
+              QC sign-off: <span className="font-medium text-ink">{reviewerName}</span>
+            </div>
             <div className="flex gap-2">
               <Button
                 variant="danger"

@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
 import { loadShellData } from "@/lib/shell/context";
 import {
+  activityLog,
   assignments,
   customers,
   orderItems,
@@ -29,6 +30,8 @@ import { OrdersOperationsTable, type OrdersDashboardRow } from "@/components/ord
 import { OrdersFilterSelect } from "@/components/orders/orders-filter-select";
 import { OrdersViewPreference } from "@/components/orders/orders-view-preference";
 import { cn } from "@/lib/utils";
+import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
+import { stageTimer } from "@/lib/orders/stage-timers";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +64,7 @@ type ViewKey =
   | "completed_with_tracking"
   | "completed";
 
-type SortKey = "created" | "order" | "customer" | "source" | "status" | "owner" | "due";
+type SortKey = "created" | "order" | "customer" | "source" | "status" | "owner" | "ordered" | "due";
 type SortDir = "asc" | "desc";
 
 const ORDERS_VIEW_COOKIE = "orders_view";
@@ -125,7 +128,7 @@ function validView(value: string | undefined): ViewKey | null {
 }
 
 function validSort(value: string | undefined): SortKey {
-  return ["created", "order", "customer", "source", "status", "owner", "due"].includes(value ?? "")
+  return ["created", "order", "customer", "source", "status", "owner", "ordered", "due"].includes(value ?? "")
     ? (value as SortKey)
     : "created";
 }
@@ -147,8 +150,14 @@ function customerName(row: {
   firstName: string | null;
   lastName: string | null;
   email: string | null;
+  rawImport: unknown;
 }) {
-  return [row.firstName, row.lastName].filter(Boolean).join(" ") || row.email || "No customer linked";
+  return (
+    [row.firstName, row.lastName].filter(Boolean).join(" ") ||
+    row.email ||
+    parseEtsyReceiptReview(row.rawImport).buyerName ||
+    "Unknown customer"
+  );
 }
 
 function dateIso(date: Date | null) {
@@ -240,6 +249,7 @@ function sortOrder(sort: SortKey, dir: SortDir, view: ViewKey) {
   if (sort === "source") return [direction(shops.name), desc(orders.createdAt)];
   if (sort === "status") return [direction(orders.status), desc(orders.createdAt)];
   if (sort === "owner") return [direction(users.name), desc(orders.createdAt)];
+  if (sort === "ordered") return [direction(orders.placedAt), desc(orders.createdAt)];
   if (view === "overdue") return [asc(orders.dueAt), desc(orders.createdAt)];
   return [desc(orders.createdAt)];
 }
@@ -366,6 +376,8 @@ export default async function OrdersPage({
         dueAt: orders.dueAt,
         placedAt: orders.placedAt,
         createdAt: orders.createdAt,
+        updatedAt: orders.updatedAt,
+        rawImport: orders.rawImport,
         shopName: shops.name,
         shopPlatform: shops.platform,
         customerId: customers.id,
@@ -426,6 +438,17 @@ export default async function OrdersPage({
           .where(inArray(printJobs.orderId, ids))
           .orderBy(desc(printJobs.createdAt))
       : [];
+    const activityRows = ids.length
+      ? await tx
+          .select({
+            orderId: activityLog.orderId,
+            toState: activityLog.toState,
+            createdAt: activityLog.createdAt,
+          })
+          .from(activityLog)
+          .where(inArray(activityLog.orderId, ids))
+          .orderBy(desc(activityLog.createdAt))
+      : [];
 
     const itemMap = new Map<string, typeof itemRows>();
     for (const item of itemRows) itemMap.set(item.orderId, [...(itemMap.get(item.orderId) ?? []), item]);
@@ -433,10 +456,16 @@ export default async function OrdersPage({
     for (const qc of qcRows) if (!latestQc.has(qc.orderId)) latestQc.set(qc.orderId, qc);
     const printMap = new Map<string, typeof printRows>();
     for (const print of printRows) printMap.set(print.orderId, [...(printMap.get(print.orderId) ?? []), print]);
+    const activityMap = new Map<string, typeof activityRows>();
+    for (const event of activityRows) {
+      if (!event.orderId) continue;
+      activityMap.set(event.orderId, [...(activityMap.get(event.orderId) ?? []), event]);
+    }
 
     const normalizedRows: OrdersDashboardRow[] = orderRows.map((order) => {
       const items = itemMap.get(order.id) ?? [];
       const prints = printMap.get(order.id) ?? [];
+      const events = activityMap.get(order.id) ?? [];
       const qc = latestQc.get(order.id) ?? null;
       const physical = items.some((item) => item.productType === "physical");
       const tracking = prints.find((print) => print.trackingNumber)?.trackingNumber ?? null;
@@ -455,9 +484,27 @@ export default async function OrdersPage({
                 ? "Shipped - Awaiting Tracking"
                 : tracking
                   ? "Completed With Tracking"
-                  : titleCase(order.status);
+                : titleCase(order.status);
+      const stageStartedAt =
+        isFailedQc
+          ? qc?.createdAt ?? order.updatedAt
+          : derivedStatus === "Ready to Ship"
+            ? events.find((event) => event.toState === "approved")?.createdAt ?? order.updatedAt
+            : derivedStatus === "Shipped - Awaiting Tracking"
+              ? prints[0]?.createdAt ?? order.updatedAt
+              : events.find((event) => event.toState === order.status)?.createdAt ??
+                order.updatedAt ??
+                order.createdAt;
+      const timer = stageTimer({
+        status: order.status,
+        derivedStatus,
+        isPhysical: physical,
+        stageStartedAt: dateIso(stageStartedAt),
+      });
       const action =
-        order.status === "awaiting_details"
+        timer.followUpDue
+          ? { href: `/orders/${order.id}`, label: "Follow up" }
+          : order.status === "awaiting_details"
           ? { href: `/orders/${order.id}/complete`, label: "Complete details" }
           : order.status === "awaiting_qc"
             ? { href: `/qc/${order.id}`, label: "Review QC" }
@@ -470,6 +517,7 @@ export default async function OrdersPage({
           firstName: order.customerFirst,
           lastName: order.customerLast,
           email: order.customerEmail,
+          rawImport: order.rawImport,
         }),
         customerEmail: order.customerEmail,
         source: order.shopName ?? titleCase(order.source),
@@ -482,6 +530,7 @@ export default async function OrdersPage({
         dueAt: dateIso(order.dueAt),
         placedAt: dateIso(order.placedAt),
         createdAt: dateIso(order.createdAt),
+        stageTimer: timer,
         itemTitle: items[0]?.title ?? "No item details",
         itemSummary: [
           items.length > 1 ? `${items.length} items` : null,

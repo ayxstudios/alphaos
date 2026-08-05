@@ -10,6 +10,7 @@ import {
   type BulkActionResult,
 } from "@/app/(app)/orders/actions";
 import { Badge, Button, useToast, type OrderStatus } from "@/components/ui";
+import { formatStageRemaining, type StageTimer } from "@/lib/orders/stage-timers";
 import { cn } from "@/lib/utils";
 
 export type OrdersDashboardRow = {
@@ -27,6 +28,7 @@ export type OrdersDashboardRow = {
   dueAt: string | null;
   placedAt: string | null;
   createdAt: string | null;
+  stageTimer: StageTimer;
   itemTitle: string;
   itemSummary: string;
   isOverdue: boolean;
@@ -40,7 +42,7 @@ export type OrdersDashboardRow = {
 };
 
 type DesignerOption = { id: string; name: string };
-type SortKey = "created" | "order" | "customer" | "source" | "status" | "owner" | "due";
+type SortKey = "created" | "order" | "customer" | "source" | "status" | "owner" | "ordered" | "due";
 type SortDir = "asc" | "desc";
 
 const BULK_STATUSES: { value: OrderStatus; label: string }[] = [
@@ -67,6 +69,16 @@ function fmtDate(value: string | null) {
   }).format(new Date(value));
 }
 
+function fmtDateTime(value: string | null) {
+  if (!value) return "Unknown";
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 function resultText(result: BulkActionResult) {
   if (!result.ok) return result.message;
   const skipped = result.skipped.length ? `, ${result.skipped.length} skipped` : "";
@@ -90,7 +102,7 @@ function pageHref(currentParams: string, page: number) {
 }
 
 function statusTone(row: OrdersDashboardRow) {
-  if (row.derivedStatus === "Failed QC" || row.isOverdue) return "danger";
+  if (row.derivedStatus === "Failed QC" || row.isOverdue || row.stageTimer.isOverdue) return "danger";
   if (
     row.derivedStatus === "Revision" ||
     row.derivedStatus === "Awaiting Qc" ||
@@ -238,7 +250,7 @@ export function OrdersOperationsTable({
         </div>
       </div>
 
-      <div className="hidden grid-cols-[2.25rem_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.9fr)_9rem_9rem_8rem_8rem] gap-4 border-b border-line px-4 py-2 text-xs font-medium uppercase text-slate lg:grid">
+      <div className="hidden grid-cols-[2.25rem_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_8.5rem_8rem_7.5rem_9rem_8rem_8rem] gap-3 border-b border-line px-4 py-2 text-xs font-medium uppercase text-slate xl:grid">
         <label className="flex items-center">
           <input
             type="checkbox"
@@ -253,7 +265,9 @@ export function OrdersOperationsTable({
         <SortableHeader currentParams={currentParams} sort="source" activeSort={sort} dir={dir}>Source</SortableHeader>
         <SortableHeader currentParams={currentParams} sort="status" activeSort={sort} dir={dir}>Status</SortableHeader>
         <SortableHeader currentParams={currentParams} sort="owner" activeSort={sort} dir={dir}>Owner</SortableHeader>
+        <SortableHeader currentParams={currentParams} sort="ordered" activeSort={sort} dir={dir}>Ordered</SortableHeader>
         <SortableHeader currentParams={currentParams} sort="due" activeSort={sort} dir={dir}>Due</SortableHeader>
+        <span>Stage time</span>
         <span>Action</span>
       </div>
 
@@ -261,7 +275,11 @@ export function OrdersOperationsTable({
         {rows.map((row) => (
           <div
             key={row.id}
-            className="grid gap-3 px-4 py-3 transition-colors hover:bg-canvas lg:grid-cols-[2.25rem_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.9fr)_9rem_9rem_8rem_8rem] lg:items-center lg:gap-4"
+            className={cn(
+              "grid gap-3 px-4 py-3 transition-colors hover:bg-canvas xl:grid-cols-[2.25rem_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_8.5rem_8rem_7.5rem_9rem_8rem_8rem] xl:items-center xl:gap-3",
+              (row.stageTimer.isOverdue || row.isOverdue) &&
+                "bg-rose/5 ring-1 ring-inset ring-rose/20 hover:bg-rose/10",
+            )}
           >
             <label className="flex items-center">
               <input
@@ -291,9 +309,20 @@ export function OrdersOperationsTable({
               <Badge variant={statusTone(row)} dot>{row.derivedStatus}</Badge>
             </div>
             <p className="truncate text-sm text-slate">{row.assignee}</p>
+            <div className="min-w-0">
+              <p className="text-sm text-slate">{fmtDateTime(row.placedAt ?? row.createdAt)}</p>
+            </div>
             <div className="flex flex-wrap items-center gap-2">
               {row.isOverdue && <Badge variant="danger" dot>Overdue</Badge>}
               <span className="text-sm text-slate">{fmtDate(row.dueAt)}</span>
+            </div>
+            <div className="min-w-0">
+              <p className={cn("text-sm font-medium", row.stageTimer.isOverdue ? "text-rose" : "text-ink")}>
+                {formatStageRemaining(row.stageTimer)}
+              </p>
+              <p className="truncate text-xs text-slate">
+                {row.stageTimer.followUpLabel ?? row.stageTimer.label}
+              </p>
             </div>
             <Link
               href={row.action.href}

@@ -28,5 +28,11 @@ export default async function QcPage({
 
   if (!ctx) notFound();
 
-  return <QcScreen ctx={ctx} queueIds={queueIds} />;
+  return (
+    <QcScreen
+      ctx={ctx}
+      queueIds={queueIds}
+      reviewerName={session.user.name ?? session.user.email ?? "Current user"}
+    />
+  );
 }

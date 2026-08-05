@@ -217,6 +217,7 @@ export type DesignerBoard = {
   columns: {
     myQueue: BoardCard[];
     inDesign: BoardCard[];
+    failedQc: BoardCard[];
     awaitingQc: BoardCard[];
     revisions: BoardCard[];
     complete: BoardCard[];
@@ -261,8 +262,12 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
       columns: {
         myQueue: pick((r) => r.status === "ready_to_assign"),
         inDesign: pick((r) => r.status === "in_design" && r.revisionCount === 0),
+        failedQc: pick((r) => r.status === "in_design" && !!cards.find((c) => c.orderId === r.id)?.qcFail),
         awaitingQc: pick((r) => r.status === "awaiting_qc"),
-        revisions: pick((r) => r.status === "in_design" && r.revisionCount > 0),
+        revisions: pick((r) => {
+          const card = cards.find((c) => c.orderId === r.id);
+          return r.status === "in_design" && r.revisionCount > 0 && !card?.qcFail;
+        }),
         complete: pick((r) => r.status === "complete"),
       },
       dailyEarnings: Number(e?.total ?? 0),
