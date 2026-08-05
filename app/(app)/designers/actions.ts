@@ -58,7 +58,10 @@ export async function moveDesigner(
     }
   });
 
-  revalidatePath("/designers");
+  // Not revalidating "/designers" here: it would force a slow server refetch of
+  // the page the edit came from and clobber the optimistic UI. The page is
+  // force-dynamic, so it reloads fresh on the next visit anyway. "/board" is a
+  // different route (safe — just marks it stale for its next load).
   revalidatePath("/board");
   return { ok: true };
 }
@@ -76,7 +79,10 @@ export async function setDailyLimit(userId: string, limit: number): Promise<Acti
       .set({ dailyCapacity: clamped })
       .where(eq(designerProfiles.userId, userId)),
   );
-  revalidatePath("/designers");
+  // Not revalidating "/designers" here: it would force a slow server refetch of
+  // the page the edit came from and clobber the optimistic UI. The page is
+  // force-dynamic, so it reloads fresh on the next visit anyway. "/board" is a
+  // different route (safe — just marks it stale for its next load).
   revalidatePath("/board");
   return { ok: true };
 }
@@ -103,7 +109,10 @@ export async function setStyles(userId: string, raw: string[]): Promise<ActionRe
       .set({ styles: styles.length ? styles : null })
       .where(eq(designerProfiles.userId, userId)),
   );
-  revalidatePath("/designers");
+  // Not revalidating "/designers" here: it would force a slow server refetch of
+  // the page the edit came from and clobber the optimistic UI. The page is
+  // force-dynamic, so it reloads fresh on the next visit anyway. "/board" is a
+  // different route (safe — just marks it stale for its next load).
   revalidatePath("/board");
   return { ok: true };
 }

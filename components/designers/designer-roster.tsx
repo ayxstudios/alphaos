@@ -1,24 +1,67 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
 
 import { cn } from "@/lib/utils";
 import { Avatar, useToast } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
-import { ChevronDown } from "@/components/ui/icons";
+import { ChevronDown, Check } from "@/components/ui/icons";
 import { moveDesigner, setDailyLimit, setStyles } from "@/app/(app)/designers/actions";
 import type { DesignerRow } from "@/lib/designers/roster";
 
+type ActionResult = { ok: boolean; message?: string };
+
+/**
+ * Ranked designer roster. Every edit is OPTIMISTIC — the UI updates instantly
+ * and the server action persists in the background (no blocking refresh), so it
+ * feels immediate even with a slow round-trip. On failure we revert to the last
+ * server state and toast.
+ */
 export function DesignerRoster({
   designers,
+  styleOptions,
   canEdit,
 }: {
   designers: DesignerRow[];
+  styleOptions: string[];
   canEdit: boolean;
 }) {
+  const toast = useToast();
+  const [list, setList] = useState(designers);
+  const [, startBg] = useTransition();
+
+  // Re-sync to the server's ordering/values on a genuine data refresh.
+  useEffect(() => setList(designers), [designers]);
+
+  function persist(optimistic: DesignerRow[], action: () => Promise<ActionResult>) {
+    setList(optimistic);
+    startBg(async () => {
+      const res = await action();
+      if (!res.ok) {
+        setList(designers);
+        toast({ variant: "danger", title: "Update failed", description: res.message });
+      }
+    });
+  }
+
+  function reorder(userId: string, dir: "up" | "down") {
+    const idx = list.findIndex((d) => d.userId === userId);
+    const swap = dir === "up" ? idx - 1 : idx + 1;
+    if (idx < 0 || swap < 0 || swap >= list.length) return;
+    const next = [...list];
+    [next[idx], next[swap]] = [next[swap], next[idx]];
+    persist(next, () => moveDesigner(userId, dir));
+  }
+
+  function patch(userId: string, patchRow: Partial<DesignerRow>, action: () => Promise<ActionResult>) {
+    persist(
+      list.map((d) => (d.userId === userId ? { ...d, ...patchRow } : d)),
+      action,
+    );
+  }
+
   return (
-    <div className="overflow-hidden rounded-card border border-line bg-surface shadow-sm">
+    <div className="rounded-card border border-line bg-surface shadow-sm">
       <div className="hidden grid-cols-[5rem_1fr_1.6fr_7rem_11rem] gap-3 border-b border-line px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate lg:grid">
         <span>Rank</span>
         <span>Designer</span>
@@ -27,13 +70,18 @@ export function DesignerRoster({
         <span>Assigned today</span>
       </div>
       <ul className="divide-y divide-line">
-        {designers.map((d, i) => (
+        {list.map((d, i) => (
           <Row
             key={d.userId}
             d={d}
+            position={i + 1}
             first={i === 0}
-            last={i === designers.length - 1}
+            last={i === list.length - 1}
             canEdit={canEdit}
+            styleOptions={styleOptions}
+            onReorder={reorder}
+            onLimit={(n) => patch(d.userId, { dailyCapacity: n }, () => setDailyLimit(d.userId, n))}
+            onStyles={(styles) => patch(d.userId, { styles }, () => setStyles(d.userId, styles))}
           />
         ))}
       </ul>
@@ -43,34 +91,27 @@ export function DesignerRoster({
 
 function Row({
   d,
+  position,
   first,
   last,
   canEdit,
+  styleOptions,
+  onReorder,
+  onLimit,
+  onStyles,
 }: {
   d: DesignerRow;
+  position: number;
   first: boolean;
   last: boolean;
   canEdit: boolean;
+  styleOptions: string[];
+  onReorder: (userId: string, dir: "up" | "down") => void;
+  onLimit: (n: number) => void;
+  onStyles: (styles: string[]) => void;
 }) {
-  const router = useRouter();
-  const toast = useToast();
-  const [pending, start] = useTransition();
   const [limit, setLimit] = useState(String(d.dailyCapacity));
-  const [styles, setStylesInput] = useState(d.styles.join(", "));
-
-  // Re-sync inputs when the server value changes (after a refresh).
   useEffect(() => setLimit(String(d.dailyCapacity)), [d.dailyCapacity]);
-  useEffect(() => setStylesInput(d.styles.join(", ")), [d.styles]);
-
-  function run(fn: () => Promise<{ ok: boolean; message?: string }>) {
-    start(async () => {
-      const res = await fn();
-      if (!res.ok) {
-        toast({ variant: "danger", title: "Update failed", description: res.message });
-      }
-      router.refresh();
-    });
-  }
 
   function commitLimit() {
     const n = parseInt(limit, 10);
@@ -78,39 +119,24 @@ function Row({
       setLimit(String(d.dailyCapacity));
       return;
     }
-    run(() => setDailyLimit(d.userId, n));
-  }
-
-  function commitStyles() {
-    const arr = styles.split(",").map((s) => s.trim()).filter(Boolean);
-    const norm = (xs: string[]) => xs.map((s) => s.toLowerCase()).join("");
-    if (norm(arr) === norm(d.styles)) {
-      setStylesInput(d.styles.join(", "));
-      return;
-    }
-    run(() => setStyles(d.userId, arr));
+    onLimit(Math.max(0, n));
   }
 
   const atLimit = d.dailyCapacity > 0 && d.assignedToday >= d.dailyCapacity;
   const pct = d.dailyCapacity > 0 ? Math.min(100, (d.assignedToday / d.dailyCapacity) * 100) : 0;
 
   return (
-    <li
-      className={cn(
-        "grid grid-cols-1 gap-3 px-4 py-3 lg:grid-cols-[5rem_1fr_1.6fr_7rem_11rem] lg:items-center",
-        pending && "opacity-60",
-      )}
-    >
+    <li className="grid grid-cols-1 gap-3 px-4 py-3 lg:grid-cols-[5rem_1fr_1.6fr_7rem_11rem] lg:items-center">
       {/* Rank + reorder */}
       <div className="flex items-center gap-2">
-        <span className="w-6 text-sm font-semibold tabular-nums text-ink">{d.rank + 1}</span>
+        <span className="w-6 text-sm font-semibold tabular-nums text-ink">{position}</span>
         {canEdit && (
           <div className="flex flex-col">
             <button
               type="button"
               aria-label="Move up"
-              disabled={first || pending}
-              onClick={() => run(() => moveDesigner(d.userId, "up"))}
+              disabled={first}
+              onClick={() => onReorder(d.userId, "up")}
               className={cn(
                 "flex size-5 items-center justify-center rounded text-slate hover:bg-canvas hover:text-ink disabled:opacity-30",
                 focusRing,
@@ -121,8 +147,8 @@ function Row({
             <button
               type="button"
               aria-label="Move down"
-              disabled={last || pending}
-              onClick={() => run(() => moveDesigner(d.userId, "down"))}
+              disabled={last}
+              onClick={() => onReorder(d.userId, "down")}
               className={cn(
                 "flex size-5 items-center justify-center rounded text-slate hover:bg-canvas hover:text-ink disabled:opacity-30",
                 focusRing,
@@ -143,19 +169,7 @@ function Row({
       {/* Styles */}
       <div>
         {canEdit ? (
-          <input
-            value={styles}
-            onChange={(e) => setStylesInput(e.target.value)}
-            onBlur={commitStyles}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") e.currentTarget.blur();
-            }}
-            placeholder="Disney, Anime, Watercolour…"
-            className={cn(
-              "h-9 w-full rounded-input border border-line bg-surface px-2.5 text-sm text-ink placeholder:text-slate",
-              focusRing,
-            )}
-          />
+          <StyleSelect selected={d.styles} options={styleOptions} onChange={onStyles} />
         ) : d.styles.length ? (
           <div className="flex flex-wrap gap-1">
             {d.styles.map((s) => (
@@ -208,5 +222,100 @@ function Row({
         </div>
       </div>
     </li>
+  );
+}
+
+/**
+ * Add/remove designer styles — constrained to the shop-offered catalog. You can
+ * only pick styles some shop actually sells; a designer can hold several.
+ */
+function StyleSelect({
+  selected,
+  options,
+  onChange,
+}: {
+  selected: string[];
+  options: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  const selectedLower = new Set(selected.map((s) => s.toLowerCase()));
+  function toggle(opt: string) {
+    const l = opt.toLowerCase();
+    onChange(
+      selectedLower.has(l) ? selected.filter((s) => s.toLowerCase() !== l) : [...selected, opt],
+    );
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={cn(
+          "flex min-h-9 w-full items-center gap-1 rounded-input border border-line bg-surface px-2 py-1 text-left",
+          focusRing,
+        )}
+      >
+        <span className="flex min-w-0 flex-1 flex-wrap gap-1">
+          {selected.length ? (
+            selected.map((s) => (
+              <span key={s} className="rounded bg-sage/10 px-1.5 py-0.5 text-xs text-sage">
+                {s}
+              </span>
+            ))
+          ) : (
+            <span className="text-sm text-slate">Any style</span>
+          )}
+        </span>
+        <ChevronDown size={15} className="shrink-0 text-slate" />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-1 max-h-64 w-full min-w-52 overflow-y-auto rounded-card border border-line bg-surface p-1 shadow-lg">
+          {options.length === 0 ? (
+            <p className="px-2 py-3 text-xs text-slate">
+              No styles defined. Add them per shop in Settings → Styles.
+            </p>
+          ) : (
+            options.map((opt) => {
+              const on = selectedLower.has(opt.toLowerCase());
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => toggle(opt)}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-input px-2 py-1.5 text-left text-sm hover:bg-canvas",
+                    focusRing,
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex size-4 shrink-0 items-center justify-center rounded border",
+                      on ? "border-pigment bg-pigment text-surface" : "border-line",
+                    )}
+                  >
+                    {on && <Check size={12} />}
+                  </span>
+                  <span className={cn(on ? "text-ink" : "text-slate")}>{opt}</span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
   );
 }

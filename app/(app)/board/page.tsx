@@ -2,10 +2,9 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
 import { getDesignerBoard } from "@/lib/orders/board-data";
-import { listDesignersRanked } from "@/lib/designers/roster";
+import { getRailDesigners } from "@/lib/designers/roster";
 import { DesignerBoard } from "@/components/board/designer-board";
 import { DesignerPicker } from "@/components/board/designer-picker";
-import { DesignerRail } from "@/components/board/designer-rail";
 import { EmptyState, Page, PageHeader, StatCard } from "@/components/ui";
 import { Columns } from "@/components/ui/icons";
 
@@ -23,12 +22,15 @@ export default async function BoardPage({
   const designerParam = typeof sp.designer === "string" ? sp.designer : undefined;
   const isStaff = user.role !== "designer";
 
-  // Designers can only ever see their own board; staff pick one (rail / dropdown).
+  // Designers can only ever see their own board; staff pick one from the
+  // right-hand rail (app shell) or the mobile dropdown below.
   const targetId = isStaff ? designerParam : user.id;
 
   const [board, designers] = await Promise.all([
     targetId ? getDesignerBoard(user, targetId) : Promise.resolve(null),
-    isStaff ? listDesignersRanked(user) : Promise.resolve([]),
+    // Only needed for the mobile picker (the rail lives in the shell); cached,
+    // so this shares the layout's query.
+    isStaff ? getRailDesigners(user) : Promise.resolve([]),
   ]);
 
   const pickerDesigners = designers.map((d) => ({ id: d.id, name: d.name }));
@@ -41,7 +43,7 @@ export default async function BoardPage({
         actions={
           <>
             {isStaff && (
-              // Mobile / narrow screens: the rail is hidden, so keep a dropdown.
+              // Mobile / narrow screens: the right rail is hidden, so keep a dropdown.
               <div className="lg:hidden">
                 <DesignerPicker designers={pickerDesigners} current={targetId} />
               </div>
@@ -59,23 +61,17 @@ export default async function BoardPage({
         }
       />
 
-      <div className="flex gap-4">
-        <div className="min-w-0 flex-1">
-          {board ? (
-            <DesignerBoard initial={board.columns} />
-          ) : (
-            <div className="rounded-card border border-line bg-surface shadow-sm">
-              <EmptyState
-                icon={Columns}
-                headline="Select a designer"
-                body="Pick a designer from the list to view and manage their board."
-              />
-            </div>
-          )}
+      {board ? (
+        <DesignerBoard initial={board.columns} />
+      ) : (
+        <div className="rounded-card border border-line bg-surface shadow-sm">
+          <EmptyState
+            icon={Columns}
+            headline="Select a designer"
+            body="Pick a designer from the list on the right to view and manage their board."
+          />
         </div>
-
-        {isStaff && <DesignerRail designers={designers} current={targetId} />}
-      </div>
+      )}
     </Page>
   );
 }

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
 import { getDesignerRoster } from "@/lib/designers/roster";
+import { getStyleCatalog } from "@/lib/designers/styles";
 import { DesignerRoster } from "@/components/designers/designer-roster";
 import { DataPanel, EmptyState, Page, PageHeader } from "@/components/ui";
 import { Users } from "@/components/ui/icons";
@@ -15,7 +16,10 @@ export default async function DesignersPage() {
   // Staff-only surface; designers have no business here.
   if (user.role === "designer") redirect("/board");
 
-  const designers = await getDesignerRoster(user);
+  const [designers, styleCatalog] = await Promise.all([
+    getDesignerRoster(user),
+    getStyleCatalog(user),
+  ]);
 
   return (
     <Page>
@@ -33,7 +37,7 @@ export default async function DesignersPage() {
           />
         </DataPanel>
       ) : (
-        <DesignerRoster designers={designers} canEdit />
+        <DesignerRoster designers={designers} styleOptions={styleCatalog} canEdit />
       )}
     </Page>
   );

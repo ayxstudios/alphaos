@@ -271,6 +271,10 @@ export const shops = pgTable(
     // sync lock). Kept out of the encrypted blob so it can be edited without
     // decrypting credentials.
     integrationConfig: jsonb("integration_config"),
+    // Portrait styles this shop offers (e.g. Disney, Anime). The catalog a
+    // designer's styles are chosen from — you can only pick styles some shop
+    // actually sells. Admin-edited in settings.
+    styles: text("styles").array(),
     checklistVersion: integer("checklist_version").notNull().default(1),
     active: boolean("active").notNull().default(true),
     createdAt: createdAt(),

@@ -24,6 +24,7 @@ import {
   type GmailBusinessVM,
 } from "@/components/settings/gmail-business-card";
 import { TemplateEditor, type TemplateVM } from "@/components/settings/template-editor";
+import { ShopStylesPanel, type ShopStylesVM } from "@/components/settings/shop-styles-panel";
 import {
   DEFAULT_TEMPLATES,
   TEMPLATE_META,
@@ -213,6 +214,21 @@ export default async function SettingsPage() {
     });
   }
 
+  // Portrait styles each shop offers — the catalog designer styles are drawn from.
+  const styleShops: ShopStylesVM[] = (
+    await withUserContext(user, (tx) => {
+      const cols = {
+        id: shops.id,
+        name: shops.name,
+        platform: shops.platform,
+        styles: shops.styles,
+      };
+      return selected.id === ALL_BUSINESSES
+        ? tx.select(cols).from(shops).orderBy(shops.name)
+        : tx.select(cols).from(shops).where(eq(shops.businessId, selected.id)).orderBy(shops.name);
+    })
+  ).map((s) => ({ id: s.id, name: s.name, platform: s.platform, styles: s.styles ?? [] }));
+
   return (
     <Page className="grid gap-6 lg:grid-cols-[12rem_minmax(0,1fr)]">
       <aside className="hidden lg:block">
@@ -228,6 +244,12 @@ export default async function SettingsPage() {
             className="rounded-input px-2 py-1.5 text-slate hover:bg-surface hover:text-ink"
           >
             Shopify
+          </a>
+          <a
+            href="#styles"
+            className="rounded-input px-2 py-1.5 text-slate hover:bg-surface hover:text-ink"
+          >
+            Styles
           </a>
           <a
             href="#email"
@@ -284,6 +306,26 @@ export default async function SettingsPage() {
                 <ShopifyShopCard key={c.id} shop={c} />
               ))}
             </div>
+          )}
+        </section>
+
+        <section id="styles" className="flex scroll-mt-20 flex-col gap-4">
+          <SectionHeader
+            title="Portrait styles"
+            description="Set the styles each shop offers. Designers can only be assigned styles from this catalog, and auto-assign routes styled orders to matching designers."
+          />
+          {styleShops.length === 0 ? (
+            <DataPanel>
+              <EmptyState
+                icon={SettingsIcon}
+                headline="No shops"
+                body="No shops in the selected business."
+              />
+            </DataPanel>
+          ) : (
+            <DataPanel className="px-4 py-1">
+              <ShopStylesPanel shops={styleShops} />
+            </DataPanel>
           )}
         </section>
 

@@ -2,38 +2,30 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
 import { ChevronDown, Search } from "@/components/ui/icons";
-
-export type RailDesigner = {
-  id: string;
-  name: string;
-  assignedToday: number;
-  dailyCapacity: number;
-};
+import type { RailDesigner } from "@/lib/designers/roster";
 
 const COLLAPSE_KEY = "board.rail.collapsed";
 
 /**
- * Right-side board switcher — the Trello-style rail of designer boards. Staff
- * flick between designers with one click (Links prefetch, so switching is
- * instant), filter by name when the roster is long, and collapse it to a thin
- * strip to reclaim board width. Ordered by the same manual rank as auto-assign.
+ * App-wide right sidebar for switching designer boards. Shown on every page for
+ * staff — click a designer to jump to their board (Links prefetch, so it's
+ * instant). Filter by name when the roster is long; collapse to a thin avatar
+ * strip. The active highlight tracks the ?designer param on the board page.
  */
-export function DesignerRail({
-  designers,
-  current,
-}: {
-  designers: RailDesigner[];
-  current?: string;
-}) {
+export function DesignerRail({ designers }: { designers: RailDesigner[] }) {
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const current = pathname === "/board" ? params.get("designer") ?? undefined : undefined;
+
   const [collapsed, setCollapsed] = useState(false);
   const [q, setQ] = useState("");
 
-  // Restore the collapse preference (client-only; avoids an SSR mismatch).
   useEffect(() => {
     setCollapsed(localStorage.getItem(COLLAPSE_KEY) === "1");
   }, []);
@@ -52,7 +44,7 @@ export function DesignerRail({
 
   if (collapsed) {
     return (
-      <aside className="sticky top-0 hidden h-fit max-h-[calc(100vh-6rem)] w-14 shrink-0 flex-col items-center gap-1 self-start overflow-y-auto rounded-card border border-line bg-surface p-2 lg:flex">
+      <aside className="flex h-screen w-14 shrink-0 flex-col items-center gap-1 overflow-y-auto border-l border-line bg-surface p-2">
         <button
           type="button"
           onClick={toggle}
@@ -84,8 +76,8 @@ export function DesignerRail({
   }
 
   return (
-    <aside className="sticky top-0 hidden h-fit max-h-[calc(100vh-6rem)] w-60 shrink-0 flex-col self-start overflow-hidden rounded-card border border-line bg-surface lg:flex">
-      <div className="flex items-center justify-between border-b border-line px-3 py-2.5">
+    <aside className="flex h-screen w-60 shrink-0 flex-col border-l border-line bg-surface">
+      <div className="flex items-center justify-between border-b border-line px-3 py-3">
         <span className="text-sm font-semibold text-ink">Designers</span>
         <button
           type="button"
@@ -117,7 +109,9 @@ export function DesignerRail({
 
       <div className="flex-1 overflow-y-auto p-1.5">
         {filtered.length === 0 ? (
-          <p className="px-2 py-6 text-center text-xs text-slate">No match</p>
+          <p className="px-2 py-6 text-center text-xs text-slate">
+            {designers.length === 0 ? "No designers" : "No match"}
+          </p>
         ) : (
           <ul className="flex flex-col gap-0.5">
             {filtered.map((d) => {

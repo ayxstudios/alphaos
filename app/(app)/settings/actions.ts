@@ -41,6 +41,40 @@ async function requireAdmin(): Promise<RequestUser> {
   return { id: session.user.id, role: "admin" };
 }
 
+/**
+ * Set the portrait styles a shop offers — the catalog designers' styles are
+ * chosen from. Trimmed, de-duplicated (case-insensitive). Admin-only (shops RLS
+ * is admin-write; settings is an admin surface).
+ */
+export async function setShopStyles(
+  shopId: string,
+  raw: string[],
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const user = await requireAdmin();
+  if (!shopId) return { ok: false, message: "Missing shop" };
+
+  const seen = new Set<string>();
+  const styles: string[] = [];
+  for (const s of raw) {
+    const t = s.trim();
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    styles.push(t);
+  }
+
+  await withUserContext(user, (tx) =>
+    tx.update(shops).set({ styles: styles.length ? styles : null }).where(eq(shops.id, shopId)),
+  );
+  // Only revalidate the OTHER route (the styles catalog for the designers page);
+  // revalidating "/settings" here would refetch the heavy settings page and undo
+  // the optimistic chip edit. Settings is force-dynamic, so it reloads fresh next
+  // visit anyway.
+  revalidatePath("/designers");
+  return { ok: true };
+}
+
 /** Save a shop's Etsy app credentials (keystring + shared secret). Form action. */
 export async function saveEtsyCredentials(formData: FormData): Promise<void> {
   const user = await requireAdmin();

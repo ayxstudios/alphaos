@@ -1,7 +1,69 @@
+import { cache } from "react";
 import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { assignments, designerProfiles, orders, users } from "@/lib/db/schema";
+
+export type RailDesigner = {
+  id: string;
+  name: string;
+  assignedToday: number;
+  dailyCapacity: number;
+};
+
+/**
+ * Lean designer list for the app-shell rail (shown on every page for staff):
+ * id, name, today's load — no WIP. Ordered by manual rank. Wrapped in React
+ * cache() keyed on primitives so the layout and any page in the same request
+ * share one result (two queries), keeping every navigation cheap.
+ */
+export function getRailDesigners(user: RequestUser): Promise<RailDesigner[]> {
+  return railDesignersCached(user.id, user.role);
+}
+
+const railDesignersCached = cache(
+  async (userId: string, role: RequestUser["role"]): Promise<RailDesigner[]> => {
+    const user: RequestUser = { id: userId, role };
+    return withUserContext(user, async (tx) => {
+      const roster = await tx
+        .select({
+          userId: designerProfiles.userId,
+          name: users.name,
+          dailyCapacity: designerProfiles.dailyCapacity,
+        })
+        .from(designerProfiles)
+        .innerJoin(
+          users,
+          and(eq(users.id, designerProfiles.userId), eq(users.active, true), eq(users.role, "designer")),
+        )
+        .orderBy(asc(designerProfiles.rank), asc(users.name));
+
+      if (!roster.length) return [];
+      const ids = roster.map((r) => r.userId);
+
+      const assignedToday = new Map<string, number>();
+      for (const r of await tx
+        .select({ designerId: assignments.designerId, n: sql<number>`count(*)::int` })
+        .from(assignments)
+        .where(
+          and(
+            inArray(assignments.designerId, ids),
+            gte(assignments.assignedAt, sql`date_trunc('day', now())`),
+          ),
+        )
+        .groupBy(assignments.designerId)) {
+        assignedToday.set(r.designerId, Number(r.n));
+      }
+
+      return roster.map((r) => ({
+        id: r.userId,
+        name: r.name ?? "Unnamed designer",
+        assignedToday: assignedToday.get(r.userId) ?? 0,
+        dailyCapacity: r.dailyCapacity,
+      }));
+    });
+  },
+);
 
 export type DesignerRow = {
   userId: string;
@@ -82,17 +144,4 @@ export async function getDesignerRoster(user: RequestUser): Promise<DesignerRow[
       wipCount: wip.get(r.userId) ?? 0,
     }));
   });
-}
-
-/** Just id + name, ordered by rank — for the board's designer switcher rail. */
-export async function listDesignersRanked(
-  user: RequestUser,
-): Promise<{ id: string; name: string; assignedToday: number; dailyCapacity: number }[]> {
-  const rows = await getDesignerRoster(user);
-  return rows.map((r) => ({
-    id: r.userId,
-    name: r.name,
-    assignedToday: r.assignedToday,
-    dailyCapacity: r.dailyCapacity,
-  }));
 }

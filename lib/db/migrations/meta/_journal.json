@@ -92,6 +92,13 @@
       "when": 1785914567521,
       "tag": "0012_add_designer_rank",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1785917273321,
+      "tag": "0013_add_shop_styles",
+      "breakpoints": true
     }
   ]
 }

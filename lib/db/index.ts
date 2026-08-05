@@ -11,6 +11,11 @@ import * as schema from "./schema";
 // supports interactive transactions, where `set_config(..., true)` persists
 // across statements — exactly what withUserContext needs.
 neonConfig.webSocketConstructor = ws;
+// Route non-transactional pool queries over HTTP fetch (one round-trip, no
+// WebSocket handshake). Interactive transactions (withUserContext) still use the
+// WebSocket, but this trims every one-shot query. The real latency win comes
+// from running the functions in the DB's region — see vercel.json `regions`.
+neonConfig.poolQueryViaFetch = true;
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
 
