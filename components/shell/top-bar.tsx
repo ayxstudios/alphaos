@@ -132,6 +132,17 @@ export function TopBar({
       </div>
 
       <div className="flex items-center gap-2">
+        <button
+          type="button"
+          aria-label="Open order search"
+          onClick={() => router.push("/orders")}
+          className={cn(
+            "inline-flex size-9 items-center justify-center rounded-input text-slate transition-colors hover:bg-canvas hover:text-ink sm:hidden",
+            focusRing,
+          )}
+        >
+          <Search size={18} />
+        </button>
         <Popover
           ariaLabel={`Notifications${unread ? `, ${unread} unread` : ""}`}
           triggerClassName={cn(
