@@ -8,7 +8,11 @@ export const SHOPIFY_API_VERSION = "2025-01";
 /** Admin API access scopes the custom app requires. */
 export const SHOPIFY_SCOPES = [
   "read_orders", // orders, line items, line-item properties, variant options
+  "write_orders", // close/archive orders after AlphaOS completion
   "read_customers", // buyer email + name
+  "read_products", // product/variant thumbnails on Shopify order detail
+  "read_merchant_managed_fulfillment_orders", // retrieve fulfillment orders
+  "write_merchant_managed_fulfillment_orders", // create fulfillments with tracking
 ] as const;
 
 /**

@@ -39,6 +39,7 @@ import { getCardDetail } from "@/lib/orders/card-detail";
 import { OrderCommentForm } from "@/components/orders/order-comment-form";
 import { OrderRevisionForm } from "@/components/orders/order-revision-form";
 import { OrderReassignForm } from "@/components/orders/order-reassign-form";
+import { TrackingCompleteForm } from "@/components/orders/tracking-complete-form";
 
 export const dynamic = "force-dynamic";
 
@@ -187,6 +188,10 @@ export default async function OrderDetailPage({
           method: printJobs.method,
           status: printJobs.status,
           trackingNumber: printJobs.trackingNumber,
+          trackingCompany: printJobs.trackingCompany,
+          trackingUrl: printJobs.trackingUrl,
+          shopifyFulfillmentId: printJobs.shopifyFulfillmentId,
+          shopifySyncedAt: printJobs.shopifySyncedAt,
           createdAt: printJobs.createdAt,
         })
         .from(printJobs)
@@ -255,6 +260,8 @@ export default async function OrderDetailPage({
   const assignee = assignment[0] ? (assignment[0].name ?? assignment[0].email) : "Unassigned";
   const latestQc = qcRows[0] ?? null;
   const references = detail.images.filter((image) => image.type === "reference");
+  const hasPhysicalItem = items.some((item) => item.productType === "physical");
+  const latestTracking = printRows.find((print) => print.trackingNumber);
   const sourceLabel = `${order.shopName} · ${titleCase(order.shopPlatform ?? order.source)}`;
   const editable = user.role === "admin" || user.role === "va";
   const canCreateRevision = editable && REVISION_FROM_STATUSES.has(order.status as OrderStatus);
@@ -434,6 +441,14 @@ export default async function OrderDetailPage({
                     </p>
                   )}
                 </div>
+              </div>
+            </DataPanel>
+          )}
+
+          {editable && (
+            <DataPanel className="p-4">
+              <SectionHeader title="Assignment" />
+              <div className="mt-3">
                 <OrderReassignForm
                   orderId={order.id}
                   designers={designers.map((designer) => ({
@@ -489,11 +504,77 @@ export default async function OrderDetailPage({
                 <div key={`${print.provider}-${print.createdAt.toISOString()}-${index}`} className="rounded-input bg-canvas p-2">
                   <p className="font-medium text-ink">{titleCase(print.provider)} · {titleCase(print.method)}</p>
                   <p className="text-xs text-slate">{print.status ?? "No provider status"} · {fmtDateTime(print.createdAt)}</p>
-                  <p className="text-xs text-slate">{print.trackingNumber ? `Tracking ${print.trackingNumber}` : "No tracking yet"}</p>
+                  <p className="text-xs text-slate">
+                    {print.trackingNumber
+                      ? `Tracking ${print.trackingNumber}${print.trackingCompany ? ` · ${print.trackingCompany}` : ""}`
+                      : "No tracking yet"}
+                  </p>
+                  {print.trackingUrl && (
+                    <a
+                      href={print.trackingUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs font-medium text-pigment hover:text-ink"
+                    >
+                      Open tracking
+                    </a>
+                  )}
                 </div>
               ))}
             </dl>
           </DataPanel>
+
+          {hasPhysicalItem && (
+            <DataPanel className="p-4">
+              <SectionHeader title="Tracking information" />
+              <dl className="mt-3 flex flex-col gap-3 text-sm">
+                <div>
+                  <dt className="text-xs font-medium text-slate">Current tracking</dt>
+                  <dd className="font-medium text-ink">
+                    {latestTracking?.trackingNumber ?? "No tracking added yet"}
+                  </dd>
+                  {latestTracking?.trackingCompany && (
+                    <p className="text-xs text-slate">{latestTracking.trackingCompany}</p>
+                  )}
+                  {latestTracking?.trackingUrl && (
+                    <a
+                      href={latestTracking.trackingUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-1 inline-flex text-xs font-medium text-pigment hover:text-ink"
+                    >
+                      Open tracking
+                    </a>
+                  )}
+                </div>
+                <div>
+                  <dt className="text-xs font-medium text-slate">Provider</dt>
+                  <dd className="font-medium text-ink">
+                    {latestTracking
+                      ? `${titleCase(latestTracking.provider)} · ${titleCase(latestTracking.method)}`
+                      : "No print provider recorded"}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs font-medium text-slate">Shopify writeback</dt>
+                  <dd className="text-slate">
+                    {order.source !== "shopify"
+                      ? "Not applicable for this order source."
+                      : latestTracking?.shopifyFulfillmentId
+                        ? `Fulfilled in Shopify · ${fmtDateTime(latestTracking.shopifySyncedAt)}`
+                        : "No Shopify fulfillment has been created from AlphaOS yet."}
+                  </dd>
+                </div>
+              </dl>
+              {editable && (
+                <TrackingCompleteForm
+                  orderId={order.id}
+                  source={order.source}
+                  disabled={order.status === "cancelled" || order.status === "on_hold"}
+                />
+              )}
+            </DataPanel>
+          )}
 
           <DataPanel className="overflow-hidden">
             <div className="border-b border-line px-4 py-3">

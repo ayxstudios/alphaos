@@ -9,15 +9,25 @@ import {
   activityLog,
   assignments,
   designerBusinesses,
+  orderItems,
   orders,
+  printJobs,
   users,
 } from "@/lib/db/schema";
+import { getShopCredentials } from "@/lib/db/credentials";
 import {
   transition,
+  runTransition,
   OrderTransitionError,
   type OrderStatus,
 } from "@/lib/orders/transitions";
 import { addComment } from "@/lib/orders/card-detail";
+import {
+  freshShopifyCredentials,
+  fulfillShopifyOrderWithTracking,
+  type ShopifyCredentials,
+  type ShopifyFulfillmentResult,
+} from "@/lib/integrations/shopify";
 
 type BulkSkipped = {
   orderId: string;
@@ -32,6 +42,19 @@ export type BulkActionResult =
 export type CommentResult =
   | { ok: true }
   | { ok: false; message: string };
+
+export type TrackingCompleteResult =
+  | { ok: true; message: string; closeWarning?: string | null }
+  | { ok: false; message: string };
+
+export type TrackingCompleteInput = {
+  orderId: string;
+  provider: "gelato" | "lumaprints";
+  trackingNumber: string;
+  trackingCompany?: string;
+  trackingUrl?: string;
+  notifyCustomer?: boolean;
+};
 
 const REASSIGNABLE_STATUSES = new Set<OrderStatus>([
   "awaiting_details",
@@ -59,6 +82,15 @@ const REVISION_FROM_STATUSES = new Set<OrderStatus>([
   "complete",
 ]);
 
+const TRACKING_COMPLETION_PATHS: Partial<Record<OrderStatus, OrderStatus[]>> = {
+  approved: ["printing", "shipped", "delivered", "complete"],
+  printing: ["shipped", "delivered", "complete"],
+  shipped: ["delivered", "complete"],
+  delivered: ["complete"],
+  fulfillment_only: ["complete"],
+  complete: [],
+};
+
 async function requireStaff(): Promise<RequestUser | { error: string }> {
   const session = await auth();
   const role = session?.user?.role;
@@ -70,6 +102,25 @@ async function requireStaff(): Promise<RequestUser | { error: string }> {
 
 function cleanOrderIds(orderIds: string[]) {
   return [...new Set(orderIds.map((id) => id.trim()).filter(Boolean))].slice(0, 100);
+}
+
+function cleanOptional(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+}
+
+function cleanTrackingUrl(value: string | undefined): string | undefined | { error: string } {
+  const trimmed = cleanOptional(value);
+  if (!trimmed) return undefined;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return { error: "Tracking URL must start with http:// or https://." };
+    }
+    return url.toString();
+  } catch {
+    return { error: "Tracking URL is not valid." };
+  }
 }
 
 export async function bulkChangeOrderStatus(
@@ -277,4 +328,199 @@ export async function createOrderRevision(
   revalidatePath("/orders");
   revalidatePath("/board");
   return { ok: true };
+}
+
+export async function addTrackingAndCompleteOrder(
+  input: TrackingCompleteInput,
+): Promise<TrackingCompleteResult> {
+  const user = await requireStaff();
+  if ("error" in user) return { ok: false, message: user.error };
+
+  const orderId = input.orderId.trim();
+  const trackingNumber = input.trackingNumber.trim();
+  const trackingCompany = cleanOptional(input.trackingCompany);
+  const trackingUrl = cleanTrackingUrl(input.trackingUrl);
+  if (!orderId) return { ok: false, message: "Order is required." };
+  if (!trackingNumber) return { ok: false, message: "Tracking number is required." };
+  if (input.provider !== "gelato" && input.provider !== "lumaprints") {
+    return { ok: false, message: "Choose a valid print provider." };
+  }
+  if (typeof trackingUrl === "object") return { ok: false, message: trackingUrl.error };
+
+  const snapshot = await withUserContext(user, async (tx) => {
+    const [order] = await tx
+      .select({
+        id: orders.id,
+        businessId: orders.businessId,
+        shopId: orders.shopId,
+        source: orders.source,
+        status: orders.status,
+        platformOrderId: orders.platformOrderId,
+        platformOrderName: orders.platformOrderName,
+      })
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+
+    if (!order) return null;
+    const items = await tx
+      .select({
+        productType: orderItems.productType,
+        figureCount: orderItems.figureCount,
+      })
+      .from(orderItems)
+      .where(eq(orderItems.orderId, orderId));
+    const credentials =
+      order.source === "shopify"
+        ? ((await getShopCredentials(tx, order.shopId)) as ShopifyCredentials)
+        : null;
+    return { order, items, credentials };
+  });
+
+  if (!snapshot) return { ok: false, message: "Order not found." };
+  const { order, items } = snapshot;
+  const hasPhysicalItem = items.some((item) => item.productType === "physical");
+  if (!hasPhysicalItem) {
+    return { ok: false, message: "Tracking can only be added to physical orders." };
+  }
+  if (!(order.status in TRACKING_COMPLETION_PATHS)) {
+    return {
+      ok: false,
+      message: `Order must be approved, in print, shipped, delivered, fulfillment-only, or complete before adding final tracking.`,
+    };
+  }
+  if (order.status !== "fulfillment_only" && order.status !== "complete") {
+    const unresolvedFigures = items.some((item) => item.figureCount == null);
+    if (unresolvedFigures) {
+      return {
+        ok: false,
+        message: "Resolve figure counts before completing this order. Figure count drives payout.",
+      };
+    }
+  }
+
+  let shopifyResult: ShopifyFulfillmentResult | null = null;
+  if (order.source === "shopify") {
+    try {
+      const freshCredentials = await freshShopifyCredentials(snapshot.credentials!);
+      shopifyResult = await fulfillShopifyOrderWithTracking(
+        order.shopId,
+        order.platformOrderId,
+        freshCredentials,
+        {
+          trackingNumber,
+          trackingCompany,
+          trackingUrl,
+          notifyCustomer: input.notifyCustomer ?? true,
+        },
+      );
+    } catch (error) {
+      console.log(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "warn",
+          integration: "shopify",
+          event: "fulfillment_writeback_failed",
+          shopId: order.shopId,
+          orderId: order.id,
+          platformOrderId: order.platformOrderId,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : "Shopify fulfillment failed.",
+      };
+    }
+  }
+
+  try {
+    await withUserContext(user, async (tx) => {
+      const [current] = await tx
+        .select({
+          id: orders.id,
+          businessId: orders.businessId,
+          status: orders.status,
+        })
+        .from(orders)
+        .where(eq(orders.id, orderId))
+        .limit(1);
+      if (!current) throw new OrderTransitionError("not_found", "Order not found.");
+
+      const path = TRACKING_COMPLETION_PATHS[current.status as OrderStatus];
+      if (!path) {
+        throw new OrderTransitionError(
+          "illegal",
+          `Order must be approved, in print, shipped, delivered, fulfillment-only, or complete before adding final tracking.`,
+        );
+      }
+
+      await tx.insert(printJobs).values({
+        businessId: current.businessId,
+        orderId,
+        provider: input.provider,
+        method: "manual",
+        externalId: shopifyResult?.fulfillmentId ?? null,
+        trackingNumber,
+        trackingCompany: trackingCompany ?? null,
+        trackingUrl: trackingUrl ?? null,
+        shopifyFulfillmentId: shopifyResult?.fulfillmentId ?? null,
+        shopifySyncedAt: shopifyResult ? new Date() : null,
+        status: shopifyResult
+          ? shopifyResult.closed
+            ? "shopify_fulfilled_closed"
+            : "shopify_fulfilled"
+          : "tracking_added",
+      });
+      await tx.insert(activityLog).values({
+        businessId: current.businessId,
+        orderId,
+        actorId: user.id,
+        action: "order.tracking_added",
+        metadata: {
+          provider: input.provider,
+          trackingCompany: trackingCompany ?? null,
+          shopifyFulfillmentId: shopifyResult?.fulfillmentId ?? null,
+          shopifyClosed: shopifyResult?.closed ?? null,
+          via: "order_detail_tracking_card",
+        },
+      });
+
+      let expectedFrom = current.status as OrderStatus;
+      for (const to of path) {
+        await runTransition(tx, user, {
+          orderId,
+          to,
+          expectedFrom,
+          metadata: {
+            via: "tracking_added_complete",
+            trackingNumber,
+            shopifyFulfillmentId: shopifyResult?.fulfillmentId ?? null,
+          },
+        });
+        expectedFrom = to;
+      }
+    });
+  } catch (error) {
+    if (error instanceof OrderTransitionError) {
+      return { ok: false, message: error.message };
+    }
+    throw error;
+  }
+
+  revalidatePath(`/orders/${orderId}`);
+  revalidatePath("/orders");
+  revalidatePath("/board");
+  revalidatePath("/dashboard");
+
+  if (shopifyResult) {
+    return {
+      ok: true,
+      message: shopifyResult.closeWarning
+        ? "Tracking added and Shopify fulfillment created. Shopify did not close/archive the order; see warning."
+        : "Tracking added, Shopify fulfillment created, and order completed.",
+      closeWarning: shopifyResult.closeWarning,
+    };
+  }
+  return { ok: true, message: "Tracking added and order completed." };
 }

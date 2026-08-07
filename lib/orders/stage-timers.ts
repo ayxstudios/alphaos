@@ -99,7 +99,7 @@ export function formatStageRemaining(timer: StageTimer): string {
 }
 
 function stageKey(status: OrderStatus | string, derivedStatus: string): StageTimerKey | null {
-  if (derivedStatus === "Failed QC") return "failed_qc";
+  if (derivedStatus === "Failed QC" || derivedStatus === "Awaiting Designer QC Fix") return "failed_qc";
   if (derivedStatus === "Ready to Ship") return "ready_to_ship";
   if (derivedStatus === "Shipped - Awaiting Tracking") return "shipped_waiting_tracking";
   if (status === "awaiting_details") return "awaiting_details";

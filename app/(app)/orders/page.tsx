@@ -142,6 +142,57 @@ function titleCase(value: string | null | undefined) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function operationalStatusLabel(input: {
+  status: string;
+  needsReview: boolean;
+  revisionCount: number;
+  isFailedQc: boolean;
+  physical: boolean;
+  hasPrintJob: boolean;
+  tracking: string | null;
+  assignee: string | null;
+}) {
+  if (input.needsReview || input.status === "triage") return "Needs VA Review";
+  if (input.isFailedQc) return "Awaiting Designer QC Fix";
+  if (input.status === "in_design" && input.revisionCount > 0) return "Awaiting Designer Revision";
+  if (input.status === "approved" && input.physical && !input.hasPrintJob) return "Ready to Ship";
+  if (input.hasPrintJob && !input.tracking) return "Shipped - Awaiting Tracking";
+  if (input.tracking) return "Completed With Tracking";
+
+  switch (input.status) {
+    case "awaiting_details":
+      return "Awaiting VA Details";
+    case "awaiting_photos":
+      return "Awaiting Customer Photos";
+    case "ready_to_assign":
+      return input.assignee ? "Assigned - Not Started" : "Unassigned - Ready to Assign";
+    case "in_design":
+      return "With Designer";
+    case "awaiting_qc":
+      return "Awaiting VA QC";
+    case "awaiting_approval":
+      return "Awaiting Customer Approval";
+    case "approved":
+      return "Approved";
+    case "printing":
+      return "In Print";
+    case "shipped":
+      return "Shipped";
+    case "delivered":
+      return "Delivered";
+    case "complete":
+      return "Complete";
+    case "on_hold":
+      return "On Hold";
+    case "cancelled":
+      return "Cancelled";
+    case "fulfillment_only":
+      return "Fulfilment Only";
+    default:
+      return titleCase(input.status);
+  }
+}
+
 function orderLabel(number: string | null, fallback: string) {
   return number ?? fallback;
 }
@@ -471,20 +522,16 @@ export default async function OrdersPage({
       const tracking = prints.find((print) => print.trackingNumber)?.trackingNumber ?? null;
       const hasPrintJob = prints.length > 0;
       const isFailedQc = order.status === "in_design" && qc?.result === "fail";
-      const derivedStatus =
-        order.status === "triage" || order.needsReview
-          ? "Needs Review"
-          : isFailedQc
-          ? "Failed QC"
-          : order.status === "in_design" && order.revisionCount > 0
-            ? "Revision"
-            : order.status === "approved" && physical && !hasPrintJob
-              ? "Ready to Ship"
-              : hasPrintJob && !tracking
-                ? "Shipped - Awaiting Tracking"
-                : tracking
-                  ? "Completed With Tracking"
-                : titleCase(order.status);
+      const derivedStatus = operationalStatusLabel({
+        status: order.status,
+        needsReview: order.needsReview,
+        revisionCount: order.revisionCount,
+        isFailedQc,
+        physical,
+        hasPrintJob,
+        tracking,
+        assignee: order.assignee,
+      });
       const stageStartedAt =
         isFailedQc
           ? qc?.createdAt ?? order.updatedAt

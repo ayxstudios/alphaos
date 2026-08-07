@@ -10,7 +10,8 @@ import {
   type BulkActionResult,
 } from "@/app/(app)/orders/actions";
 import { Badge, Button, useToast, type OrderStatus } from "@/components/ui";
-import { Columns, Inbox, Pencil } from "@/components/ui/icons";
+import { Columns, Inbox, Menu, Pencil } from "@/components/ui/icons";
+import { Popover } from "@/components/shell/popover";
 import { formatStageRemaining, type StageTimer } from "@/lib/orders/stage-timers";
 import { cn } from "@/lib/utils";
 
@@ -214,12 +215,12 @@ function pageHref(currentParams: string, page: number) {
 }
 
 function statusTone(row: OrdersDashboardRow) {
-  if (row.derivedStatus === "Failed QC" || row.isOverdue || row.stageTimer.isOverdue) return "danger";
+  if (row.derivedStatus === "Awaiting Designer QC Fix" || row.isOverdue || row.stageTimer.isOverdue) return "danger";
   if (
-    row.derivedStatus === "Revision" ||
-    row.derivedStatus === "Awaiting Qc" ||
-    row.derivedStatus === "Awaiting Customer" ||
-    row.derivedStatus === "Needs Review" ||
+    row.derivedStatus === "Awaiting Designer Revision" ||
+    row.derivedStatus === "Awaiting VA QC" ||
+    row.derivedStatus === "Awaiting Customer Approval" ||
+    row.derivedStatus === "Needs VA Review" ||
     row.needsReview
   ) {
     return "warning";
@@ -269,7 +270,7 @@ export function OrdersOperationsTable({
     return columns.length ? columns : ORDER_COLUMNS;
   }, [visibleColumnKeys]);
   const gridTemplateColumns = useMemo(
-    () => ["2.25rem", ...visibleColumns.map((column) => column.width), "12rem"].join(" "),
+    () => ["2.25rem", ...visibleColumns.map((column) => column.width), "4rem"].join(" "),
     [visibleColumns],
   );
 
@@ -482,8 +483,8 @@ export function OrdersOperationsTable({
                 <span key={column.key}>{column.label}</span>
               ),
             )}
-            <span className="xl:sticky right-0 z-20 bg-surface py-1 pl-3 shadow-[-12px_0_18px_-18px_rgba(22,34,46,0.55)]">
-              Actions
+            <span className="right-0 z-20 bg-surface py-1 text-right shadow-[-12px_0_18px_-18px_rgba(22,34,46,0.55)] xl:sticky">
+              Menu
             </span>
           </div>
 
@@ -514,37 +515,11 @@ export function OrdersOperationsTable({
                 ))}
                 <div
                   className={cn(
-                    "flex items-center gap-1.5 bg-surface py-1 pl-3 shadow-[-12px_0_18px_-18px_rgba(22,34,46,0.55)] xl:sticky xl:right-0 xl:z-10",
+                    "flex justify-end bg-surface py-1 pl-3 shadow-[-12px_0_18px_-18px_rgba(22,34,46,0.55)] xl:sticky xl:right-0 xl:z-10",
                     (row.stageTimer.isOverdue || row.isOverdue) && "bg-rose/5",
                   )}
                 >
-                  <Link
-                    href={`/orders/${row.id}/complete`}
-                    aria-label={`Edit order ${row.orderNumber}`}
-                    title="Edit order"
-                    className="inline-flex size-8 items-center justify-center rounded-input text-slate transition-colors hover:bg-canvas hover:text-ink"
-                  >
-                    <Pencil size={15} />
-                  </Link>
-                  <Link
-                    href={`/orders/${row.id}#notes`}
-                    aria-label={`Add note for order ${row.orderNumber}`}
-                    title="Notes"
-                    className="inline-flex size-8 items-center justify-center rounded-input text-slate transition-colors hover:bg-canvas hover:text-ink"
-                  >
-                    <Inbox size={15} />
-                  </Link>
-                  <Link
-                    href={row.action.href}
-                    className={cn(
-                      "inline-flex h-8 items-center justify-center whitespace-nowrap rounded-input px-3 text-sm font-medium transition-colors",
-                      row.action.label === "Open"
-                        ? "text-pigment hover:bg-pigment-soft"
-                        : "bg-pigment text-surface hover:opacity-90",
-                    )}
-                  >
-                    {row.action.label}
-                  </Link>
+                  <OrderActionsMenu row={row} />
                 </div>
               </div>
             ))}
@@ -582,6 +557,65 @@ function SortableHeader({
     >
       {children}
       {activeSort === sort && <span>{dir === "asc" ? "↑" : "↓"}</span>}
+    </Link>
+  );
+}
+
+function OrderActionsMenu({ row }: { row: OrdersDashboardRow }) {
+  return (
+    <Popover
+      ariaLabel={`Actions for order ${row.orderNumber}`}
+      trigger={
+        <span className="inline-flex size-8 items-center justify-center rounded-input border border-line bg-surface text-slate transition-colors hover:bg-canvas hover:text-ink">
+          <Menu size={15} />
+        </span>
+      }
+      triggerClassName="inline-flex"
+      menuClassName="w-52"
+    >
+      {(close) => (
+        <div className="flex flex-col">
+          <MenuLink href={row.action.href} onClick={close} primary>
+            {row.action.label}
+          </MenuLink>
+          <MenuLink href={`/orders/${row.id}/complete`} onClick={close}>
+            <Pencil size={15} />
+            Edit details
+          </MenuLink>
+          <MenuLink href={`/orders/${row.id}#notes`} onClick={close}>
+            <Inbox size={15} />
+            Notes
+          </MenuLink>
+        </div>
+      )}
+    </Popover>
+  );
+}
+
+function MenuLink({
+  href,
+  onClick,
+  primary = false,
+  children,
+}: {
+  href: string;
+  onClick: () => void;
+  primary?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      role="menuitem"
+      className={cn(
+        "flex items-center gap-2 rounded-input px-3 py-2 text-sm font-medium transition-colors",
+        primary
+          ? "bg-pigment text-surface hover:opacity-90"
+          : "text-ink hover:bg-canvas",
+      )}
+    >
+      {children}
     </Link>
   );
 }

@@ -39,6 +39,11 @@ export {
   fetchShopifyOrderProductMedia,
   type ShopifyProductMedia,
 } from "./product-media";
+export {
+  fulfillShopifyOrderWithTracking,
+  type ShopifyFulfillmentResult,
+  type ShopifyTrackingInput,
+} from "./fulfillment";
 export { resolveFigureCount, resolveStyle } from "./figures";
 export { ShopifyApiError } from "./errors";
 export {
