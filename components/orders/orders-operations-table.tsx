@@ -482,7 +482,7 @@ export function OrdersOperationsTable({
                 <span key={column.key}>{column.label}</span>
               ),
             )}
-            <span className="z-20 flex items-center justify-end pl-3 text-right text-pigment md:sticky md:right-0 md:-my-2.5 md:-mr-4 md:self-stretch md:border-l md:border-pigment/20 md:bg-pigment-soft md:py-2.5 md:pr-4 md:shadow-[-16px_0_20px_-20px_rgba(22,34,46,0.6)]">
+            <span className="z-20 flex items-center justify-end pl-3 text-right text-pigment md:sticky md:right-0 md:-my-2.5 md:-mr-4 md:self-stretch md:border-l md:border-pigment/20 md:bg-pigment-soft md:py-2.5 md:pr-4">
               Next action
             </span>
           </div>
@@ -517,10 +517,9 @@ export function OrdersOperationsTable({
                   ))}
                   <div
                     className={cn(
-                      "flex items-center justify-end gap-1.5 pl-3 transition-colors",
+                      "flex items-center justify-end gap-1.5 pl-3",
                       "md:sticky md:right-0 md:z-10 md:-my-3.5 md:-mr-4 md:self-stretch md:py-3.5 md:pr-4",
-                      "md:border-l md:border-pigment/15 md:bg-pigment-soft/70 md:shadow-[-16px_0_20px_-20px_rgba(22,34,46,0.6)]",
-                      "md:group-hover:bg-pigment-soft",
+                      "md:border-l md:border-pigment/20 md:bg-pigment-soft",
                     )}
                   >
                     <OrderActions row={row} />
