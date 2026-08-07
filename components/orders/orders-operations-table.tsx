@@ -270,7 +270,7 @@ export function OrdersOperationsTable({
     return columns.length ? columns : ORDER_COLUMNS;
   }, [visibleColumnKeys]);
   const gridTemplateColumns = useMemo(
-    () => ["3.5rem", "2.25rem", ...visibleColumns.map((column) => column.width)].join(" "),
+    () => ["6rem", "2.25rem", ...visibleColumns.map((column) => column.width)].join(" "),
     [visibleColumns],
   );
 
@@ -453,13 +453,15 @@ export function OrdersOperationsTable({
         </div>
       </div>
 
-      <div className="xl:overflow-x-auto">
-        <div className="xl:min-w-[88rem]">
+      <div className="overflow-x-auto">
+        <div className="md:min-w-[90rem]">
           <div
-            className="hidden gap-3 border-b border-line px-4 py-2 text-xs font-medium uppercase text-slate xl:grid xl:[grid-template-columns:var(--orders-grid)]"
+            className="hidden gap-3 border-b border-line px-4 py-2 text-xs font-medium uppercase text-slate md:grid md:[grid-template-columns:var(--orders-grid)]"
             style={{ "--orders-grid": gridTemplateColumns } as React.CSSProperties}
           >
-            <span className="left-0 z-20 bg-surface py-1 shadow-[12px_0_18px_-18px_rgba(22,34,46,0.55)] xl:sticky" />
+            <span className="left-0 z-20 bg-surface py-1 shadow-[12px_0_18px_-18px_rgba(22,34,46,0.55)] md:sticky">
+              Actions
+            </span>
             <label className="flex items-center">
               <input
                 type="checkbox"
@@ -491,7 +493,7 @@ export function OrdersOperationsTable({
               <div
                 key={row.id}
                 className={cn(
-                  "grid gap-3 px-4 py-3 transition-colors hover:bg-canvas xl:items-center xl:gap-3 xl:[grid-template-columns:var(--orders-grid)]",
+                  "grid gap-3 px-4 py-3 transition-colors hover:bg-canvas md:items-center md:gap-3 md:[grid-template-columns:var(--orders-grid)]",
                   (row.stageTimer.isOverdue || row.isOverdue) &&
                     "bg-rose/5 ring-1 ring-inset ring-rose/20 hover:bg-rose/10",
                 )}
@@ -499,7 +501,7 @@ export function OrdersOperationsTable({
               >
                 <div
                   className={cn(
-                    "flex items-center justify-start bg-surface pr-3 shadow-[12px_0_18px_-18px_rgba(22,34,46,0.55)] xl:sticky xl:left-0 xl:z-10",
+                    "flex items-center justify-start bg-surface pr-3 shadow-[12px_0_18px_-18px_rgba(22,34,46,0.55)] md:sticky md:left-0 md:z-10",
                     (row.stageTimer.isOverdue || row.isOverdue) && "bg-rose/5",
                   )}
                 >
@@ -564,8 +566,9 @@ function OrderActionsMenu({ row }: { row: OrdersDashboardRow }) {
     <Popover
       ariaLabel={`Actions for order ${row.orderNumber}`}
       trigger={
-        <span className="inline-flex size-8 items-center justify-center rounded-full border border-line bg-canvas text-slate shadow-sm transition-colors hover:border-slate/40 hover:bg-surface hover:text-ink">
+        <span className="inline-flex h-8 items-center gap-1.5 rounded-input border border-line bg-canvas px-2.5 text-xs font-medium text-ink shadow-sm transition-colors hover:border-slate/40 hover:bg-surface">
           <Menu size={15} />
+          Menu
         </span>
       }
       triggerClassName="inline-flex"
