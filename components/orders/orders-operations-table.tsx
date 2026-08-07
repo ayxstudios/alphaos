@@ -9,9 +9,8 @@ import {
   bulkReassignOrders,
   type BulkActionResult,
 } from "@/app/(app)/orders/actions";
-import { Badge, Button, useToast, type OrderStatus } from "@/components/ui";
-import { Columns, Inbox, Menu, Pencil } from "@/components/ui/icons";
-import { Popover } from "@/components/shell/popover";
+import { Badge, Button, Tooltip, useToast, type OrderStatus } from "@/components/ui";
+import { ArrowRight, Columns, Inbox, Pencil } from "@/components/ui/icons";
 import { formatStageRemaining, type StageTimer } from "@/lib/orders/stage-timers";
 import { cn } from "@/lib/utils";
 
@@ -270,7 +269,7 @@ export function OrdersOperationsTable({
     return columns.length ? columns : ORDER_COLUMNS;
   }, [visibleColumnKeys]);
   const gridTemplateColumns = useMemo(
-    () => ["6rem", "2.25rem", ...visibleColumns.map((column) => column.width)].join(" "),
+    () => ["2.25rem", ...visibleColumns.map((column) => column.width), "13.5rem"].join(" "),
     [visibleColumns],
   );
 
@@ -454,14 +453,11 @@ export function OrdersOperationsTable({
       </div>
 
       <div className="overflow-x-auto">
-        <div className="md:min-w-[90rem]">
+        <div className="md:min-w-[76rem]">
           <div
-            className="hidden gap-3 border-b border-line px-4 py-2 text-xs font-medium uppercase text-slate md:grid md:[grid-template-columns:var(--orders-grid)]"
+            className="hidden gap-3 border-b border-line bg-surface px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate md:grid md:[grid-template-columns:var(--orders-grid)]"
             style={{ "--orders-grid": gridTemplateColumns } as React.CSSProperties}
           >
-            <span className="left-0 z-20 bg-surface py-1 shadow-[12px_0_18px_-18px_rgba(22,34,46,0.55)] md:sticky">
-              Actions
-            </span>
             <label className="flex items-center">
               <input
                 type="checkbox"
@@ -486,43 +482,51 @@ export function OrdersOperationsTable({
                 <span key={column.key}>{column.label}</span>
               ),
             )}
+            <span className="z-20 justify-self-end self-center bg-surface pl-3 text-right shadow-[-14px_0_18px_-18px_rgba(22,34,46,0.55)] md:sticky md:right-0">
+              Next action
+            </span>
           </div>
 
           <div className="divide-y divide-line">
-            {rows.map((row) => (
-              <div
-                key={row.id}
-                className={cn(
-                  "grid gap-3 px-4 py-3 transition-colors hover:bg-canvas md:items-center md:gap-3 md:[grid-template-columns:var(--orders-grid)]",
-                  (row.stageTimer.isOverdue || row.isOverdue) &&
-                    "bg-rose/5 ring-1 ring-inset ring-rose/20 hover:bg-rose/10",
-                )}
-                style={{ "--orders-grid": gridTemplateColumns } as React.CSSProperties}
-              >
+            {rows.map((row) => {
+              const urgent = row.stageTimer.isOverdue || row.isOverdue;
+              const dueSoon = !urgent && row.stageTimer.followUpDue;
+              return (
                 <div
+                  key={row.id}
                   className={cn(
-                    "flex items-center justify-start bg-surface pr-3 shadow-[12px_0_18px_-18px_rgba(22,34,46,0.55)] md:sticky md:left-0 md:z-10",
-                    (row.stageTimer.isOverdue || row.isOverdue) && "bg-rose/5",
+                    "group grid gap-3 border-l-2 border-transparent px-4 py-3.5 transition-colors hover:bg-canvas/70 md:items-center md:[grid-template-columns:var(--orders-grid)]",
+                    urgent && "border-rose/60 bg-rose/[0.04] hover:bg-rose/[0.07]",
+                    dueSoon && "border-amber/50",
                   )}
+                  style={{ "--orders-grid": gridTemplateColumns } as React.CSSProperties}
                 >
-                  <OrderActionsMenu row={row} />
-                </div>
-                <label className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(row.id)}
-                    onChange={() => toggleOne(row.id)}
-                    aria-label={`Select order ${row.orderNumber}`}
-                    className="size-4 rounded border-line text-pigment focus:ring-pigment"
-                  />
-                </label>
-                {visibleColumns.map((column) => (
-                  <div key={column.key} className="min-w-0">
-                    {column.render(row)}
+                  <label className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(row.id)}
+                      onChange={() => toggleOne(row.id)}
+                      aria-label={`Select order ${row.orderNumber}`}
+                      className="size-4 rounded border-line text-pigment focus:ring-pigment"
+                    />
+                  </label>
+                  {visibleColumns.map((column) => (
+                    <div key={column.key} className="min-w-0">
+                      {column.render(row)}
+                    </div>
+                  ))}
+                  <div
+                    className={cn(
+                      "flex items-center justify-end gap-1.5 bg-surface pl-3 shadow-[-14px_0_18px_-18px_rgba(22,34,46,0.55)] transition-colors md:sticky md:right-0 md:z-10",
+                      "group-hover:bg-canvas/70",
+                      urgent && "bg-rose/[0.04] group-hover:bg-rose/[0.07]",
+                    )}
+                  >
+                    <OrderActions row={row} />
                   </div>
-                ))}
-              </div>
-            ))}
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -561,63 +565,54 @@ function SortableHeader({
   );
 }
 
-function OrderActionsMenu({ row }: { row: OrdersDashboardRow }) {
+function OrderActions({ row }: { row: OrdersDashboardRow }) {
+  // A row is "actionable" when there's a specific task to do; the generic
+  // "Open" fallback stays quiet so the eye is drawn only to real work.
+  const isTask = row.action.label !== "Open";
   return (
-    <Popover
-      ariaLabel={`Actions for order ${row.orderNumber}`}
-      trigger={
-        <span className="inline-flex h-8 items-center gap-1.5 rounded-input border border-line bg-canvas px-2.5 text-xs font-medium text-ink shadow-sm transition-colors hover:border-slate/40 hover:bg-surface">
-          <Menu size={15} />
-          Menu
-        </span>
-      }
-      triggerClassName="inline-flex"
-      menuClassName="w-52"
-    >
-      {(close) => (
-        <div className="flex flex-col">
-          <MenuLink href={row.action.href} onClick={close} primary>
-            {row.action.label}
-          </MenuLink>
-          <MenuLink href={`/orders/${row.id}/complete`} onClick={close}>
-            <Pencil size={15} />
-            Edit details
-          </MenuLink>
-          <MenuLink href={`/orders/${row.id}#notes`} onClick={close}>
-            <Inbox size={15} />
-            Notes
-          </MenuLink>
-        </div>
-      )}
-    </Popover>
+    <>
+      <Link
+        href={row.action.href}
+        aria-label={`${row.action.label} — order ${row.orderNumber}`}
+        className={cn(
+          "inline-flex h-8 min-w-0 items-center gap-1.5 rounded-input px-3 text-sm font-medium transition-[opacity,background-color,border-color] duration-[120ms]",
+          isTask
+            ? "bg-pigment text-surface shadow-sm hover:opacity-90"
+            : "border border-line bg-surface text-slate hover:border-slate/40 hover:text-ink",
+        )}
+      >
+        <span className="truncate">{row.action.label}</span>
+        {isTask && <ArrowRight size={14} className="shrink-0" />}
+      </Link>
+      <IconAction href={`/orders/${row.id}/complete`} label="Edit details">
+        <Pencil size={15} />
+      </IconAction>
+      <IconAction href={`/orders/${row.id}#notes`} label="Notes">
+        <Inbox size={15} />
+      </IconAction>
+    </>
   );
 }
 
-function MenuLink({
+function IconAction({
   href,
-  onClick,
-  primary = false,
+  label,
   children,
 }: {
   href: string;
-  onClick: () => void;
-  primary?: boolean;
+  label: string;
   children: React.ReactNode;
 }) {
   return (
-    <Link
-      href={href}
-      onClick={onClick}
-      role="menuitem"
-      className={cn(
-        "flex items-center gap-2 rounded-input px-3 py-2 text-sm font-medium transition-colors",
-        primary
-          ? "bg-pigment text-surface hover:opacity-90"
-          : "text-ink hover:bg-canvas",
-      )}
-    >
-      {children}
-    </Link>
+    <Tooltip content={label} side="top">
+      <Link
+        href={href}
+        aria-label={label}
+        className="inline-flex size-8 shrink-0 items-center justify-center rounded-input text-slate transition-colors hover:bg-pigment-soft hover:text-pigment"
+      >
+        {children}
+      </Link>
+    </Tooltip>
   );
 }
 
