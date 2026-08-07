@@ -11,6 +11,7 @@ export {
   shopifyWebhookHmacKey,
   isShopifyConnected,
   exchangeClientCredentials,
+  freshShopifyCredentials,
 } from "./auth";
 export {
   syncShopOrders,
@@ -27,6 +28,17 @@ export {
   type GraphqlRunner,
 } from "./orders";
 export { verifyShopifyHmac, normalizeWebhookOrder, type ShopifyWebhookOrder } from "./webhook";
+export {
+  ensureShopifyOrdersCreateWebhook,
+  getShopifyOrdersCreateWebhookStatus,
+  shopifyOrdersCreateWebhookUrl,
+  type ShopifyWebhookRegistrationResult,
+  type ShopifyWebhookStatus,
+} from "./webhooks";
+export {
+  fetchShopifyOrderProductMedia,
+  type ShopifyProductMedia,
+} from "./product-media";
 export { resolveFigureCount, resolveStyle } from "./figures";
 export { ShopifyApiError } from "./errors";
 export {

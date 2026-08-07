@@ -28,8 +28,8 @@ export function OrderCard({
     <div
       onClick={onOpen}
       className={cn(
-        "group flex flex-col overflow-hidden rounded-card border border-line bg-surface transition-shadow duration-150",
-        overlay ? "rotate-2 shadow-lg" : "shadow-sm hover:shadow-md",
+        "group flex flex-col overflow-hidden rounded-card border border-line bg-surface transition-[box-shadow,transform,border-color] duration-150",
+        overlay ? "rotate-2 shadow-lg" : "shadow-sm hover:-translate-y-0.5 hover:border-slate/40 hover:shadow-md",
         dragging && "opacity-40",
         onOpen && "cursor-pointer",
       )}

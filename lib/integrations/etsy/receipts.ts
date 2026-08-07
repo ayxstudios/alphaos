@@ -146,7 +146,8 @@ export async function syncShopReceipts(shopId: string): Promise<SyncSummary> {
       if (page.results.length < PAGE) break;
     }
 
-    // Success: advance the cursor and release the lock.
+    // Success: advance the cursor, stamp health, and release the lock.
+    const lastSyncAt = new Date().toISOString();
     await withSystemContext((tx) =>
       tx
         .update(shops)
@@ -155,6 +156,7 @@ export async function syncShopReceipts(shopId: string): Promise<SyncSummary> {
             ...cfg,
             syncCursor: String(maxCreated || Math.floor(Date.now() / 1000)),
             syncingSince: undefined,
+            lastSyncAt,
           },
         })
         .where(eq(shops.id, shopId)),

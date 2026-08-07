@@ -45,9 +45,12 @@ type Edge = { roles: TransitionRole[]; revision?: boolean };
 const GRAPH: Record<string, Edge> = {
   "awaiting_photos->ready_to_assign": { roles: STAFF },
   "ready_to_assign->in_design": { roles: STAFF_AND_DESIGNER }, // designer starts
+  "ready_to_assign->awaiting_qc": { roles: STAFF_AND_DESIGNER }, // recover cards already completed off-board
+  "in_design->ready_to_assign": { roles: STAFF_AND_DESIGNER }, // move back if started by mistake
   "in_design->awaiting_qc": { roles: STAFF_AND_DESIGNER }, // designer submits
+  "awaiting_qc->ready_to_assign": { roles: STAFF_AND_DESIGNER }, // move back if submitted to QC by mistake
   "awaiting_qc->awaiting_approval": { roles: STAFF }, // QC pass
-  "awaiting_qc->in_design": { roles: STAFF, revision: true }, // QC fail
+  "awaiting_qc->in_design": { roles: STAFF_AND_DESIGNER, revision: true }, // QC fail / designer pullback
   "awaiting_approval->approved": { roles: STAFF }, // customer/VA approves
   "awaiting_approval->in_design": { roles: STAFF, revision: true }, // customer revision
   "approved->in_design": { roles: STAFF, revision: true }, // late customer revision

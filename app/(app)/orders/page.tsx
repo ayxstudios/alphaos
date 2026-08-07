@@ -130,7 +130,7 @@ function validView(value: string | undefined): ViewKey | null {
 function validSort(value: string | undefined): SortKey {
   return ["created", "order", "customer", "source", "status", "owner", "ordered", "due"].includes(value ?? "")
     ? (value as SortKey)
-    : "created";
+    : "ordered";
 }
 
 function validDir(value: string | undefined): SortDir {

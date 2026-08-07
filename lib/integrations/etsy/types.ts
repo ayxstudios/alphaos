@@ -40,7 +40,7 @@ export type EtsyIntegrationConfig = {
   allowHeuristicFigureCount?: boolean; // default false
   syncCursor?: string; // ISO of the newest created_timestamp imported
   syncingSince?: string; // ISO; concurrency guard
-  lastSyncAt?: string; // ISO; cron fairness marker (last attempt), not the cursor
+  lastSyncAt?: string; // ISO; last successful sync completion, not the cursor
 };
 
 export type EtsyTokenResponse = {

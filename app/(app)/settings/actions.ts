@@ -26,9 +26,12 @@ import {
   syncShopOrders,
   verifyShopifyToken,
   verifyShopifyClientCredentials,
+  ensureShopifyOrdersCreateWebhook,
+  freshShopifyCredentials,
   type SyncSummary as ShopifySyncSummary,
   type ShopifyCredentials,
   type ShopifyAuthType,
+  type ShopifyWebhookRegistrationResult,
 } from "@/lib/integrations/shopify";
 
 function normalizeDomain(input: string): string {
@@ -158,6 +161,7 @@ export async function saveShopifyCredentials(formData: FormData): Promise<void> 
   const authType = (String(formData.get("authType") ?? "client_credentials")) as ShopifyAuthType;
   const shopDomain = normalizeDomain(String(formData.get("shopDomain") ?? ""));
   if (!shopId || !shopDomain) throw new Error("Missing fields");
+  let savedCreds: ShopifyCredentials | null = null;
 
   await withUserContext(user, async (tx) => {
     const creds = (await getShopCredentials(tx, shopId)) as ShopifyCredentials;
@@ -166,7 +170,7 @@ export async function saveShopifyCredentials(formData: FormData): Promise<void> 
       const clientId = String(formData.get("clientId") ?? "").trim() || creds.clientId;
       const clientSecret = String(formData.get("clientSecret") ?? "").trim() || creds.clientSecret;
       if (!clientId || !clientSecret) throw new Error("Client ID and secret are required");
-      await setShopCredentials(tx, shopId, {
+      savedCreds = {
         ...creds,
         authType: "client_credentials",
         shopDomain,
@@ -177,12 +181,13 @@ export async function saveShopifyCredentials(formData: FormData): Promise<void> 
         accessTokenExpiresAt: undefined,
         webhookSecret: undefined,
         status: "connected",
-      });
+      };
+      await setShopCredentials(tx, shopId, savedCreds);
     } else {
       const accessToken = String(formData.get("accessToken") ?? "").trim() || creds.accessToken;
       const webhookSecret = String(formData.get("webhookSecret") ?? "").trim() || creds.webhookSecret;
       if (!accessToken || !webhookSecret) throw new Error("Access token and webhook secret are required");
-      await setShopCredentials(tx, shopId, {
+      savedCreds = {
         ...creds,
         authType: "legacy",
         shopDomain,
@@ -192,12 +197,31 @@ export async function saveShopifyCredentials(formData: FormData): Promise<void> 
         clientSecret: undefined,
         accessTokenExpiresAt: undefined,
         status: "connected",
-      });
+      };
+      await setShopCredentials(tx, shopId, savedCreds);
     }
 
     // Keep external_shop_id aligned with the domain so the webhook can find it.
     await tx.update(shops).set({ externalShopId: shopDomain }).where(eq(shops.id, shopId));
   });
+
+  if (savedCreds) {
+    await freshShopifyCredentials(savedCreds)
+      .then((liveCreds) => ensureShopifyOrdersCreateWebhook(shopId, liveCreds))
+      .catch((e) => {
+        console.log(
+          JSON.stringify({
+            ts: new Date().toISOString(),
+            level: "error",
+            component: "settings",
+            integration: "shopify",
+            shopId,
+            event: "webhook_auto_register_failed",
+            error: e instanceof Error ? e.message : String(e),
+          }),
+        );
+      });
+  }
   revalidatePath("/settings");
 }
 
@@ -206,6 +230,16 @@ export async function triggerShopifySync(shopId: string): Promise<ShopifySyncSum
   const summary = await syncShopOrders(shopId);
   revalidatePath("/settings");
   return summary;
+}
+
+export async function registerShopifyWebhooks(shopId: string): Promise<ShopifyWebhookRegistrationResult> {
+  const user = await requireAdmin();
+  const creds = (await withUserContext(user, (tx) =>
+    getShopCredentials(tx, shopId),
+  )) as ShopifyCredentials;
+  const result = await ensureShopifyOrdersCreateWebhook(shopId, await freshShopifyCredentials(creds));
+  revalidatePath("/settings");
+  return result;
 }
 
 /** Reset a shop's sync cursor and run a full window sync (idempotent). */

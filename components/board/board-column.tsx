@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { DraggableCard } from "./draggable-card";
 import type { BoardCard } from "@/lib/orders/board-data";
 
-const VIRTUALIZE_THRESHOLD = 50;
+const VIRTUALIZE_THRESHOLD = 35;
 
 export function BoardColumn({
   id,
@@ -37,22 +37,23 @@ export function BoardColumn({
   });
 
   return (
-    <div className="flex w-[20rem] shrink-0 flex-col rounded-card bg-canvas">
-      <div className="flex items-center justify-between px-3 py-2">
+    <div className="flex w-[min(86vw,24rem)] shrink-0 flex-col overflow-hidden rounded-card border border-line bg-canvas shadow-sm">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface px-4 py-3">
         <span className="text-sm font-semibold text-ink">{title}</span>
-        <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-slate">
+        <span className="rounded-full bg-canvas px-2 py-0.5 text-xs font-medium text-slate">
           {cards.length}
         </span>
       </div>
       <div
         ref={setNodeRef}
         className={cn(
-          "min-h-24 flex-1 rounded-card border border-transparent p-1 transition-colors duration-150 motion-hover",
-          droppable && isOver && "border-pigment bg-pigment-soft/60",
+          "min-h-32 flex-1 border border-transparent bg-canvas/80 p-2 transition-colors duration-150 motion-hover",
+          droppable && "border-dashed border-line",
+          droppable && isOver && "border-pigment bg-pigment-soft/70",
         )}
       >
         {virtual ? (
-          <div ref={scrollRef} className="max-h-[70vh] overflow-y-auto">
+          <div ref={scrollRef} className="max-h-[calc(100vh-17rem)] overflow-y-auto pr-1">
             <div
               style={{
                 height: virtualizer.getTotalSize(),
@@ -69,7 +70,7 @@ export function BoardColumn({
                     left: 0,
                     width: "100%",
                     transform: `translateY(${vi.start}px)`,
-                    padding: 4,
+                    padding: 5,
                   }}
                 >
                   <DraggableCard
@@ -83,7 +84,7 @@ export function BoardColumn({
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-2 p-1">
+          <div className="flex flex-col gap-2">
             {cards.map((c) => (
               <DraggableCard
                 key={c.orderId}
@@ -94,7 +95,7 @@ export function BoardColumn({
               />
             ))}
             {cards.length === 0 && (
-              <p className="px-2 py-6 text-center text-xs text-slate">Empty</p>
+              <p className="rounded-input border border-dashed border-line bg-surface px-2 py-8 text-center text-xs text-slate">Empty</p>
             )}
           </div>
         )}

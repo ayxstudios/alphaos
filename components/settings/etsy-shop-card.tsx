@@ -17,6 +17,7 @@ import {
 import { focusRing } from "@/components/ui/styles";
 import { saveEtsyCredentials, triggerSync, backfillEtsyShop } from "@/app/(app)/settings/actions";
 import { ResolutionRulesEditor } from "@/components/settings/resolution-rules-editor";
+import { formatSyncTime, syncHealth } from "@/lib/integrations/sync-health";
 import type { SyncSummary } from "@/lib/integrations/etsy";
 import type { FigureRule, StyleRule } from "@/lib/integrations/figures";
 
@@ -27,6 +28,7 @@ export type EtsyShopVM = {
   status: "connected" | "needs_reauth" | "not_connected";
   etsyShopId: string | null;
   lastSyncCursor: string | null;
+  lastSyncAt: string | null;
   allowHeuristic: boolean;
   ruleCount: number;
   figureRules: FigureRule[];
@@ -76,21 +78,30 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
     });
   }
 
-  const lastSync = shop.lastSyncCursor
+  const health = syncHealth(shop.lastSyncAt);
+  const lastSync = formatSyncTime(shop.lastSyncAt);
+  const cursor = shop.lastSyncCursor
     ? new Date(Number(shop.lastSyncCursor) * 1000).toLocaleString()
-    : "never";
+    : "none";
 
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
           <CardTitle>{shop.name}</CardTitle>
-          <StatusBadge status={shop.status} />
+          <div className="flex flex-wrap justify-end gap-2">
+            {health !== "ok" && (
+              <Badge variant="warning" dot>
+                Sync {health === "never" ? "never run" : "stale"}
+              </Badge>
+            )}
+            <StatusBadge status={shop.status} />
+          </div>
         </div>
         <CardDescription>
           Etsy shop {shop.etsyShopId ? `#${shop.etsyShopId}` : "(id set on connect)"} ·
-          last sync {lastSync} · {shop.ruleCount} figure rule{shop.ruleCount === 1 ? "" : "s"} ·
-          heuristic {shop.allowHeuristic ? "on" : "off"}
+          last successful sync {lastSync} · cursor {cursor} · {shop.ruleCount} figure
+          rule{shop.ruleCount === 1 ? "" : "s"} · heuristic {shop.allowHeuristic ? "on" : "off"}
         </CardDescription>
       </CardHeader>
 

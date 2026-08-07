@@ -41,6 +41,9 @@ import type {
 import {
   resolveShopifyAuthType,
   isShopifyConnected,
+  freshShopifyCredentials,
+  getShopifyOrdersCreateWebhookStatus,
+  shopifyOrdersCreateWebhookUrl,
   type ShopifyCredentials,
   type ShopifyIntegrationConfig,
 } from "@/lib/integrations/shopify";
@@ -118,6 +121,7 @@ export default async function SettingsPage({
         status: creds.status ?? "not_connected",
         etsyShopId: creds.etsyShopId ?? null,
         lastSyncCursor: cfg.syncCursor ?? null,
+        lastSyncAt: cfg.lastSyncAt ?? null,
         allowHeuristic: !!cfg.allowHeuristicFigureCount,
         ruleCount: cfg.figureRules?.length ?? 0,
         figureRules: cfg.figureRules ?? [],
@@ -154,17 +158,35 @@ export default async function SettingsPage({
         getShopCredentials(tx, s.id),
       )) as ShopifyCredentials;
       const cfg = (s.integrationConfig ?? {}) as ShopifyIntegrationConfig;
+      const connected = isShopifyConnected(creds);
+      const liveCreds = connected ? await freshShopifyCredentials(creds) : creds;
+      const webhookStatus = connected
+        ? await getShopifyOrdersCreateWebhookStatus(s.id, liveCreds).catch((e) => ({
+            expectedUrl: shopifyOrdersCreateWebhookUrl(),
+            registered: false,
+            pointingCorrectly: false,
+            subscriptions: [],
+            error: e instanceof Error ? e.message : String(e),
+          }))
+        : {
+            expectedUrl: shopifyOrdersCreateWebhookUrl(),
+            registered: false,
+            pointingCorrectly: false,
+            subscriptions: [],
+          };
       return {
         id: s.id,
         name: s.name,
         authType: resolveShopifyAuthType(creds),
-        status: isShopifyConnected(creds) ? "connected" : "not_connected",
+        status: connected ? "connected" : "not_connected",
         shopDomain: creds.shopDomain ?? null,
         hasClientId: !!creds.clientId,
         hasClientSecret: !!creds.clientSecret,
         hasToken: !!creds.accessToken,
         hasWebhookSecret: !!creds.webhookSecret,
         lastSyncCursor: cfg.syncCursor ?? null,
+        lastSyncAt: cfg.lastSyncAt ?? null,
+        webhookStatus,
         allowHeuristic: !!cfg.allowHeuristicFigureCount,
         ruleCount: cfg.figureRules?.length ?? 0,
         figureRules: cfg.figureRules ?? [],

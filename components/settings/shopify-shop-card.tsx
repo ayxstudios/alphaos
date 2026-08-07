@@ -19,9 +19,11 @@ import {
   testShopifyConnection,
   triggerShopifySync,
   backfillShopifyShop,
+  registerShopifyWebhooks,
 } from "@/app/(app)/settings/actions";
 import { ResolutionRulesEditor } from "@/components/settings/resolution-rules-editor";
-import type { SyncSummary } from "@/lib/integrations/shopify";
+import { formatSyncTime, syncHealth } from "@/lib/integrations/sync-health";
+import type { ShopifyWebhookStatus, SyncSummary } from "@/lib/integrations/shopify";
 import type { FigureRule, StyleRule } from "@/lib/integrations/figures";
 
 type AuthMode = "client_credentials" | "legacy";
@@ -37,6 +39,8 @@ export type ShopifyShopVM = {
   hasToken: boolean;
   hasWebhookSecret: boolean;
   lastSyncCursor: string | null;
+  lastSyncAt: string | null;
+  webhookStatus: ShopifyWebhookStatus;
   allowHeuristic: boolean;
   ruleCount: number;
   figureRules: FigureRule[];
@@ -64,9 +68,12 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
   const [testing, startTest] = useTransition();
   const [syncing, startSync] = useTransition();
   const [backfilling, startBackfill] = useTransition();
+  const [registeringWebhooks, startWebhookRegistration] = useTransition();
   const [test, setTest] = useState<{ ok: boolean; message: string } | null>(null);
   const [summary, setSummary] = useState<SyncSummary | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [webhookStatus, setWebhookStatus] = useState<ShopifyWebhookStatus>(shop.webhookStatus);
+  const [webhookError, setWebhookError] = useState<string | null>(shop.webhookStatus.error ?? null);
 
   function onTest() {
     setTest(null);
@@ -113,23 +120,51 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
     });
   }
 
-  const lastSync = shop.lastSyncCursor ? new Date(shop.lastSyncCursor).toLocaleString() : "never";
+  function onRegisterWebhooks() {
+    setWebhookError(null);
+    startWebhookRegistration(async () => {
+      try {
+        setWebhookStatus(await registerShopifyWebhooks(shop.id));
+      } catch (e) {
+        setWebhookError(e instanceof Error ? e.message : "Webhook registration failed");
+      }
+    });
+  }
+
+  const health = syncHealth(shop.lastSyncAt);
+  const lastSync = formatSyncTime(shop.lastSyncAt);
+  const cursor = shop.lastSyncCursor ? new Date(shop.lastSyncCursor).toLocaleString() : "none";
+  const webhookUris = webhookStatus.subscriptions
+    .map((sub) => sub.uri)
+    .filter((uri): uri is string => !!uri);
 
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
           <CardTitle>{shop.name}</CardTitle>
-          {shop.status === "connected" ? (
-            <Badge variant="success" dot>Connected</Badge>
-          ) : (
-            <Badge variant="neutral" dot>Not connected</Badge>
-          )}
+          <div className="flex flex-wrap justify-end gap-2">
+            {health !== "ok" && (
+              <Badge variant="warning" dot>
+                Sync {health === "never" ? "never run" : "stale"}
+              </Badge>
+            )}
+            {webhookStatus.pointingCorrectly ? (
+              <Badge variant="success" dot>Webhook registered</Badge>
+            ) : (
+              <Badge variant="danger" dot>Webhook missing</Badge>
+            )}
+            {shop.status === "connected" ? (
+              <Badge variant="success" dot>Connected</Badge>
+            ) : (
+              <Badge variant="neutral" dot>Not connected</Badge>
+            )}
+          </div>
         </div>
         <CardDescription>
-          {shop.shopDomain ?? "no domain set"} · {MODE_LABEL[shop.authType]} · last sync {lastSync} ·{" "}
-          {shop.ruleCount} figure rule{shop.ruleCount === 1 ? "" : "s"} · heuristic{" "}
-          {shop.allowHeuristic ? "on" : "off"}
+          {shop.shopDomain ?? "no domain set"} · {MODE_LABEL[shop.authType]} · last successful sync{" "}
+          {lastSync} · cursor {cursor} · {shop.ruleCount} figure rule{shop.ruleCount === 1 ? "" : "s"} ·
+          heuristic {shop.allowHeuristic ? "on" : "off"}
         </CardDescription>
       </CardHeader>
 
@@ -234,6 +269,34 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
           skuSuggestions={shop.skuSuggestions}
           titleSuggestions={shop.titleSuggestions}
         />
+
+        <div className="rounded-card border border-line bg-canvas p-3">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-ink">Webhook delivery</p>
+              <p className="break-all text-xs text-slate">
+                Expected: <code className="text-ink">{webhookStatus.expectedUrl}</code>
+              </p>
+              <p className="mt-1 break-all text-xs text-slate">
+                Current:{" "}
+                {webhookUris.length
+                  ? webhookUris.map((uri) => <code key={uri} className="mr-2 text-ink">{uri}</code>)
+                  : "not registered"}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={onRegisterWebhooks}
+              loading={registeringWebhooks}
+              disabled={shop.status !== "connected"}
+            >
+              Register webhooks
+            </Button>
+          </div>
+          {webhookError && <p className="mt-2 text-sm text-rose">{webhookError}</p>}
+        </div>
       </CardContent>
 
       <CardFooter className="flex-col items-start gap-2">
@@ -257,10 +320,6 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
           >
             Backfill 60d (no email)
           </Button>
-          <span className="text-xs text-slate">
-            Webhook endpoint: <code className="text-ink">/api/shopify/webhook</code> (register
-            orders/create)
-          </span>
         </div>
         {syncError && <p className="text-sm text-rose">{syncError}</p>}
         {summary && (

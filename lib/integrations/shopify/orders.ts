@@ -217,10 +217,11 @@ export async function syncShopOrders(
     }
 
     const newCursor = maxCreated || since;
+    const lastSyncAt = new Date().toISOString();
     await withSystemContext((tx) =>
       tx
         .update(shops)
-        .set({ integrationConfig: { ...cfg, syncCursor: newCursor, syncingSince: undefined } })
+        .set({ integrationConfig: { ...cfg, syncCursor: newCursor, syncingSince: undefined, lastSyncAt } })
         .where(eq(shops.id, shopId)),
     );
 
@@ -241,6 +242,7 @@ export async function syncShopOrders(
       windowStart: since,
       windowDays,
       newCursor,
+      lastSyncAt,
     });
 
     // Best-effort: auto-send the queued photo-request emails for this business.

@@ -1,6 +1,8 @@
 import { ShopifyApiError } from "./errors";
 import type { ShopifyAuthType, ShopifyCredentials } from "./types";
 
+const REFRESH_BUFFER_MS = 120_000;
+
 /**
  * Shopify auth helpers shared by the client, the webhook, and Settings.
  *
@@ -34,6 +36,14 @@ export function isShopifyConnected(creds: ShopifyCredentials): boolean {
   return resolveShopifyAuthType(creds) === "client_credentials"
     ? !!(creds.clientId && creds.clientSecret)
     : !!creds.accessToken;
+}
+
+export function shopifyAccessTokenValid(creds: ShopifyCredentials): boolean {
+  return (
+    !!creds.accessToken &&
+    !!creds.accessTokenExpiresAt &&
+    new Date(creds.accessTokenExpiresAt).getTime() > Date.now() + REFRESH_BUFFER_MS
+  );
 }
 
 export type ClientCredentialsToken = {
@@ -80,5 +90,23 @@ export async function exchangeClientCredentials(
     accessToken: body.access_token,
     scope: body.scope ?? "",
     expiresIn: Number(body.expires_in ?? 0),
+  };
+}
+
+export async function freshShopifyCredentials(
+  creds: ShopifyCredentials,
+): Promise<ShopifyCredentials> {
+  if (resolveShopifyAuthType(creds) === "legacy" || shopifyAccessTokenValid(creds)) {
+    return creds;
+  }
+  if (!creds.shopDomain || !creds.clientId || !creds.clientSecret) {
+    throw new ShopifyApiError(0, "Shopify: missing client credentials for token refresh");
+  }
+  const tok = await exchangeClientCredentials(creds.shopDomain, creds.clientId, creds.clientSecret);
+  return {
+    ...creds,
+    accessToken: tok.accessToken,
+    accessTokenExpiresAt: new Date(Date.now() + tok.expiresIn * 1000).toISOString(),
+    status: "connected",
   };
 }

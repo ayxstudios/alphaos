@@ -13,6 +13,7 @@ import {
 } from "@/lib/db/schema";
 import type { OrderStatus } from "@/lib/orders/transitions";
 import { resolveChecklist, type ChecklistSnapshot } from "./checklist";
+import { isR2Configured, presignGet } from "@/lib/storage/r2";
 
 export type QcImage = {
   id: string;
@@ -48,6 +49,22 @@ export type QcContext = {
 };
 
 const SUBMISSION_TYPES = ["submission", "final"] as const;
+
+async function resolveAssetUrl(asset: {
+  url: string | null;
+  storage: string;
+  r2Key: string | null;
+}): Promise<string | null> {
+  if (asset.url) return asset.url;
+  if (asset.storage === "r2" && asset.r2Key && isR2Configured()) {
+    try {
+      return await presignGet(asset.r2Key);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
 
 /**
  * Full context for the QC screen. VA/admin only — reads the customers table
@@ -123,9 +140,9 @@ export async function getQcContext(
 
     // Reference photos (left pane).
     const references = await tx
-      .select({ id: assets.id, url: assets.url })
+      .select({ id: assets.id, url: assets.url, storage: assets.storage, r2Key: assets.r2Key })
       .from(assets)
-      .where(and(eq(assets.orderId, orderId), eq(assets.type, "reference")))
+      .where(and(eq(assets.orderId, orderId), eq(assets.type, "reference"), sql`${assets.deletedAt} is null`))
       .orderBy(asc(assets.createdAt));
 
     // Delivered versions (right pane + history strip), oldest first.
@@ -133,6 +150,8 @@ export async function getQcContext(
       .select({
         id: assets.id,
         url: assets.url,
+        storage: assets.storage,
+        r2Key: assets.r2Key,
         type: assets.type,
         createdAt: assets.createdAt,
         uploadedByName: users.name,
@@ -140,16 +159,19 @@ export async function getQcContext(
       })
       .from(assets)
       .leftJoin(users, eq(users.id, assets.uploadedBy))
-      .where(and(eq(assets.orderId, orderId), inArray(assets.type, [...SUBMISSION_TYPES])))
+      .where(and(eq(assets.orderId, orderId), inArray(assets.type, [...SUBMISSION_TYPES]), sql`${assets.deletedAt} is null`))
       .orderBy(asc(assets.createdAt));
 
-    const versions: QcVersion[] = versionRows.map((v) => ({
+    const resolvedReferences = await Promise.all(
+      references.map(async (r) => ({ id: r.id, url: await resolveAssetUrl(r) })),
+    );
+    const versions: QcVersion[] = await Promise.all(versionRows.map(async (v) => ({
       id: v.id,
-      url: v.url,
+      url: await resolveAssetUrl(v),
       type: v.type,
       uploadedBy: v.uploadedByName ?? v.uploadedByEmail ?? null,
       createdAt: v.createdAt.toISOString(),
-    }));
+    })));
 
     return {
       orderId: order.id,
@@ -163,7 +185,7 @@ export async function getQcContext(
       designerName,
       enteredQcAt: qcEntry ? qcEntry.createdAt.toISOString() : null,
       dueAt: order.dueAt ? order.dueAt.toISOString() : null,
-      references: references.map((r) => ({ id: r.id, url: r.url })),
+      references: resolvedReferences,
       versions,
       checklist: resolveChecklist({
         checklistVersion: shop?.checklistVersion ?? 1,

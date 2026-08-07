@@ -28,6 +28,13 @@ import {
 } from "@/components/ui";
 import { Camera, Inbox, Pencil, Plus } from "@/components/ui/icons";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
+import { getShopCredentials } from "@/lib/db/credentials";
+import {
+  fetchShopifyOrderProductMedia,
+  freshShopifyCredentials,
+  type ShopifyCredentials,
+  type ShopifyProductMedia,
+} from "@/lib/integrations/shopify";
 import { getCardDetail } from "@/lib/orders/card-detail";
 import { OrderCommentForm } from "@/components/orders/order-comment-form";
 import { OrderRevisionForm } from "@/components/orders/order-revision-form";
@@ -65,6 +72,26 @@ function customerDisplay(input: {
 function titleCase(value: string | null | undefined) {
   if (!value) return "Unknown";
   return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function mediaForItem(
+  item: { sku: string | null; title: string | null; variation: string | null },
+  media: ShopifyProductMedia[],
+  index: number,
+): ShopifyProductMedia | null {
+  if (!media.length) return null;
+  if (item.sku) {
+    const bySku = media.find((m) => m.sku && m.sku === item.sku);
+    if (bySku) return bySku;
+  }
+  const title = item.title?.trim().toLowerCase();
+  const variation = item.variation?.trim().toLowerCase();
+  const byTitle = media.find((m) => {
+    if (title && m.title?.trim().toLowerCase() !== title) return false;
+    if (variation && m.variantTitle) return variation.includes(m.variantTitle.trim().toLowerCase());
+    return !!title;
+  });
+  return byTitle ?? media[index] ?? null;
 }
 
 const REVISION_FROM_STATUSES = new Set<OrderStatus>([
@@ -198,6 +225,27 @@ export default async function OrderDetailPage({
     ),
   ]);
 
+  const shopifyMedia =
+    order.source === "shopify"
+      ? await withUserContext(user, (tx) => getShopCredentials(tx, order.shopId))
+          .then((creds) => freshShopifyCredentials(creds as ShopifyCredentials))
+          .then((creds) => fetchShopifyOrderProductMedia(order.shopId, order.platformOrderId, creds))
+          .catch((e) => {
+            console.log(
+              JSON.stringify({
+                ts: new Date().toISOString(),
+                level: "warn",
+                integration: "shopify",
+                orderId: order.id,
+                platformOrderId: order.platformOrderId,
+                event: "product_media_fetch_failed",
+                error: e instanceof Error ? e.message : String(e),
+              }),
+            );
+            return [] as ShopifyProductMedia[];
+          })
+      : [];
+
   const customerName = customerDisplay({
     firstName: order.customerFirst,
     lastName: order.customerLast,
@@ -273,33 +321,61 @@ export default async function OrderDetailPage({
               <EmptyState icon={Inbox} headline="No item details yet" body="Use Edit to add product, figure count, style and fulfilment." />
             ) : (
               <ul className="divide-y divide-line">
-                {items.map((item) => (
-                  <li key={item.id} className="px-4 py-3">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-medium text-ink">{item.title ?? "Untitled item"}</p>
-                        {item.variation && <p className="mt-1 text-sm text-slate">{item.variation}</p>}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        <Badge variant={item.productType === "physical" ? "info" : "success"}>
-                          {titleCase(item.productType)}
-                        </Badge>
-                        {item.figureCount != null && <Badge variant="neutral">{item.figureCount} figures</Badge>}
-                        {item.style && <Badge variant="neutral">{item.style}</Badge>}
-                      </div>
-                    </div>
-                    {Array.isArray(item.options) && item.options.length > 0 && (
-                      <dl className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
-                        {item.options.map((option) => (
-                          <div key={`${option.name}-${option.value}`} className="flex gap-2">
-                            <dt className="shrink-0 text-slate">{option.name}:</dt>
-                            <dd className="font-medium text-ink">{option.value}</dd>
+                {items.map((item, index) => {
+                  const media = order.source === "shopify" ? mediaForItem(item, shopifyMedia, index) : null;
+                  const content = (
+                    <>
+                      {media?.imageUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={media.imageUrl}
+                          alt={media.imageAlt ?? item.title ?? "Shopify product"}
+                          className="size-20 shrink-0 rounded-input border border-line object-cover"
+                        />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-medium text-ink">{item.title ?? "Untitled item"}</p>
+                            {item.variation && <p className="mt-1 text-sm text-slate">{item.variation}</p>}
+                            {media?.productUrl && (
+                              <a
+                                href={media.productUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-2 inline-flex text-sm font-medium text-pigment hover:text-ink"
+                              >
+                                Open Shopify product
+                              </a>
+                            )}
                           </div>
-                        ))}
-                      </dl>
-                    )}
+                          <div className="flex flex-wrap gap-1.5">
+                            <Badge variant={item.productType === "physical" ? "info" : "success"}>
+                              {titleCase(item.productType)}
+                            </Badge>
+                            {item.figureCount != null && <Badge variant="neutral">{item.figureCount} figures</Badge>}
+                            {item.style && <Badge variant="neutral">{item.style}</Badge>}
+                          </div>
+                        </div>
+                        {Array.isArray(item.options) && item.options.length > 0 && (
+                          <dl className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
+                            {item.options.map((option) => (
+                              <div key={`${option.name}-${option.value}`} className="flex gap-2">
+                                <dt className="shrink-0 text-slate">{option.name}:</dt>
+                                <dd className="font-medium text-ink">{option.value}</dd>
+                              </div>
+                            ))}
+                          </dl>
+                        )}
+                      </div>
+                    </>
+                  );
+                  return (
+                  <li key={item.id} className="px-4 py-3">
+                    <div className="flex items-start gap-3">{content}</div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </DataPanel>

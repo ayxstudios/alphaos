@@ -39,8 +39,8 @@ export default async function BoardPage({
   return (
     <Page className="max-w-none">
       <PageHeader
-        title={isStaff ? "Designer board" : "My board"}
-        description="Drag work from queue to design, then submit it for QC."
+        title={isStaff ? "Designer boards" : "My board"}
+        description="Move work across queue, design, and QC for each designer."
         actions={
           <>
             {isStaff && (

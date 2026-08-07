@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 
 import {
   bulkChangeOrderStatus,
@@ -10,7 +10,7 @@ import {
   type BulkActionResult,
 } from "@/app/(app)/orders/actions";
 import { Badge, Button, useToast, type OrderStatus } from "@/components/ui";
-import { Inbox, Pencil } from "@/components/ui/icons";
+import { Columns, Inbox, Pencil } from "@/components/ui/icons";
 import { formatStageRemaining, type StageTimer } from "@/lib/orders/stage-timers";
 import { cn } from "@/lib/utils";
 
@@ -45,6 +45,15 @@ export type OrdersDashboardRow = {
 type DesignerOption = { id: string; name: string };
 type SortKey = "created" | "order" | "customer" | "source" | "status" | "owner" | "ordered" | "due";
 type SortDir = "asc" | "desc";
+type ColumnKey = "order" | "customer" | "source" | "status" | "owner" | "ordered" | "due" | "stage";
+
+type ColumnDef = {
+  key: ColumnKey;
+  label: string;
+  sort?: SortKey;
+  width: string;
+  render: (row: OrdersDashboardRow) => React.ReactNode;
+};
 
 const BULK_STATUSES: { value: OrderStatus; label: string }[] = [
   { value: "awaiting_photos", label: "Awaiting photos" },
@@ -60,6 +69,108 @@ const BULK_STATUSES: { value: OrderStatus; label: string }[] = [
   { value: "on_hold", label: "On hold" },
   { value: "cancelled", label: "Cancelled" },
 ];
+
+const COLUMN_STORAGE_KEY = "orders_table_columns";
+
+const ORDER_COLUMNS: ColumnDef[] = [
+  {
+    key: "order",
+    label: "Order",
+    sort: "order",
+    width: "minmax(13rem,1.15fr)",
+    render: (row) => (
+      <div className="min-w-0">
+        <Link href={`/orders/${row.id}`} className="truncate text-sm font-semibold text-ink hover:text-pigment">
+          {row.orderNumber}
+        </Link>
+        <p className="truncate text-xs text-slate">{row.itemTitle}</p>
+        {row.itemSummary && <p className="truncate text-xs text-slate">{row.itemSummary}</p>}
+      </div>
+    ),
+  },
+  {
+    key: "customer",
+    label: "Customer",
+    sort: "customer",
+    width: "minmax(12rem,0.95fr)",
+    render: (row) => (
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-ink">{row.customer}</p>
+        <p className="truncate text-xs text-slate">{row.customerEmail ?? "No email"}</p>
+      </div>
+    ),
+  },
+  {
+    key: "source",
+    label: "Source",
+    sort: "source",
+    width: "minmax(9rem,0.75fr)",
+    render: (row) => (
+      <div className="min-w-0">
+        <p className="truncate text-sm text-ink">{row.source}</p>
+        <p className="text-xs text-slate">{row.platform}</p>
+      </div>
+    ),
+  },
+  {
+    key: "status",
+    label: "Status",
+    sort: "status",
+    width: "9rem",
+    render: (row) => (
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant={statusTone(row)} dot>{row.derivedStatus}</Badge>
+      </div>
+    ),
+  },
+  {
+    key: "owner",
+    label: "Designer",
+    sort: "owner",
+    width: "9rem",
+    render: (row) => <p className="truncate text-sm text-slate">{row.assignee}</p>,
+  },
+  {
+    key: "ordered",
+    label: "Ordered",
+    sort: "ordered",
+    width: "8rem",
+    render: (row) => (
+      <div className="min-w-0">
+        <p className="text-sm text-slate">{fmtDateTime(row.placedAt ?? row.createdAt)}</p>
+      </div>
+    ),
+  },
+  {
+    key: "due",
+    label: "Due",
+    sort: "due",
+    width: "8.5rem",
+    render: (row) => (
+      <div className="flex flex-wrap items-center gap-2">
+        {row.isOverdue && <Badge variant="danger" dot>Overdue</Badge>}
+        <span className="text-sm text-slate">{fmtDate(row.dueAt)}</span>
+      </div>
+    ),
+  },
+  {
+    key: "stage",
+    label: "Stage time",
+    width: "9rem",
+    render: (row) => (
+      <div className="min-w-0">
+        <p className={cn("text-sm font-medium", row.stageTimer.isOverdue ? "text-rose" : "text-ink")}>
+          {formatStageRemaining(row.stageTimer)}
+        </p>
+        <p className="truncate text-xs text-slate">
+          {row.stageTimer.followUpLabel ?? row.stageTimer.label}
+        </p>
+      </div>
+    ),
+  },
+];
+
+const DEFAULT_COLUMN_KEYS = ORDER_COLUMNS.map((column) => column.key);
 
 function fmtDate(value: string | null) {
   if (!value) return "No due date";
@@ -146,9 +257,45 @@ export function OrdersOperationsTable({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [designerId, setDesignerId] = useState("");
   const [targetStatus, setTargetStatus] = useState<OrderStatus | "">("");
+  const [columnMenuOpen, setColumnMenuOpen] = useState(false);
+  const [columnPrefsLoaded, setColumnPrefsLoaded] = useState(false);
+  const [visibleColumnKeys, setVisibleColumnKeys] = useState<ColumnKey[]>(DEFAULT_COLUMN_KEYS);
   const [pending, start] = useTransition();
   const selectedIds = useMemo(() => [...selected], [selected]);
   const allSelected = rows.length > 0 && rows.every((row) => selected.has(row.id));
+  const visibleColumns = useMemo(() => {
+    const selectedKeys = new Set(visibleColumnKeys);
+    const columns = ORDER_COLUMNS.filter((column) => selectedKeys.has(column.key));
+    return columns.length ? columns : ORDER_COLUMNS;
+  }, [visibleColumnKeys]);
+  const gridTemplateColumns = useMemo(
+    () => ["2.25rem", ...visibleColumns.map((column) => column.width), "12rem"].join(" "),
+    [visibleColumns],
+  );
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(COLUMN_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as unknown;
+        if (Array.isArray(parsed)) {
+          const valid = parsed.filter((key): key is ColumnKey =>
+            DEFAULT_COLUMN_KEYS.includes(key as ColumnKey),
+          );
+          if (valid.length) setVisibleColumnKeys(valid);
+        }
+      }
+    } catch {
+      // Ignore corrupted local preferences and fall back to the default set.
+    } finally {
+      setColumnPrefsLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!columnPrefsLoaded) return;
+    window.localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(visibleColumnKeys));
+  }, [columnPrefsLoaded, visibleColumnKeys]);
 
   function toggleAll() {
     setSelected((current) => {
@@ -193,6 +340,19 @@ export function OrdersOperationsTable({
     start(async () => {
       handleResult(await bulkChangeOrderStatus(selectedIds, targetStatus));
     });
+  }
+
+  function toggleColumn(key: ColumnKey) {
+    setVisibleColumnKeys((current) => {
+      if (current.includes(key)) {
+        return current.length === 1 ? current : current.filter((columnKey) => columnKey !== key);
+      }
+      return DEFAULT_COLUMN_KEYS.filter((columnKey) => columnKey === key || current.includes(columnKey));
+    });
+  }
+
+  function resetColumns() {
+    setVisibleColumnKeys(DEFAULT_COLUMN_KEYS);
   }
 
   return (
@@ -248,12 +408,56 @@ export function OrdersOperationsTable({
           <p className="text-xs text-slate">
             Illegal moves are skipped and reported.
           </p>
+          <div className="relative ml-auto">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setColumnMenuOpen((open) => !open)}
+            >
+              <Columns size={15} />
+              Columns
+            </Button>
+            {columnMenuOpen && (
+              <div className="absolute right-0 top-10 z-30 w-56 rounded-card border border-line bg-surface p-2 shadow-lg">
+                <div className="flex items-center justify-between gap-2 border-b border-line px-2 pb-2">
+                  <p className="text-xs font-semibold uppercase text-slate">Visible columns</p>
+                  <button
+                    type="button"
+                    onClick={resetColumns}
+                    className="text-xs font-medium text-pigment hover:text-ink"
+                  >
+                    Reset
+                  </button>
+                </div>
+                <div className="mt-2 flex flex-col gap-1">
+                  {ORDER_COLUMNS.map((column) => (
+                    <label
+                      key={column.key}
+                      className="flex cursor-pointer items-center gap-2 rounded-input px-2 py-1.5 text-sm text-ink hover:bg-canvas"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={visibleColumnKeys.includes(column.key)}
+                        onChange={() => toggleColumn(column.key)}
+                        className="size-4 rounded border-line text-pigment focus:ring-pigment"
+                      />
+                      {column.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       <div className="xl:overflow-x-auto">
         <div className="xl:min-w-[88rem]">
-          <div className="hidden grid-cols-[2.25rem_minmax(13rem,1.15fr)_minmax(12rem,0.95fr)_minmax(9rem,0.75fr)_9rem_9rem_8rem_8.5rem_9rem_12rem] gap-3 border-b border-line px-4 py-2 text-xs font-medium uppercase text-slate xl:grid">
+          <div
+            className="hidden gap-3 border-b border-line px-4 py-2 text-xs font-medium uppercase text-slate xl:grid xl:[grid-template-columns:var(--orders-grid)]"
+            style={{ "--orders-grid": gridTemplateColumns } as React.CSSProperties}
+          >
             <label className="flex items-center">
               <input
                 type="checkbox"
@@ -263,15 +467,24 @@ export function OrdersOperationsTable({
                 className="size-4 rounded border-line text-pigment focus:ring-pigment"
               />
             </label>
-            <SortableHeader currentParams={currentParams} sort="order" activeSort={sort} dir={dir}>Order</SortableHeader>
-            <SortableHeader currentParams={currentParams} sort="customer" activeSort={sort} dir={dir}>Customer</SortableHeader>
-            <SortableHeader currentParams={currentParams} sort="source" activeSort={sort} dir={dir}>Source</SortableHeader>
-            <SortableHeader currentParams={currentParams} sort="status" activeSort={sort} dir={dir}>Status</SortableHeader>
-            <SortableHeader currentParams={currentParams} sort="owner" activeSort={sort} dir={dir}>Owner</SortableHeader>
-            <SortableHeader currentParams={currentParams} sort="ordered" activeSort={sort} dir={dir}>Ordered</SortableHeader>
-            <SortableHeader currentParams={currentParams} sort="due" activeSort={sort} dir={dir}>Due</SortableHeader>
-            <span>Stage time</span>
-            <span>Actions</span>
+            {visibleColumns.map((column) =>
+              column.sort ? (
+                <SortableHeader
+                  key={column.key}
+                  currentParams={currentParams}
+                  sort={column.sort}
+                  activeSort={sort}
+                  dir={dir}
+                >
+                  {column.label}
+                </SortableHeader>
+              ) : (
+                <span key={column.key}>{column.label}</span>
+              ),
+            )}
+            <span className="xl:sticky right-0 z-20 bg-surface py-1 pl-3 shadow-[-12px_0_18px_-18px_rgba(22,34,46,0.55)]">
+              Actions
+            </span>
           </div>
 
           <div className="divide-y divide-line">
@@ -279,10 +492,11 @@ export function OrdersOperationsTable({
               <div
                 key={row.id}
                 className={cn(
-                  "grid gap-3 px-4 py-3 transition-colors hover:bg-canvas xl:grid-cols-[2.25rem_minmax(13rem,1.15fr)_minmax(12rem,0.95fr)_minmax(9rem,0.75fr)_9rem_9rem_8rem_8.5rem_9rem_12rem] xl:items-center xl:gap-3",
+                  "grid gap-3 px-4 py-3 transition-colors hover:bg-canvas xl:items-center xl:gap-3 xl:[grid-template-columns:var(--orders-grid)]",
                   (row.stageTimer.isOverdue || row.isOverdue) &&
                     "bg-rose/5 ring-1 ring-inset ring-rose/20 hover:bg-rose/10",
                 )}
+                style={{ "--orders-grid": gridTemplateColumns } as React.CSSProperties}
               >
                 <label className="flex items-center">
                   <input
@@ -293,41 +507,17 @@ export function OrdersOperationsTable({
                     className="size-4 rounded border-line text-pigment focus:ring-pigment"
                   />
                 </label>
-                <div className="min-w-0">
-                  <Link href={`/orders/${row.id}`} className="truncate text-sm font-semibold text-ink hover:text-pigment">
-                    {row.orderNumber}
-                  </Link>
-                  <p className="truncate text-xs text-slate">{row.itemTitle}</p>
-                  {row.itemSummary && <p className="truncate text-xs text-slate">{row.itemSummary}</p>}
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-ink">{row.customer}</p>
-                  <p className="truncate text-xs text-slate">{row.customerEmail ?? "No email"}</p>
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm text-ink">{row.source}</p>
-                  <p className="text-xs text-slate">{row.platform}</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={statusTone(row)} dot>{row.derivedStatus}</Badge>
-                </div>
-                <p className="truncate text-sm text-slate">{row.assignee}</p>
-                <div className="min-w-0">
-                  <p className="text-sm text-slate">{fmtDateTime(row.placedAt ?? row.createdAt)}</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {row.isOverdue && <Badge variant="danger" dot>Overdue</Badge>}
-                  <span className="text-sm text-slate">{fmtDate(row.dueAt)}</span>
-                </div>
-                <div className="min-w-0">
-                  <p className={cn("text-sm font-medium", row.stageTimer.isOverdue ? "text-rose" : "text-ink")}>
-                    {formatStageRemaining(row.stageTimer)}
-                  </p>
-                  <p className="truncate text-xs text-slate">
-                    {row.stageTimer.followUpLabel ?? row.stageTimer.label}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1.5">
+                {visibleColumns.map((column) => (
+                  <div key={column.key} className="min-w-0">
+                    {column.render(row)}
+                  </div>
+                ))}
+                <div
+                  className={cn(
+                    "flex items-center gap-1.5 bg-surface py-1 pl-3 shadow-[-12px_0_18px_-18px_rgba(22,34,46,0.55)] xl:sticky xl:right-0 xl:z-10",
+                    (row.stageTimer.isOverdue || row.isOverdue) && "bg-rose/5",
+                  )}
+                >
                   <Link
                     href={`/orders/${row.id}/complete`}
                     aria-label={`Edit order ${row.orderNumber}`}

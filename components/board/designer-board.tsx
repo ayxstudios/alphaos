@@ -32,10 +32,8 @@ const COLUMN_TO_STATUS: Record<ColKey, OrderStatus> = {
   revisions: "in_design",
   complete: "complete",
 };
-// A designer's only legal moves: start (My Queue → In Design) and submit
-// (In Design → Awaiting QC). So only these columns drag/drop.
-const DRAG_SOURCES = new Set<ColKey>(["myQueue", "inDesign", "failedQc", "revisions"]);
-const DROP_TARGETS = new Set<ColKey>(["inDesign", "awaitingQc"]);
+const DRAG_SOURCES = new Set<ColKey>(["myQueue", "inDesign", "failedQc", "awaitingQc", "revisions"]);
+const DROP_TARGETS = new Set<ColKey>(["myQueue", "inDesign", "awaitingQc"]);
 
 const COLUMNS: { key: ColKey; title: string }[] = [
   { key: "myQueue", title: "My Queue" },
@@ -112,7 +110,7 @@ export function DesignerBoard({ initial }: { initial: Cols }) {
 
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
-      <div className="flex gap-3 overflow-x-auto pb-4">
+      <div className="flex min-h-[calc(100vh-13rem)] gap-4 overflow-x-auto pb-4">
         {COLUMNS.map((col) => (
           <BoardColumn
             key={col.key}

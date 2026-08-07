@@ -13,8 +13,9 @@ import { syncShopOrders } from "@/lib/integrations/shopify";
  * - Only shops with a `syncCursor` are eligible — the expensive first 60-day sync
  *   is run once manually (Settings → Backfill), never by cron. Cron does the
  *   small incremental deltas.
- * - Shops are ordered least-recently-synced first; each processed shop stamps
- *   `lastSyncAt`, so the next tick continues with whatever this one didn't reach.
+ * - Shops are ordered least-recently-synced first; each successful shop sync
+ *   stamps `lastSyncAt`, so the next tick continues with whatever this one
+ *   didn't reach.
  * - Each shop sync already self-locks (`syncingSince`) and advances its cursor
  *   only on full success, so overlap and partial runs are safe.
  */
@@ -62,16 +63,6 @@ export async function syncAllShops(opts: { budgetMs?: number } = {}): Promise<Sy
     } catch (e) {
       outcome = `error:${e instanceof Error ? e.message : String(e)}`;
     }
-
-    // Fairness marker, merged so the sync's own cursor write is preserved.
-    await withSystemContext(async (tx) => {
-      const [row] = await tx.select({ cfg: shops.integrationConfig }).from(shops).where(eq(shops.id, s.id));
-      const cfg = (row?.cfg ?? {}) as Record<string, unknown>;
-      await tx
-        .update(shops)
-        .set({ integrationConfig: { ...cfg, lastSyncAt: new Date().toISOString() } })
-        .where(eq(shops.id, s.id));
-    });
 
     result.processed++;
     result.shops.push({ shopId: s.id, platform: s.platform, outcome });

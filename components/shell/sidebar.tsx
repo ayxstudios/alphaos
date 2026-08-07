@@ -23,7 +23,7 @@ type NavItem = { label: string; href: string; icon: ComponentType<IconProps> };
 const STAFF_NAV: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: Grid },
   { label: "Orders", href: "/orders", icon: Package },
-  { label: "Board", href: "/board", icon: Columns },
+  { label: "Boards", href: "/board", icon: Columns },
   { label: "Designers", href: "/designers", icon: Palette },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Settings", href: "/settings", icon: Settings },

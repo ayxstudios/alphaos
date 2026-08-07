@@ -7,6 +7,7 @@ import { withUserContext } from "@/lib/db";
 import { loadShellData } from "@/lib/shell/context";
 import { customers, orderItems, orders, shops } from "@/lib/db/schema";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
+import { formatSyncTime, syncHealth } from "@/lib/integrations/sync-health";
 import {
   Badge,
   DataPanel,
@@ -82,6 +83,19 @@ export default async function DashboardPage() {
       )
       .orderBy(asc(orders.dueAt))
       .limit(8),
+  );
+
+  const shopHealth = await withUserContext(user, (tx) =>
+    tx
+      .select({
+        id: shops.id,
+        name: shops.name,
+        platform: shops.platform,
+        lastSyncAt: sql<string | null>`${shops.integrationConfig}->>${"lastSyncAt"}`,
+      })
+      .from(shops)
+      .where(and(eq(shops.businessId, selected.id), eq(shops.active, true)))
+      .orderBy(asc(shops.name)),
   );
 
   const actionTotal =
@@ -177,24 +191,55 @@ export default async function DashboardPage() {
           )}
         </DataPanel>
 
-        <DataPanel className="p-4">
-          <SectionHeader title="Orders workload" />
-          <div className="mt-4 flex flex-col gap-3">
-            <WorkloadLine
-              label="Complete details"
-              value={stats?.awaitingDetails ?? 0}
-            />
-            <WorkloadLine label="Awaiting photos" value={stats?.awaitingPhotos ?? 0} />
-            <WorkloadLine label="Quality control" value={stats?.qc ?? 0} />
-          </div>
-          <Link
-            href="/orders?view=active"
-            className="mt-5 inline-flex h-10 w-full items-center justify-center gap-2 rounded-input border border-line bg-surface text-sm font-medium text-ink transition-colors hover:bg-canvas"
-          >
-            <ListChecks size={16} />
-            Open orders
-          </Link>
-        </DataPanel>
+        <div className="flex flex-col gap-5">
+          <DataPanel className="p-4">
+            <SectionHeader title="Pipeline health" />
+            <div className="mt-4 flex flex-col gap-3">
+              {shopHealth.map((shop) => {
+                const health = syncHealth(shop.lastSyncAt, now);
+                return (
+                  <div key={shop.id} className="border-b border-line pb-3 last:border-0 last:pb-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-ink">{shop.name}</p>
+                        <p className="text-xs text-slate">
+                          {shop.platform === "shopify" ? "Shopify" : "Etsy"} · last successful sync{" "}
+                          {formatSyncTime(shop.lastSyncAt)}
+                        </p>
+                      </div>
+                      {health === "ok" ? (
+                        <Badge variant="success" dot>Healthy</Badge>
+                      ) : (
+                        <Badge variant="warning" dot>
+                          {health === "never" ? "Never synced" : "Stale"}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </DataPanel>
+
+          <DataPanel className="p-4">
+            <SectionHeader title="Orders workload" />
+            <div className="mt-4 flex flex-col gap-3">
+              <WorkloadLine
+                label="Complete details"
+                value={stats?.awaitingDetails ?? 0}
+              />
+              <WorkloadLine label="Awaiting photos" value={stats?.awaitingPhotos ?? 0} />
+              <WorkloadLine label="Quality control" value={stats?.qc ?? 0} />
+            </div>
+            <Link
+              href="/orders?view=active"
+              className="mt-5 inline-flex h-10 w-full items-center justify-center gap-2 rounded-input border border-line bg-surface text-sm font-medium text-ink transition-colors hover:bg-canvas"
+            >
+              <ListChecks size={16} />
+              Open orders
+            </Link>
+          </DataPanel>
+        </div>
       </div>
     </Page>
   );
