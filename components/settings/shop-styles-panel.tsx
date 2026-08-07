@@ -22,7 +22,7 @@ export type ShopStylesVM = {
  */
 export function ShopStylesPanel({ shops }: { shops: ShopStylesVM[] }) {
   return (
-    <div className="divide-y divide-line">
+    <div className="grid gap-3">
       {shops.map((s) => (
         <ShopRow key={s.id} shop={s} />
       ))}
@@ -71,50 +71,76 @@ function ShopRow({ shop }: { shop: ShopStylesVM }) {
   }
 
   return (
-    <div className="flex flex-col gap-2 py-3">
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium text-ink">{shop.name}</span>
-        <span className="rounded bg-canvas px-1.5 py-0.5 text-[11px] capitalize text-slate">
-          {shop.platform}
-        </span>
+    <div className="rounded-card border border-line bg-surface p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-semibold text-ink">{shop.name}</span>
+            <span className="rounded bg-canvas px-1.5 py-0.5 text-[11px] font-medium capitalize text-slate">
+              {shop.platform}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate">
+            Portrait styles sold by this shop.
+          </p>
+        </div>
+        <div className="flex w-full gap-2 sm:w-72">
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={add}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === ",") {
+                e.preventDefault();
+                add();
+              }
+            }}
+            placeholder="Add style..."
+            className={cn(
+              "h-9 min-w-0 flex-1 rounded-input border border-line bg-canvas px-2.5 text-sm text-ink placeholder:text-slate",
+              focusRing,
+            )}
+          />
+          <button
+            type="button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={add}
+            disabled={!draft.trim()}
+            className={cn(
+              "inline-flex h-9 items-center rounded-input bg-ink px-3 text-sm font-medium text-surface transition-opacity disabled:pointer-events-none disabled:opacity-40",
+              focusRing,
+            )}
+          >
+            Add
+          </button>
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        {styles.map((s) => (
-          <span
-            key={s}
-            className="inline-flex items-center gap-1 rounded bg-sage/10 py-0.5 pl-2 pr-1 text-xs text-sage"
-          >
-            {s}
-            <button
-              type="button"
-              aria-label={`Remove ${s}`}
-              onClick={() => remove(s)}
-              className={cn("rounded p-0.5 hover:bg-sage/20", focusRing)}
-            >
-              <X size={12} />
-            </button>
+      <div className="mt-4 min-h-10 rounded-input border border-line bg-canvas/60 p-2">
+        {styles.length ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {styles.map((s) => (
+              <span
+                key={s}
+                className="inline-flex items-center gap-1 rounded-input border border-sage/20 bg-sage/10 py-1 pl-2.5 pr-1 text-xs font-medium text-sage"
+              >
+                {s}
+                <button
+                  type="button"
+                  aria-label={`Remove ${s}`}
+                  onClick={() => remove(s)}
+                  className={cn("rounded p-0.5 hover:bg-sage/20", focusRing)}
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <span className="inline-flex h-6 items-center text-xs text-slate">
+            No styles yet
           </span>
-        ))}
-        {styles.length === 0 && (
-          <span className="text-xs text-slate">No styles yet</span>
         )}
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={add}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === ",") {
-              e.preventDefault();
-              add();
-            }
-          }}
-          placeholder="Add style…"
-          className={cn(
-            "h-8 min-w-[8rem] flex-1 rounded-input border border-line bg-surface px-2.5 text-sm text-ink placeholder:text-slate",
-            focusRing,
-          )}
-        />
       </div>
     </div>
   );

@@ -270,7 +270,7 @@ export function OrdersOperationsTable({
     return columns.length ? columns : ORDER_COLUMNS;
   }, [visibleColumnKeys]);
   const gridTemplateColumns = useMemo(
-    () => ["2.25rem", ...visibleColumns.map((column) => column.width), "4rem"].join(" "),
+    () => ["3.5rem", "2.25rem", ...visibleColumns.map((column) => column.width)].join(" "),
     [visibleColumns],
   );
 
@@ -459,6 +459,7 @@ export function OrdersOperationsTable({
             className="hidden gap-3 border-b border-line px-4 py-2 text-xs font-medium uppercase text-slate xl:grid xl:[grid-template-columns:var(--orders-grid)]"
             style={{ "--orders-grid": gridTemplateColumns } as React.CSSProperties}
           >
+            <span className="left-0 z-20 bg-surface py-1 shadow-[12px_0_18px_-18px_rgba(22,34,46,0.55)] xl:sticky" />
             <label className="flex items-center">
               <input
                 type="checkbox"
@@ -483,9 +484,6 @@ export function OrdersOperationsTable({
                 <span key={column.key}>{column.label}</span>
               ),
             )}
-            <span className="right-0 z-20 bg-surface py-1 text-right shadow-[-12px_0_18px_-18px_rgba(22,34,46,0.55)] xl:sticky">
-              Menu
-            </span>
           </div>
 
           <div className="divide-y divide-line">
@@ -499,6 +497,14 @@ export function OrdersOperationsTable({
                 )}
                 style={{ "--orders-grid": gridTemplateColumns } as React.CSSProperties}
               >
+                <div
+                  className={cn(
+                    "flex items-center justify-start bg-surface pr-3 shadow-[12px_0_18px_-18px_rgba(22,34,46,0.55)] xl:sticky xl:left-0 xl:z-10",
+                    (row.stageTimer.isOverdue || row.isOverdue) && "bg-rose/5",
+                  )}
+                >
+                  <OrderActionsMenu row={row} />
+                </div>
                 <label className="flex items-center">
                   <input
                     type="checkbox"
@@ -513,14 +519,6 @@ export function OrdersOperationsTable({
                     {column.render(row)}
                   </div>
                 ))}
-                <div
-                  className={cn(
-                    "flex justify-end bg-surface py-1 pl-3 shadow-[-12px_0_18px_-18px_rgba(22,34,46,0.55)] xl:sticky xl:right-0 xl:z-10",
-                    (row.stageTimer.isOverdue || row.isOverdue) && "bg-rose/5",
-                  )}
-                >
-                  <OrderActionsMenu row={row} />
-                </div>
               </div>
             ))}
           </div>
@@ -566,7 +564,7 @@ function OrderActionsMenu({ row }: { row: OrdersDashboardRow }) {
     <Popover
       ariaLabel={`Actions for order ${row.orderNumber}`}
       trigger={
-        <span className="inline-flex size-8 items-center justify-center rounded-input border border-line bg-surface text-slate transition-colors hover:bg-canvas hover:text-ink">
+        <span className="inline-flex size-8 items-center justify-center rounded-full border border-line bg-canvas text-slate shadow-sm transition-colors hover:border-slate/40 hover:bg-surface hover:text-ink">
           <Menu size={15} />
         </span>
       }

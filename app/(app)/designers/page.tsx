@@ -24,7 +24,7 @@ export default async function DesignersPage() {
   return (
     <Page>
       <PageHeader
-        title="Designers"
+        title="Designer Rank"
         description="Rank designers, set daily limits and styles. Auto-assign walks this list top-down — a styled order only goes to a designer who does that style, and never past a designer's daily limit."
       />
 
