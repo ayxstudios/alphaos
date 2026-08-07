@@ -12,6 +12,7 @@ import { isShopifyConnected } from "./auth";
 import { resolveFigureCount, resolveStyle } from "./figures";
 import { classifyOrder, photoRequestEnabled } from "../classify";
 import { reconcileManualOrder } from "@/lib/orders/reconcile";
+import { runAutoAssign } from "@/lib/orders/assign";
 import type {
   GqlOrder,
   GqlOrdersResponse,
@@ -395,6 +396,21 @@ export async function importShopifyOrder(args: {
     );
     if (assetValues.length) await tx.insert(assets).values(assetValues);
 
+    // Shopify orders route straight to a designer: the moment an order is ready to
+    // assign (photos attached, figures resolved, has an email) we auto-assign it to
+    // the best-ranked available designer, so it lands in their queue instead of
+    // waiting for a VA to hand it out. If nobody is eligible (none rostered, all at
+    // capacity, or no style match) it stays unassigned in ready_to_assign and the
+    // Orders dashboard surfaces it as "Needs VA Review" with the reason why.
+    // Skipped on a backfill (suppressCustomerEmail) so re-scanning history never
+    // dumps old orders into designers' live queues or skews their daily capacity.
+    let assignedTo: string | null = null;
+    if (status === "ready_to_assign" && !needsReview && !shop.suppressCustomerEmail) {
+      assignedTo = (
+        await runAutoAssign(tx, { orderId, businessId: shop.businessId, assignedBy: null })
+      ).assigned;
+    }
+
     await tx.insert(activityLog).values({
       businessId: shop.businessId,
       orderId,
@@ -413,6 +429,8 @@ export async function importShopifyOrder(args: {
         hasEmail: !!email,
         photoCount: assetValues.length,
         needsReview,
+        assignedTo,
+        autoAssigned: assignedTo != null,
         figures: items.map((i) => ({ count: i.count, source: i.source, note: i.note, style: i.style })),
         // Add-on lines (tips/fees) deliberately not imported as order_items, logged
         // here so a real product that unexpectedly lacks a variant is auditable.

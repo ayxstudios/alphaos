@@ -9,7 +9,7 @@ import {
   bulkReassignOrders,
   type BulkActionResult,
 } from "@/app/(app)/orders/actions";
-import { Badge, Button, Tooltip, useToast, type OrderStatus } from "@/components/ui";
+import { Badge, Button, InfoBubble, Tooltip, useToast, type OrderStatus } from "@/components/ui";
 import { ArrowRight, Columns, Inbox, Pencil } from "@/components/ui/icons";
 import { formatStageRemaining, type StageTimer } from "@/lib/orders/stage-timers";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,7 @@ export type OrdersDashboardRow = {
   platform: string;
   status: string;
   derivedStatus: string;
+  reviewReason: string | null;
   sourceType: "etsy" | "shopify" | "manual";
   assignee: string;
   assigneeId: string | null;
@@ -116,10 +117,18 @@ const ORDER_COLUMNS: ColumnDef[] = [
     key: "status",
     label: "Status",
     sort: "status",
-    width: "9rem",
+    width: "minmax(11rem,0.9fr)",
     render: (row) => (
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={statusTone(row)} dot>{row.derivedStatus}</Badge>
+      <div className="flex min-w-0 flex-col gap-1">
+        <div className="flex items-center gap-1.5">
+          <Badge variant={statusTone(row)} dot>{row.derivedStatus}</Badge>
+          <InfoBubble label={`What "${row.derivedStatus}" means`}>
+            <StatusHelp status={row.derivedStatus} reason={row.reviewReason} />
+          </InfoBubble>
+        </div>
+        {row.reviewReason && (
+          <p className="text-xs leading-snug text-amber">{row.reviewReason}</p>
+        )}
       </div>
     ),
   },
@@ -227,6 +236,116 @@ function statusTone(row: OrdersDashboardRow) {
   if (row.trackingNumber || row.status === "complete" || row.status === "delivered") return "success";
   if (row.derivedStatus === "Ready to Ship") return "info";
   return "neutral";
+}
+
+/**
+ * Plain-English help for every operational status, written for VAs with limited
+ * English: short words, one clear next step. `means` = what the status is;
+ * `todo` = what to do about it. Keys match the derived status labels exactly.
+ */
+const STATUS_HELP: Record<string, { means: string; todo: string }> = {
+  "Needs VA Review": {
+    means: "This order cannot move forward on its own. A VA must check it.",
+    todo: "Open the order and fix what is missing.",
+  },
+  "Awaiting VA Details": {
+    means: "The order came in without all its details.",
+    todo: "Open it and fill in the missing details.",
+  },
+  "Awaiting Customer Photos": {
+    means: "We are waiting for the customer to send their photos.",
+    todo: "Nothing to do yet. We wait for the customer.",
+  },
+  "Assigned - Not Started": {
+    means: "A designer has this order but has not started it yet.",
+    todo: "Nothing to do. Wait for the designer to start.",
+  },
+  "With Designer": {
+    means: "A designer is working on this order right now.",
+    todo: "Nothing to do. Wait for the designer to finish.",
+  },
+  "Awaiting Designer Revision": {
+    means: "The customer asked for changes. The designer is redoing it.",
+    todo: "Nothing to do. Wait for the new version.",
+  },
+  "Awaiting Designer QC Fix": {
+    means: "QC found a problem. The designer is fixing it now.",
+    todo: "Nothing to do. Wait for the fix, then check it again.",
+  },
+  "Awaiting VA QC": {
+    means: "The design is done and needs a quality check.",
+    todo: "Open QC and check the design against the list.",
+  },
+  "Awaiting Customer Approval": {
+    means: "We sent the proof to the customer. We are waiting for their yes.",
+    todo: "If it has been a few days, send a friendly follow up.",
+  },
+  Approved: {
+    means: "The customer said yes to the design.",
+    todo: "Move it to printing or fulfilment.",
+  },
+  "Ready to Ship": {
+    means: "Approved and ready, but the print job has not started.",
+    todo: "Start the print and ship job.",
+  },
+  "In Print": {
+    means: "The order is being printed.",
+    todo: "Nothing to do. Wait for it to ship.",
+  },
+  "Shipped - Awaiting Tracking": {
+    means: "It has shipped but has no tracking number yet.",
+    todo: "Add the tracking number to the order.",
+  },
+  Shipped: {
+    means: "The order is on its way to the customer.",
+    todo: "Nothing to do. Wait for delivery.",
+  },
+  "Completed With Tracking": {
+    means: "Shipped with a tracking number saved.",
+    todo: "Nothing to do.",
+  },
+  Delivered: {
+    means: "The customer has received the order.",
+    todo: "Close the order when everything is done.",
+  },
+  Complete: {
+    means: "This order is finished.",
+    todo: "Nothing to do.",
+  },
+  "On Hold": {
+    means: "This order is paused for now.",
+    todo: "Open it to see why, and resume it when ready.",
+  },
+  Cancelled: {
+    means: "This order was cancelled.",
+    todo: "Nothing to do.",
+  },
+  "Fulfilment Only": {
+    means: "No design needed. It just needs to be sent.",
+    todo: "Fulfil the order.",
+  },
+};
+
+const DEFAULT_HELP = {
+  means: "The current stage of this order.",
+  todo: "Open the order to see the next step.",
+};
+
+function StatusHelp({ status, reason }: { status: string; reason: string | null }) {
+  const help = STATUS_HELP[status] ?? DEFAULT_HELP;
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-sm font-semibold text-ink">{status}</p>
+      <div className="flex flex-col gap-0.5">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">What it means</p>
+        <p className="text-sm leading-snug text-ink">{help.means}</p>
+      </div>
+      <div className="flex flex-col gap-0.5">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">What to do</p>
+        <p className="text-sm leading-snug text-ink">{reason ?? help.todo}</p>
+      </div>
+    </div>
+  );
 }
 
 export function OrdersOperationsTable({

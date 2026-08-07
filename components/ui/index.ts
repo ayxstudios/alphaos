@@ -22,6 +22,7 @@ export { ToastProvider, useToast } from "./toast";
 export { Skeleton } from "./skeleton";
 export { EmptyState } from "./empty-state";
 export { Tooltip } from "./tooltip";
+export { InfoBubble } from "./info-bubble";
 export {
   Page,
   PageHeader,

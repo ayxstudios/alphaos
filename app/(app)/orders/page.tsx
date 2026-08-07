@@ -165,7 +165,9 @@ function operationalStatusLabel(input: {
     case "awaiting_photos":
       return "Awaiting Customer Photos";
     case "ready_to_assign":
-      return input.assignee ? "Assigned - Not Started" : "Unassigned - Ready to Assign";
+      // Assigned -> waiting on the designer to start. Unassigned means auto-assign
+      // found no free designer, so a VA must step in: surface it as Needs VA Review.
+      return input.assignee ? "Assigned - Not Started" : "Needs VA Review";
     case "in_design":
       return "With Designer";
     case "awaiting_qc":
@@ -191,6 +193,26 @@ function operationalStatusLabel(input: {
     default:
       return titleCase(input.status);
   }
+}
+
+/**
+ * Plain-English "why is this waiting on a VA" line for a Needs VA Review row.
+ * Written for VAs with limited English: short words, one clear next step.
+ * Returns null for any row that is not Needs VA Review.
+ */
+function reviewReasonText(input: {
+  derivedStatus: string;
+  status: string;
+  email: string | null;
+  unresolvedFigures: boolean;
+  assignee: string | null;
+}): string | null {
+  if (input.derivedStatus !== "Needs VA Review") return null;
+  if (input.status === "triage") return "This is a draft order. Open it and choose the right order type.";
+  if (!input.email) return "No customer email yet. Add the customer's email so we can send the proof.";
+  if (input.unresolvedFigures) return "We do not know how many figures. Open it and set the figure count.";
+  if (!input.assignee) return "No designer is free for this order right now. Please assign it to a designer by hand.";
+  return "Open this order and check what is missing.";
 }
 
 function orderLabel(number: string | null, fallback: string) {
@@ -548,9 +570,19 @@ export default async function OrdersPage({
         isPhysical: physical,
         stageStartedAt: dateIso(stageStartedAt),
       });
+      const unresolvedFigures = items.some((item) => item.figureCount == null);
+      const reviewReason = reviewReasonText({
+        derivedStatus,
+        status: order.status,
+        email: order.customerEmail,
+        unresolvedFigures,
+        assignee: order.assignee,
+      });
       const action =
         timer.followUpDue
           ? { href: `/orders/${order.id}`, label: "Follow up" }
+          : derivedStatus === "Needs VA Review"
+            ? { href: `/orders/${order.id}`, label: "Review" }
           : order.status === "awaiting_photos"
             ? { href: `/orders/${order.id}/complete`, label: "Add photos" }
           : order.status === "awaiting_details"
@@ -573,6 +605,7 @@ export default async function OrdersPage({
         platform: titleCase(order.shopPlatform ?? order.source),
         status: order.status,
         derivedStatus,
+        reviewReason,
         sourceType: order.source,
         assignee: order.assignee ?? "Unassigned",
         assigneeId: order.assigneeId,
