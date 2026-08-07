@@ -482,7 +482,7 @@ export function OrdersOperationsTable({
                 <span key={column.key}>{column.label}</span>
               ),
             )}
-            <span className="z-20 justify-self-end self-center bg-surface pl-3 text-right shadow-[-14px_0_18px_-18px_rgba(22,34,46,0.55)] md:sticky md:right-0">
+            <span className="z-20 flex items-center justify-end pl-3 text-right text-pigment md:sticky md:right-0 md:-my-2.5 md:-mr-4 md:self-stretch md:border-l md:border-pigment/20 md:bg-pigment-soft md:py-2.5 md:pr-4 md:shadow-[-16px_0_20px_-20px_rgba(22,34,46,0.6)]">
               Next action
             </span>
           </div>
@@ -517,9 +517,10 @@ export function OrdersOperationsTable({
                   ))}
                   <div
                     className={cn(
-                      "flex items-center justify-end gap-1.5 bg-surface pl-3 shadow-[-14px_0_18px_-18px_rgba(22,34,46,0.55)] transition-colors md:sticky md:right-0 md:z-10",
-                      "group-hover:bg-canvas/70",
-                      urgent && "bg-rose/[0.04] group-hover:bg-rose/[0.07]",
+                      "flex items-center justify-end gap-1.5 pl-3 transition-colors",
+                      "md:sticky md:right-0 md:z-10 md:-my-3.5 md:-mr-4 md:self-stretch md:py-3.5 md:pr-4",
+                      "md:border-l md:border-pigment/15 md:bg-pigment-soft/70 md:shadow-[-16px_0_20px_-20px_rgba(22,34,46,0.6)]",
+                      "md:group-hover:bg-pigment-soft",
                     )}
                   >
                     <OrderActions row={row} />
@@ -608,7 +609,7 @@ function IconAction({
       <Link
         href={href}
         aria-label={label}
-        className="inline-flex size-8 shrink-0 items-center justify-center rounded-input text-slate transition-colors hover:bg-pigment-soft hover:text-pigment"
+        className="inline-flex size-8 shrink-0 items-center justify-center rounded-input text-slate transition-colors hover:bg-pigment/15 hover:text-pigment"
       >
         {children}
       </Link>
