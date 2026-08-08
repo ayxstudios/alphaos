@@ -7,6 +7,7 @@ export type BusinessStyle = {
   id: string;
   name: string;
   titleMatches: string[];
+  skuMatches: string[];
   isDefault: boolean;
 };
 
@@ -20,6 +21,7 @@ export async function listBusinessStyles(tx: Tx, businessId: string): Promise<Bu
       id: styles.id,
       name: styles.name,
       titleMatches: styles.titleMatches,
+      skuMatches: styles.skuMatches,
       isDefault: styles.isDefault,
     })
     .from(styles)
@@ -29,28 +31,58 @@ export async function listBusinessStyles(tx: Tx, businessId: string): Promise<Bu
     id: r.id,
     name: r.name,
     titleMatches: r.titleMatches ?? [],
+    skuMatches: r.skuMatches ?? [],
     isDefault: r.isDefault,
   }));
 }
 
+export type StyleMatch = {
+  /** The resolved style name, or null when nothing matched and there's no default. */
+  style: string | null;
+  /** The id of the style that matched (null for default/none). */
+  styleId: string | null;
+  /** How it was decided. "sku"/"title" mean a product-specific learned rule. */
+  via: "sku" | "title" | "default" | "none";
+};
+
 /**
- * Resolve a product's style from a business's styles. The first style whose any
- * title match is contained in the product title wins; otherwise the business's
- * default style; otherwise null. Never guesses — matches are explicit substrings.
+ * Resolve a product's style. Precedence: an exact SKU rule (the precise learned
+ * product key) beats a title-contains rule, which beats the business default.
+ * Never guesses — SKU is exact and title rules are explicit substrings.
  */
-export function matchStyle(
+export function describeStyleMatch(
   title: string | null | undefined,
+  sku: string | null | undefined,
   businessStyles: BusinessStyle[],
-): string | null {
-  const t = (title ?? "").toLowerCase();
-  if (t) {
-    for (const s of businessStyles) {
-      if (s.titleMatches.some((m) => m.trim() && t.includes(m.trim().toLowerCase()))) {
-        return s.name;
+): StyleMatch {
+  const s = (sku ?? "").trim().toLowerCase();
+  if (s) {
+    for (const st of businessStyles) {
+      if (st.skuMatches.some((m) => m.trim().toLowerCase() === s)) {
+        return { style: st.name, styleId: st.id, via: "sku" };
       }
     }
   }
-  return businessStyles.find((s) => s.isDefault)?.name ?? null;
+  const t = (title ?? "").toLowerCase();
+  if (t) {
+    for (const st of businessStyles) {
+      if (st.titleMatches.some((m) => m.trim() && t.includes(m.trim().toLowerCase()))) {
+        return { style: st.name, styleId: st.id, via: "title" };
+      }
+    }
+  }
+  const def = businessStyles.find((st) => st.isDefault);
+  if (def) return { style: def.name, styleId: def.id, via: "default" };
+  return { style: null, styleId: null, via: "none" };
+}
+
+/** The resolved style name (import/re-resolve use this). */
+export function matchStyle(
+  title: string | null | undefined,
+  sku: string | null | undefined,
+  businessStyles: BusinessStyle[],
+): string | null {
+  return describeStyleMatch(title, sku, businessStyles).style;
 }
 
 /**

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
-import { withUserContext, type RequestUser } from "@/lib/db";
+import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
 import {
   activityLog,
   assignments,
@@ -12,8 +12,15 @@ import {
   orderItems,
   orders,
   printJobs,
+  styles,
   users,
 } from "@/lib/db/schema";
+import {
+  learnProductStyle,
+  currentMatchForProduct,
+  logStyleLearning,
+  type Product,
+} from "@/lib/orders/style-learning";
 import { getShopCredentials } from "@/lib/db/credentials";
 import {
   transition,
@@ -523,4 +530,110 @@ export async function addTrackingAndCompleteOrder(
     };
   }
   return { ok: true, message: "Tracking added and order completed." };
+}
+
+/* --- Order style setter (with learning) --------------------------------- */
+
+export type StyleActionResult = { ok: true } | { ok: false; message: string };
+
+/** Distinct portrait products in an order — what a style/rule applies to. */
+async function orderProducts(tx: Tx, orderId: string): Promise<Product[]> {
+  const items = await tx
+    .select({ title: orderItems.title, sku: orderItems.sku })
+    .from(orderItems)
+    .where(eq(orderItems.orderId, orderId));
+  const seen = new Set<string>();
+  const out: Product[] = [];
+  for (const it of items) {
+    const key = `${it.sku ?? ""}|${it.title ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ title: it.title, sku: it.sku });
+  }
+  return out;
+}
+
+/** "Just this order": set + lock the style on this order only, no rule change. */
+export async function setOrderStyleOnce(orderId: string, styleId: string): Promise<StyleActionResult> {
+  const user = await requireStaff();
+  if ("error" in user) return { ok: false, message: user.error };
+  return withUserContext(user, async (tx) => {
+    const [order] = await tx.select({ businessId: orders.businessId }).from(orders).where(eq(orders.id, orderId));
+    if (!order) return { ok: false, message: "Order not found" };
+    const [style] = await tx
+      .select({ name: styles.name })
+      .from(styles)
+      .where(and(eq(styles.id, styleId), eq(styles.businessId, order.businessId)));
+    if (!style) return { ok: false, message: "Style not found" };
+    await tx.update(orderItems).set({ style: style.name, styleLocked: true }).where(eq(orderItems.orderId, orderId));
+    await logStyleLearning(tx, {
+      businessId: order.businessId,
+      actorId: user.id,
+      orderId,
+      action: "style.set_once",
+      metadata: { style: style.name },
+    });
+    revalidatePath(`/orders/${orderId}`);
+    return { ok: true };
+  });
+}
+
+/** "Teach for all": add rules for this order's products and backfill every order. */
+export async function teachOrderStyle(orderId: string, styleId: string): Promise<StyleActionResult> {
+  const user = await requireStaff();
+  if ("error" in user) return { ok: false, message: user.error };
+  return withUserContext(user, async (tx) => {
+    const [order] = await tx.select({ businessId: orders.businessId }).from(orders).where(eq(orders.id, orderId));
+    if (!order) return { ok: false, message: "Order not found" };
+    const bid = order.businessId;
+    const products = await orderProducts(tx, orderId);
+    let ordersUpdated = 0;
+    let ruleChanged = false;
+    const learned: Record<string, unknown>[] = [];
+    for (const p of products) {
+      const prior = await currentMatchForProduct(tx, bid, p);
+      const priorRule = prior.via === "sku" || prior.via === "title" ? prior.style : null;
+      const res = await learnProductStyle(tx, bid, styleId, p);
+      if (priorRule && priorRule !== res.styleName) ruleChanged = true;
+      ordersUpdated += res.orders;
+      learned.push({ product: p, style: res.styleName, ruleKind: res.ruleKind, ruleValue: res.ruleValue, priorRule });
+    }
+    // A locked item on THIS order would be skipped by the backfill; unlock + set it
+    // so "teach" always reflects on the order the VA is looking at.
+    if (products.length) {
+      const [style] = await tx.select({ name: styles.name }).from(styles).where(eq(styles.id, styleId));
+      if (style) await tx.update(orderItems).set({ style: style.name, styleLocked: false }).where(eq(orderItems.orderId, orderId));
+    }
+    await logStyleLearning(tx, {
+      businessId: bid,
+      actorId: user.id,
+      orderId,
+      action: ruleChanged ? "style.rule_changed" : "style.learned",
+      metadata: { source: "order_detail", learned, ordersUpdated },
+    });
+    revalidatePath(`/orders/${orderId}`);
+    revalidatePath("/board");
+    return { ok: true };
+  });
+}
+
+/** "Teach as a new style": create the style, then teach this order's products. */
+export async function teachOrderStyleNew(orderId: string, nameRaw: string): Promise<StyleActionResult> {
+  const user = await requireStaff();
+  if ("error" in user) return { ok: false, message: user.error };
+  const name = nameRaw.trim();
+  if (!name) return { ok: false, message: "Enter a style name" };
+  const created = await withUserContext(user, async (tx) => {
+    const [order] = await tx.select({ businessId: orders.businessId }).from(orders).where(eq(orders.id, orderId));
+    if (!order) return null;
+    try {
+      const [row] = await tx.insert(styles).values({ businessId: order.businessId, name }).returning({ id: styles.id });
+      return row.id;
+    } catch {
+      return { dup: true } as const;
+    }
+  });
+  if (created == null) return { ok: false, message: "Order not found" };
+  if (typeof created !== "string") return { ok: false, message: `A style called "${name}" already exists` };
+  return teachOrderStyle(orderId, created);
 }

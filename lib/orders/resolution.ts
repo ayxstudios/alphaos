@@ -187,6 +187,21 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
         summary.addOnsRemoved += fresh.lineItems.length - realLines.length;
         classLines = realLines.map((li) => ({ sku: li.sku, title: li.title }));
 
+        // Carry over any VA-locked style before we replace the items, keyed by
+        // SKU (or title when there's no SKU), so a manual "just this order" set
+        // survives a re-fetch that recreates the rows.
+        const priorLocked = await tx
+          .select({ sku: orderItems.sku, title: orderItems.title, style: orderItems.style, styleLocked: orderItems.styleLocked })
+          .from(orderItems)
+          .where(eq(orderItems.orderId, o.id));
+        const lockedBySku = new Map<string, string | null>();
+        const lockedByTitle = new Map<string, string | null>();
+        for (const p of priorLocked) {
+          if (!p.styleLocked) continue;
+          if (p.sku) lockedBySku.set(p.sku, p.style);
+          else if (p.title) lockedByTitle.set(p.title, p.style);
+        }
+
         // Replace items from fresh data (title/options weren't captured before).
         await tx.delete(orderItems).where(eq(orderItems.orderId, o.id));
         for (const li of realLines) {
@@ -194,6 +209,11 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
           const fig = resolveFigureCount(input, cfg);
           if (fig.count != null) summary.itemsResolved++;
           else summary.stillUnresolved++;
+          const locked =
+            (li.sku && lockedBySku.has(li.sku)) || (!li.sku && li.title && lockedByTitle.has(li.title));
+          const style = locked
+            ? (li.sku ? lockedBySku.get(li.sku)! : lockedByTitle.get(li.title!)!)
+            : matchStyle(li.title, li.sku, businessStyles);
           await tx.insert(orderItems).values({
             businessId: o.businessId,
             orderId: o.id,
@@ -204,7 +224,8 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
             figureCount: fig.count,
             figureCountSource: fig.source,
             rawVariations: input,
-            style: matchStyle(li.title, businessStyles),
+            style,
+            styleLocked: !!locked,
             productType: li.digital ? ("digital" as const) : ("physical" as const),
           });
         }
@@ -223,9 +244,11 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
           if (fig.count != null) summary.itemsResolved++;
           else summary.stillUnresolved++;
           classLines.push({ sku: it.sku, title: it.title });
+          // A VA-locked style is left exactly as set; otherwise recompute.
+          const style = it.styleLocked ? it.style : matchStyle(it.title, it.sku, businessStyles);
           await tx
             .update(orderItems)
-            .set({ figureCount: fig.count, figureCountSource: fig.source, style: matchStyle(it.title, businessStyles) })
+            .set({ figureCount: fig.count, figureCountSource: fig.source, style })
             .where(eq(orderItems.id, it.id));
         }
       }

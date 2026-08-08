@@ -380,7 +380,7 @@ export async function importShopifyOrder(args: {
               figureCount: i.count,
               figureCountSource: i.source,
               rawVariations: i.input,
-              style: matchStyle(i.li.title, businessStyles),
+              style: matchStyle(i.li.title, i.li.sku, businessStyles),
               productType: i.li.digital ? ("digital" as const) : ("physical" as const),
             })),
           )
@@ -435,7 +435,7 @@ export async function importShopifyOrder(args: {
         needsReview,
         assignedTo,
         autoAssigned: assignedTo != null,
-        figures: items.map((i) => ({ count: i.count, source: i.source, note: i.note, style: matchStyle(i.li.title, businessStyles) })),
+        figures: items.map((i) => ({ count: i.count, source: i.source, note: i.note, style: matchStyle(i.li.title, i.li.sku, businessStyles) })),
         // Add-on lines (tips/fees) deliberately not imported as order_items, logged
         // here so a real product that unexpectedly lacks a variant is auditable.
         ...(skippedAddOns.length ? { skippedAddOns } : {}),

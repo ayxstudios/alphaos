@@ -338,6 +338,8 @@ export const styles = pgTable(
     name: text("name").notNull(),
     // Case-insensitive substrings matched against the product title.
     titleMatches: text("title_matches").array().notNull().default(sql`'{}'::text[]`),
+    // Exact product SKUs mapped to this style — the precise "learned" product key.
+    skuMatches: text("sku_matches").array().notNull().default(sql`'{}'::text[]`),
     isDefault: boolean("is_default").notNull().default(false),
     createdAt: createdAt(),
   },
@@ -345,6 +347,23 @@ export const styles = pgTable(
     uniqueIndex("styles_business_name_uq").on(t.businessId, sql`lower(${t.name})`),
     index("styles_business_idx").on(t.businessId),
   ],
+);
+
+// Products a VA has chosen to leave without a style (keyed by SKU or, when there
+// is none, product title). Kept so the "unrecognised products" list stops asking
+// — reversible: un-ignoring deletes the row and the product resurfaces.
+export const ignoredProducts = pgTable(
+  "ignored_products",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    sku: text("sku"),
+    title: text("title"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("ignored_products_business_idx").on(t.businessId)],
 );
 
 export const notificationChannels = pgTable("notification_channels", {
@@ -469,6 +488,9 @@ export const orderItems = pgTable(
     // re-resolve reproduces resolution and a VA can back-test rules.
     rawVariations: jsonb("raw_variations"),
     style: text("style"),
+    // A VA set this style by hand for this one order ("just this order"); import
+    // and re-resolve must not recompute it.
+    styleLocked: boolean("style_locked").notNull().default(false),
     productType: productType("product_type").notNull(),
   },
   (t) => [index("order_items_order_idx").on(t.orderId)],

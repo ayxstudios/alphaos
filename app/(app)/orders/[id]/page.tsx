@@ -54,7 +54,10 @@ import { getCardDetail } from "@/lib/orders/card-detail";
 import { OrderCommentForm } from "@/components/orders/order-comment-form";
 import { OrderRevisionForm } from "@/components/orders/order-revision-form";
 import { OrderReassignForm } from "@/components/orders/order-reassign-form";
+import { OrderStyleSetter } from "@/components/orders/order-style-setter";
 import { TrackingCompleteForm } from "@/components/orders/tracking-complete-form";
+import { styles as stylesTable } from "@/lib/db/schema";
+import { currentMatchForProduct, countOrdersForProduct } from "@/lib/orders/style-learning";
 
 export const dynamic = "force-dynamic";
 
@@ -358,6 +361,23 @@ export default async function OrderDetailPage({
     timeline.find((m) => m.direction === "inbound" && m.body)?.body ??
     "Customer requested a revision.";
 
+  // Style setter data — the order's first product, its current rule match, and
+  // how many orders a rule change would touch. Powers the inline "Set style".
+  const primaryProduct = items[0] ? { title: items[0].title, sku: items[0].sku } : null;
+  const styleSetter =
+    editable && primaryProduct
+      ? await withUserContext(user, async (tx) => {
+          const list = await tx
+            .select({ id: stylesTable.id, name: stylesTable.name })
+            .from(stylesTable)
+            .where(eq(stylesTable.businessId, order.businessId))
+            .orderBy(asc(stylesTable.name));
+          const match = await currentMatchForProduct(tx, order.businessId, primaryProduct);
+          const affected = await countOrdersForProduct(tx, order.businessId, primaryProduct);
+          return { styles: list, currentStyle: items[0]!.style ?? null, via: match.via, affected };
+        })
+      : null;
+
   return (
     <Page className="max-w-6xl">
       <PageHeader
@@ -422,6 +442,16 @@ export default async function OrderDetailPage({
           <Fact icon={Calendar} label="Due" value={fmtDateTime(order.dueAt)} />
         </div>
       </DataPanel>
+
+      {styleSetter && (
+        <OrderStyleSetter
+          orderId={order.id}
+          currentStyle={styleSetter.currentStyle}
+          via={styleSetter.via}
+          affected={styleSetter.affected}
+          styles={styleSetter.styles}
+        />
+      )}
 
       {order.notes && (
         <div className="rounded-card border border-pigment/20 bg-pigment-soft/40 p-4 shadow-sm">

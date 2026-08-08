@@ -6,7 +6,13 @@ import { and, asc, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
 import { loadShellData } from "@/lib/shell/context";
-import { styles, designerProfiles, designerBusinesses, users } from "@/lib/db/schema";
+import { styles, designerProfiles, designerBusinesses, users, ignoredProducts } from "@/lib/db/schema";
+import {
+  learnProductStyle,
+  logStyleLearning,
+  countOrdersForProduct,
+  type Product,
+} from "@/lib/orders/style-learning";
 
 export type ActionResult = { ok: true } | { ok: false; message: string };
 
@@ -180,5 +186,99 @@ export async function setStyleDesigners(id: string, designerIds: string[]): Prom
   });
   revalidatePath("/styles");
   revalidatePath("/board");
+  return { ok: true };
+}
+
+/* --- Unrecognised-product learning ------------------------------------- */
+
+/** Teach an existing style from an unrecognised product (adds a rule + backfills). */
+export async function assignProductToStyle(styleId: string, product: Product): Promise<ActionResult> {
+  const user = await requireStaff();
+  if (!user) return NOT_PERMITTED;
+  const businessId = await currentBusinessId(user);
+  try {
+    await withUserContext(user, async (tx) => {
+      const res = await learnProductStyle(tx, businessId, styleId, product);
+      await logStyleLearning(tx, {
+        businessId,
+        actorId: user.id,
+        action: "style.learned",
+        metadata: { source: "styles_page", product, style: res.styleName, ruleKind: res.ruleKind, ruleValue: res.ruleValue, ordersUpdated: res.orders },
+      });
+    });
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Could not assign" };
+  }
+  revalidatePath("/styles");
+  revalidatePath("/board");
+  return { ok: true };
+}
+
+/** Create a new style from an unrecognised product and learn it in one step. */
+export async function createStyleFromProduct(nameRaw: string, product: Product): Promise<ActionResult> {
+  const user = await requireStaff();
+  if (!user) return NOT_PERMITTED;
+  const name = nameRaw.trim();
+  if (!name) return { ok: false, message: "Enter a style name" };
+  const businessId = await currentBusinessId(user);
+  try {
+    await withUserContext(user, async (tx) => {
+      const [created] = await tx.insert(styles).values({ businessId, name }).returning({ id: styles.id });
+      const res = await learnProductStyle(tx, businessId, created.id, product);
+      await logStyleLearning(tx, {
+        businessId,
+        actorId: user.id,
+        action: "style.learned",
+        metadata: { source: "styles_page", newStyle: true, product, style: res.styleName, ruleKind: res.ruleKind, ruleValue: res.ruleValue, ordersUpdated: res.orders },
+      });
+    });
+  } catch (e) {
+    const msg = e instanceof Error && /unique|duplicate/i.test(e.message) ? `A style called "${name}" already exists` : "Could not create style";
+    return { ok: false, message: msg };
+  }
+  revalidatePath("/styles");
+  revalidatePath("/board");
+  return { ok: true };
+}
+
+/** Stop asking about a product (reversible). */
+export async function ignoreProduct(product: Product): Promise<ActionResult> {
+  const user = await requireStaff();
+  if (!user) return NOT_PERMITTED;
+  const businessId = await currentBusinessId(user);
+  await withUserContext(user, async (tx) => {
+    const affected = await countOrdersForProduct(tx, businessId, product);
+    await tx.insert(ignoredProducts).values({ businessId, sku: product.sku ?? null, title: product.title ?? null });
+    await logStyleLearning(tx, {
+      businessId,
+      actorId: user.id,
+      action: "style.ignored",
+      metadata: { source: "styles_page", product, ordersAffected: affected },
+    });
+  });
+  revalidatePath("/styles");
+  return { ok: true };
+}
+
+/** Bring an ignored product back into the unrecognised list. */
+export async function unignoreProduct(id: string): Promise<ActionResult> {
+  const user = await requireStaff();
+  if (!user) return NOT_PERMITTED;
+  const businessId = await currentBusinessId(user);
+  await withUserContext(user, async (tx) => {
+    const [row] = await tx
+      .select({ sku: ignoredProducts.sku, title: ignoredProducts.title })
+      .from(ignoredProducts)
+      .where(and(eq(ignoredProducts.id, id), eq(ignoredProducts.businessId, businessId)));
+    if (!row) return;
+    await tx.delete(ignoredProducts).where(eq(ignoredProducts.id, id));
+    await logStyleLearning(tx, {
+      businessId,
+      actorId: user.id,
+      action: "style.unignored",
+      metadata: { source: "styles_page", product: { title: row.title, sku: row.sku } },
+    });
+  });
+  revalidatePath("/styles");
   return { ok: true };
 }
