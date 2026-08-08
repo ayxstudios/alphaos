@@ -1,0 +1,1 @@
+ALTER TABLE "businesses" ADD COLUMN "email_sending_enabled" boolean DEFAULT false NOT NULL;

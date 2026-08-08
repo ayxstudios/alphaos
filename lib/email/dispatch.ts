@@ -212,6 +212,19 @@ export async function sendMessage(
     return { ok: false, error: "No recipient address", retryable: false };
   }
 
+  // Safety rail: no real customer send unless this business has sending enabled.
+  // Retryable (left as-is), so turning it on later flushes the same rows.
+  const sendingEnabled = await withSystemContext(async (tx) => {
+    const [b] = await tx
+      .select({ on: businesses.emailSendingEnabled })
+      .from(businesses)
+      .where(eq(businesses.id, msg.businessId));
+    return !!b?.on;
+  });
+  if (!sendingEnabled) {
+    return { ok: false, error: "Email sending is turned OFF for this business", retryable: true };
+  }
+
   let client: GmailClient;
   try {
     client = await GmailClient.forBusiness(msg.businessId);

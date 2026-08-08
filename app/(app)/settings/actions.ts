@@ -15,8 +15,15 @@ import { shops, businesses, emailTemplates } from "@/lib/db/schema";
 import { reresolveShop, type ReresolveSummary } from "@/lib/orders/resolution";
 import type { FigureRule } from "@/lib/integrations/figures";
 import type { GmailCredentials } from "@/lib/integrations/gmail";
-import { pollMailbox, type InboundSummary } from "@/lib/integrations/gmail";
-import { DEFAULT_TEMPLATES, type TemplateKey } from "@/lib/email/templates";
+import { pollMailbox, GmailClient, GmailNotConnectedError, type InboundSummary } from "@/lib/integrations/gmail";
+import {
+  DEFAULT_TEMPLATES,
+  TEMPLATE_META,
+  renderTemplate,
+  resolveTemplate,
+  type TemplateKey,
+} from "@/lib/email/templates";
+import { appUrl } from "@/lib/urls";
 import {
   syncShopReceipts,
   type SyncSummary,
@@ -389,6 +396,79 @@ export async function triggerGmailPoll(businessId: string): Promise<InboundSumma
   const summary = await pollMailbox(businessId);
   revalidatePath("/settings");
   return summary;
+}
+
+/** Safety rail: turn customer email sending on/off for a business (default OFF). */
+export async function setEmailSendingEnabled(businessId: string, enabled: boolean): Promise<void> {
+  const user = await requireAdmin();
+  await withUserContext(user, (tx) =>
+    tx.update(businesses).set({ emailSendingEnabled: enabled }).where(eq(businesses.id, businessId)),
+  );
+  revalidatePath("/settings");
+}
+
+export type GmailTestResult = {
+  ok: boolean;
+  message?: string;
+  results: { key: string; label: string; ok: boolean; error?: string }[];
+};
+
+/**
+ * Send a sample of every template to a staff-chosen address to verify the Gmail
+ * connection. Deliberately bypasses the sending toggle (it only ever emails the
+ * address a staff member typed) and never writes to the messages table.
+ */
+export async function sendGmailTest(businessId: string, toRaw: string): Promise<GmailTestResult> {
+  const user = await requireAdmin();
+  const to = toRaw.trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    return { ok: false, message: "Enter a valid email address", results: [] };
+  }
+
+  const businessName = await withUserContext(user, async (tx) => {
+    const [b] = await tx.select({ name: businesses.name }).from(businesses).where(eq(businesses.id, businessId));
+    return b?.name ?? "your business";
+  });
+
+  let client: GmailClient;
+  try {
+    client = await GmailClient.forBusiness(businessId);
+  } catch (e) {
+    const msg =
+      e instanceof GmailNotConnectedError
+        ? "Gmail isn't connected for this business yet — connect it first."
+        : e instanceof Error
+          ? e.message
+          : "Could not open Gmail";
+    return { ok: false, message: msg, results: [] };
+  }
+
+  const vars = {
+    first_name: "Sam (test)",
+    order_number: "TEST-1001",
+    business_name: businessName,
+    proof_link: appUrl("/proof/sample-test"),
+    upload_link: appUrl("/u/sample-test"),
+  };
+
+  const keys: TemplateKey[] = ["photo_request", "proof_ready", "revision_received"];
+  const results: GmailTestResult["results"] = [];
+  for (const key of keys) {
+    try {
+      const tpl = await withUserContext(user, (tx) => resolveTemplate(tx, businessId, key));
+      const rendered = renderTemplate(tpl, vars);
+      await client.send({ to, subject: `[TEST] ${rendered.subject}`, text: rendered.body });
+      results.push({ key, label: TEMPLATE_META[key].label, ok: true });
+    } catch (e) {
+      results.push({ key, label: TEMPLATE_META[key].label, ok: false, error: e instanceof Error ? e.message : "Send failed" });
+    }
+  }
+  const okAll = results.every((r) => r.ok);
+  return {
+    ok: okAll,
+    message: okAll ? `Sent ${results.length} test emails to ${to}` : "Some test emails failed — see below",
+    results,
+  };
 }
 
 /* --- Email templates (per business) ------------------------------------- */

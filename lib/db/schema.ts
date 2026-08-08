@@ -225,6 +225,9 @@ export const businesses = pgTable("businesses", {
   gmailCredentials: jsonb("gmail_credentials"),
   gmailAddress: text("gmail_address"),
   gmailHistoryId: text("gmail_history_id"),
+  // Safety rail: no customer email sends until an admin turns this ON per
+  // business. The "send test email" path bypasses it (only sends to staff).
+  emailSendingEnabled: boolean("email_sending_enabled").notNull().default(false),
   createdAt: createdAt(),
 });
 

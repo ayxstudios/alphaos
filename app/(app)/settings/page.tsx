@@ -210,7 +210,7 @@ export default async function SettingsPage({
   )) as GmailCredentials | null;
   const [biz] = await withUserContext(user, (tx) =>
     tx
-      .select({ address: businesses.gmailAddress })
+      .select({ address: businesses.gmailAddress, sendingEnabled: businesses.emailSendingEnabled })
       .from(businesses)
       .where(eq(businesses.id, selected.id)),
   );
@@ -222,6 +222,7 @@ export default async function SettingsPage({
     status: creds?.status ?? "not_connected",
     address: creds?.address ?? biz?.address ?? null,
     redirectUri: appUrl("/api/gmail/callback"),
+    sendingEnabled: !!biz?.sendingEnabled,
   };
 
   const overrides = await withUserContext(user, (tx) =>
