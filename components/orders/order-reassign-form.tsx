@@ -9,26 +9,30 @@ import { Button, Select, useToast } from "@/components/ui";
 export function OrderReassignForm({
   orderId,
   designers,
+  assigned = true,
 }: {
   orderId: string;
   designers: { id: string; name: string }[];
+  /** Whether the order currently has an active designer. Drives Assign vs Reassign wording. */
+  assigned?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [designerId, setDesignerId] = useState("");
   const [pending, start] = useTransition();
+  const verb = assigned ? "Reassign" : "Assign";
 
   function submit() {
     start(async () => {
       const res = await bulkReassignOrders([orderId], designerId);
       if (!res.ok) {
-        toast({ variant: "danger", title: "Reassign failed", description: res.message });
+        toast({ variant: "danger", title: `${verb} failed`, description: res.message });
         return;
       }
       const skipped = res.skipped[0]?.reason;
       toast({
         variant: skipped ? "warning" : "success",
-        title: skipped ? "Not reassigned" : "Order reassigned",
+        title: skipped ? `Not ${verb.toLowerCase()}ed` : `Order ${verb.toLowerCase()}ed`,
         description: skipped ?? undefined,
       });
       router.refresh();
@@ -38,7 +42,7 @@ export function OrderReassignForm({
   return (
     <div className="flex flex-col gap-2">
       <Select
-        label="Reassign designer"
+        label={`${verb} designer`}
         value={designerId}
         onChange={(event) => setDesignerId(event.currentTarget.value)}
       >
@@ -58,7 +62,7 @@ export function OrderReassignForm({
         disabled={!designerId}
         onClick={submit}
       >
-        Reassign order
+        {verb} order
       </Button>
     </div>
   );
