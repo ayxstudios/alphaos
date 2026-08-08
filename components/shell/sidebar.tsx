@@ -13,6 +13,7 @@ import {
   Package,
   Columns,
   Palette,
+  Brush,
   Users,
   Settings,
   type IconProps,
@@ -24,7 +25,8 @@ const STAFF_NAV: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: Grid },
   { label: "Orders", href: "/orders", icon: Package },
   { label: "Boards", href: "/board", icon: Columns },
-  { label: "Designer Rank", href: "/designers", icon: Palette },
+  { label: "Designers", href: "/designers", icon: Palette },
+  { label: "Portrait Styles", href: "/styles", icon: Brush },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Settings", href: "/settings", icon: Settings },
 ];

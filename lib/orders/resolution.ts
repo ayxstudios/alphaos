@@ -6,10 +6,10 @@ import { orders, orderItems, shops, activityLog, assets, assignments } from "@/l
 import { runAutoAssign } from "./assign";
 import {
   resolveFigureCount,
-  resolveStyle,
   type FigureConfig,
   type NormalizedVariation,
 } from "@/lib/integrations/figures";
+import { listBusinessStyles, matchStyle, type BusinessStyle } from "@/lib/designers/styles";
 import { classifyOrder, type ClassifyConfig, type OrderClass } from "@/lib/integrations/classify";
 import {
   ShopifyClient,
@@ -174,6 +174,8 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
       // Lines used for (re)classification, and the draft-order signal.
       let classLines: { sku: string | null; title: string | null }[] = [];
       const sourceName = fresh?.sourceName ?? null;
+      // Portrait styles are business-level; resolve each item's style by title.
+      const businessStyles: BusinessStyle[] = await listBusinessStyles(tx, o.businessId);
 
       if (fresh) {
         summary.refetched++;
@@ -190,7 +192,6 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
         for (const li of realLines) {
           const input = resolverInput(li);
           const fig = resolveFigureCount(input, cfg);
-          const st = resolveStyle(input, cfg, li.title);
           if (fig.count != null) summary.itemsResolved++;
           else summary.stillUnresolved++;
           await tx.insert(orderItems).values({
@@ -203,7 +204,7 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
             figureCount: fig.count,
             figureCountSource: fig.source,
             rawVariations: input,
-            style: st.style,
+            style: matchStyle(li.title, businessStyles),
             productType: li.digital ? ("digital" as const) : ("physical" as const),
           });
         }
@@ -219,13 +220,12 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
             continue;
           }
           const fig = resolveFigureCount(raw, cfg);
-          const st = resolveStyle(raw, cfg, it.title);
           if (fig.count != null) summary.itemsResolved++;
           else summary.stillUnresolved++;
           classLines.push({ sku: it.sku, title: it.title });
           await tx
             .update(orderItems)
-            .set({ figureCount: fig.count, figureCountSource: fig.source, style: st.style })
+            .set({ figureCount: fig.count, figureCountSource: fig.source, style: matchStyle(it.title, businessStyles) })
             .where(eq(orderItems.id, it.id));
         }
       }

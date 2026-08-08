@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getDesignerRoster } from "@/lib/designers/roster";
 import { getStyleCatalog } from "@/lib/designers/styles";
+import { loadShellData } from "@/lib/shell/context";
 import { DesignerRoster } from "@/components/designers/designer-roster";
 import { DataPanel, EmptyState, Page, PageHeader } from "@/components/ui";
 import { Users } from "@/components/ui/icons";
@@ -16,15 +17,16 @@ export default async function DesignersPage() {
   // Staff-only surface; designers have no business here.
   if (user.role === "designer") redirect("/board");
 
+  const { selected } = await loadShellData(user);
   const [designers, styleCatalog] = await Promise.all([
     getDesignerRoster(user),
-    getStyleCatalog(user),
+    getStyleCatalog(user, selected.id),
   ]);
 
   return (
     <Page>
       <PageHeader
-        title="Designer Rank"
+        title="Designers"
         description="Rank designers, set daily limits and styles. Auto-assign walks this list top-down — a styled order only goes to a designer who does that style, and never past a designer's daily limit."
       />
 

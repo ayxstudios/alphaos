@@ -13,7 +13,7 @@ import {
 } from "@/lib/db/credentials";
 import { shops, businesses, emailTemplates } from "@/lib/db/schema";
 import { reresolveShop, type ReresolveSummary } from "@/lib/orders/resolution";
-import type { FigureRule, StyleRule, TitleStyleRule } from "@/lib/integrations/figures";
+import type { FigureRule } from "@/lib/integrations/figures";
 import type { GmailCredentials } from "@/lib/integrations/gmail";
 import { pollMailbox, type InboundSummary } from "@/lib/integrations/gmail";
 import { DEFAULT_TEMPLATES, type TemplateKey } from "@/lib/email/templates";
@@ -295,38 +295,6 @@ function sanitizeFigureRules(rules: unknown): FigureRule[] {
   return out;
 }
 
-function sanitizeStyleRules(rules: unknown): StyleRule[] {
-  if (!Array.isArray(rules)) return [];
-  const out: StyleRule[] = [];
-  for (const r of rules) {
-    const match = String((r as { match?: unknown })?.match ?? "").trim();
-    if (!match) continue;
-    const rule: StyleRule = { match };
-    const raw = (r as { map?: unknown })?.map;
-    if (raw && typeof raw === "object") {
-      const map: Record<string, string> = {};
-      for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-        const value = String(v ?? "").trim();
-        if (k.trim() && value) map[k.trim().toLowerCase()] = value;
-      }
-      if (Object.keys(map).length) rule.map = map;
-    }
-    out.push(rule);
-  }
-  return out;
-}
-
-function sanitizeTitleStyleRules(rules: unknown): TitleStyleRule[] {
-  if (!Array.isArray(rules)) return [];
-  const out: TitleStyleRule[] = [];
-  for (const r of rules) {
-    const match = String((r as { match?: unknown })?.match ?? "").trim();
-    const style = String((r as { style?: unknown })?.style ?? "").trim();
-    if (match && style) out.push({ match, style });
-  }
-  return out;
-}
-
 function sanitizeStringList(list: unknown): string[] {
   if (!Array.isArray(list)) return [];
   const seen = new Set<string>();
@@ -345,18 +313,12 @@ function sanitizeStringList(list: unknown): string[] {
 export async function saveShopResolutionRules(input: {
   shopId: string;
   figureRules: FigureRule[];
-  styleRules: StyleRule[];
-  titleStyleRules: TitleStyleRule[];
-  defaultStyle: string;
   nonPortraitSkus: string[];
   nonPortraitTitles: string[];
   photoRequestEnabled: boolean;
 }): Promise<void> {
   const user = await requireAdmin();
   const figureRules = sanitizeFigureRules(input.figureRules);
-  const styleRules = sanitizeStyleRules(input.styleRules);
-  const titleStyleRules = sanitizeTitleStyleRules(input.titleStyleRules);
-  const defaultStyle = String(input.defaultStyle ?? "").trim();
   const nonPortraitSkus = sanitizeStringList(input.nonPortraitSkus);
   const nonPortraitTitles = sanitizeStringList(input.nonPortraitTitles);
   await withUserContext(user, async (tx) => {
@@ -371,9 +333,6 @@ export async function saveShopResolutionRules(input: {
         integrationConfig: {
           ...cfg,
           figureRules,
-          styleRules,
-          titleStyleRules,
-          defaultStyle,
           nonPortraitSkus,
           nonPortraitTitles,
           photoRequestEnabled: !!input.photoRequestEnabled,

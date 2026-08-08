@@ -24,7 +24,7 @@ import {
 import { ResolutionRulesEditor } from "@/components/settings/resolution-rules-editor";
 import { formatSyncTime, syncHealth } from "@/lib/integrations/sync-health";
 import type { ShopifyWebhookStatus, SyncSummary } from "@/lib/integrations/shopify";
-import type { FigureRule, StyleRule, TitleStyleRule } from "@/lib/integrations/figures";
+import type { FigureRule } from "@/lib/integrations/figures";
 
 type AuthMode = "client_credentials" | "legacy";
 
@@ -44,9 +44,6 @@ export type ShopifyShopVM = {
   allowHeuristic: boolean;
   ruleCount: number;
   figureRules: FigureRule[];
-  styleRules: StyleRule[];
-  titleStyleRules: TitleStyleRule[];
-  defaultStyle: string;
   optionNames: string[];
   nonPortraitSkus: string[];
   nonPortraitTitles: string[];
@@ -263,9 +260,6 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
           shopId={shop.id}
           platform="shopify"
           initialFigureRules={shop.figureRules}
-          initialStyleRules={shop.styleRules}
-          initialTitleStyleRules={shop.titleStyleRules}
-          initialDefaultStyle={shop.defaultStyle}
           initialNonPortraitSkus={shop.nonPortraitSkus}
           initialNonPortraitTitles={shop.nonPortraitTitles}
           initialPhotoRequestEnabled={shop.photoRequestEnabled}

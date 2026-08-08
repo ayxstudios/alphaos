@@ -322,6 +322,31 @@ export const designerBusinesses = pgTable(
   ],
 );
 
+// Portrait styles offered by a business (Disney, Watercolor, …). Business-level
+// — shared across all of a business's shops. Each style carries its auto-assign
+// TITLE rules: an imported product whose title contains any of `titleMatches`
+// is tagged with this style; `isDefault` is the fallback when nothing matches.
+// A designer is eligible for a style when the style's name is in
+// designer_profiles.styles (the auto-assign ranker matches on that name).
+export const styles = pgTable(
+  "styles",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    // Case-insensitive substrings matched against the product title.
+    titleMatches: text("title_matches").array().notNull().default(sql`'{}'::text[]`),
+    isDefault: boolean("is_default").notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("styles_business_name_uq").on(t.businessId, sql`lower(${t.name})`),
+    index("styles_business_idx").on(t.businessId),
+  ],
+);
+
 export const notificationChannels = pgTable("notification_channels", {
   id: id(),
   userId: text("user_id")

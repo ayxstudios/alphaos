@@ -9,7 +9,8 @@ import { queuePhotoRequest, flushQueued } from "@/lib/email/dispatch";
 import type { NormalizedVariation } from "../figures";
 import { ShopifyClient } from "./client";
 import { isShopifyConnected } from "./auth";
-import { resolveFigureCount, resolveStyle } from "./figures";
+import { resolveFigureCount } from "./figures";
+import { listBusinessStyles, matchStyle } from "@/lib/designers/styles";
 import { classifyOrder, photoRequestEnabled } from "../classify";
 import { reconcileManualOrder } from "@/lib/orders/reconcile";
 import { runAutoAssign } from "@/lib/orders/assign";
@@ -288,8 +289,7 @@ export async function importShopifyOrder(args: {
   const items = realLines.map((li) => {
     const input = resolverInput(li);
     const fig = resolveFigureCount(input, shop.config);
-    const style = resolveStyle(input, shop.config, li.title);
-    return { li, input, count: fig.count, source: fig.source, note: fig.note, style: style.style };
+    return { li, input, count: fig.count, source: fig.source, note: fig.note };
   });
   const anyPhotos = order.lineItems.some((li) => li.photoUrls.length > 0);
 
@@ -362,6 +362,10 @@ export async function importShopifyOrder(args: {
     if (!inserted.length) return "skipped";
     const orderId = inserted[0].id;
 
+    // Style is resolved from the business's portrait styles (title rules), shared
+    // across all of the business's shops.
+    const businessStyles = await listBusinessStyles(tx, shop.businessId);
+
     const itemRows = items.length
       ? await tx
           .insert(orderItems)
@@ -376,7 +380,7 @@ export async function importShopifyOrder(args: {
               figureCount: i.count,
               figureCountSource: i.source,
               rawVariations: i.input,
-              style: i.style,
+              style: matchStyle(i.li.title, businessStyles),
               productType: i.li.digital ? ("digital" as const) : ("physical" as const),
             })),
           )
@@ -431,7 +435,7 @@ export async function importShopifyOrder(args: {
         needsReview,
         assignedTo,
         autoAssigned: assignedTo != null,
-        figures: items.map((i) => ({ count: i.count, source: i.source, note: i.note, style: i.style })),
+        figures: items.map((i) => ({ count: i.count, source: i.source, note: i.note, style: matchStyle(i.li.title, businessStyles) })),
         // Add-on lines (tips/fees) deliberately not imported as order_items, logged
         // here so a real product that unexpectedly lacks a variant is auditable.
         ...(skippedAddOns.length ? { skippedAddOns } : {}),
