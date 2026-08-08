@@ -114,6 +114,11 @@ function mediaForItem(
  * so a VA knows the next step without reading the whole order. Mirrors the Orders
  * table's "next action" but computed from the detail page's own data.
  */
+type NextAction =
+  | { kind: "assign"; label: string }
+  | { kind: "link"; label: string; cta: string; href: string }
+  | { kind: "info"; label: string };
+
 function nextSuggestedAction(input: {
   orderId: string;
   status: OrderStatus;
@@ -121,47 +126,47 @@ function nextSuggestedAction(input: {
   hasPrintJob: boolean;
   hasTracking: boolean;
   hasPhysical: boolean;
-}): { label: string; href?: string } {
+}): NextAction {
   const { orderId, status } = input;
   switch (status) {
     case "awaiting_details":
-      return { label: "Complete the order details", href: `/orders/${orderId}/complete` };
+      return { kind: "link", label: "Complete the order details", cta: "Complete details", href: `/orders/${orderId}/complete` };
     case "triage":
-      return { label: "Check the order and choose its type" };
+      return { kind: "link", label: "Check the order and choose its type", cta: "Open", href: `/orders/${orderId}/complete` };
     case "awaiting_photos":
-      return { label: "Waiting on the customer's photos" };
+      return { kind: "link", label: "Waiting on the customer's photos", cta: "Add photos", href: `/orders/${orderId}/complete` };
     case "ready_to_assign":
       return input.hasDesigner
-        ? { label: "Assigned — waiting for the designer to start" }
-        : { label: "Assign a designer" };
+        ? { kind: "info", label: "Assigned — waiting for the designer to start" }
+        : { kind: "assign", label: "Assign a designer" };
     case "in_design":
-      return { label: "Waiting for the designer to finish" };
+      return { kind: "info", label: "Waiting for the designer to finish" };
     case "awaiting_qc":
-      return { label: "Review QC", href: `/qc/${orderId}` };
+      return { kind: "link", label: "Ready for a quality check", cta: "Review QC", href: `/qc/${orderId}` };
     case "awaiting_approval":
-      return { label: "Waiting for the customer to approve" };
+      return { kind: "info", label: "Waiting for the customer to approve" };
     case "approved":
       return input.hasPhysical && !input.hasPrintJob
-        ? { label: "Start the print & ship job" }
-        : { label: "Move it forward" };
+        ? { kind: "info", label: "Approved — start the print & ship job" }
+        : { kind: "info", label: "Approved — move it forward" };
     case "printing":
-      return { label: "Printing — waiting for it to ship" };
+      return { kind: "info", label: "Printing — waiting for it to ship" };
     case "shipped":
       return input.hasTracking
-        ? { label: "Waiting for delivery" }
-        : { label: "Add the tracking number" };
+        ? { kind: "info", label: "Waiting for delivery" }
+        : { kind: "info", label: "Add the tracking number below" };
     case "delivered":
-      return { label: "Close the order once everything is done" };
+      return { kind: "info", label: "Close the order once everything is done" };
     case "complete":
-      return { label: "Done — nothing to do" };
+      return { kind: "info", label: "Done — nothing to do" };
     case "on_hold":
-      return { label: "On hold — resume it when ready" };
+      return { kind: "info", label: "On hold — resume it when ready" };
     case "cancelled":
-      return { label: "Cancelled — nothing to do" };
+      return { kind: "info", label: "Cancelled — nothing to do" };
     case "fulfillment_only":
-      return { label: "Fulfil the order" };
+      return { kind: "info", label: "Fulfil the order" };
     default:
-      return { label: "Open and review the order" };
+      return { kind: "info", label: "Open and review the order" };
   }
 }
 
@@ -370,33 +375,37 @@ export default async function OrderDetailPage({
         }
       />
 
-      {/* The one thing to do next, in plain English, right under the order meta.
-          Becomes a link when there's somewhere useful to go. */}
-      {(() => {
-        const inner = (
-          <>
-            <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-pigment">
-              <ArrowRight size={14} />
-              Next step
-            </span>
-            <span className="font-medium text-ink">{nextAction.label}</span>
-            {nextAction.href && (
-              <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-sm font-medium text-pigment">
-                Go
-                <ArrowRight size={14} />
-              </span>
-            )}
-          </>
-        );
-        const base = "flex flex-wrap items-center gap-x-2 gap-y-1 rounded-card border border-line bg-surface px-4 py-2.5 text-sm shadow-sm";
-        return nextAction.href ? (
-          <Link href={nextAction.href} className={cn(base, "transition-colors hover:border-pigment/40 hover:bg-pigment-soft/30")}>
-            {inner}
+      {/* The one thing to do next, in plain English — with the actual control to
+          do it right here (assign a designer / go to QC / …). */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-card border border-line bg-surface px-4 py-3 text-sm shadow-sm">
+        <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-pigment">
+          <ArrowRight size={14} />
+          Next step
+        </span>
+        <span className="font-medium text-ink">{nextAction.label}</span>
+        {nextAction.kind === "assign" && editable && (
+          <div className="w-full sm:ml-auto sm:w-auto">
+            <OrderReassignForm
+              orderId={order.id}
+              assigned={false}
+              inline
+              designers={designers.map((designer) => ({
+                id: designer.id,
+                name: designer.name ?? designer.email,
+              }))}
+            />
+          </div>
+        )}
+        {nextAction.kind === "link" && (
+          <Link
+            href={nextAction.href}
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-input bg-pigment px-4 text-sm font-medium text-surface transition-opacity hover:opacity-90 sm:ml-auto"
+          >
+            {nextAction.cta}
+            <ArrowRight size={14} />
           </Link>
-        ) : (
-          <div className={base}>{inner}</div>
-        );
-      })()}
+        )}
+      </div>
 
       {/* At-a-glance strip — the four facts a VA needs before anything else. */}
       <DataPanel className="overflow-hidden p-0">

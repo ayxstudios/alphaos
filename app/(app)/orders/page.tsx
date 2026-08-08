@@ -606,7 +606,7 @@ export default async function OrdersPage({
           : order.status === "awaiting_photos"
             ? { href: `/orders/${order.id}/complete`, label: "Add photos" }
           : order.status === "awaiting_details"
-          ? { href: `/orders/${order.id}/complete`, label: "Complete details" }
+          ? { href: `/orders/${order.id}/complete`, label: "Details" }
           : order.status === "awaiting_qc"
             ? { href: `/qc/${order.id}`, label: "Review QC" }
             : { href: `/orders/${order.id}`, label: "Open" };

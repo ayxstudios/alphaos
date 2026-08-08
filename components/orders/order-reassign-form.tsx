@@ -5,16 +5,20 @@ import { useRouter } from "next/navigation";
 
 import { bulkReassignOrders } from "@/app/(app)/orders/actions";
 import { Button, Select, useToast } from "@/components/ui";
+import { cn } from "@/lib/utils";
 
 export function OrderReassignForm({
   orderId,
   designers,
   assigned = true,
+  inline = false,
 }: {
   orderId: string;
   designers: { id: string; name: string }[];
   /** Whether the order currently has an active designer. Drives Assign vs Reassign wording. */
   assigned?: boolean;
+  /** Compact horizontal layout (dropdown + button in a row, no field label). */
+  inline?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -40,11 +44,13 @@ export function OrderReassignForm({
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className={cn("flex gap-2", inline ? "flex-col sm:flex-row sm:items-center" : "flex-col")}>
       <Select
-        label={`${verb} designer`}
+        label={inline ? undefined : `${verb} designer`}
+        aria-label={inline ? `${verb} designer` : undefined}
         value={designerId}
         onChange={(event) => setDesignerId(event.currentTarget.value)}
+        className={inline ? "sm:w-52" : undefined}
       >
         <option value="">Choose designer</option>
         {designers.map((designer) => (
@@ -55,14 +61,14 @@ export function OrderReassignForm({
       </Select>
       <Button
         type="button"
-        size="sm"
-        variant="secondary"
-        className="w-fit"
+        size={inline ? "md" : "sm"}
+        variant={inline ? "primary" : "secondary"}
+        className={inline ? "shrink-0" : "w-fit"}
         loading={pending}
         disabled={!designerId}
         onClick={submit}
       >
-        {verb} order
+        {inline ? verb : `${verb} order`}
       </Button>
     </div>
   );

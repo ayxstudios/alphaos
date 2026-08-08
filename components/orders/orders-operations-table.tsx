@@ -388,7 +388,7 @@ export function OrdersOperationsTable({
     return columns.length ? columns : ORDER_COLUMNS;
   }, [visibleColumnKeys]);
   const gridTemplateColumns = useMemo(
-    () => ["2.25rem", ...visibleColumns.map((column) => column.width), "13.5rem"].join(" "),
+    () => ["2.25rem", ...visibleColumns.map((column) => column.width), "8.5rem"].join(" "),
     [visibleColumns],
   );
 
@@ -690,7 +690,7 @@ function OrderActions({ row }: { row: OrdersDashboardRow }) {
       href={row.action.href}
       aria-label={`${row.action.label} — order ${row.orderNumber}`}
       className={cn(
-        "inline-flex h-8 min-w-0 items-center gap-1.5 rounded-input px-3 text-sm font-medium transition-[opacity,background-color,border-color] duration-[120ms]",
+        "inline-flex h-8 w-full min-w-0 items-center justify-center gap-1.5 rounded-input px-3 text-sm font-medium transition-[opacity,background-color,border-color] duration-[120ms]",
         isTask
           ? "bg-pigment text-surface shadow-sm hover:opacity-90"
           : "border border-line bg-surface text-slate hover:border-slate/40 hover:text-ink",
