@@ -26,7 +26,20 @@ import {
   StatusChip,
   type OrderStatus,
 } from "@/components/ui";
-import { Camera, Inbox, Pencil, Plus } from "@/components/ui/icons";
+import {
+  Calendar,
+  Camera,
+  ChevronDown,
+  Inbox,
+  Mail,
+  Palette,
+  Pencil,
+  Plus,
+  Truck,
+  User,
+  type IconProps,
+} from "@/components/ui/icons";
+import { cn } from "@/lib/utils";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
 import { getShopCredentials } from "@/lib/db/credentials";
 import {
@@ -272,15 +285,16 @@ export default async function OrderDetailPage({
   return (
     <Page className="max-w-6xl">
       <PageHeader
+        eyebrow={sourceLabel}
         title={order.platformOrderName ?? order.platformOrderId}
-        description={`${sourceLabel} · Ordered ${fmtDateTime(order.placedAt ?? order.createdAt)}`}
+        description={`Ordered ${fmtDateTime(order.placedAt ?? order.createdAt)}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <StatusChip status={order.status as OrderStatus} />
             {editable && (
               <Link
                 href={`/orders/${order.id}/complete`}
-                className="inline-flex h-9 items-center gap-2 rounded-input border border-line bg-surface px-3 text-sm font-medium text-ink hover:bg-canvas"
+                className="inline-flex h-9 items-center gap-2 rounded-input border border-line bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas"
               >
                 <Pencil size={15} />
                 Edit
@@ -290,35 +304,27 @@ export default async function OrderDetailPage({
         }
       />
 
+      {/* At-a-glance strip — the four facts a VA needs before anything else. */}
+      <DataPanel className="overflow-hidden p-0">
+        <div className="grid grid-cols-2 gap-px bg-line sm:grid-cols-4">
+          <Fact icon={User} label="Customer" value={customerName} />
+          <Fact icon={Mail} label="Email" value={order.customerEmail ?? "No email yet"} muted={!order.customerEmail} />
+          <Fact icon={Palette} label="Designer" value={assignee} muted={assignee === "Unassigned"} />
+          <Fact icon={Calendar} label="Due" value={fmtDateTime(order.dueAt)} />
+        </div>
+      </DataPanel>
+
+      {order.notes && (
+        <div className="rounded-card border border-pigment/20 bg-pigment-soft/40 p-4 shadow-sm">
+          <div className="text-xs font-semibold uppercase tracking-wide text-pigment">
+            Designer notes / customer request
+          </div>
+          <p className="mt-1.5 whitespace-pre-wrap text-sm text-ink">{order.notes}</p>
+        </div>
+      )}
+
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_22rem]">
         <div className="flex flex-col gap-4">
-          <DataPanel className="p-4">
-            <SectionHeader title="Order summary" />
-            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-              <div>
-                <dt className="text-xs font-medium text-slate">Customer</dt>
-                <dd className="font-medium text-ink">{customerName}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium text-slate">Email</dt>
-                <dd className="font-medium text-ink">{order.customerEmail ?? "No email yet"}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium text-slate">Designer</dt>
-                <dd className="font-medium text-ink">{assignee}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium text-slate">Due</dt>
-                <dd className="font-medium text-ink">{fmtDateTime(order.dueAt)}</dd>
-              </div>
-            </dl>
-            {order.notes && (
-              <div className="mt-4 rounded-input bg-canvas p-3">
-                <div className="text-xs font-medium text-slate">Designer notes / customer request</div>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-ink">{order.notes}</p>
-              </div>
-            )}
-          </DataPanel>
 
           <DataPanel className="overflow-hidden">
             <div className="border-b border-line px-4 py-3">
@@ -344,7 +350,6 @@ export default async function OrderDetailPage({
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0">
                             <p className="font-medium text-ink">{item.title ?? "Untitled item"}</p>
-                            {item.variation && <p className="mt-1 text-sm text-slate">{item.variation}</p>}
                             {media?.productUrl && (
                               <a
                                 href={media.productUrl}
@@ -364,15 +369,21 @@ export default async function OrderDetailPage({
                             {item.style && <Badge variant="neutral">{item.style}</Badge>}
                           </div>
                         </div>
-                        {Array.isArray(item.options) && item.options.length > 0 && (
-                          <dl className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
+                        {Array.isArray(item.options) && item.options.length > 0 ? (
+                          <dl className="mt-3 grid gap-x-4 gap-y-2 rounded-input bg-canvas p-3 text-sm sm:grid-cols-2">
                             {item.options.map((option) => (
-                              <div key={`${option.name}-${option.value}`} className="flex gap-2">
-                                <dt className="shrink-0 text-slate">{option.name}:</dt>
-                                <dd className="font-medium text-ink">{option.value}</dd>
+                              <div key={`${option.name}-${option.value}`} className="min-w-0">
+                                <dt className="text-xs text-slate">
+                                  {String(option.name).replace(/[:：]\s*$/, "")}
+                                </dt>
+                                <dd className="mt-0.5 break-words font-medium text-ink">{option.value}</dd>
                               </div>
                             ))}
                           </dl>
+                        ) : (
+                          item.variation && (
+                            <p className="mt-2 break-words text-sm text-slate">{item.variation}</p>
+                          )
                         )}
                       </div>
                     </>
@@ -427,28 +438,11 @@ export default async function OrderDetailPage({
         <aside className="flex flex-col gap-4">
           {editable && (
             <DataPanel className="p-4">
-              <SectionHeader title="Workflow actions" />
-              <div className="mt-3 flex flex-col gap-4">
-                <div className="rounded-input bg-canvas p-3">
-                  <OrderRevisionForm
-                    orderId={order.id}
-                    initialNote={revisionStarter}
-                    disabled={!canCreateRevision}
-                  />
-                  {!canCreateRevision && (
-                    <p className="mt-2 text-xs text-slate">
-                      Revision can be created from awaiting customer, approved, print, shipped, delivered or complete orders.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </DataPanel>
-          )}
-
-          {editable && (
-            <DataPanel className="p-4">
-              <SectionHeader title="Assignment" />
-              <div className="mt-3">
+              <SectionHeader
+                title="Quick actions"
+                description="Reassign, or send this order back for changes."
+              />
+              <div className="mt-4 flex flex-col gap-4">
                 <OrderReassignForm
                   orderId={order.id}
                   designers={designers.map((designer) => ({
@@ -456,12 +450,37 @@ export default async function OrderDetailPage({
                     name: designer.name ?? designer.email,
                   }))}
                 />
+                <div className="border-t border-line pt-4">
+                  <OrderRevisionForm
+                    orderId={order.id}
+                    initialNote={revisionStarter}
+                    buttonLabel="Request revision"
+                    disabled={!canCreateRevision}
+                  />
+                  {!canCreateRevision && (
+                    <p className="mt-2 text-xs text-slate">
+                      Revisions can start once an order is awaiting customer, approved, printing, shipped, delivered or complete.
+                    </p>
+                  )}
+                </div>
               </div>
             </DataPanel>
           )}
 
           <DataPanel className="p-4">
-            <SectionHeader title="Reference photos" />
+            <SectionHeader
+              title="Reference photos"
+              actions={
+                editable && references.length > 0 ? (
+                  <Link
+                    href={`/orders/${order.id}/complete`}
+                    className="text-sm font-medium text-pigment hover:text-ink"
+                  >
+                    Manage
+                  </Link>
+                ) : undefined
+              }
+            />
             {references.length === 0 ? (
               <div className="mt-3 rounded-input border border-dashed border-line bg-canvas p-4 text-center">
                 <Camera className="mx-auto text-slate" size={20} />
@@ -469,7 +488,7 @@ export default async function OrderDetailPage({
                 {editable && (
                   <Link
                     href={`/orders/${order.id}/complete`}
-                    className="mt-3 inline-flex h-8 items-center gap-2 rounded-input bg-pigment px-3 text-sm font-medium text-surface"
+                    className="mt-3 inline-flex h-8 items-center gap-2 rounded-input bg-pigment px-3 text-sm font-medium text-surface transition-opacity hover:opacity-90"
                   >
                     <Plus size={14} />
                     Add photos
@@ -487,19 +506,17 @@ export default async function OrderDetailPage({
           </DataPanel>
 
           <DataPanel className="p-4">
-            <SectionHeader title="QC & print" />
+            <SectionHeader title="Production &amp; tracking" />
             <dl className="mt-3 flex flex-col gap-3 text-sm">
-              <div>
-                <dt className="text-xs font-medium text-slate">Latest QC</dt>
-                <dd className="font-medium text-ink">
-                  {latestQc ? `${titleCase(latestQc.result)} · ${fmtDateTime(latestQc.createdAt)}` : "No QC yet"}
-                </dd>
-                {latestQc?.reason && <p className="mt-1 text-sm text-slate">{latestQc.reason}</p>}
-              </div>
-              <div>
-                <dt className="text-xs font-medium text-slate">Print jobs</dt>
-                <dd className="font-medium text-ink">{printRows.length ? `${printRows.length} print job(s)` : "No print job yet"}</dd>
-              </div>
+              <Field
+                label="Latest QC"
+                value={latestQc ? `${titleCase(latestQc.result)} · ${fmtDateTime(latestQc.createdAt)}` : "No QC yet"}
+                sub={latestQc?.reason ?? null}
+              />
+              <Field
+                label="Print jobs"
+                value={printRows.length ? `${printRows.length} print job(s)` : "No print job yet"}
+              />
               {printRows.map((print, index) => (
                 <div key={`${print.provider}-${print.createdAt.toISOString()}-${index}`} className="rounded-input bg-canvas p-2">
                   <p className="font-medium text-ink">{titleCase(print.provider)} · {titleCase(print.method)}</p>
@@ -510,71 +527,69 @@ export default async function OrderDetailPage({
                       : "No tracking yet"}
                   </p>
                   {print.trackingUrl && (
-                    <a
-                      href={print.trackingUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs font-medium text-pigment hover:text-ink"
-                    >
+                    <a href={print.trackingUrl} target="_blank" rel="noreferrer" className="text-xs font-medium text-pigment hover:text-ink">
                       Open tracking
                     </a>
                   )}
                 </div>
               ))}
-            </dl>
-          </DataPanel>
-
-          {hasPhysicalItem && (
-            <DataPanel className="p-4">
-              <SectionHeader title="Tracking information" />
-              <dl className="mt-3 flex flex-col gap-3 text-sm">
-                <div>
-                  <dt className="text-xs font-medium text-slate">Current tracking</dt>
-                  <dd className="font-medium text-ink">
-                    {latestTracking?.trackingNumber ?? "No tracking added yet"}
-                  </dd>
-                  {latestTracking?.trackingCompany && (
-                    <p className="text-xs text-slate">{latestTracking.trackingCompany}</p>
-                  )}
+              {hasPhysicalItem && (
+                <>
+                  <Field
+                    label="Current tracking"
+                    value={latestTracking?.trackingNumber ?? "No tracking added yet"}
+                    sub={latestTracking?.trackingCompany ?? null}
+                  />
                   {latestTracking?.trackingUrl && (
                     <a
                       href={latestTracking.trackingUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="mt-1 inline-flex text-xs font-medium text-pigment hover:text-ink"
+                      className="-mt-1.5 inline-flex text-xs font-medium text-pigment hover:text-ink"
                     >
                       Open tracking
                     </a>
                   )}
-                </div>
-                <div>
-                  <dt className="text-xs font-medium text-slate">Provider</dt>
-                  <dd className="font-medium text-ink">
-                    {latestTracking
-                      ? `${titleCase(latestTracking.provider)} · ${titleCase(latestTracking.method)}`
-                      : "No print provider recorded"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs font-medium text-slate">Shopify writeback</dt>
-                  <dd className="text-slate">
-                    {order.source !== "shopify"
-                      ? "Not applicable for this order source."
-                      : latestTracking?.shopifyFulfillmentId
-                        ? `Fulfilled in Shopify · ${fmtDateTime(latestTracking.shopifySyncedAt)}`
-                        : "No Shopify fulfillment has been created from AlphaOS yet."}
-                  </dd>
-                </div>
-              </dl>
-              {editable && (
-                <TrackingCompleteForm
-                  orderId={order.id}
-                  source={order.source}
-                  disabled={order.status === "cancelled" || order.status === "on_hold"}
-                />
+                  <Field
+                    label="Provider"
+                    value={
+                      latestTracking
+                        ? `${titleCase(latestTracking.provider)} · ${titleCase(latestTracking.method)}`
+                        : "No print provider recorded"
+                    }
+                  />
+                  <div>
+                    <dt className="text-xs font-medium text-slate">Shopify writeback</dt>
+                    <dd className="mt-0.5 text-slate">
+                      {order.source !== "shopify"
+                        ? "Not applicable for this order source."
+                        : latestTracking?.shopifyFulfillmentId
+                          ? `Fulfilled in Shopify · ${fmtDateTime(latestTracking.shopifySyncedAt)}`
+                          : "No Shopify fulfillment created from AlphaOS yet."}
+                    </dd>
+                  </div>
+                </>
               )}
-            </DataPanel>
-          )}
+            </dl>
+            {hasPhysicalItem && editable && (
+              <details className="group mt-3 rounded-input border border-line">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium text-ink">
+                  <span className="inline-flex items-center gap-2">
+                    <Truck size={15} className="text-slate" />
+                    Add / update tracking
+                  </span>
+                  <ChevronDown size={16} className="text-slate transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="border-t border-line p-3">
+                  <TrackingCompleteForm
+                    orderId={order.id}
+                    source={order.source}
+                    disabled={order.status === "cancelled" || order.status === "on_hold"}
+                  />
+                </div>
+              </details>
+            )}
+          </DataPanel>
 
           <DataPanel className="overflow-hidden">
             <div className="border-b border-line px-4 py-3">
@@ -630,5 +645,52 @@ export default async function OrderDetailPage({
         </aside>
       </div>
     </Page>
+  );
+}
+
+/** One tile in the at-a-glance summary strip. */
+function Fact({
+  icon: Icon,
+  label,
+  value,
+  muted = false,
+}: {
+  icon: (props: IconProps) => React.ReactElement;
+  label: string;
+  value: string;
+  muted?: boolean;
+}) {
+  return (
+    <div className="bg-surface p-4">
+      <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate">
+        <Icon size={13} className="shrink-0" />
+        {label}
+      </div>
+      <div
+        className={cn("mt-1.5 truncate text-sm font-semibold", muted ? "text-slate" : "text-ink")}
+        title={value}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
+/** A label/value row inside a definition list (production & tracking panel). */
+function Field({
+  label,
+  value,
+  sub = null,
+}: {
+  label: string;
+  value: React.ReactNode;
+  sub?: string | null;
+}) {
+  return (
+    <div>
+      <dt className="text-xs font-medium text-slate">{label}</dt>
+      <dd className="mt-0.5 break-words font-medium text-ink">{value}</dd>
+      {sub && <p className="mt-1 text-sm text-slate">{sub}</p>}
+    </div>
   );
 }
