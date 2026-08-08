@@ -228,6 +228,8 @@ export const businesses = pgTable("businesses", {
   // Safety rail: no customer email sends until an admin turns this ON per
   // business. The "send test email" path bypasses it (only sends to staff).
   emailSendingEnabled: boolean("email_sending_enabled").notNull().default(false),
+  // Last time the inbound reply poller ran for this mailbox (cron health).
+  gmailLastPolledAt: timestamp("gmail_last_polled_at", { withTimezone: true }),
   createdAt: createdAt(),
 });
 
@@ -667,6 +669,10 @@ export const messages = pgTable(
     body: text("body"),
     // Last send error, for a failed outbound message.
     error: text("error"),
+    // Resolved-and-hidden: a discarded draft, or an unmatched inbound reply a VA
+    // archived. Excludes the row from the outbox / unmatched tray. Reason is in
+    // activity_log.
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     toneScore: numeric("tone_score", { precision: 5, scale: 2 }),
     approvedBy: text("approved_by").references(() => users.id, {
       onDelete: "set null",

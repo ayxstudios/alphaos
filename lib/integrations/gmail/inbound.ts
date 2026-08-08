@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
 import { withSystemContext } from "@/lib/db";
 import { getBusinessGmailCredentials } from "@/lib/db/credentials";
@@ -81,15 +81,64 @@ export async function pollMailbox(businessId: string): Promise<InboundSummary> {
     else summary.skipped++;
   }
 
-  // Advance the cursor so the next run starts after what we processed.
-  if (latestHistoryId !== start.biz.historyId) {
-    await withSystemContext((tx) =>
-      tx.update(businesses).set({ gmailHistoryId: latestHistoryId }).where(eq(businesses.id, businessId)),
-    );
-  }
+  // Advance the cursor so the next run starts after what we processed, and stamp
+  // the poll time (drives cron ordering + the dashboard mailbox health).
+  await withSystemContext((tx) =>
+    tx
+      .update(businesses)
+      .set({
+        gmailLastPolledAt: new Date(),
+        ...(latestHistoryId !== start.biz.historyId ? { gmailHistoryId: latestHistoryId } : {}),
+      })
+      .where(eq(businesses.id, businessId)),
+  );
 
   logInbound(businessId, { event: "poll_complete", attached: summary.attached, skipped: summary.skipped });
   return summary;
+}
+
+export type PollBatchResult = {
+  budgetMs: number;
+  processed: number;
+  skippedOverBudget: number;
+  attached: number;
+  mailboxes: { businessId: string; attached: number; skipped: number; skippedRun?: string }[];
+};
+
+/**
+ * Cron entry point: poll every connected mailbox, least-recently-polled first,
+ * bounded by a wall-clock budget so 14 mailboxes never risk the function
+ * timeout. Whatever a run doesn't reach stays oldest and is picked up next tick
+ * (batch-and-resume, mirroring syncAllShops).
+ */
+export async function pollMailboxesScheduled(opts: { budgetMs?: number } = {}): Promise<PollBatchResult> {
+  const budgetMs = opts.budgetMs ?? 50_000;
+  const rows = await withSystemContext((tx) =>
+    tx
+      .select({ id: businesses.id })
+      .from(businesses)
+      .where(and(isNotNull(businesses.gmailHistoryId), isNotNull(businesses.gmailCredentials)))
+      .orderBy(sql`${businesses.gmailLastPolledAt} asc nulls first`),
+  );
+
+  const start = Date.now();
+  const result: PollBatchResult = { budgetMs, processed: 0, skippedOverBudget: 0, attached: 0, mailboxes: [] };
+  for (const r of rows) {
+    if (Date.now() - start > budgetMs) {
+      result.skippedOverBudget++;
+      continue;
+    }
+    try {
+      const s = await pollMailbox(r.id);
+      result.processed++;
+      result.attached += s.attached;
+      result.mailboxes.push({ businessId: r.id, attached: s.attached, skipped: s.skipped, skippedRun: s.skippedRun });
+    } catch (err) {
+      logInbound(r.id, { level: "error", event: "poll_failed", error: String(err) });
+      result.mailboxes.push({ businessId: r.id, attached: 0, skipped: 0, skippedRun: "error" });
+    }
+  }
+  return result;
 }
 
 /** Poll every business that has a connected Gmail mailbox. */

@@ -20,7 +20,13 @@ export {
   newState,
 } from "./oauth";
 export { buildRawMessage, textToHtml } from "./mime";
-export { pollMailbox, pollAllMailboxes, type InboundSummary } from "./inbound";
+export {
+  pollMailbox,
+  pollAllMailboxes,
+  pollMailboxesScheduled,
+  type InboundSummary,
+  type PollBatchResult,
+} from "./inbound";
 export {
   GmailApiError,
   GmailReauthRequiredError,

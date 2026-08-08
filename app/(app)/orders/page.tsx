@@ -9,6 +9,7 @@ import { loadShellData } from "@/lib/shell/context";
 import {
   activityLog,
   assignments,
+  businesses,
   customers,
   orderItems,
   orders,
@@ -29,10 +30,12 @@ import { Package, Plus, Search } from "@/components/ui/icons";
 import { OrdersOperationsTable, type OrdersDashboardRow } from "@/components/orders/orders-operations-table";
 import { OrdersFilterSelect } from "@/components/orders/orders-filter-select";
 import { OrdersViewPreference } from "@/components/orders/orders-view-preference";
+import { OutboxView } from "@/components/orders/outbox-view";
 import { cn } from "@/lib/utils";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
 import { resolveFigureCount, type NormalizedVariation } from "@/lib/integrations/figures";
 import { stageTimer } from "@/lib/orders/stage-timers";
+import { getOutbox, getUnmatchedReplies } from "@/lib/email/outbox";
 
 export const dynamic = "force-dynamic";
 
@@ -680,6 +683,19 @@ export default async function OrdersPage({
   }
   currentParams.set("view", selectedView);
 
+  const [emailConfig, outbox, unmatched] = await Promise.all([
+    withUserContext(user, async (tx) => {
+      const [row] = await tx
+        .select({ emailSendingEnabled: businesses.emailSendingEnabled })
+        .from(businesses)
+        .where(eq(businesses.id, selected.id))
+        .limit(1);
+      return row ?? { emailSendingEnabled: false };
+    }),
+    getOutbox(user, { businessId: selected.id }),
+    getUnmatchedReplies(user, { businessId: selected.id }),
+  ]);
+
   return (
     <Page className="max-w-none">
       <PageHeader
@@ -795,6 +811,15 @@ export default async function OrdersPage({
           ))}
         </div>
       </FilterBar>
+
+      {(outbox.length > 0 || unmatched.length > 0) && (
+        <OutboxView
+          outbox={outbox}
+          unmatched={unmatched}
+          sendingEnabled={emailConfig.emailSendingEnabled}
+          businessId={selected.id}
+        />
+      )}
 
       <TableShell>
         {rows.length === 0 ? (

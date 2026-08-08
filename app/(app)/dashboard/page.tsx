@@ -5,9 +5,10 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
 import { loadShellData } from "@/lib/shell/context";
-import { customers, orderItems, orders, shops } from "@/lib/db/schema";
+import { businesses, customers, orderItems, orders, shops } from "@/lib/db/schema";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
 import { formatSyncTime, syncHealth } from "@/lib/integrations/sync-health";
+import { getUnmatchedCount } from "@/lib/email/outbox";
 import {
   Badge,
   DataPanel,
@@ -98,6 +99,27 @@ export default async function DashboardPage() {
       .orderBy(asc(shops.name)),
   );
 
+  const [mailboxHealth, unmatchedReplies] = await Promise.all([
+    withUserContext(user, async (tx) => {
+      const [row] = await tx
+        .select({
+          address: businesses.gmailAddress,
+          historyId: businesses.gmailHistoryId,
+          lastPolledAt: businesses.gmailLastPolledAt,
+        })
+        .from(businesses)
+        .where(eq(businesses.id, selected.id))
+        .limit(1);
+      return row ?? { address: null, historyId: null, lastPolledAt: null };
+    }),
+    getUnmatchedCount(user, { businessId: selected.id }),
+  ]);
+  const mailboxLastPolledAt = mailboxHealth.lastPolledAt?.toISOString() ?? null;
+  const mailboxConnected = Boolean(mailboxHealth.historyId);
+  const mailboxPollHealth = mailboxConnected
+    ? syncHealth(mailboxLastPolledAt, now)
+    : "never";
+
   const actionTotal =
     (stats?.awaitingDetails ?? 0) +
     (stats?.awaitingPhotos ?? 0) +
@@ -118,7 +140,7 @@ export default async function DashboardPage() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard label="Active orders" value={stats?.active ?? 0} />
         <StatCard
           label="Overdue"
@@ -127,6 +149,12 @@ export default async function DashboardPage() {
         />
         <StatCard label="VA actions" value={actionTotal} tone="info" />
         <StatCard label="QC waiting" value={stats?.qc ?? 0} tone="warning" />
+        <StatCard
+          label="Unmatched replies"
+          value={unmatchedReplies}
+          tone={unmatchedReplies > 0 ? "danger" : "neutral"}
+          detail="Need manual threading"
+        />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -195,6 +223,41 @@ export default async function DashboardPage() {
           <DataPanel className="p-4">
             <SectionHeader title="Pipeline health" />
             <div className="mt-4 flex flex-col gap-3">
+              <div className="border-b border-line pb-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-ink">Mailbox poll</p>
+                    <p className="text-xs text-slate">
+                      {mailboxHealth.address ?? "No mailbox connected"} · last poll{" "}
+                      {formatSyncTime(mailboxLastPolledAt)}
+                    </p>
+                  </div>
+                  {mailboxPollHealth === "ok" ? (
+                    <Badge variant="success" dot>Healthy</Badge>
+                  ) : (
+                    <Badge variant="warning" dot>
+                      {mailboxConnected ? "Stale" : "Not connected"}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              <div className="border-b border-line pb-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-ink">Unmatched replies</p>
+                    <p className="text-xs text-slate">
+                      Replies captured without an order thread
+                    </p>
+                  </div>
+                  {unmatchedReplies > 0 ? (
+                    <Badge variant="danger" dot>{unmatchedReplies}</Badge>
+                  ) : (
+                    <Badge variant="success" dot>Clear</Badge>
+                  )}
+                </div>
+              </div>
+
               {shopHealth.map((shop) => {
                 const health = syncHealth(shop.lastSyncAt, now);
                 return (

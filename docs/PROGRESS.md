@@ -1,6 +1,6 @@
 # AlphaOS — progress
 
-_Last updated: 2026-08-05. Update this whenever a major piece lands._
+_Last updated: 2026-08-09. Update this whenever a major piece lands._
 
 Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
 
@@ -23,9 +23,15 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
 - **Shopify integration.** Client-credentials grant (2026 Dev Dashboard) + legacy
   token fallback; token refresh; sync (60-day first window, incremental cursor);
   orders/create webhook; GraphQL re-fetch so figure count resolves the same on
-  webhook + sync (`test:shopify-figures`). Verified against the live PixArt store.
+  webhook + sync (`test:shopify-figures`). Webhook registration is automatic on
+  connect and can be re-run from Settings. Shop sync health is visible on
+  Settings + Dashboard. Verified against the live PixArt store.
 - **Figure + style resolver.** Per-shop rules; case-insensitive, punctuation-
   tolerant; never guesses. Re-resolve action heals already-imported orders.
+- **Orders list + detail.** VA operations table with saved views, date sorting,
+  pagination, customizable columns, sticky left actions menu, bulk reassign/status
+  actions, operational status labels, Shopify thumbnails/product links, tracking
+  card, and Shopify fulfillment writeback for physical-order completion.
 - **Manual order entry.** Fast keyboard-first form; drag-drop R2 upload + URL
   paste; auto-assign on ready-to-assign; never emails.
 - **R2 storage.** Private bucket, presigned PUT (direct from browser) + presigned
@@ -33,6 +39,9 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
   soft-delete. Verified end-to-end against the live bucket.
 - **Reconciliation.** Manual orders promote in place when the platform later
   imports the same number (see decisions).
+- **Scheduled jobs.** Vercel Cron routes exist for all-shop order sync, Gmail
+  inbound polling, and R2 retention. Shop sync and Gmail poll health are surfaced
+  on the dashboard.
 
 ## Built but NOT tested against a live API
 
@@ -40,8 +49,9 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
   classification). No live Etsy account has been connected — logic is unexercised
   against the real API. **This is the big untested surface.**
 - **Gmail email layer** (per-business OAuth, DB templates, VA outbox approval
-  gate, inbound reply poller). No business has connected Gmail yet, so send +
-  inbound have not run live. Photo requests are off by default regardless.
+  gate, scheduled inbound reply poller, unmatched-replies tray with age/24h
+  flags, dashboard unmatched count). No business has connected Gmail yet, so send
+  + inbound have not run live. Photo requests are off by default regardless.
 
 ## Key decisions and why
 
@@ -67,19 +77,16 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
 
 ## What's next (in order)
 
-1. **Schedule background jobs via Vercel Cron** (retention sweep, all-shop sync).
-   _In progress._
-2. **Connect + live-test Etsy** for one shop (the largest untested surface).
-3. **Connect Gmail** for one business; verify send + inbound end-to-end.
-4. **Designer submission upload** (assets `type=submission`) reusing the R2 flow.
-5. **Print/fulfilment integration** (`print_jobs` table exists; no provider wired).
-6. **Earnings/payout reporting UI** (`earnings` written on completion; no report).
+1. **Connect + live-test Etsy** for one shop (the largest untested surface).
+2. **Connect Gmail** for one business; verify send, scheduled inbound polling,
+   unmatched reply linking, and dashboard health end-to-end.
+3. **Designer submission upload** (assets `type=submission`) reusing the R2 flow.
+4. **Print provider integration** (`print_jobs` table exists; Shopify writeback
+   exists, but no Gelato/Luma Prints API is wired).
+5. **Earnings/payout reporting UI** (`earnings` written on completion; no report).
 
 ## Half-finished / stubs
 
-- **Orders list** (`/orders`) and **order detail** (`/orders/[id]`) are stubs;
-  detail shows only the email timeline.
 - **48-hour photo reminder** (the second auto-send exception) is not built.
-- **SLA / overdue detection is read-time only** (a board query); no background
-  sweep or overdue notifications exist yet.
-- **Retention sweep** is callable; scheduling being added now.
+- **SLA / overdue detection is read-time only** (dashboard/orders/board queries);
+  no background overdue notification sweep exists yet.
