@@ -9,8 +9,8 @@ import {
   bulkReassignOrders,
   type BulkActionResult,
 } from "@/app/(app)/orders/actions";
-import { Badge, Button, InfoBubble, Tooltip, useToast, type OrderStatus } from "@/components/ui";
-import { ArrowRight, Columns, Inbox, Pencil } from "@/components/ui/icons";
+import { Badge, Button, InfoBubble, useToast, type OrderStatus } from "@/components/ui";
+import { ArrowRight, Columns } from "@/components/ui/icons";
 import { formatStageRemaining, type StageTimer } from "@/lib/orders/stage-timers";
 import { cn } from "@/lib/utils";
 
@@ -524,9 +524,6 @@ export function OrdersOperationsTable({
           >
             Bulk status change
           </Button>
-          <p className="text-xs text-slate">
-            Illegal moves are skipped and reported.
-          </p>
           <div className="relative ml-auto">
             <Button
               type="button"
@@ -689,49 +686,19 @@ function OrderActions({ row }: { row: OrdersDashboardRow }) {
   // "Open" fallback stays quiet so the eye is drawn only to real work.
   const isTask = row.action.label !== "Open";
   return (
-    <>
-      <Link
-        href={row.action.href}
-        aria-label={`${row.action.label} — order ${row.orderNumber}`}
-        className={cn(
-          "inline-flex h-8 min-w-0 items-center gap-1.5 rounded-input px-3 text-sm font-medium transition-[opacity,background-color,border-color] duration-[120ms]",
-          isTask
-            ? "bg-pigment text-surface shadow-sm hover:opacity-90"
-            : "border border-line bg-surface text-slate hover:border-slate/40 hover:text-ink",
-        )}
-      >
-        <span className="truncate">{row.action.label}</span>
-        {isTask && <ArrowRight size={14} className="shrink-0" />}
-      </Link>
-      <IconAction href={`/orders/${row.id}/complete`} label="Edit details">
-        <Pencil size={15} />
-      </IconAction>
-      <IconAction href={`/orders/${row.id}#notes`} label="Notes">
-        <Inbox size={15} />
-      </IconAction>
-    </>
-  );
-}
-
-function IconAction({
-  href,
-  label,
-  children,
-}: {
-  href: string;
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Tooltip content={label} side="top">
-      <Link
-        href={href}
-        aria-label={label}
-        className="inline-flex size-8 shrink-0 items-center justify-center rounded-input text-slate transition-colors hover:bg-pigment/15 hover:text-pigment"
-      >
-        {children}
-      </Link>
-    </Tooltip>
+    <Link
+      href={row.action.href}
+      aria-label={`${row.action.label} — order ${row.orderNumber}`}
+      className={cn(
+        "inline-flex h-8 min-w-0 items-center gap-1.5 rounded-input px-3 text-sm font-medium transition-[opacity,background-color,border-color] duration-[120ms]",
+        isTask
+          ? "bg-pigment text-surface shadow-sm hover:opacity-90"
+          : "border border-line bg-surface text-slate hover:border-slate/40 hover:text-ink",
+      )}
+    >
+      <span className="truncate">{row.action.label}</span>
+      {isTask && <ArrowRight size={14} className="shrink-0" />}
+    </Link>
   );
 }
 

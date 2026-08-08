@@ -31,6 +31,7 @@ import { OrdersFilterSelect } from "@/components/orders/orders-filter-select";
 import { OrdersViewPreference } from "@/components/orders/orders-view-preference";
 import { cn } from "@/lib/utils";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
+import { resolveFigureCount, type NormalizedVariation } from "@/lib/integrations/figures";
 import { stageTimer } from "@/lib/orders/stage-timers";
 
 export const dynamic = "force-dynamic";
@@ -213,6 +214,18 @@ function reviewReasonText(input: {
   if (input.unresolvedFigures) return "We do not know how many figures. Open it and set the figure count.";
   if (!input.assignee) return "No designer is free for this order right now. Please assign it to a designer by hand.";
   return "Open this order and check what is missing.";
+}
+
+/**
+ * The figure count we can show for an item: the stored value if resolved,
+ * otherwise a read-time resolution from the raw variations via the built-in
+ * default rules. Lets a count that IS present in the order (e.g. "Number of
+ * Pets: 1") read as known even when the stored value predates the shop rule.
+ */
+function effectiveFigureCount(item: { figureCount: number | null; rawVariations: unknown }): number | null {
+  if (item.figureCount != null) return item.figureCount;
+  const variations = Array.isArray(item.rawVariations) ? (item.rawVariations as NormalizedVariation[]) : [];
+  return variations.length ? resolveFigureCount(variations, null).count : null;
 }
 
 function orderLabel(number: string | null, fallback: string) {
@@ -480,6 +493,7 @@ export default async function OrdersPage({
             orderId: orderItems.orderId,
             title: orderItems.title,
             figureCount: orderItems.figureCount,
+            rawVariations: orderItems.rawVariations,
             style: orderItems.style,
             productType: orderItems.productType,
           })
@@ -544,9 +558,16 @@ export default async function OrdersPage({
       const tracking = prints.find((print) => print.trackingNumber)?.trackingNumber ?? null;
       const hasPrintJob = prints.length > 0;
       const isFailedQc = order.status === "in_design" && qc?.result === "fail";
+      // Resolve the figure count at read time too, so a count that is actually
+      // present in the order (e.g. "Number of Pets: 1") never reads as unknown just
+      // because the stored value predates the shop rule. Never widens review — it
+      // only clears a stale figure-only needs_review flag.
+      const unresolvedFigures = items.some((item) => effectiveFigureCount(item) == null);
+      const needsReview =
+        order.needsReview && (!order.customerEmail || unresolvedFigures);
       const derivedStatus = operationalStatusLabel({
         status: order.status,
-        needsReview: order.needsReview,
+        needsReview,
         revisionCount: order.revisionCount,
         isFailedQc,
         physical,
@@ -570,7 +591,6 @@ export default async function OrdersPage({
         isPhysical: physical,
         stageStartedAt: dateIso(stageStartedAt),
       });
-      const unresolvedFigures = items.some((item) => item.figureCount == null);
       const reviewReason = reviewReasonText({
         derivedStatus,
         status: order.status,
@@ -616,12 +636,12 @@ export default async function OrdersPage({
         itemTitle: items[0]?.title ?? "No item details",
         itemSummary: [
           items.length > 1 ? `${items.length} items` : null,
-          items[0]?.figureCount != null ? `${items[0].figureCount} figures` : null,
+          items[0] && effectiveFigureCount(items[0]) != null ? `${effectiveFigureCount(items[0])} figures` : null,
           items[0]?.style ?? null,
           physical ? "Physical" : items.some((item) => item.productType === "digital") ? "Digital" : null,
         ].filter(Boolean).join(" · "),
         isOverdue: Boolean(order.dueAt && order.dueAt < new Date()),
-        needsReview: order.needsReview,
+        needsReview,
         revisionCount: order.revisionCount,
         latestQcResult: qc?.result ?? null,
         latestQcReason: qc?.reason ?? null,
