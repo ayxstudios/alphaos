@@ -190,7 +190,7 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
         for (const li of realLines) {
           const input = resolverInput(li);
           const fig = resolveFigureCount(input, cfg);
-          const st = resolveStyle(input, cfg);
+          const st = resolveStyle(input, cfg, li.title);
           if (fig.count != null) summary.itemsResolved++;
           else summary.stillUnresolved++;
           await tx.insert(orderItems).values({
@@ -219,7 +219,7 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
             continue;
           }
           const fig = resolveFigureCount(raw, cfg);
-          const st = resolveStyle(raw, cfg);
+          const st = resolveStyle(raw, cfg, it.title);
           if (fig.count != null) summary.itemsResolved++;
           else summary.stillUnresolved++;
           classLines.push({ sku: it.sku, title: it.title });

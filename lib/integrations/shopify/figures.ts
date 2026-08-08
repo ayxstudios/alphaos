@@ -23,6 +23,7 @@ export function resolveFigureCount(
 export function resolveStyle(
   options: NormalizedVariation[],
   config: FigureConfig | null | undefined,
+  title?: string | null,
 ): StyleResolution {
-  return resolveStyleShared(options ?? [], config);
+  return resolveStyleShared(options ?? [], config, title);
 }

@@ -28,6 +28,7 @@ import {
 } from "@/components/ui";
 import {
   ArrowRight,
+  Brush,
   Calendar,
   Camera,
   ChevronDown,
@@ -334,6 +335,10 @@ export default async function OrderDetailPage({
   });
   const hasDesigner = Boolean(assignment[0]);
   const assignee = assignment[0] ? (assignment[0].name ?? assignment[0].email) : "Unassigned";
+  const styles = Array.from(
+    new Set(items.map((item) => item.style).filter((style): style is string => Boolean(style))),
+  );
+  const styleLabel = styles.length ? styles.join(", ") : "Not set";
   const latestQc = qcRows[0] ?? null;
   const references = detail.images.filter((image) => image.type === "reference");
   const hasPhysicalItem = items.some((item) => item.productType === "physical");
@@ -407,11 +412,12 @@ export default async function OrderDetailPage({
         )}
       </div>
 
-      {/* At-a-glance strip — the four facts a VA needs before anything else. */}
+      {/* At-a-glance strip — the facts a VA needs before anything else. */}
       <DataPanel className="overflow-hidden p-0">
-        <div className="grid grid-cols-2 gap-px bg-line sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-px bg-line sm:grid-cols-3 lg:grid-cols-5">
           <Fact icon={User} label="Customer" value={customerName} />
           <Fact icon={Mail} label="Email" value={order.customerEmail ?? "No email yet"} muted={!order.customerEmail} />
+          <Fact icon={Brush} label="Style" value={styleLabel} muted={styles.length === 0} />
           <Fact icon={Palette} label="Designer" value={assignee} muted={assignee === "Unassigned"} />
           <Fact icon={Calendar} label="Due" value={fmtDateTime(order.dueAt)} />
         </div>

@@ -8,11 +8,12 @@ import {
   saveShopResolutionRules,
   reresolveShopOrders,
 } from "@/app/(app)/settings/actions";
-import type { FigureRule, StyleRule } from "@/lib/integrations/figures";
+import type { FigureRule, StyleRule, TitleStyleRule } from "@/lib/integrations/figures";
 import type { ReresolveSummary } from "@/lib/orders/resolution";
 
 type FigureDraft = { match: string; type: "integer" | "map"; mapText: string };
 type StyleDraft = { match: string };
+type TitleStyleDraft = { match: string; style: string };
 
 function mapToText(map?: Record<string, number>): string {
   if (!map) return "";
@@ -113,6 +114,8 @@ export function ResolutionRulesEditor({
   platform,
   initialFigureRules,
   initialStyleRules,
+  initialTitleStyleRules,
+  initialDefaultStyle,
   initialNonPortraitSkus,
   initialNonPortraitTitles,
   initialPhotoRequestEnabled,
@@ -124,6 +127,8 @@ export function ResolutionRulesEditor({
   platform: "etsy" | "shopify";
   initialFigureRules: FigureRule[];
   initialStyleRules: StyleRule[];
+  initialTitleStyleRules: TitleStyleRule[];
+  initialDefaultStyle: string;
   initialNonPortraitSkus: string[];
   initialNonPortraitTitles: string[];
   initialPhotoRequestEnabled: boolean;
@@ -137,6 +142,10 @@ export function ResolutionRulesEditor({
   const [style, setStyle] = useState<StyleDraft[]>(
     initialStyleRules.map((r) => ({ match: r.match })),
   );
+  const [titleStyle, setTitleStyle] = useState<TitleStyleDraft[]>(
+    initialTitleStyleRules.map((r) => ({ match: r.match, style: r.style })),
+  );
+  const [defaultStyle, setDefaultStyle] = useState<string>(initialDefaultStyle);
   const [skus, setSkus] = useState<string[]>(initialNonPortraitSkus);
   const [titles, setTitles] = useState<string[]>(initialNonPortraitTitles);
   const [photoReq, setPhotoReq] = useState<boolean>(initialPhotoRequestEnabled);
@@ -150,6 +159,8 @@ export function ResolutionRulesEditor({
     setFigure((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const setSty = (i: number, patch: Partial<StyleDraft>) =>
     setStyle((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const setTitleSty = (i: number, patch: Partial<TitleStyleDraft>) =>
+    setTitleStyle((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
 
   function onSave() {
     setSaved(null);
@@ -162,12 +173,17 @@ export function ResolutionRulesEditor({
           : { match: r.match.trim(), type: "integer" },
       );
     const styleRules: StyleRule[] = style.filter((r) => r.match.trim()).map((r) => ({ match: r.match.trim() }));
+    const titleStyleRules: TitleStyleRule[] = titleStyle
+      .filter((r) => r.match.trim() && r.style.trim())
+      .map((r) => ({ match: r.match.trim(), style: r.style.trim() }));
     startSave(async () => {
       try {
         await saveShopResolutionRules({
           shopId,
           figureRules,
           styleRules,
+          titleStyleRules,
+          defaultStyle: defaultStyle.trim(),
           nonPortraitSkus: skus,
           nonPortraitTitles: titles,
           photoRequestEnabled: photoReq,
@@ -275,10 +291,10 @@ export function ResolutionRulesEditor({
         </div>
       </div>
 
-      {/* Style rules */}
+      {/* Style rules (customer-selected option) */}
       <div className="flex flex-col gap-2">
-        <span className="text-xs font-medium text-ink">Style rules</span>
-        <p className="text-xs text-slate">The matched option&apos;s value becomes the style.</p>
+        <span className="text-xs font-medium text-ink">Style by product option</span>
+        <p className="text-xs text-slate">When the customer picks the style, the matched option&apos;s value becomes the style.</p>
         {style.map((r, i) => (
           <div key={i} className="flex items-end gap-2">
             <Input
@@ -305,9 +321,83 @@ export function ResolutionRulesEditor({
             size="sm"
             onClick={() => setStyle((rs) => [...rs, { match: "" }])}
           >
-            <Plus size={16} /> Add style rule
+            <Plus size={16} /> Add option style rule
           </Button>
         </div>
+      </div>
+
+      {/* Style by product title */}
+      <div className="flex flex-col gap-2">
+        <span className="text-xs font-medium text-ink">Style by product title</span>
+        <p className="text-xs text-slate">
+          For shops that sell one style per listing. If a product&apos;s title contains the text, the
+          order gets that style. Checked only when no option rule above matched.
+        </p>
+        {titleStyle.map((r, i) => (
+          <div key={i} className="flex items-end gap-2">
+            <Input
+              label="Title contains"
+              value={r.match}
+              onChange={(e) => setTitleSty(i, { match: e.target.value })}
+              placeholder="Watercolor"
+              className="flex-1"
+            />
+            <Input
+              label="Style"
+              value={r.style}
+              onChange={(e) => setTitleSty(i, { style: e.target.value })}
+              placeholder="Watercolor"
+              className="flex-1"
+            />
+            <button
+              type="button"
+              onClick={() => setTitleStyle((rs) => rs.filter((_, j) => j !== i))}
+              className="mb-1 text-slate hover:text-rose"
+              aria-label="Remove rule"
+            >
+              <XCircle size={18} />
+            </button>
+          </div>
+        ))}
+        {titleSuggestions.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-slate">Product titles seen in recent imports:</span>
+            <div className="flex flex-wrap gap-1">
+              {titleSuggestions.slice(0, 20).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTitleStyle((rs) => [...rs, { match: t, style: "" }])}
+                  className="rounded-input border border-line bg-canvas px-2 py-0.5 text-xs text-ink hover:bg-pigment-soft"
+                  title="Add a title style rule for this product"
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setTitleStyle((rs) => [...rs, { match: "", style: "" }])}
+          >
+            <Plus size={16} /> Add title style rule
+          </Button>
+        </div>
+      </div>
+
+      {/* Default style (whole shop) */}
+      <div className="flex flex-col gap-1.5">
+        <Input
+          label="Default style for this shop"
+          value={defaultStyle}
+          onChange={(e) => setDefaultStyle(e.target.value)}
+          placeholder="e.g. Cartoon Disney"
+          hint="Used only when nothing above matched — for a shop that is entirely one style. Leave blank for none."
+        />
       </div>
 
       {/* Non-portrait classification */}

@@ -33,10 +33,26 @@ export type StyleRule = {
   map?: Record<string, string>;
 };
 
+/**
+ * A product-title -> style rule (shops.integration_config.titleStyleRules[]).
+ * Use this when the style is baked into the LISTING itself (e.g. an Etsy shop
+ * with a "Watercolor Pet Portrait" listing) rather than chosen as an option.
+ */
+export type TitleStyleRule = {
+  /** Substring matched against the product title (case-insensitive, punctuation-tolerant). */
+  match: string;
+  /** The style assigned when the title matches. */
+  style: string;
+};
+
 /** The resolution slice of a shop's integration config. */
 export type FigureConfig = {
   figureRules?: FigureRule[];
   styleRules?: StyleRule[];
+  /** Style by product title, for shops that sell one style per listing. */
+  titleStyleRules?: TitleStyleRule[];
+  /** Shop-wide fallback style (e.g. a shop that is entirely one style). */
+  defaultStyle?: string;
   allowHeuristicFigureCount?: boolean; // default false
 };
 
@@ -217,9 +233,10 @@ export type StyleResolution = {
 export function resolveStyle(
   variations: NormalizedVariation[],
   config: FigureConfig | null | undefined,
+  title?: string | null,
 ): StyleResolution {
-  const rules = config?.styleRules ?? [];
-  for (const rule of rules) {
+  // 1. A customer-selected style option is the most specific signal.
+  for (const rule of config?.styleRules ?? []) {
     const v = variations.find((x) => nameMatches(x.name, rule.match));
     if (!v) continue;
     const raw = v.value?.trim() ?? "";
@@ -228,7 +245,22 @@ export function resolveStyle(
     const style = mapped ?? raw;
     return { style, source: "shop_rule", note: `style rule "${rule.match}" matched "${v.name}: ${v.value}"` };
   }
-  return { style: null, source: "unresolved", note: rules.length ? "no style rule matched" : "no style rule configured" };
+
+  // 2. Style baked into the product title (one style per listing).
+  if (title) {
+    for (const rule of config?.titleStyleRules ?? []) {
+      if (rule.style?.trim() && matchesTolerant(title, rule.match)) {
+        return { style: rule.style.trim(), source: "shop_rule", note: `title rule "${rule.match}" matched "${title}"` };
+      }
+    }
+  }
+
+  // 3. A shop that is entirely one style falls back to its default.
+  const fallback = config?.defaultStyle?.trim();
+  if (fallback) return { style: fallback, source: "shop_rule", note: "shop default style" };
+
+  const configured = (config?.styleRules?.length ?? 0) + (config?.titleStyleRules?.length ?? 0);
+  return { style: null, source: "unresolved", note: configured ? "no style rule matched" : "no style rule configured" };
 }
 
 /** Distinct counts inferred from variation values (heuristic only). */

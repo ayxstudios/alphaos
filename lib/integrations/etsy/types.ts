@@ -1,8 +1,8 @@
 /** Shapes for the Etsy Open API v3 subset we consume, plus our stored config. */
 
-import type { FigureRule, StyleRule } from "../figures";
+import type { FigureRule, StyleRule, TitleStyleRule } from "../figures";
 
-export type { FigureRule, StyleRule };
+export type { FigureRule, StyleRule, TitleStyleRule };
 
 export const ETSY_SCOPES = [
   "transactions_r",
@@ -33,6 +33,8 @@ export type EtsyCredentials = {
 export type EtsyIntegrationConfig = {
   figureRules?: FigureRule[];
   styleRules?: StyleRule[];
+  titleStyleRules?: TitleStyleRule[];
+  defaultStyle?: string;
   // Classification (non-portrait) + photo-request behaviour. See lib/integrations/classify.ts.
   nonPortraitSkus?: string[];
   nonPortraitTitles?: string[];

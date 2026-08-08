@@ -1,6 +1,6 @@
-import type { FigureRule, StyleRule } from "../figures";
+import type { FigureRule, StyleRule, TitleStyleRule } from "../figures";
 
-export type { FigureRule, StyleRule };
+export type { FigureRule, StyleRule, TitleStyleRule };
 
 // Admin GraphQL API version (2025-01 or later).
 export const SHOPIFY_API_VERSION = "2025-01";
@@ -53,6 +53,8 @@ export type ShopifyCredentials = {
 export type ShopifyIntegrationConfig = {
   figureRules?: FigureRule[];
   styleRules?: StyleRule[];
+  titleStyleRules?: TitleStyleRule[];
+  defaultStyle?: string;
   // Classification (non-portrait) + photo-request behaviour. See lib/integrations/classify.ts.
   nonPortraitSkus?: string[];
   nonPortraitTitles?: string[];

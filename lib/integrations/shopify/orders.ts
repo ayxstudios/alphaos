@@ -288,7 +288,7 @@ export async function importShopifyOrder(args: {
   const items = realLines.map((li) => {
     const input = resolverInput(li);
     const fig = resolveFigureCount(input, shop.config);
-    const style = resolveStyle(input, shop.config);
+    const style = resolveStyle(input, shop.config, li.title);
     return { li, input, count: fig.count, source: fig.source, note: fig.note, style: style.style };
   });
   const anyPhotos = order.lineItems.some((li) => li.photoUrls.length > 0);
