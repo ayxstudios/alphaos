@@ -21,10 +21,12 @@ export type OrderStyleSetterProps = {
   via: "sku" | "title" | "default" | "none";
   /** Orders that share this product (what a rule change would remap). */
   affected: number;
+  /** This order's style was hand-set ("just this order") — treat as confirmed. */
+  locked: boolean;
   styles: { id: string; name: string }[];
 };
 
-export function OrderStyleSetter({ orderId, currentStyle, via, affected, styles }: OrderStyleSetterProps) {
+export function OrderStyleSetter({ orderId, currentStyle, via, affected, locked, styles }: OrderStyleSetterProps) {
   const router = useRouter();
   const toast = useToast();
   const [open, setOpen] = useState(false);
@@ -33,6 +35,9 @@ export function OrderStyleSetter({ orderId, currentStyle, via, affected, styles 
   const [pending, start] = useTransition();
 
   const hasRule = via === "sku" || via === "title";
+  // Defaulted = a style applied via the fallback, not a real match, and the VA
+  // hasn't hand-set this order. Surface it so a new product isn't silently mislabelled.
+  const defaulted = via === "default" && !locked;
   const targetName = choice === NEW ? newName.trim() : styles.find((s) => s.id === choice)?.name ?? "";
   const differs = !!currentStyle && !!targetName && currentStyle.toLowerCase() !== targetName.toLowerCase();
   const ready = choice === NEW ? !!newName.trim() : !!choice;
@@ -58,23 +63,33 @@ export function OrderStyleSetter({ orderId, currentStyle, via, affected, styles 
       : run(() => teachOrderStyle(orderId, choice), `Learned as ${targetName}`);
   const once = () => run(() => setOrderStyleOnce(orderId, choice), "Style set for this order");
 
+  // For a defaulted order, confirming keeps the current (default) style as a real rule.
+  const defaultStyleId = defaulted
+    ? styles.find((s) => s.name.toLowerCase() === (currentStyle ?? "").toLowerCase())?.id ?? null
+    : null;
+
   const bar =
     "flex flex-wrap items-center gap-x-3 gap-y-2 rounded-card border px-4 py-3 text-sm shadow-sm";
 
   if (!open) {
+    const flagged = defaulted || !currentStyle;
     return (
-      <div className={currentStyle ? `${bar} border-line bg-surface` : `${bar} border-amber/30 bg-amber/5`}>
+      <div className={flagged ? `${bar} border-amber/30 bg-amber/5` : `${bar} border-line bg-surface`}>
         <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate">
           <Brush size={14} />
           Style
         </span>
-        {currentStyle ? (
+        {defaulted ? (
+          <span className="font-medium text-amber">
+            Defaulted to {currentStyle} — not matched, please confirm
+          </span>
+        ) : currentStyle ? (
           <span className="font-medium text-ink">{currentStyle}</span>
         ) : (
           <span className="font-medium text-amber">Not recognised — no style set</span>
         )}
         <Button type="button" size="sm" variant="secondary" className="ml-auto" onClick={() => setOpen(true)}>
-          {currentStyle ? "Change" : "Set style"}
+          {defaulted ? "Confirm or correct" : currentStyle ? "Change" : "Set style"}
         </Button>
       </div>
     );
@@ -107,6 +122,23 @@ export function OrderStyleSetter({ orderId, currentStyle, via, affected, styles 
           Cancel
         </Button>
       </div>
+
+      {defaulted && defaultStyleId && (
+        <div className="flex w-full flex-wrap items-center gap-2 rounded-input border border-line bg-canvas px-3 py-2">
+          <span className="text-xs text-slate">
+            Defaulted to <strong className="text-ink">{currentStyle}</strong>. Keep it as the rule for this product, or change it above.
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            className="ml-auto"
+            loading={pending}
+            onClick={() => run(() => teachOrderStyle(orderId, defaultStyleId), `Confirmed as ${currentStyle}`)}
+          >
+            Confirm — keep {currentStyle}
+          </Button>
+        </div>
+      )}
 
       {ready && (
         <div className="w-full">

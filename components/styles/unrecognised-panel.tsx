@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Badge, Button, Input, Select, useToast } from "@/components/ui";
@@ -8,28 +8,43 @@ import { AlertTriangle } from "@/components/ui/icons";
 import {
   assignProductToStyle,
   createStyleFromProduct,
+  confirmProductsAsDefault,
   ignoreProduct,
   unignoreProduct,
   type ActionResult,
 } from "@/app/(app)/styles/actions";
 
-export type UnrecognisedProduct = { title: string | null; sku: string | null; orders: number };
+export type UnrecognisedProduct = {
+  title: string | null;
+  sku: string | null;
+  orders: number;
+  /** "default" = fell back to the default style (moving, unconfirmed); "none" = no style. */
+  via: "default" | "none";
+  defaultStyle: string | null;
+};
 export type IgnoredProduct = { id: string; title: string | null; sku: string | null };
 
 const NEW = "__new__";
+const keyOf = (p: { title: string | null; sku: string | null }) => `${p.sku ?? ""}|${p.title ?? ""}`;
 
 export function UnrecognisedPanel({
   products,
   ignored,
   styles,
+  defaultStyleName,
 }: {
   products: UnrecognisedProduct[];
   ignored: IgnoredProduct[];
   styles: { id: string; name: string }[];
+  defaultStyleName: string | null;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [pending, start] = useTransition();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const defaulted = useMemo(() => products.filter((p) => p.via === "default"), [products]);
+  const noStyle = useMemo(() => products.filter((p) => p.via === "none"), [products]);
 
   function run(action: () => Promise<ActionResult>, ok: string) {
     start(async () => {
@@ -39,30 +54,88 @@ export function UnrecognisedPanel({
         return;
       }
       toast({ variant: "success", title: ok });
+      setSelected(new Set());
       router.refresh();
     });
   }
 
   if (products.length === 0 && ignored.length === 0) return null;
 
+  const allDefaultedSelected = defaulted.length > 0 && defaulted.every((p) => selected.has(keyOf(p)));
+  const toConfirm = (selected.size ? defaulted.filter((p) => selected.has(keyOf(p))) : defaulted).map((p) => ({
+    title: p.title,
+    sku: p.sku,
+  }));
+
   return (
     <div className="rounded-card border border-amber/30 bg-amber/5 p-4 shadow-sm">
       <div className="flex items-center gap-2">
         <AlertTriangle size={16} className="text-amber" />
-        <h2 className="text-base font-semibold text-ink">Unrecognised products</h2>
+        <h2 className="text-base font-semibold text-ink">Products to confirm</h2>
         {products.length > 0 && <Badge variant="warning">{products.length}</Badge>}
       </div>
       <p className="mt-0.5 text-sm text-slate">
-        These products came in without a style. Teach the system once and every future sale of that product is recognised automatically.
+        These products aren&apos;t matched by a rule yet. Confirm or correct them once and every future sale is recognised automatically.
       </p>
 
-      {products.length === 0 ? (
-        <p className="mt-3 text-sm text-slate">Nothing waiting — every product maps to a style.</p>
-      ) : (
-        <div className="mt-3 flex flex-col divide-y divide-amber/20 overflow-hidden rounded-input border border-amber/20 bg-surface">
-          {products.map((p) => (
-            <ProductRow key={`${p.sku ?? ""}|${p.title ?? ""}`} product={p} styles={styles} run={run} pending={pending} />
-          ))}
+      {/* Defaulted — moving on the default style, but unconfirmed. */}
+      {defaulted.length > 0 && (
+        <div className="mt-3">
+          <div className="flex flex-wrap items-center gap-2 rounded-t-input border border-amber/20 bg-surface px-3 py-2">
+            <label className="flex items-center gap-2 text-xs font-medium text-slate">
+              <input
+                type="checkbox"
+                checked={allDefaultedSelected}
+                onChange={(e) =>
+                  setSelected(e.target.checked ? new Set(defaulted.map(keyOf)) : new Set())
+                }
+                className="size-4 rounded border-line text-pigment focus:ring-pigment"
+              />
+              Defaulted to {defaultStyleName ?? "default"} · {defaulted.length}
+            </label>
+            <Button
+              type="button"
+              size="sm"
+              className="ml-auto"
+              loading={pending}
+              disabled={!defaultStyleName || toConfirm.length === 0}
+              onClick={() => run(() => confirmProductsAsDefault(toConfirm), "Confirmed")}
+            >
+              Confirm {selected.size ? selected.size : defaulted.length} as {defaultStyleName ?? "default"}
+            </Button>
+          </div>
+          <div className="flex flex-col divide-y divide-amber/20 overflow-hidden rounded-b-input border-x border-b border-amber/20 bg-surface">
+            {defaulted.map((p) => (
+              <ProductRow
+                key={keyOf(p)}
+                product={p}
+                styles={styles}
+                run={run}
+                pending={pending}
+                checked={selected.has(keyOf(p))}
+                onToggle={() =>
+                  setSelected((cur) => {
+                    const next = new Set(cur);
+                    if (next.has(keyOf(p))) next.delete(keyOf(p));
+                    else next.add(keyOf(p));
+                    return next;
+                  })
+                }
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* No style at all — blocked until assigned. */}
+      {noStyle.length > 0 && (
+        <div className="mt-3">
+          <p className="px-1 pb-1 text-xs font-medium text-slate">No style · {noStyle.length}</p>
+          <div className="flex flex-col divide-y divide-amber/20 overflow-hidden rounded-input border border-amber/20 bg-surface">
+            {noStyle.map((p) => (
+              <ProductRow key={keyOf(p)} product={p} styles={styles} run={run} pending={pending} />
+            ))}
+          </div>
         </div>
       )}
 
@@ -100,15 +173,20 @@ function ProductRow({
   styles,
   run,
   pending,
+  checked,
+  onToggle,
 }: {
   product: UnrecognisedProduct;
   styles: { id: string; name: string }[];
   run: (action: () => Promise<ActionResult>, ok: string) => void;
   pending: boolean;
+  checked?: boolean;
+  onToggle?: () => void;
 }) {
   const [choice, setChoice] = useState("");
   const [newName, setNewName] = useState("");
   const productArg = { title: product.title, sku: product.sku };
+  const correcting = product.via === "default";
 
   function apply() {
     if (choice === NEW) {
@@ -123,21 +201,31 @@ function ProductRow({
 
   return (
     <div className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center">
+      {onToggle && (
+        <input
+          type="checkbox"
+          checked={!!checked}
+          onChange={onToggle}
+          aria-label={`Select ${product.title ?? "product"}`}
+          className="size-4 shrink-0 rounded border-line text-pigment focus:ring-pigment"
+        />
+      )}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-ink">{product.title ?? "Untitled product"}</p>
         <p className="text-xs text-slate">
           {product.sku ? `SKU ${product.sku} · ` : ""}
           {product.orders} order{product.orders === 1 ? "" : "s"}
+          {product.via === "default" && product.defaultStyle ? ` · defaulted to ${product.defaultStyle}` : ""}
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Select
           value={choice}
           onChange={(e) => setChoice(e.currentTarget.value)}
-          aria-label="Assign to style"
+          aria-label={correcting ? "Correct to a different style" : "Assign to style"}
           className="h-9 w-44"
         >
-          <option value="">Choose style…</option>
+          <option value="">{correcting ? "Correct to…" : "Choose style…"}</option>
           {styles.map((s) => (
             <option key={s.id} value={s.id}>{s.name}</option>
           ))}
@@ -155,11 +243,12 @@ function ProductRow({
         <Button
           type="button"
           size="sm"
+          variant="secondary"
           onClick={apply}
           loading={pending}
           disabled={!choice || (choice === NEW && !newName.trim())}
         >
-          {choice === NEW ? "Create" : "Assign"}
+          {choice === NEW ? "Create" : correcting ? "Correct" : "Assign"}
         </Button>
         <Button
           type="button"

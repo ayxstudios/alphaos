@@ -235,6 +235,7 @@ export default async function OrderDetailPage({
           figureCount: orderItems.figureCount,
           figureCountSource: orderItems.figureCountSource,
           style: orderItems.style,
+          styleLocked: orderItems.styleLocked,
           productType: orderItems.productType,
         })
         .from(orderItems)
@@ -374,7 +375,13 @@ export default async function OrderDetailPage({
             .orderBy(asc(stylesTable.name));
           const match = await currentMatchForProduct(tx, order.businessId, primaryProduct);
           const affected = await countOrdersForProduct(tx, order.businessId, primaryProduct);
-          return { styles: list, currentStyle: items[0]!.style ?? null, via: match.via, affected };
+          return {
+            styles: list,
+            currentStyle: items[0]!.style ?? null,
+            via: match.via,
+            affected,
+            locked: !!items[0]!.styleLocked,
+          };
         })
       : null;
 
@@ -449,6 +456,7 @@ export default async function OrderDetailPage({
           currentStyle={styleSetter.currentStyle}
           via={styleSetter.via}
           affected={styleSetter.affected}
+          locked={styleSetter.locked}
           styles={styleSetter.styles}
         />
       )}

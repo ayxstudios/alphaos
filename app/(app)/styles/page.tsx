@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { and, asc, desc, eq, isNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, notInArray, sql } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
@@ -8,6 +8,7 @@ import { styles, designerProfiles, designerBusinesses, users, orderItems, orders
 import { Page, PageHeader } from "@/components/ui";
 import { StylesManager, type StyleVM, type DesignerOption } from "@/components/styles/styles-manager";
 import { UnrecognisedPanel, type UnrecognisedProduct, type IgnoredProduct } from "@/components/styles/unrecognised-panel";
+import { listBusinessStyles, describeStyleMatch } from "@/lib/designers/styles";
 
 // Statuses that are not portrait design work — a null style there is expected.
 const NON_PORTRAIT_STATES = ["fulfillment_only", "triage", "cancelled"] as const;
@@ -22,7 +23,7 @@ export default async function StylesPage() {
 
   const { selected } = await loadShellData(user);
 
-  const { styleRows, designerRows, unrecognisedRows, ignoredRows } = await withUserContext(user, async (tx) => {
+  const { styleRows, designerRows, productRows, businessStyles, ignoredRows } = await withUserContext(user, async (tx) => {
     const styleRows = await tx
       .select({
         id: styles.id,
@@ -49,7 +50,9 @@ export default async function StylesPage() {
       )
       .orderBy(asc(users.name), asc(users.email));
 
-    const unrecognisedRows = await tx
+    // Every distinct product in portrait orders — we classify each against the
+    // current rules below (matched / defaulted / no-style), so nothing is stored.
+    const productRows = await tx
       .select({
         title: orderItems.title,
         sku: orderItems.sku,
@@ -57,15 +60,11 @@ export default async function StylesPage() {
       })
       .from(orderItems)
       .innerJoin(orders, eq(orders.id, orderItems.orderId))
-      .where(
-        and(
-          eq(orderItems.businessId, selected.id),
-          isNull(orderItems.style),
-          notInArray(orders.status, [...NON_PORTRAIT_STATES]),
-        ),
-      )
+      .where(and(eq(orderItems.businessId, selected.id), notInArray(orders.status, [...NON_PORTRAIT_STATES])))
       .groupBy(orderItems.title, orderItems.sku)
       .orderBy(desc(sql`count(distinct ${orderItems.orderId})`));
+
+    const businessStyles = await listBusinessStyles(tx, selected.id);
 
     const ignoredRows = await tx
       .select({ id: ignoredProducts.id, title: ignoredProducts.title, sku: ignoredProducts.sku })
@@ -73,17 +72,21 @@ export default async function StylesPage() {
       .where(eq(ignoredProducts.businessId, selected.id))
       .orderBy(desc(ignoredProducts.createdAt));
 
-    return { styleRows, designerRows, unrecognisedRows, ignoredRows };
+    return { styleRows, designerRows, productRows, businessStyles, ignoredRows };
   });
 
   // A product is ignored by SKU when it has one, else by title.
   const ignoredSkus = new Set(ignoredRows.filter((r) => r.sku).map((r) => r.sku!.toLowerCase()));
   const ignoredTitles = new Set(ignoredRows.filter((r) => !r.sku && r.title).map((r) => r.title!.toLowerCase()));
-  const unrecognised: UnrecognisedProduct[] = unrecognisedRows
-    .filter((r) =>
-      r.sku ? !ignoredSkus.has(r.sku.toLowerCase()) : !ignoredTitles.has((r.title ?? "").toLowerCase()),
-    )
-    .map((r) => ({ title: r.title, sku: r.sku, orders: Number(r.orders) }));
+  // Surface products that resolve to the default ("defaulted") or to nothing
+  // ("none"); a real sku/title rule means it's confirmed, so we hide it.
+  const unrecognised: UnrecognisedProduct[] = productRows
+    .filter((r) => (r.sku ? !ignoredSkus.has(r.sku.toLowerCase()) : !ignoredTitles.has((r.title ?? "").toLowerCase())))
+    .map((r) => {
+      const match = describeStyleMatch(r.title, r.sku, businessStyles);
+      return { title: r.title, sku: r.sku, orders: Number(r.orders), via: match.via, defaultStyle: match.style };
+    })
+    .filter((p): p is UnrecognisedProduct => p.via === "default" || p.via === "none");
   const ignored: IgnoredProduct[] = ignoredRows.map((r) => ({ id: r.id, title: r.title, sku: r.sku }));
 
   const designers: DesignerOption[] = designerRows.map((d) => ({
@@ -110,6 +113,7 @@ export default async function StylesPage() {
         products={unrecognised}
         ignored={ignored}
         styles={styleList.map((s) => ({ id: s.id, name: s.name }))}
+        defaultStyleName={styleList.find((s) => s.isDefault)?.name ?? null}
       />
       <StylesManager
         styles={styleList}

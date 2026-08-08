@@ -282,3 +282,41 @@ export async function unignoreProduct(id: string): Promise<ActionResult> {
   revalidatePath("/styles");
   return { ok: true };
 }
+
+/**
+ * Confirm defaulted products in bulk: teach each to the shop's default style so
+ * it's a real (matched) rule and stops being flagged. One click for a batch.
+ */
+export async function confirmProductsAsDefault(products: Product[]): Promise<ActionResult> {
+  const user = await requireStaff();
+  if (!user) return NOT_PERMITTED;
+  if (!products.length) return { ok: false, message: "Nothing selected" };
+  const businessId = await currentBusinessId(user);
+  try {
+    await withUserContext(user, async (tx) => {
+      const [def] = await tx
+        .select({ id: styles.id, name: styles.name })
+        .from(styles)
+        .where(and(eq(styles.businessId, businessId), eq(styles.isDefault, true)));
+      if (!def) throw new Error("No default style set for this workspace");
+      const learned: Record<string, unknown>[] = [];
+      let ordersUpdated = 0;
+      for (const p of products) {
+        const res = await learnProductStyle(tx, businessId, def.id, p);
+        ordersUpdated += res.orders;
+        learned.push({ product: p, ruleKind: res.ruleKind, ruleValue: res.ruleValue });
+      }
+      await logStyleLearning(tx, {
+        businessId,
+        actorId: user.id,
+        action: "style.learned",
+        metadata: { source: "styles_page", bulkConfirm: true, style: def.name, products: learned, ordersUpdated },
+      });
+    });
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Could not confirm" };
+  }
+  revalidatePath("/styles");
+  revalidatePath("/board");
+  return { ok: true };
+}
