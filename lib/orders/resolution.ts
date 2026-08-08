@@ -2,7 +2,8 @@ import { and, desc, eq } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { getShopCredentials } from "@/lib/db/credentials";
-import { orders, orderItems, shops, activityLog, assets } from "@/lib/db/schema";
+import { orders, orderItems, shops, activityLog, assets, assignments } from "@/lib/db/schema";
+import { runAutoAssign } from "./assign";
 import {
   resolveFigureCount,
   resolveStyle,
@@ -290,12 +291,31 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
         o.customerId == null || (intended === "portrait" && remaining.some((r) => r.figureCount == null));
       await tx.update(orders).set({ needsReview }).where(eq(orders.id, o.id));
 
+      // Heal routing too: an order that is now assignable (ready_to_assign, no
+      // longer needs review) but has no active designer gets auto-assigned, so
+      // fixing rules pushes healed orders straight to a designer instead of
+      // leaving them stranded in the VA review queue. An order that already has an
+      // active assignee is never disturbed.
+      let assignedTo: string | null = null;
+      if (newStatus === "ready_to_assign" && !needsReview) {
+        const [active] = await tx
+          .select({ orderId: assignments.orderId })
+          .from(assignments)
+          .where(and(eq(assignments.orderId, o.id), eq(assignments.active, true)))
+          .limit(1);
+        if (!active) {
+          assignedTo = (
+            await runAutoAssign(tx, { orderId: o.id, businessId: o.businessId, assignedBy: user.id })
+          ).assigned;
+        }
+      }
+
       await tx.insert(activityLog).values({
         businessId: o.businessId,
         orderId: o.id,
         actorId: user.id,
         action: "order.reresolved",
-        metadata: { refetched: !!fresh, needsReview, intended, reclassified },
+        metadata: { refetched: !!fresh, needsReview, intended, reclassified, assignedTo },
       });
     });
   }

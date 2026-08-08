@@ -77,6 +77,27 @@ const NUMBER_WORDS: Record<string, number> = {
   six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
 };
 
+/**
+ * Built-in figure rules for the option names virtually every portrait shop uses
+ * ("Number of Pets: 1", "How many people", …). These are explicit name -> integer
+ * mappings, not guesses, so a clearly-stated count resolves WITHOUT each shop
+ * having to configure a rule. Per-shop `figureRules` always run first and win;
+ * these only fill the gap when no shop rule claimed the item. A shop can still
+ * override any of these by configuring its own rule for the same option.
+ */
+const DEFAULT_FIGURE_RULES: FigureRule[] = [
+  { match: "number of pets", type: "integer" },
+  { match: "number of people", type: "integer" },
+  { match: "number of persons", type: "integer" },
+  { match: "number of subjects", type: "integer" },
+  { match: "number of figures", type: "integer" },
+  { match: "number of portraits", type: "integer" },
+  { match: "number of faces", type: "integer" },
+  { match: "number of characters", type: "integer" },
+  { match: "how many pets", type: "integer" },
+  { match: "how many people", type: "integer" },
+];
+
 // Nouns that plausibly denote the subjects being drawn.
 const SUBJECT_NOUN = /(people|person|persons|figures?|pets?|subjects?|characters?|faces?)/i;
 
@@ -110,7 +131,37 @@ export function resolveFigureCount(
     };
   }
 
-  // 2. Generic heuristic — opt-in per shop (default off).
+  // 2. Built-in default rules for the universal count options. To honour "never
+  //    guess when unsure", these resolve only when they AGREE: one distinct count
+  //    across all matching options wins; conflicting counts (e.g. "Number of
+  //    Pets: 1" alongside "Number of People: 2") fall through to unresolved.
+  const defaultCounts = new Set<number>();
+  let matched: NormalizedVariation | undefined;
+  for (const rule of DEFAULT_FIGURE_RULES) {
+    const v = variations.find((x) => nameMatches(x.name, rule.match));
+    if (!v) continue;
+    const count = applyRule(rule, v.value);
+    if (count != null) {
+      if (!defaultCounts.size) matched = v;
+      defaultCounts.add(count);
+    }
+  }
+  if (defaultCounts.size === 1 && matched) {
+    return {
+      count: [...defaultCounts][0],
+      source: "shop_rule",
+      note: `default rule matched "${matched.name}: ${matched.value}"`,
+    };
+  }
+  if (defaultCounts.size > 1) {
+    return {
+      count: null,
+      source: "unresolved",
+      note: `default rules found conflicting counts (${[...defaultCounts].join(", ")})`,
+    };
+  }
+
+  // 3. Generic heuristic — opt-in per shop (default off).
   if (config?.allowHeuristicFigureCount) {
     const found = heuristicCounts(variations);
     if (found.size === 1) {
@@ -126,11 +177,11 @@ export function resolveFigureCount(
     }
   }
 
-  // 3. Unresolved.
+  // 4. Unresolved.
   return {
     count: null,
     source: "unresolved",
-    note: rules.length ? "no shop rule matched any variation" : "no shop rule configured",
+    note: rules.length ? "no shop or default rule matched any variation" : "no matching default or shop rule",
   };
 }
 
@@ -140,11 +191,15 @@ function applyRule(rule: FigureRule, rawValue: string): number | null {
     const hit = rule.map?.[value.toLowerCase()];
     return typeof hit === "number" ? hit : null;
   }
-  // type "integer": first integer in the value.
+  // type "integer": first integer in the value...
   const m = value.match(/\d+/);
-  if (!m) return null;
-  const n = parseInt(m[0], 10);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  if (m) {
+    const n = parseInt(m[0], 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+  // ...or a spelled-out number ("Two" -> 2), since some shops write the count in words.
+  const word = value.toLowerCase().match(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\b/);
+  return word ? NUMBER_WORDS[word[1]] : null;
 }
 
 export type StyleResolution = {
