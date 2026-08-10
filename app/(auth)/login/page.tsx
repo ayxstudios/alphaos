@@ -43,6 +43,7 @@ export default function LoginPage() {
             type="email"
             autoComplete="email"
             placeholder="you@aystudios.io"
+            defaultValue={state.email}
             required
             autoFocus
           />

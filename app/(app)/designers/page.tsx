@@ -3,10 +3,11 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { getDesignerRoster } from "@/lib/designers/roster";
 import { getStyleCatalog } from "@/lib/designers/styles";
-import { loadShellData } from "@/lib/shell/context";
+import { loadShellData, isAllBusinesses } from "@/lib/shell/context";
 import { DesignerRoster } from "@/components/designers/designer-roster";
 import { DataPanel, EmptyState, Page, PageHeader } from "@/components/ui";
 import { Users } from "@/components/ui/icons";
+import { PickBusinessPrompt } from "@/components/shell/pick-business-prompt";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ export default async function DesignersPage() {
   if (user.role === "designer") redirect("/board");
 
   const { selected } = await loadShellData(user);
+  if (isAllBusinesses(selected.id)) return <PickBusinessPrompt title="Designers" />;
   const [designers, styleCatalog] = await Promise.all([
     getDesignerRoster(user),
     getStyleCatalog(user, selected.id),

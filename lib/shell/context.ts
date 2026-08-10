@@ -4,18 +4,29 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { businesses as businessesTable, notifications } from "@/lib/db/schema";
-import { BUSINESS_COOKIE } from "@/lib/shell/constants";
+import { BUSINESS_COOKIE, ALL_BUSINESSES_ID } from "@/lib/shell/constants";
 
 export type BusinessOption = { id: string; name: string };
 
 export type ShellData = {
-  /** Options for the switcher. Staff work in one business at a time. */
+  /**
+   * Options for the switcher. Admin/VA ("staff") get an "All Businesses"
+   * option prepended, since RLS already grants them cross-business reads —
+   * see lib/db/migrations/0001_rls_policies.sql `app_is_staff()`. Designers
+   * only ever see the specific businesses they're attached to.
+   */
   options: BusinessOption[];
   /** The active selection, resolved from the cookie (validated). */
   selected: BusinessOption;
+  /** Every real business id this user can see (never includes the "All" sentinel) — for pages that aggregate across businesses when selected is "All". */
+  businessIds: string[];
   /** Unread notification count for the current user. */
   unread: number;
 };
+
+export function isAllBusinesses(id: string): boolean {
+  return id === ALL_BUSINESSES_ID;
+}
 
 /**
  * Loads everything the app shell needs. All reads go through withUserContext so
@@ -45,13 +56,17 @@ const loadShellCached = cache(
       return { businesses, unread: unreadRow?.n ?? 0 };
     });
 
-    const options: BusinessOption[] = businesses;
+    const businessIds = businesses.map((b) => b.id);
+    const isStaff = role === "admin" || role === "va";
+    const options: BusinessOption[] = isStaff
+      ? [{ id: ALL_BUSINESSES_ID, name: "All Businesses" }, ...businesses]
+      : businesses;
 
     const cookieVal = (await cookies()).get(BUSINESS_COOKIE)?.value;
     const selected =
       options.find((o) => o.id === cookieVal) ??
       options[0] ?? { id: "", name: "No workspace" };
 
-    return { options, selected, unread };
+    return { options, selected, businessIds, unread };
   },
 );

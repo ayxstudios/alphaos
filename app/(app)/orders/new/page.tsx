@@ -4,10 +4,11 @@ import { and, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
 import { shops } from "@/lib/db/schema";
-import { loadShellData } from "@/lib/shell/context";
+import { loadShellData, isAllBusinesses } from "@/lib/shell/context";
 import { isR2Configured } from "@/lib/storage/r2";
 import { NewOrderForm, type ShopOption } from "@/components/orders/new-order-form";
 import { Page, PageHeader } from "@/components/ui";
+import { PickBusinessPrompt } from "@/components/shell/pick-business-prompt";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ export default async function NewOrderPage() {
   const user = { id: session.user.id, role: session.user.role };
   if (user.role === "designer") redirect("/board");
   const { selected } = await loadShellData(user);
+  if (isAllBusinesses(selected.id)) return <PickBusinessPrompt title="New order" />;
 
   const rows = await withUserContext(user, (tx) =>
     tx

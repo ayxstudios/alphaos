@@ -5,7 +5,8 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql, type SQL } fro
 
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
-import { loadShellData } from "@/lib/shell/context";
+import { loadShellData, isAllBusinesses } from "@/lib/shell/context";
+import { PickBusinessPrompt } from "@/components/shell/pick-business-prompt";
 import {
   activityLog,
   assignments,
@@ -373,6 +374,11 @@ export default async function OrdersPage({
     searchParams,
     cookies(),
   ]);
+  if (isAllBusinesses(selected.id)) {
+    return (
+      <PickBusinessPrompt title="Orders" />
+    );
+  }
 
   const selectedView = validView(params.view);
   const q = params.q?.trim() ?? "";

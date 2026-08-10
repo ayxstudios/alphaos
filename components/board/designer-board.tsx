@@ -109,7 +109,7 @@ export function DesignerBoard({ initial }: { initial: Cols }) {
   }
 
   return (
-    <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+    <DndContext id="designer-board" sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
       <div className="flex min-h-[calc(100vh-13rem)] gap-4 overflow-x-auto pb-4">
         {COLUMNS.map((col) => (
           <BoardColumn

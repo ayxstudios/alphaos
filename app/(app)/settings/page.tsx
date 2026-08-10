@@ -9,7 +9,8 @@ import {
   getBusinessGmailCredentials,
   getShopCredentials,
 } from "@/lib/db/credentials";
-import { loadShellData } from "@/lib/shell/context";
+import { loadShellData, isAllBusinesses } from "@/lib/shell/context";
+import { PickBusinessPrompt } from "@/components/shell/pick-business-prompt";
 import { DataPanel, EmptyState, Page, PageHeader, SectionHeader } from "@/components/ui";
 import { Settings as SettingsIcon } from "@/components/ui/icons";
 import {
@@ -93,6 +94,7 @@ export default async function SettingsPage({
   }
 
   const { selected } = await loadShellData(user);
+  if (isAllBusinesses(selected.id)) return <PickBusinessPrompt title="Settings" />;
 
   const etsyShops = await withUserContext(user, (tx) => {
     const cols = {

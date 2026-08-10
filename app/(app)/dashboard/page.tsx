@@ -4,7 +4,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
-import { loadShellData } from "@/lib/shell/context";
+import { loadShellData, isAllBusinesses } from "@/lib/shell/context";
 import { businesses, customers, orderItems, orders, shops } from "@/lib/db/schema";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
 import { formatSyncTime, syncHealth } from "@/lib/integrations/sync-health";
@@ -41,7 +41,8 @@ export default async function DashboardPage() {
   const user = { id: session.user.id, role: session.user.role };
   const { selected } = await loadShellData(user);
   const now = new Date();
-  const businessFilter = eq(orders.businessId, selected.id);
+  const allBusinesses = isAllBusinesses(selected.id);
+  const businessFilter = allBusinesses ? undefined : eq(orders.businessId, selected.id);
 
   const [stats] = await withUserContext(user, (tx) =>
     tx
@@ -66,21 +67,35 @@ export default async function DashboardPage() {
         source: orders.source,
         dueAt: orders.dueAt,
         shopName: shops.name,
+        businessName: businesses.name,
         customerEmail: customers.email,
         customerFirst: customers.firstName,
         customerLast: customers.lastName,
         rawImport: orders.rawImport,
-        title: orderItems.title,
+        // A scalar subquery, not a join: an order can have several
+        // order_items, and joining that table directly fans a single
+        // order out into one row per item (visible as the same order
+        // appearing twice in "Needs attention" whenever titles are null
+        // or match — a real, pre-existing bug, not new). This keeps the
+        // query at exactly one row per order.
+        title: sql<string | null>`(
+          select ${orderItems.title} from ${orderItems}
+          where ${orderItems.orderId} = ${orders.id}
+          order by ${orderItems.title} nulls last
+          limit 1
+        )`,
       })
       .from(orders)
       .leftJoin(shops, eq(shops.id, orders.shopId))
+      .leftJoin(businesses, eq(businesses.id, orders.businessId))
       .leftJoin(customers, eq(customers.id, orders.customerId))
-      .leftJoin(orderItems, eq(orderItems.orderId, orders.id))
       .where(
-        and(
-          businessFilter,
-          sql`(${orders.dueAt} < ${now} or ${orders.status} in ('awaiting_details', 'awaiting_photos', 'awaiting_qc'))`,
-        ),
+        businessFilter
+          ? and(
+              businessFilter,
+              sql`(${orders.dueAt} < ${now} or ${orders.status} in ('awaiting_details', 'awaiting_photos', 'awaiting_qc'))`,
+            )
+          : sql`(${orders.dueAt} < ${now} or ${orders.status} in ('awaiting_details', 'awaiting_photos', 'awaiting_qc'))`,
       )
       .orderBy(asc(orders.dueAt))
       .limit(8),
@@ -95,27 +110,36 @@ export default async function DashboardPage() {
         lastSyncAt: sql<string | null>`${shops.integrationConfig}->>${"lastSyncAt"}`,
       })
       .from(shops)
-      .where(and(eq(shops.businessId, selected.id), eq(shops.active, true)))
+      .where(
+        allBusinesses
+          ? eq(shops.active, true)
+          : and(eq(shops.businessId, selected.id), eq(shops.active, true)),
+      )
       .orderBy(asc(shops.name)),
   );
 
+  // Gmail health is per-business (each business has its own Workspace
+  // tenant/mailbox) — with "All Businesses" selected there is no single
+  // mailbox to report, so this card is skipped rather than faked.
   const [mailboxHealth, unmatchedReplies] = await Promise.all([
-    withUserContext(user, async (tx) => {
-      const [row] = await tx
-        .select({
-          address: businesses.gmailAddress,
-          historyId: businesses.gmailHistoryId,
-          lastPolledAt: businesses.gmailLastPolledAt,
-        })
-        .from(businesses)
-        .where(eq(businesses.id, selected.id))
-        .limit(1);
-      return row ?? { address: null, historyId: null, lastPolledAt: null };
-    }),
+    allBusinesses
+      ? Promise.resolve(null)
+      : withUserContext(user, async (tx) => {
+          const [row] = await tx
+            .select({
+              address: businesses.gmailAddress,
+              historyId: businesses.gmailHistoryId,
+              lastPolledAt: businesses.gmailLastPolledAt,
+            })
+            .from(businesses)
+            .where(eq(businesses.id, selected.id))
+            .limit(1);
+          return row ?? { address: null, historyId: null, lastPolledAt: null };
+        }),
     getUnmatchedCount(user, { businessId: selected.id }),
   ]);
-  const mailboxLastPolledAt = mailboxHealth.lastPolledAt?.toISOString() ?? null;
-  const mailboxConnected = Boolean(mailboxHealth.historyId);
+  const mailboxLastPolledAt = mailboxHealth?.lastPolledAt?.toISOString() ?? null;
+  const mailboxConnected = Boolean(mailboxHealth?.historyId);
   const mailboxPollHealth = mailboxConnected
     ? syncHealth(mailboxLastPolledAt, now)
     : "never";
@@ -129,7 +153,11 @@ export default async function DashboardPage() {
     <Page>
       <PageHeader
         title="Dashboard"
-        description="Today&apos;s operational workload across the selected workspace."
+        description={
+          allBusinesses
+            ? "Today's operational workload across every business."
+            : "Today's operational workload across the selected workspace."
+        }
         actions={
           <Link
             href="/orders"
@@ -185,7 +213,7 @@ export default async function DashboardPage() {
                   const overdue = order.dueAt ? order.dueAt < now : false;
                   return (
                     <Link
-                      key={`${order.id}-${order.title ?? "item"}`}
+                      key={order.id}
                       href={`/orders/${order.id}`}
                       className="grid gap-2 px-4 py-3 transition-colors hover:bg-canvas md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] md:items-center"
                     >
@@ -198,7 +226,9 @@ export default async function DashboardPage() {
                         </p>
                       </div>
                       <p className="truncate text-sm text-slate">
-                        {order.title ?? order.shopName ?? order.source}
+                        {allBusinesses && order.businessName
+                          ? `${order.businessName} · ${order.title ?? order.shopName ?? order.source}`
+                          : (order.title ?? order.shopName ?? order.source)}
                       </p>
                       <div className="flex flex-wrap items-center gap-2 md:justify-end">
                         {overdue && (
@@ -223,24 +253,35 @@ export default async function DashboardPage() {
           <DataPanel className="p-4">
             <SectionHeader title="Pipeline health" />
             <div className="mt-4 flex flex-col gap-3">
-              <div className="border-b border-line pb-3">
-                <div className="flex items-start justify-between gap-3">
+              {allBusinesses ? (
+                <div className="border-b border-line pb-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-ink">Mailbox poll</p>
                     <p className="text-xs text-slate">
-                      {mailboxHealth.address ?? "No mailbox connected"} · last poll{" "}
-                      {formatSyncTime(mailboxLastPolledAt)}
+                      Each business has its own mailbox — pick one workspace to see its health.
                     </p>
                   </div>
-                  {mailboxPollHealth === "ok" ? (
-                    <Badge variant="success" dot>Healthy</Badge>
-                  ) : (
-                    <Badge variant="warning" dot>
-                      {mailboxConnected ? "Stale" : "Not connected"}
-                    </Badge>
-                  )}
                 </div>
-              </div>
+              ) : (
+                <div className="border-b border-line pb-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-ink">Mailbox poll</p>
+                      <p className="text-xs text-slate">
+                        {mailboxHealth?.address ?? "No mailbox connected"} · last poll{" "}
+                        {formatSyncTime(mailboxLastPolledAt)}
+                      </p>
+                    </div>
+                    {mailboxPollHealth === "ok" ? (
+                      <Badge variant="success" dot>Healthy</Badge>
+                    ) : (
+                      <Badge variant="warning" dot>
+                        {mailboxConnected ? "Stale" : "Not connected"}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="border-b border-line pb-3">
                 <div className="flex items-start justify-between gap-3">

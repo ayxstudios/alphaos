@@ -3,12 +3,13 @@ import { and, asc, desc, eq, notInArray, sql } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
-import { loadShellData } from "@/lib/shell/context";
+import { loadShellData, isAllBusinesses } from "@/lib/shell/context";
 import { styles, designerProfiles, designerBusinesses, users, orderItems, orders, ignoredProducts } from "@/lib/db/schema";
 import { Page, PageHeader } from "@/components/ui";
 import { StylesManager, type StyleVM, type DesignerOption } from "@/components/styles/styles-manager";
 import { UnrecognisedPanel, type UnrecognisedProduct, type IgnoredProduct } from "@/components/styles/unrecognised-panel";
 import { listBusinessStyles, describeStyleMatch } from "@/lib/designers/styles";
+import { PickBusinessPrompt } from "@/components/shell/pick-business-prompt";
 
 // Statuses that are not portrait design work — a null style there is expected.
 const NON_PORTRAIT_STATES = ["fulfillment_only", "triage", "cancelled"] as const;
@@ -22,6 +23,7 @@ export default async function StylesPage() {
   if (user.role === "designer") redirect("/board");
 
   const { selected } = await loadShellData(user);
+  if (isAllBusinesses(selected.id)) return <PickBusinessPrompt title="Portrait Styles" />;
 
   const { styleRows, designerRows, productRows, businessStyles, ignoredRows } = await withUserContext(user, async (tx) => {
     const styleRows = await tx

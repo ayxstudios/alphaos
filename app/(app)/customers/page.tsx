@@ -5,7 +5,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
 import { customers, orders } from "@/lib/db/schema";
-import { loadShellData } from "@/lib/shell/context";
+import { loadShellData, isAllBusinesses } from "@/lib/shell/context";
 import {
   EmptyState,
   FilterBar,
@@ -14,6 +14,7 @@ import {
   TableShell,
 } from "@/components/ui";
 import { Search, Users } from "@/components/ui/icons";
+import { PickBusinessPrompt } from "@/components/shell/pick-business-prompt";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,7 @@ export default async function CustomersPage({
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
   const { selected } = await loadShellData(user);
+  if (isAllBusinesses(selected.id)) return <PickBusinessPrompt title="Customers" />;
   const params = await searchParams;
   const q = params.q?.trim() ?? "";
   const currentParams = new URLSearchParams();
