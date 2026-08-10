@@ -39,7 +39,7 @@ function Section({
   return (
     <section className="flex flex-col gap-4 scroll-mt-6">
       <div className="flex flex-col gap-1 border-b border-line pb-2">
-        <h2 className="font-display text-2xl font-semibold text-ink">{title}</h2>
+        <h2 className="font-display text-2xl text-ink">{title}</h2>
         {description && <p className="text-sm text-slate">{description}</p>}
       </div>
       {children}
@@ -141,7 +141,7 @@ function Styleguide() {
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-12 px-6 py-10">
       <header className="flex flex-col gap-2">
-        <h1 className="font-display text-4xl font-bold text-ink">
+        <h1 className="font-display text-4xl text-ink">
           AlphaOS Design System
         </h1>
         <p className="text-base text-slate">
@@ -160,12 +160,12 @@ function Styleguide() {
         </div>
       </Section>
 
-      <Section title="Typography" description="Inter for body/UI, Instrument Sans for display headings.">
+      <Section title="Typography" description="Inter for body/UI, Calistoga for display headings, JetBrains Mono for tabular data.">
         <div className="flex flex-col gap-3">
           {TYPE_SCALE.map(([cls, label]) => (
             <div key={cls} className="flex items-baseline gap-4">
               <span className="w-28 shrink-0 text-xs text-slate">{cls}</span>
-              <span className={`font-display font-semibold text-ink ${cls}`}>
+              <span className={`font-display text-ink ${cls}`}>
                 {label}
               </span>
             </div>
@@ -295,7 +295,7 @@ function Styleguide() {
           <Avatar
             name="With image"
             size="lg"
-            src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Crect width='48' height='48' fill='%235B4BC4'/%3E%3Ccircle cx='24' cy='18' r='9' fill='%23EFEDFB'/%3E%3Crect x='8' y='30' width='32' height='18' rx='9' fill='%23EFEDFB'/%3E%3C/svg%3E"
+            src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48'%3E%3Crect width='48' height='48' fill='%232C4A85'/%3E%3Ccircle cx='24' cy='18' r='9' fill='%23E8EEF8'/%3E%3Crect x='8' y='30' width='32' height='18' rx='9' fill='%23E8EEF8'/%3E%3C/svg%3E"
           />
         </Row>
       </Section>

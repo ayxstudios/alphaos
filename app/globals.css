@@ -1,29 +1,36 @@
 @import "tailwindcss";
 
 /* ==========================================================================
-   AlphaOS design tokens — light theme only (v1).
-   No component may use a colour outside the palette below.
+   AlphaOS design tokens — light theme only.
+   Direction: "Ledger" — a calm, cobalt-and-paper operations palette built
+   for people staring at order queues all day. Warm paper canvas, deep
+   cobalt-navy accent (replaces the old violet), forest/ochre/berry status
+   colours, a slab-serif display face for section identity paired with
+   Inter for UI/body and JetBrains Mono for tabular data (order codes,
+   timestamps, counts). No component may use a colour outside this palette.
    ========================================================================== */
 @theme {
   /* Palette — the ONLY colours allowed */
-  --color-canvas: #f6f5f2;
+  --color-canvas: #f7f5ef;
   --color-surface: #ffffff;
-  --color-ink: #16222e;
-  --color-slate: #5c6b7a;
-  --color-line: #e7e4de;
-  --color-pigment: #5b4bc4;
-  --color-pigment-soft: #f1effc;
-  --color-sage: #14705a;
-  --color-amber: #8f5b08;
-  --color-rose: #c6335b;
+  --color-ink: #121b26;
+  --color-slate: #55697c;
+  --color-line: #e4e0d4;
+  --color-pigment: #2c4a85;
+  --color-pigment-soft: #e8eef8;
+  --color-sage: #1c7a52;
+  --color-amber: #966405;
+  --color-rose: #b23a56;
 
   /* Fonts (wired via next/font in app/layout.tsx) */
   --font-sans:
     var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-display:
-    var(--font-instrument-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-calistoga), ui-serif, Georgia, serif;
+  --font-mono:
+    var(--font-jetbrains-mono), ui-monospace, "SFMono-Regular", Menlo,
+    monospace;
 
-  /* Type scale — 12 / 14 / 16 / 20 / 28 / 40 */
+  /* Type scale — 12 / 14 / 16 / 20 / 28 / 40 / 48 */
   --text-xs: 12px;
   --text-xs--line-height: 16px;
   --text-sm: 14px;
@@ -36,23 +43,26 @@
   --text-2xl--line-height: 34px;
   --text-4xl: 40px;
   --text-4xl--line-height: 46px;
+  --text-5xl: 48px;
+  --text-5xl--line-height: 52px;
 
-  /* Radius — 8 inputs/chips, 12 cards, 16 modals */
-  --radius-input: 8px;
+  /* Radius — 10 inputs/chips, 16 cards, 20 modals */
+  --radius-input: 10px;
   --radius-chip: 8px;
-  --radius-card: 12px;
-  --radius-modal: 16px;
+  --radius-card: 16px;
+  --radius-modal: 20px;
 
-  /* Shadows — exactly three levels */
-  --shadow-sm: 0 1px 2px rgba(22, 34, 46, 0.05);
-  --shadow-md: 0 8px 22px rgba(22, 34, 46, 0.08), 0 2px 6px rgba(22, 34, 46, 0.04);
+  /* Shadows — exactly three levels, ink-tinted */
+  --shadow-sm: 0 1px 2px rgba(18, 27, 38, 0.06);
+  --shadow-md:
+    0 10px 24px rgba(18, 27, 38, 0.08), 0 2px 6px rgba(18, 27, 38, 0.05);
   --shadow-lg:
-    0 16px 40px rgba(22, 34, 46, 0.18), 0 6px 14px rgba(22, 34, 46, 0.08);
+    0 22px 48px rgba(18, 27, 38, 0.16), 0 8px 16px rgba(18, 27, 38, 0.08);
 
   /* Motion */
   --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1); /* layout changes */
   --ease-out-soft: cubic-bezier(0, 0, 0.2, 1); /* hover / press */
-  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1); /* page transitions */
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1); /* page transitions — expo-out, no overshoot */
 }
 
 /* Base -------------------------------------------------------------------- */
@@ -75,6 +85,13 @@
   select,
   textarea {
     font: inherit;
+  }
+
+  /* Tabular figures everywhere numbers appear in dense data: order counts,
+     prices, timestamps, table columns. */
+  .tabular-nums,
+  table {
+    font-variant-numeric: tabular-nums;
   }
 
   ::selection {
@@ -105,6 +122,17 @@
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes alpha-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 

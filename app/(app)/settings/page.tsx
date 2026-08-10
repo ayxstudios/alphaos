@@ -3,6 +3,7 @@ import Link from "next/link";
 import { and, eq } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
+import { cn } from "@/lib/utils";
 import { withUserContext } from "@/lib/db";
 import { businesses, emailTemplates, shops } from "@/lib/db/schema";
 import {
@@ -11,8 +12,15 @@ import {
 } from "@/lib/db/credentials";
 import { loadShellData, isAllBusinesses } from "@/lib/shell/context";
 import { PickBusinessPrompt } from "@/components/shell/pick-business-prompt";
-import { DataPanel, EmptyState, Page, PageHeader, SectionHeader } from "@/components/ui";
-import { Settings as SettingsIcon } from "@/components/ui/icons";
+import { Badge, DataPanel, EmptyState, Page, PageHeader, SectionHeader } from "@/components/ui";
+import {
+  Building,
+  Brush,
+  Mail,
+  Package,
+  Settings as SettingsIcon,
+  type IconProps,
+} from "@/components/ui/icons";
 import {
   EtsyShopCard,
   type EtsyShopVM,
@@ -53,11 +61,11 @@ import type { GmailCredentials } from "@/lib/integrations/gmail";
 export const dynamic = "force-dynamic";
 
 const SETTINGS_SECTIONS = [
-  { key: "etsy", label: "Etsy" },
-  { key: "shopify", label: "Shopify" },
-  { key: "portrait-styles", label: "Portrait Styles" },
-  { key: "email", label: "Customer Email" },
-] as const;
+  { key: "etsy", label: "Etsy", icon: Building },
+  { key: "shopify", label: "Shopify", icon: Package },
+  { key: "portrait-styles", label: "Portrait Styles", icon: Brush },
+  { key: "email", label: "Customer Email", icon: Mail },
+] as const satisfies readonly { key: string; label: string; icon: (p: IconProps) => React.ReactElement }[];
 
 type SettingsSection = (typeof SETTINGS_SECTIONS)[number]["key"];
 
@@ -265,30 +273,68 @@ export default async function SettingsPage({
     })
   ).map((s) => ({ id: s.id, name: s.name, platform: s.platform, styles: s.styles ?? [] }));
 
+  const sectionCounts: Record<SettingsSection, number> = {
+    etsy: cards.length,
+    shopify: shopifyCards.length,
+    "portrait-styles": styleShops.length,
+    email: gmailVM ? 1 : 0,
+  };
+  const connectedCounts: Record<SettingsSection, number> = {
+    etsy: cards.filter((c) => c.status === "connected").length,
+    shopify: shopifyCards.filter((c) => c.status === "connected").length,
+    "portrait-styles": 0,
+    email: gmailVM?.status === "connected" ? 1 : 0,
+  };
+
   return (
-    <Page className="grid gap-6 lg:grid-cols-[12rem_minmax(0,1fr)]">
+    <Page className="grid gap-6 lg:grid-cols-[15rem_minmax(0,1fr)]">
       <aside>
-        <nav className="sticky top-20 flex gap-1 overflow-x-auto text-sm lg:flex-col lg:overflow-visible">
-          {SETTINGS_SECTIONS.map((section) => (
-            <Link
-              key={section.key}
-              href={`/settings?section=${section.key}`}
-              aria-current={activeSection === section.key ? "page" : undefined}
-              className={
-                activeSection === section.key
-                  ? "shrink-0 rounded-input bg-pigment text-surface px-3 py-2 font-medium"
-                  : "shrink-0 rounded-input px-3 py-2 text-slate hover:bg-surface hover:text-ink"
-              }
-            >
-              {section.label}
-            </Link>
-          ))}
+        <nav
+          aria-label="Settings sections"
+          className="sticky top-20 flex gap-1 overflow-x-auto rounded-card border border-line bg-surface p-1.5 text-sm shadow-sm lg:flex-col lg:overflow-visible"
+        >
+          {SETTINGS_SECTIONS.map((section) => {
+            const active = activeSection === section.key;
+            const Glyph = section.icon;
+            const count = sectionCounts[section.key];
+            const connected = connectedCounts[section.key];
+            return (
+              <Link
+                key={section.key}
+                href={`/settings?section=${section.key}`}
+                aria-current={active ? "page" : undefined}
+                className={
+                  active
+                    ? "flex shrink-0 items-center gap-2.5 rounded-input bg-pigment px-3 py-2.5 font-medium text-surface"
+                    : "flex shrink-0 items-center gap-2.5 rounded-input px-3 py-2.5 text-slate transition-colors motion-hover hover:bg-canvas hover:text-ink"
+                }
+              >
+                <Glyph size={16} className="shrink-0" />
+                <span className="min-w-0 flex-1 truncate">{section.label}</span>
+                {(section.key === "etsy" || section.key === "shopify") && count > 0 && (
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-mono tabular-nums",
+                      active
+                        ? "bg-surface/20 text-surface"
+                        : connected === count
+                          ? "bg-sage/10 text-sage"
+                          : "bg-amber/10 text-amber",
+                    )}
+                  >
+                    {connected}/{count}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </nav>
       </aside>
       <div className="flex min-w-0 flex-col gap-6">
         <PageHeader
           title="Settings"
           description="Manage shop connections, import rules, Gmail, and customer templates."
+          eyebrow="Admin"
         />
 
         {activeSection === "etsy" && (
@@ -296,6 +342,13 @@ export default async function SettingsPage({
             <SectionHeader
               title="Etsy shops"
               description="Connect each Etsy shop with its own app credentials, then import orders."
+              actions={
+                cards.length > 0 && (
+                  <Badge variant={connectedCounts.etsy === cards.length ? "success" : "warning"} dot>
+                    {connectedCounts.etsy} of {cards.length} connected
+                  </Badge>
+                )
+              }
             />
             {cards.length === 0 ? (
               <DataPanel>
@@ -320,6 +373,16 @@ export default async function SettingsPage({
             <SectionHeader
               title="Shopify shops"
               description="Connect each store with its domain and custom app Admin API token."
+              actions={
+                shopifyCards.length > 0 && (
+                  <Badge
+                    variant={connectedCounts.shopify === shopifyCards.length ? "success" : "warning"}
+                    dot
+                  >
+                    {connectedCounts.shopify} of {shopifyCards.length} connected
+                  </Badge>
+                )
+              }
             />
             {shopifyCards.length === 0 ? (
               <DataPanel>
@@ -342,8 +405,17 @@ export default async function SettingsPage({
         {activeSection === "portrait-styles" && (
           <section className="flex flex-col gap-4">
             <SectionHeader
-              title="Portrait Styles"
-              description="List the portrait styles this business sells. These are the styles staff can select on orders and designers can be assigned to."
+              title="Portrait Styles catalog"
+              description="Per-shop lists of the portrait styles that shop sells. Auto-assign rules and designer eligibility are managed on the dedicated Portrait Styles page."
+              actions={
+                <Link
+                  href="/styles"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-input border border-line bg-surface px-3 text-sm font-medium text-ink transition-colors motion-hover hover:bg-canvas"
+                >
+                  <Brush size={14} />
+                  Open Portrait Styles
+                </Link>
+              }
             />
             {styleShops.length === 0 ? (
               <DataPanel>
@@ -370,11 +442,11 @@ export default async function SettingsPage({
             {gmailVM ? (
               <>
                 <GmailBusinessCard gmail={gmailVM} />
-                <div>
-                  <h3 className="text-base font-semibold text-ink">
+                <div className="mt-2 border-t border-line pt-5">
+                  <h3 className="font-display text-lg text-ink">
                     Email templates
                   </h3>
-                  <p className="text-sm text-slate">
+                  <p className="mt-0.5 text-sm text-slate">
                     Edit without a deploy. Variables render server-side; a
                     customized template overrides the built-in default.
                   </p>

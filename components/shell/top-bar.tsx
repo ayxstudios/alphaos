@@ -61,7 +61,7 @@ export function TopBar({
   }
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-line bg-surface/95 px-4 backdrop-blur-none sm:px-5">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-line bg-surface px-4 sm:px-5">
       <div className="flex min-w-0 flex-1 items-center gap-3">
         {mobileMenuButton}
         <Popover
@@ -123,8 +123,8 @@ export function TopBar({
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search orders or customers"
             className={cn(
-              "h-10 w-full rounded-input border border-line bg-canvas pl-9 pr-3 text-sm text-ink placeholder:text-slate/75",
-              "transition-colors focus:bg-surface",
+              "h-10 w-full rounded-full border border-line bg-canvas pl-9 pr-3 text-sm text-ink placeholder:text-slate/75",
+              "transition-colors focus:bg-surface focus:border-pigment/40",
               focusRing,
             )}
           />

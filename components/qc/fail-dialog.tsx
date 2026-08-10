@@ -88,7 +88,7 @@ export function FailDialog({
       >
         <div className="flex items-center justify-between border-b border-line p-4">
           <div>
-            <h2 className="font-display text-lg font-semibold text-ink">Fail this portrait</h2>
+            <h2 className="font-display text-lg text-ink">Fail this portrait</h2>
             <p className="text-xs text-slate">
               Select what&apos;s wrong and tell the designer how to fix it.
             </p>

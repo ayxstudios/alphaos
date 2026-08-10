@@ -21,7 +21,15 @@ import {
   TableShell,
   type OrderStatus,
 } from "@/components/ui";
-import { AlertTriangle, Grid, ListChecks } from "@/components/ui/icons";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Grid,
+  Inbox,
+  ListChecks,
+  Mail,
+  Search as SearchIcon,
+} from "@/components/ui/icons";
 
 export const dynamic = "force-dynamic";
 
@@ -161,27 +169,44 @@ export default async function DashboardPage() {
         actions={
           <Link
             href="/orders"
-            className="inline-flex h-10 items-center rounded-input bg-pigment px-3 text-sm font-medium text-surface transition-opacity hover:opacity-90"
+            className="inline-flex h-10 items-center gap-2 rounded-input bg-pigment px-4 text-sm font-semibold text-surface shadow-sm transition-colors hover:bg-[#233e70] hover:shadow-md"
           >
             View orders
+            <ArrowRight size={15} />
           </Link>
         }
       />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard label="Active orders" value={stats?.active ?? 0} />
+        <StatCard
+          label="Active orders"
+          value={stats?.active ?? 0}
+          icon={<Grid size={16} />}
+        />
         <StatCard
           label="Overdue"
           value={stats?.overdue ?? 0}
           tone={(stats?.overdue ?? 0) > 0 ? "danger" : "neutral"}
+          icon={<AlertTriangle size={16} />}
         />
-        <StatCard label="VA actions" value={actionTotal} tone="info" />
-        <StatCard label="QC waiting" value={stats?.qc ?? 0} tone="warning" />
+        <StatCard
+          label="VA actions"
+          value={actionTotal}
+          tone="info"
+          icon={<Inbox size={16} />}
+        />
+        <StatCard
+          label="QC waiting"
+          value={stats?.qc ?? 0}
+          tone="warning"
+          icon={<SearchIcon size={16} />}
+        />
         <StatCard
           label="Unmatched replies"
           value={unmatchedReplies}
           tone={unmatchedReplies > 0 ? "danger" : "neutral"}
           detail="Need manual threading"
+          icon={<Mail size={16} />}
         />
       </div>
 

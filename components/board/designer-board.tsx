@@ -14,7 +14,7 @@ import {
 
 import { useToast } from "@/components/ui";
 import { OrderCard } from "./order-card";
-import { BoardColumn } from "./board-column";
+import { BoardColumn, type ColumnTone } from "./board-column";
 import { CardModal } from "./card-modal";
 import { moveOrder } from "@/app/(app)/board/actions";
 import type { BoardCard, DesignerBoard as BoardData } from "@/lib/orders/board-data";
@@ -35,13 +35,13 @@ const COLUMN_TO_STATUS: Record<ColKey, OrderStatus> = {
 const DRAG_SOURCES = new Set<ColKey>(["myQueue", "inDesign", "failedQc", "awaitingQc", "revisions"]);
 const DROP_TARGETS = new Set<ColKey>(["myQueue", "inDesign", "awaitingQc"]);
 
-const COLUMNS: { key: ColKey; title: string }[] = [
-  { key: "myQueue", title: "My Queue" },
-  { key: "inDesign", title: "In Design" },
-  { key: "failedQc", title: "Failed QC" },
-  { key: "awaitingQc", title: "Awaiting QC" },
-  { key: "revisions", title: "Revisions" },
-  { key: "complete", title: "Complete" },
+const COLUMNS: { key: ColKey; title: string; tone: ColumnTone }[] = [
+  { key: "myQueue", title: "My Queue", tone: "neutral" },
+  { key: "inDesign", title: "In Design", tone: "pigment" },
+  { key: "failedQc", title: "Failed QC", tone: "rose" },
+  { key: "awaitingQc", title: "Awaiting QC", tone: "amber" },
+  { key: "revisions", title: "Revisions", tone: "amber" },
+  { key: "complete", title: "Complete", tone: "sage" },
 ];
 
 export function DesignerBoard({ initial }: { initial: Cols }) {
@@ -116,6 +116,7 @@ export function DesignerBoard({ initial }: { initial: Cols }) {
             key={col.key}
             id={col.key}
             title={col.title}
+            tone={col.tone}
             cards={cols[col.key]}
             droppable={DROP_TARGETS.has(col.key)}
             draggable={DRAG_SOURCES.has(col.key)}

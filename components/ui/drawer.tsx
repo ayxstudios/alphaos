@@ -85,7 +85,7 @@ export function Drawer({
         )}
       >
         <div className="flex items-center justify-between border-b border-line p-4">
-          <h2 className="font-display text-lg font-semibold text-ink">
+          <h2 className="font-display text-lg text-ink">
             {title}
           </h2>
           <button

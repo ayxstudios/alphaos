@@ -17,6 +17,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import {
+  Avatar,
   Badge,
   DataPanel,
   EmptyState,
@@ -408,15 +409,20 @@ export default async function CustomerDetailPage({
 
   return (
     <Page>
-      <PageHeader
-        title={customerName(customer)}
-        description={customer.email}
-        eyebrow={
-          <Link href="/customers" className="text-pigment hover:underline">
-            Customers
-          </Link>
-        }
-      />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+        <Avatar name={customerName(customer)} size="lg" className="hidden shrink-0 sm:inline-flex" />
+        <div className="min-w-0 flex-1">
+          <PageHeader
+            title={customerName(customer)}
+            description={customer.email}
+            eyebrow={
+              <Link href="/customers" className="text-pigment hover:underline">
+                Customers
+              </Link>
+            }
+          />
+        </div>
+      </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -487,7 +493,7 @@ export default async function CustomerDetailPage({
                         <div className="min-w-0">
                           <Link
                             href={`/orders/${order.id}`}
-                            className="text-sm font-semibold text-ink hover:text-pigment"
+                            className="font-mono text-sm font-semibold text-ink hover:text-pigment"
                           >
                             {order.number ?? order.fallbackNumber}
                           </Link>
@@ -559,7 +565,7 @@ export default async function CustomerDetailPage({
                         <dl className="grid gap-2 text-sm">
                           <div className="flex items-center justify-between gap-3">
                             <dt className="text-slate">Due</dt>
-                            <dd className="text-right font-medium text-ink">
+                            <dd className="text-right font-mono font-medium text-ink">
                               {fmtDate(order.dueAt)}
                             </dd>
                           </div>
@@ -631,22 +637,18 @@ export default async function CustomerDetailPage({
 
         <aside className="flex flex-col gap-5">
           <DataPanel className="p-4">
-            <SectionHeader title="Customer" />
+            <SectionHeader title="Contact" />
             <dl className="mt-4 grid gap-3 text-sm">
               <div>
-                <dt className="text-xs font-medium uppercase text-slate">Name</dt>
-                <dd className="mt-1 text-ink">{customerName(customer)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs font-medium uppercase text-slate">Email</dt>
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate">Email</dt>
                 <dd className="mt-1 break-all text-ink">{customer.email}</dd>
               </div>
               <div>
-                <dt className="text-xs font-medium uppercase text-slate">Created</dt>
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate">Customer since</dt>
                 <dd className="mt-1 text-ink">{fmtDate(customer.createdAt)}</dd>
               </div>
               <div>
-                <dt className="text-xs font-medium uppercase text-slate">Latest order</dt>
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate">Latest order</dt>
                 <dd className="mt-1 text-ink">
                   {latestOrder
                     ? fmtDate(latestOrder.placedAt ?? latestOrder.createdAt)

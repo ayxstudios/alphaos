@@ -7,6 +7,7 @@ import { withUserContext } from "@/lib/db";
 import { customers, orders } from "@/lib/db/schema";
 import { loadShellData, isAllBusinesses } from "@/lib/shell/context";
 import {
+  Avatar,
   EmptyState,
   FilterBar,
   Page,
@@ -112,7 +113,7 @@ export default async function CustomersPage({
     <Page>
       <PageHeader
         title="Customers"
-        description="Customer records are merged by normalized email inside each business."
+        description={`${total.toLocaleString("en-AU")} customer${total === 1 ? "" : "s"} · records are merged by normalized email inside each business.`}
       />
 
       <FilterBar>
@@ -164,35 +165,44 @@ export default async function CustomersPage({
             </span>
             <Pagination currentParams={currentParams} page={page} totalPages={totalPages} />
           </div>
-          <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_8rem_10rem] gap-4 border-b border-line px-4 py-2 text-xs font-medium uppercase text-slate md:grid">
+          <div className="hidden grid-cols-[minmax(0,1.6fr)_7rem_9rem] gap-4 border-b border-line px-4 py-2 text-xs font-medium uppercase tracking-wide text-slate md:grid">
             <span>Customer</span>
-            <span>Email</span>
-            <span>Orders</span>
-            <span>Latest activity</span>
+            <span className="text-right">Orders</span>
+            <span className="text-right">Latest activity</span>
           </div>
           <div className="divide-y divide-line">
-            {rows.map((row) => (
-              <Link
-                key={row.id}
-                href={`/customers/${row.id}`}
-                className="grid gap-1 px-4 py-3 transition-colors hover:bg-canvas md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_8rem_10rem] md:items-center md:gap-4"
-              >
-                <p className="truncate text-sm font-semibold text-ink">
-                  {customerName(row)}
-                </p>
-                <p className="truncate text-sm text-slate">{row.email}</p>
-                <p className="text-sm text-slate">{row.orderCount}</p>
-                <p className="text-sm text-slate">
-                  {row.latestOrderAt
-                    ? new Intl.DateTimeFormat("en-AU", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      }).format(new Date(row.latestOrderAt))
-                    : "No orders"}
-                </p>
-              </Link>
-            ))}
+            {rows.map((row) => {
+              const name = customerName(row);
+              return (
+                <Link
+                  key={row.id}
+                  href={`/customers/${row.id}`}
+                  className="flex flex-col gap-2 px-4 py-3 transition-colors hover:bg-canvas focus-visible:bg-canvas focus-visible:outline-none md:grid md:grid-cols-[minmax(0,1.6fr)_7rem_9rem] md:items-center md:gap-4"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Avatar name={name} size="sm" />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-ink">
+                        {name}
+                      </p>
+                      <p className="truncate text-xs text-slate">{row.email}</p>
+                    </div>
+                  </div>
+                  <p className="pl-[2.5rem] text-xs text-slate md:pl-0 md:text-right md:font-mono md:text-sm md:tabular-nums md:text-ink">
+                    {row.orderCount} order{row.orderCount === 1 ? "" : "s"}
+                  </p>
+                  <p className="pl-[2.5rem] text-xs text-slate md:pl-0 md:text-right md:font-mono md:text-sm">
+                    {row.latestOrderAt
+                      ? new Intl.DateTimeFormat("en-AU", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                        }).format(new Date(row.latestOrderAt))
+                      : "No orders"}
+                  </p>
+                </Link>
+              );
+            })}
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2 text-sm text-slate">
             <span>

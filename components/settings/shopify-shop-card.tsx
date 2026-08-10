@@ -14,6 +14,7 @@ import {
   Select,
   Badge,
 } from "@/components/ui";
+import { Package } from "@/components/ui/icons";
 import {
   saveShopifyCredentials,
   testShopifyConnection,
@@ -141,7 +142,12 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between gap-2">
-          <CardTitle>{shop.name}</CardTitle>
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-pigment-soft text-pigment">
+              <Package size={18} />
+            </span>
+            <CardTitle className="truncate">{shop.name}</CardTitle>
+          </div>
           <div className="flex flex-wrap justify-end gap-2">
             {health !== "ok" && (
               <Badge variant="warning" dot>

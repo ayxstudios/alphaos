@@ -710,7 +710,7 @@ export default async function OrdersPage({
         actions={
           <Link
             href="/orders/new"
-            className="inline-flex h-10 items-center gap-2 rounded-input bg-pigment px-3 text-sm font-medium text-surface transition-opacity hover:opacity-90"
+            className="inline-flex h-10 items-center gap-2 rounded-input bg-pigment px-4 text-sm font-semibold text-surface shadow-sm transition-colors hover:bg-[#233e70] hover:shadow-md"
           >
             <Plus size={16} />
             New order
@@ -720,10 +720,10 @@ export default async function OrdersPage({
       <OrdersViewPreference view={selectedView} />
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Active work" value={countRow.active} detail="Open operational orders" tone="info" />
+        <StatCard label="Active work" value={countRow.active} detail="Open operational orders" tone="info" icon={<Package size={16} />} />
         <StatCard label="Overdue" value={countRow.overdue} detail="Past SLA" tone={countRow.overdue ? "danger" : "neutral"} />
         <StatCard label="Needs details" value={countRow.needs_details} detail="VA completion required" tone={countRow.needs_details ? "warning" : "neutral"} />
-        <StatCard label="Awaiting QC" value={countRow.awaiting_qc} detail="Ready for review" tone={countRow.awaiting_qc ? "warning" : "neutral"} />
+        <StatCard label="Awaiting QC" value={countRow.awaiting_qc} detail="Ready for review" tone={countRow.awaiting_qc ? "warning" : "neutral"} icon={<Search size={16} />} />
       </div>
 
       <FilterBar className="gap-1">

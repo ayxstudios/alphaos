@@ -13,11 +13,12 @@ export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
 
 const variants: Record<ButtonVariant, string> = {
   primary:
-    "bg-pigment text-surface hover:opacity-90 hover:shadow-md active:opacity-100",
+    "bg-pigment text-surface shadow-sm hover:bg-[#233e70] hover:shadow-md active:bg-[#1c3159]",
   secondary:
-    "bg-surface text-ink border border-line hover:bg-canvas hover:border-slate/40",
-  ghost: "bg-transparent text-ink hover:bg-pigment-soft",
-  danger: "bg-rose text-surface hover:opacity-90 hover:shadow-md",
+    "bg-surface text-ink border border-line shadow-sm hover:border-pigment/40 hover:bg-pigment-soft/40",
+  ghost: "bg-transparent text-slate hover:bg-canvas hover:text-ink",
+  danger:
+    "bg-rose text-surface shadow-sm hover:bg-[#96304a] hover:shadow-md active:bg-[#7f2940]",
 };
 
 const sizes: Record<ButtonSize, string> = {
@@ -43,10 +44,10 @@ export function Button({
       disabled={isDisabled}
       aria-busy={loading || undefined}
       className={cn(
-        "relative inline-flex items-center justify-center rounded-input font-medium select-none",
+        "relative inline-flex items-center justify-center rounded-input font-semibold select-none cursor-pointer",
         "transition-[transform,box-shadow,background-color,opacity,border-color] duration-[120ms]",
         "motion-hover active:scale-[0.98]",
-        "disabled:pointer-events-none disabled:opacity-50",
+        "disabled:pointer-events-none disabled:opacity-50 disabled:cursor-not-allowed",
         focusRing,
         variants[variant],
         sizes[size],

@@ -136,7 +136,7 @@ export function CardModal({ card, onClose }: { card: BoardCard; onClose: () => v
               <p className="text-xs font-medium uppercase tracking-wide text-slate">
                 Order {card.orderNumber}
               </p>
-              <h2 className="font-display text-xl font-semibold text-ink">
+              <h2 className="font-display text-xl text-ink">
                 {card.title ?? "Custom portrait"}
               </h2>
             </div>

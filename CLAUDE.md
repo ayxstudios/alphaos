@@ -47,20 +47,34 @@ actor, action, from_state, to_state, timestamp.
 
 ## Design tokens
 
-No component may introduce a colour outside these:
+Direction: **"Ledger"** — a calm, cobalt-and-paper operations palette
+(redesigned 2026-08-10, see `redesign/from-scratch-ui-2026-08-10`), chosen via
+the `ui-ux-pro-max` skill for a dense, all-day operational dashboard. Warm
+paper canvas, deep cobalt-navy primary (replaces the earlier violet
+"pigment"), forest/ochre/berry status colours. No component may introduce a
+colour outside these (defined in `app/globals.css` `@theme`):
 
 ```
---canvas #FBFAF8   --surface #FFFFFF   --ink #16222E   --slate #5C6B7A
---line #E6E2DC     --pigment #5B4BC4   --pigment-soft #EFEDFB
---sage #14705A     --amber #8F5B08     --rose #C6335B
+--canvas #F7F5EF   --surface #FFFFFF   --ink #121B26   --slate #55697C
+--line #E4E0D4     --pigment #2C4A85   --pigment-soft #E8EEF8
+--sage #1C7A52     --amber #966405     --rose #B23A56
 ```
 
-- Type scale: 12/14/16/20/28/40px
-- Radius: 8 inputs / 12 cards / 16 modals
-- Three shadow levels only
+(Token names are unchanged from v1 to avoid a mechanical rename across the
+codebase — `--pigment` is the brand/primary accent slot regardless of hue.)
+
+- Fonts: display `Calistoga` (slab-serif, page titles/section identity only,
+  used sparingly) + body/UI `Inter` + tabular data `JetBrains Mono` (order
+  codes, timestamps, counts) — wired via `next/font` in `app/layout.tsx`.
+- Type scale: 12/14/16/20/28/40/48px
+- Radius: 10 inputs / 8 chips / 16 cards / 20 modals
+- Three shadow levels only, ink-tinted
 - Motion: 120ms hover, 220ms layout, 400ms page; `prefers-reduced-motion`
   respected globally
-- Light theme only for v1
+- Light theme only — hard requirement, no dark mode
+- Status chips (`StatusChip`) are pill-shaped (workflow state); metadata
+  badges (`Badge`) are rectangular chips — different silhouettes so state
+  vs. tag never rely on colour alone to be told apart.
 
 ## Conventions
 

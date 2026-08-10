@@ -268,6 +268,21 @@ export const Spinner = ({ size = 16, className, ...props }: IconProps) => (
   </svg>
 );
 
+export const Lock = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="3" y="11" width="18" height="10" rx="2" />
+    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </Icon>
+);
+export const ZoomIn = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="11" cy="11" r="8" />
+    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    <line x1="11" y1="8" x2="11" y2="14" />
+    <line x1="8" y1="11" x2="14" y2="11" />
+  </Icon>
+);
+
 /* --- Designers ---------------------------------------------------------- */
 export const Palette = (p: IconProps) => (
   <Icon {...p}>

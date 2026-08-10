@@ -19,7 +19,7 @@ export function ShortcutLegend({ open, onClose }: { open: boolean; onClose: () =
   return (
     <div className="fixed bottom-4 left-4 z-40 w-64 rounded-card border border-line bg-surface p-3 shadow-lg [animation:alpha-toast-in_220ms_var(--ease-standard)]">
       <div className="flex items-center justify-between pb-2">
-        <span className="font-display text-sm font-semibold text-ink">Keyboard shortcuts</span>
+        <span className="font-display text-sm text-ink">Keyboard shortcuts</span>
         <button
           type="button"
           onClick={onClose}

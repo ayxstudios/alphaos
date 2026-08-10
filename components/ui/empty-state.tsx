@@ -29,7 +29,7 @@ export function EmptyState({
         <Glyph size={24} />
       </span>
       <div className="flex flex-col gap-1">
-        <h3 className="font-display text-lg font-semibold text-ink">
+        <h3 className="font-display text-lg text-ink">
           {headline}
         </h3>
         {body && <p className="max-w-sm text-sm text-slate">{body}</p>}

@@ -172,8 +172,8 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
               aria-disabled={!gmail.hasClient}
               className={
                 gmail.hasClient
-                  ? "inline-flex h-8 items-center rounded-input border border-line bg-surface px-3 text-sm font-medium text-ink hover:bg-canvas"
-                  : "inline-flex h-8 items-center rounded-input border border-line bg-surface px-3 text-sm font-medium text-slate opacity-50 pointer-events-none"
+                  ? "inline-flex h-8 items-center rounded-input border border-line bg-surface px-3 text-sm font-semibold text-ink shadow-sm hover:border-pigment/40 hover:bg-pigment-soft/40"
+                  : "inline-flex h-8 items-center rounded-input border border-line bg-surface px-3 text-sm font-semibold text-slate opacity-50 pointer-events-none"
               }
             >
               {gmail.status === "connected" ? "Reconnect Gmail" : "Connect Gmail"}

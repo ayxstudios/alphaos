@@ -64,11 +64,11 @@ const STATUS: Record<OrderStatus, StatusMeta> = {
 
 // Alpha modifiers of palette tokens only — no colours outside the palette.
 const toneClasses: Record<Tone, string> = {
-  slate: "text-slate bg-slate/10 border-slate/20",
-  pigment: "text-pigment bg-pigment-soft border-pigment/20",
-  amber: "text-amber bg-amber/10 border-amber/25",
-  sage: "text-sage bg-sage/10 border-sage/20",
-  rose: "text-rose bg-rose/10 border-rose/20",
+  slate: "text-slate bg-slate/[0.08] ring-slate/15",
+  pigment: "text-pigment bg-pigment-soft ring-pigment/15",
+  amber: "text-amber bg-amber/[0.1] ring-amber/20",
+  sage: "text-sage bg-sage/[0.1] ring-sage/20",
+  rose: "text-rose bg-rose/[0.1] ring-rose/20",
 };
 
 export type StatusChipProps = {
@@ -76,13 +76,16 @@ export type StatusChipProps = {
   className?: string;
 };
 
+// Pill-shaped, icon + label — distinct silhouette from the rectangular Badge
+// so "workflow state" and "metadata tag" read as different affordances at a
+// glance, never by colour alone.
 export function StatusChip({ status, className }: StatusChipProps) {
   const meta = STATUS[status];
   const Glyph = meta.icon;
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-chip border px-2 py-0.5 text-xs font-medium whitespace-nowrap",
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ring-1 ring-inset",
         toneClasses[meta.tone],
         className,
       )}

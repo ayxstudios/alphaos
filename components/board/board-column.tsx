@@ -10,6 +10,24 @@ import type { BoardCard } from "@/lib/orders/board-data";
 
 const VIRTUALIZE_THRESHOLD = 35;
 
+export type ColumnTone = "neutral" | "pigment" | "amber" | "rose" | "sage";
+
+const TONE_ACCENT: Record<ColumnTone, string> = {
+  neutral: "bg-line",
+  pigment: "bg-pigment",
+  amber: "bg-amber",
+  rose: "bg-rose",
+  sage: "bg-sage",
+};
+
+const TONE_COUNT: Record<ColumnTone, string> = {
+  neutral: "bg-canvas text-slate",
+  pigment: "bg-pigment-soft text-pigment",
+  amber: "bg-amber/10 text-amber",
+  rose: "bg-rose/10 text-rose",
+  sage: "bg-sage/10 text-sage",
+};
+
 export function BoardColumn({
   id,
   title,
@@ -17,6 +35,7 @@ export function BoardColumn({
   droppable,
   draggable,
   onOpen,
+  tone = "neutral",
 }: {
   id: string;
   title: string;
@@ -24,6 +43,7 @@ export function BoardColumn({
   droppable: boolean; // accepts dropped cards
   draggable: boolean; // its cards can be picked up
   onOpen?: (card: BoardCard) => void;
+  tone?: ColumnTone;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id, disabled: !droppable });
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -39,8 +59,19 @@ export function BoardColumn({
   return (
     <div className="flex w-[min(86vw,24rem)] shrink-0 flex-col overflow-hidden rounded-card border border-line bg-canvas shadow-sm">
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface px-4 py-3">
-        <span className="text-sm font-semibold text-ink">{title}</span>
-        <span className="rounded-full bg-canvas px-2 py-0.5 text-xs font-medium text-slate">
+        <span className="flex items-center gap-2 text-sm font-semibold text-ink">
+          <span
+            className={cn("size-1.5 shrink-0 rounded-full", TONE_ACCENT[tone])}
+            aria-hidden="true"
+          />
+          {title}
+        </span>
+        <span
+          className={cn(
+            "rounded-full px-2 py-0.5 text-xs font-medium tabular-nums",
+            TONE_COUNT[tone],
+          )}
+        >
           {cards.length}
         </span>
       </div>

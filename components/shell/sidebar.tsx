@@ -62,7 +62,7 @@ export function Sidebar({
     >
       <div
         className={cn(
-          "flex h-16 items-center gap-3 px-4",
+          "flex h-16 items-center gap-2.5 px-4",
           collapsed && !mobile && "justify-center px-3",
         )}
       >
@@ -71,7 +71,7 @@ export function Sidebar({
           onClick={onNavigate}
           aria-label="AlphaOS dashboard"
           className={cn(
-            "flex size-9 shrink-0 items-center justify-center rounded-input bg-pigment text-surface font-display text-base font-bold",
+            "flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-ink font-display text-base text-canvas",
             focusRing,
           )}
         >
@@ -79,15 +79,20 @@ export function Sidebar({
         </Link>
         {(!collapsed || mobile) && (
           <div className="min-w-0">
-            <p className="font-display text-lg font-semibold leading-5 text-ink">
-              AlphaOS
+            <p className="font-display text-lg leading-5 text-ink">AlphaOS</p>
+            <p className="text-[11px] font-medium uppercase tracking-wider text-slate">
+              Operations
             </p>
-            <p className="text-xs text-slate">Operations</p>
           </div>
         )}
       </div>
 
-      <nav className="flex flex-1 flex-col gap-1 px-2 py-2">
+      <nav className="flex flex-1 flex-col gap-0.5 px-3 py-3">
+        {(!collapsed || mobile) && (
+          <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-widest text-slate/70">
+            Workspace
+          </p>
+        )}
         {nav.map((item) => {
           const active =
             pathname === item.href || pathname.startsWith(item.href + "/");
@@ -104,16 +109,10 @@ export function Sidebar({
                 focusRing,
                 collapsed && !mobile && "justify-center px-0",
                 active
-                  ? "text-pigment"
+                  ? "bg-pigment text-surface shadow-sm"
                   : "text-slate hover:bg-canvas hover:text-ink",
               )}
             >
-              <span
-                className={cn(
-                  "absolute left-0 top-2 h-6 w-0.5 rounded-full bg-pigment opacity-0 transition-opacity",
-                  active && "opacity-100",
-                )}
-              />
               <Glyph size={18} className="shrink-0" />
               {(!collapsed || mobile) && <span>{item.label}</span>}
             </Link>

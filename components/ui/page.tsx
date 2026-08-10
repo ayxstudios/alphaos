@@ -30,9 +30,11 @@ export function PageHeader({
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
         {eyebrow && (
-          <div className="mb-1 text-xs font-medium text-slate">{eyebrow}</div>
+          <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-pigment">
+            {eyebrow}
+          </div>
         )}
-        <h1 className="font-display text-2xl font-semibold tracking-normal text-ink">
+        <h1 className="font-display text-2xl tracking-tight text-ink">
           {title}
         </h1>
         {description && (
@@ -75,27 +77,53 @@ export function StatCard({
   value,
   detail,
   tone = "neutral",
+  icon,
 }: {
   label: string;
   value: React.ReactNode;
   detail?: React.ReactNode;
   tone?: "neutral" | "info" | "success" | "warning" | "danger";
+  icon?: React.ReactNode;
 }) {
-  const toneClass = {
-    neutral: "border-line",
-    info: "border-pigment/20",
-    success: "border-sage/20",
-    warning: "border-amber/25",
-    danger: "border-rose/20",
+  const accentClass = {
+    neutral: "bg-line",
+    info: "bg-pigment",
+    success: "bg-sage",
+    warning: "bg-amber",
+    danger: "bg-rose",
+  }[tone];
+  const iconToneClass = {
+    neutral: "bg-canvas text-slate",
+    info: "bg-pigment-soft text-pigment",
+    success: "bg-sage/10 text-sage",
+    warning: "bg-amber/10 text-amber",
+    danger: "bg-rose/10 text-rose",
   }[tone];
   return (
-    <div
-      className={cn("rounded-card border bg-surface p-4 shadow-sm", toneClass)}
-    >
-      <div className="text-xs font-medium uppercase tracking-wide text-slate">
-        {label}
+    <div className="relative overflow-hidden rounded-card border border-line bg-surface p-5 shadow-sm">
+      <span
+        className={cn("absolute inset-x-0 top-0 h-[3px]", accentClass)}
+        aria-hidden="true"
+      />
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-xs font-semibold uppercase tracking-wide text-slate">
+          {label}
+        </div>
+        {icon && (
+          <span
+            className={cn(
+              "flex size-8 shrink-0 items-center justify-center rounded-full",
+              iconToneClass,
+            )}
+            aria-hidden="true"
+          >
+            {icon}
+          </span>
+        )}
       </div>
-      <div className="mt-2 text-2xl font-semibold text-ink">{value}</div>
+      <div className="mt-2 font-display text-2xl tracking-tight text-ink tabular-nums">
+        {value}
+      </div>
       {detail && <div className="mt-1 text-xs text-slate">{detail}</div>}
     </div>
   );

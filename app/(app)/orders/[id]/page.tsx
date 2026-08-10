@@ -397,7 +397,7 @@ export default async function OrderDetailPage({
             {editable && (
               <Link
                 href={`/orders/${order.id}/complete`}
-                className="inline-flex h-9 items-center gap-2 rounded-input border border-line bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas"
+                className="inline-flex h-9 items-center gap-2 rounded-input border border-line bg-surface px-3 text-sm font-semibold text-ink shadow-sm transition-colors hover:border-pigment/40 hover:bg-pigment-soft/40"
               >
                 <Pencil size={15} />
                 Edit
@@ -409,7 +409,11 @@ export default async function OrderDetailPage({
 
       {/* The one thing to do next, in plain English — with the actual control to
           do it right here (assign a designer / go to QC / …). */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-card border border-line bg-surface px-4 py-3 text-sm shadow-sm">
+      <div className="relative flex flex-wrap items-center gap-x-3 gap-y-2 overflow-hidden rounded-card border border-pigment/15 bg-pigment-soft/50 px-4 py-3.5 text-sm shadow-sm">
+        <span
+          className="absolute inset-y-0 left-0 w-1 bg-pigment"
+          aria-hidden="true"
+        />
         <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-pigment">
           <ArrowRight size={14} />
           Next step
@@ -431,7 +435,7 @@ export default async function OrderDetailPage({
         {nextAction.kind === "link" && (
           <Link
             href={nextAction.href}
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-input bg-pigment px-4 text-sm font-medium text-surface transition-opacity hover:opacity-90 sm:ml-auto"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-input bg-pigment px-4 text-sm font-semibold text-surface shadow-sm transition-colors hover:bg-[#233e70] hover:shadow-md sm:ml-auto"
           >
             {nextAction.cta}
             <ArrowRight size={14} />
@@ -636,7 +640,7 @@ export default async function OrderDetailPage({
                 {editable && (
                   <Link
                     href={`/orders/${order.id}/complete`}
-                    className="mt-3 inline-flex h-8 items-center gap-2 rounded-input bg-pigment px-3 text-sm font-medium text-surface transition-opacity hover:opacity-90"
+                    className="mt-3 inline-flex h-8 items-center gap-2 rounded-input bg-pigment px-3 text-sm font-semibold text-surface shadow-sm transition-colors hover:bg-[#233e70]"
                   >
                     <Plus size={14} />
                     Add photos
@@ -810,8 +814,8 @@ function Fact({
 }) {
   return (
     <div className="bg-surface p-4">
-      <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate">
-        <Icon size={13} className="shrink-0" />
+      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate">
+        <Icon size={13} className="shrink-0 text-pigment" />
         {label}
       </div>
       <div

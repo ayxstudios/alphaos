@@ -87,18 +87,19 @@ export function CompareViewer({
   const zoomed = t.scale > 1;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2">
+    <div className="flex min-h-0 flex-1 flex-col gap-2.5">
       {/* Toolbar */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 text-xs text-slate">
+      <div className="flex items-center justify-between gap-2 rounded-input border border-line bg-surface px-3 py-1.5 shadow-sm">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-slate">
           <Search size={14} />
-          <span className="tabular-nums">{Math.round(t.scale * 100)}%</span>
-          <span className="hidden sm:inline">· scroll to zoom, drag to pan (synced)</span>
+          <span className="tabular-nums text-ink">{Math.round(t.scale * 100)}%</span>
+          <span className="hidden text-slate sm:inline">· scroll to zoom, drag to pan · panes stay synced</span>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 rounded-input border border-line bg-canvas p-1">
           <Button
             size="sm"
-            variant="secondary"
+            variant="ghost"
+            className="w-8 px-0"
             onClick={() => zoomAt(0, 0, 1 / 1.4)}
             aria-label="Zoom out"
           >
@@ -106,7 +107,8 @@ export function CompareViewer({
           </Button>
           <Button
             size="sm"
-            variant="secondary"
+            variant="ghost"
+            className="w-8 px-0"
             onClick={() => zoomAt(0, 0, 1.4)}
             aria-label="Zoom in"
           >
@@ -134,6 +136,7 @@ export function CompareViewer({
         />
         <Pane
           label={portraitLabel}
+          tone="accent"
           image={portrait}
           transform={t}
           zoomed={zoomed}
@@ -148,9 +151,9 @@ export function CompareViewer({
 
       {/* Reference thumbnail rail — switch which photo the left pane shows. */}
       {references.length > 1 && (
-        <div className="flex items-center gap-2 overflow-x-auto">
-          <span className="shrink-0 text-xs text-slate">
-            {references.length} reference photos:
+        <div className="flex items-center gap-2 overflow-x-auto rounded-input border border-line bg-surface p-2 shadow-sm">
+          <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-slate">
+            {references.length} references
           </span>
           {references.map((r, i) => (
             <button
@@ -182,6 +185,7 @@ export function CompareViewer({
 
 function Pane({
   label,
+  tone = "neutral",
   image,
   transform,
   zoomed,
@@ -189,6 +193,8 @@ function Pane({
   ...handlers
 }: {
   label: string;
+  /** "accent" marks the pane under review (the delivered portrait). */
+  tone?: "neutral" | "accent";
   image: string | null;
   transform: Transform;
   zoomed: boolean;
@@ -217,9 +223,26 @@ function Pane({
   }, [onZoom]);
 
   return (
-    <div className="flex min-h-[20rem] flex-col overflow-hidden rounded-card border border-line bg-surface shadow-sm">
-      <div className="flex items-center justify-between border-b border-line px-3 py-1.5">
-        <span className="text-xs font-medium text-slate">{label}</span>
+    <div
+      className={cn(
+        "flex min-h-[20rem] flex-col overflow-hidden rounded-card border bg-surface shadow-sm",
+        tone === "accent" ? "border-pigment/30" : "border-line",
+      )}
+    >
+      <div
+        className={cn(
+          "flex items-center justify-between border-b px-3 py-1.5",
+          tone === "accent" ? "border-pigment/20 bg-pigment-soft/40" : "border-line",
+        )}
+      >
+        <span
+          className={cn(
+            "text-xs font-medium",
+            tone === "accent" ? "text-pigment" : "text-slate",
+          )}
+        >
+          {label}
+        </span>
       </div>
       <div
         ref={surfaceRef}
