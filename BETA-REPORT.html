@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>AlphaOS — Beta Test &amp; Polish Report</title>
+<style>
+  :root {
+    --canvas: #FBFAF8; --surface: #FFFFFF; --ink: #16222E; --slate: #5C6B7A;
+    --line: #E6E2DC; --pigment: #5B4BC4; --pigment-soft: #EFEDFB;
+    --sage: #14705A; --amber: #8F5B08; --rose: #C6335B;
+  }
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: Inter, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink); background: var(--canvas); margin: 0; line-height: 1.5;
+    font-size: 13px;
+  }
+  .page { padding: 0 2mm; }
+  .cover {
+    display: flex; flex-direction: column; justify-content: center;
+    min-height: 240mm; text-align: center; page-break-after: always;
+  }
+  .mark {
+    width: 56px; height: 56px; border-radius: 16px; background: var(--pigment);
+    color: #fff; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 24px; margin: 0 auto 20px;
+  }
+  h1 { font-size: 34px; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
+  .cover h1 { font-size: 30px; }
+  .subtitle { color: var(--slate); font-size: 16px; margin-bottom: 40px; }
+  .meta { color: var(--slate); font-size: 13px; }
+  .meta strong { color: var(--ink); }
+  h2 {
+    font-size: 20px; font-weight: 700; margin: 30px 0 12px;
+    border-bottom: 2px solid var(--line); padding-bottom: 8px;
+  }
+  h3 { font-size: 15px; font-weight: 600; margin: 18px 0 6px; }
+  p { margin: 6px 0; }
+  section { page-break-inside: avoid; margin-bottom: 8px; }
+  .section-break { page-break-before: always; }
+  ul { margin: 6px 0; padding-left: 20px; }
+  li { margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 12.5px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--slate); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .tag {
+    display: inline-block; padding: 2px 8px; border-radius: 8px; font-size: 11px;
+    font-weight: 600;
+  }
+  .tag-pass { background: #E6F4F0; color: var(--sage); }
+  .tag-fixed { background: var(--pigment-soft); color: var(--pigment); }
+  .tag-minor { background: #FBF3E3; color: var(--amber); }
+  .tag-note { background: #F5EEF0; color: var(--rose); }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px; margin: 10px 0;
+  }
+  .exec { background: var(--pigment-soft); border-radius: 12px; padding: 16px 18px; margin: 12px 0; }
+  code {
+    background: var(--pigment-soft); color: var(--pigment); padding: 1px 5px;
+    border-radius: 4px; font-size: 12px; font-family: "SF Mono", Menlo, monospace;
+  }
+  .links a { color: var(--pigment); }
+  .footer { color: var(--slate); font-size: 11px; text-align: center; margin-top: 30px; }
+</style>
+</head>
+<body>
+
+<div class="page cover">
+  <div class="mark">A</div>
+  <h1>AlphaOS</h1>
+  <p class="subtitle">Beta Test &amp; Polish Report</p>
+  <p class="meta">
+    Prepared for <strong>Yousif</strong> · 10 August 2026<br/>
+    Branch: <strong>beta-debugger/polish-2026-08-10</strong><br/>
+    Repo: <strong>ayxstudios/alphaos</strong><br/>
+    Preview: <strong>alphaos-5wd7e7jbb-almacorp.vercel.app</strong>
+  </p>
+</div>
+
+<div class="page">
+
+<section>
+<h2>Executive summary</h2>
+<div class="exec">
+<p>AlphaOS arrived in genuinely strong shape — this is not a rough prototype. Every core screen (dashboard, orders, board, QC, customers, designers, settings, portrait styles, the public customer proof portal) renders real, well-structured operational data, matches the brief's own design tokens exactly, and enforces its role-based access rules (admin/VA/designer) at the server, not just in the UI. The order state machine, RLS multi-tenancy, and the QC checklist screen — the brief's own "most important interface" — all work as designed.</p>
+<p>One real gap against the brief was found and fixed: admin/VA had no way to see all businesses at once (the brief's Core Feature #1). That's now live for the Dashboard, plus every other view gracefully prompts to pick one business rather than breaking. Two smaller real bugs were found and fixed (a login UX annoyance, a console-level rendering error on the board), and a genuine pre-existing data bug was caught and fixed along the way (a duplicate order row on the dashboard for orders with more than one line item).</p>
+<p><strong>Is it ready for daily use by the team?</strong> For the built-and-working surface (orders, boards, QC, customer records, manual order entry, Shopify sync) — yes. Etsy live sync, Gmail sending, and the print-provider APIs are still genuinely untested against real accounts (this was already known and documented in the repo's own <code>docs/PROGRESS.md</code>), not something this pass could close without live credentials.</p>
+</div>
+</section>
+
+<section>
+<h2>App purpose, as understood</h2>
+<p>AlphaOS replaces Trello as the single source of truth for a multi-shop portrait business: 14 shops (9 Etsy, 5 Shopify), ~2,000 orders/month, 50 designers, 6 VAs, 1 admin. Every order is one record moving through a state machine (awaiting photos → assigned → in design → QC → proof → delivered/printed), with boards, queues, the customer proof page, and admin dashboards all being different filtered views over that same record. The stated goal is to end the "I can't tell you how many orders are late" problem, enforce a real QC gate before anything ships, and give the business owner a genuine daily read on its own health — while staying fast and simple enough that 50 designers currently happy on Trello don't resist it.</p>
+</section>
+
+<section>
+<h2>Scope tested</h2>
+<table>
+<tr><th>Screen / flow</th><th>Status</th></tr>
+<tr><td>Login — correct credentials, wrong password, session</td><td><span class="tag tag-fixed">Fixed</span></td></tr>
+<tr><td>Dashboard (admin)</td><td><span class="tag tag-fixed">Fixed &amp; extended</span></td></tr>
+<tr><td>Orders list (filters, saved views, bulk actions)</td><td><span class="tag tag-pass">Pass</span></td></tr>
+<tr><td>Order detail (quick actions, state gating)</td><td><span class="tag tag-pass">Pass</span></td></tr>
+<tr><td>Designer boards (drag/drop, capacity)</td><td><span class="tag tag-fixed">Fixed</span></td></tr>
+<tr><td>QC screen (checklist, keyboard shortcuts, side-by-side)</td><td><span class="tag tag-pass">Pass</span></td></tr>
+<tr><td>New order (manual entry)</td><td><span class="tag tag-pass">Pass</span></td></tr>
+<tr><td>Customers, Designers, Portrait Styles, Settings</td><td><span class="tag tag-pass">Pass</span></td></tr>
+<tr><td>Public customer proof portal</td><td><span class="tag tag-note">Partial — see below</span></td></tr>
+<tr><td>Role-based access (admin / VA / designer)</td><td><span class="tag tag-pass">Pass, verified server-side</span></td></tr>
+<tr><td>Design system / styleguide page</td><td><span class="tag tag-pass">Pass</span></td></tr>
+<tr><td>Etsy live sync, Gmail sending, print provider APIs</td><td><span class="tag tag-note">Could not test — see below</span></td></tr>
+</table>
+</section>
+
+</div>
+
+<div class="page section-break">
+
+<section>
+<h2>Bugs found and fixed</h2>
+
+<div class="card">
+<h3>1. Login form lost the typed email on a failed attempt <span class="tag tag-minor">Minor</span></h3>
+<p><strong>Where:</strong> <code>app/(auth)/login</code>. <strong>Impact:</strong> after a wrong password, both the email and password fields cleared, forcing the whole email to be retyped — small friction repeated many times a day by 56 people. <strong>Fix:</strong> the email is now preserved across a failed attempt; the password is still always cleared, on principle.</p>
+</div>
+
+<div class="card">
+<h3>2. Board threw a console hydration error on load <span class="tag tag-minor">Minor</span></h3>
+<p><strong>Where:</strong> <code>components/board/designer-board.tsx</code>. <strong>Impact:</strong> a real React hydration-mismatch error on every board visit after the first in a session (a known dnd-kit SSR quirk, not a logic bug) — cosmetic/console-only, drag-and-drop itself worked, but it would fail any "zero console errors" bar. <strong>Fix:</strong> gave the drag context a stable id so the server and client agree.</p>
+</div>
+
+<div class="card">
+<h3>3. Missing "All Businesses" view <span class="tag tag-fixed">Fixed — Core Feature #1</span></h3>
+<p><strong>Where:</strong> the workspace switcher. <strong>Impact:</strong> the brief explicitly calls for admin/VA to default to an "All Businesses" view; the app only ever let you look at one business at a time, with no way to see the whole operation at once. The database already supported this (row-level security already grants admin/VA cross-business reads) — it was purely a missing UI capability, and in fact two backend functions (<code>getQcQueueIds</code>, the email outbox helpers) already had dormant support for an "all" mode that the switcher never activated.</p>
+<p><strong>Fix:</strong> added "All Businesses" as a real, default-for-staff option. The <strong>Dashboard now fully aggregates</strong> — stat cards, the overdue/needs-attention list (each row tagged with its business), and shop sync health all span every business. QC's queue navigation already works correctly with it. Orders, Customers, Designers, Settings, Portrait Styles, and New Order — all large, already-solid pages — deliberately were not rewritten to aggregate in this pass (see Recommended Next Steps); they now show a clean, on-brand "pick a business first" prompt instead of crashing or silently showing wrong data.</p>
+</div>
+
+<div class="card">
+<h3>4. Duplicate order row on the dashboard for multi-item orders <span class="tag tag-fixed">Fixed — pre-existing bug</span></h3>
+<p><strong>Where:</strong> Dashboard "Needs attention" list. <strong>Impact:</strong> an order with more than one line item (and matching/blank item titles) rendered twice in the list — a genuine pre-existing data bug, not something this pass introduced; it simply became visible once orders from every business were reachable. <strong>Fix:</strong> the query no longer multiplies rows by joining the items table; it takes one representative item per order.</p>
+</div>
+
+<div class="card">
+<h3>5. Caught during retest: switching back to one business crashed the dashboard</h3>
+<p>While re-testing the fix above, switching from "All Businesses" back to a specific workspace threw a real server error (a query referenced the wrong table's column). Caught immediately by testing the fix live in the browser rather than trusting a clean build alone, and fixed before this branch went anywhere near a review link.</p>
+</div>
+
+</section>
+
+</div>
+
+<div class="page section-break">
+
+<section>
+<h2>Purpose &amp; simplicity — what already works well</h2>
+<ul>
+<li>Every screen answers "where am I / what needs attention / what happens if I click this" without extra explanation — matches the brief's own stated design bar.</li>
+<li>Orders list: saved views with live counts (Active, Overdue, Needs Details, Awaiting QC, etc.), status tooltips explaining what each state means, and bulk reassign/status actions — genuinely fast for high-volume VA work.</li>
+<li>Quick actions on an order (reassign, request revision) disable themselves with a plain-English reason when not yet eligible, rather than letting you attempt an invalid action.</li>
+<li>The QC screen — the brief's own "most important interface" — is a faithful, complete build: synced-zoom side-by-side compare, the exact 10-point checklist from the brief, full keyboard shortcuts (1–9/0 to toggle, A for all, Enter to pass, F to fail, J/K to move between orders), and an auto-stamped reviewer name.</li>
+</ul>
+
+<h2>Aesthetic &amp; UX</h2>
+<ul>
+<li>The design-system page (<code>/styleguide</code>) confirms every token from the brief is implemented faithfully: the warm-paper canvas, the pigment-violet accent, the sage/amber/rose status colours, the type scale, button/card/chip states, motion durations.</li>
+<li>Consistent, on-brand empty states throughout (including the new "pick a business" prompt added in this pass, which reuses the app's own existing empty-state pattern rather than inventing a new one).</li>
+<li>Designers see customer first-name only, never email — verified this is enforced server-side (a direct URL to a staff-only page redirects a designer back to their board), not just hidden in the UI. Real, working privacy/security design.</li>
+</ul>
+</section>
+
+<section>
+<h2>Could not test</h2>
+<ul>
+<li><strong>Etsy live sync</strong> — no live Etsy account connected (already flagged as untested in the repo's own docs). Code review only.</li>
+<li><strong>Gmail sending / inbound reply threading</strong> — no business has a connected Gmail account; needs Google Workspace OAuth credentials.</li>
+<li><strong>Lumaprints / Gelato print-provider APIs</strong> — not wired up yet (manual tracking-entry path exists and works).</li>
+<li><strong>Auto-QC (Claude-powered)</strong> — this agent did not have an Anthropic API key configured for the test environment.</li>
+<li><strong>Real photo uploads end-to-end</strong> — this agent did not have Cloudflare R2 credentials for the test environment, so file-upload UI was reviewed but not exercised with a real file landing in storage.</li>
+<li><strong>Customer proof approve/revision flow</strong> — no proof had been generated in the seed data to click through live; the invalid/expired-link path was verified and reads well ("This proof link is invalid or has expired…").</li>
+</ul>
+<p>None of these are blockers to using AlphaOS for its core order/board/QC workflow today — they're the same set already called out as the biggest untested surface in the project's own <code>docs/PROGRESS.md</code>.</p>
+</section>
+
+</div>
+
+<div class="page section-break">
+
+<section>
+<h2>Recommended next steps</h2>
+<ol>
+<li><strong>Decide whether "All Businesses" should extend to Orders.</strong> That page is large and already solid (860+ lines, saved views, filters, bulk actions); aggregating it safely is a real, scoped follow-up, not a quick add.</li>
+<li><strong>Connect one real Etsy shop and one Gmail mailbox</strong> to close the two biggest genuinely-untested surfaces — both already flagged as the top priority in the repo's own progress notes, independent of this review.</li>
+<li><strong>Give this agent Cloudflare R2 + Anthropic API credentials</strong> (a test/sandbox set, not production) for a follow-up pass that can exercise real photo uploads and Auto-QC end-to-end.</li>
+<li><strong>Seed one real proof</strong> to click through the customer approve/revision flow live — the single brief-flagged feature ("the revision fix") that couldn't be exercised this round.</li>
+</ol>
+</section>
+
+<section>
+<h2>What to do with this branch</h2>
+<p>Everything above lives on <code>beta-debugger/polish-2026-08-10</code>, pushed to the repo. <strong>Nothing was merged or pushed to main.</strong> Review the branch and the preview link below, then merge whenever ready.</p>
+<div class="card links">
+<p><strong>Preview (live, working):</strong><br/>
+<a href="https://alphaos-5wd7e7jbb-almacorp.vercel.app/login">alphaos-5wd7e7jbb-almacorp.vercel.app</a><br/>
+Login: <code>admin@aystudios.io</code> / <code>alphaos123</code></p>
+<p style="margin-top:10px"><em>Note: this preview runs against an isolated test database seeded with fake data (2 businesses, 20 orders), not your real production data — created deliberately so this review could freely create/edit/delete without any risk to live orders.</em></p>
+</div>
+</section>
+
+</div>
+
+<div class="footer">AlphaOS Beta Test &amp; Polish Report · Prepared by the AI Employee Agent · 10 August 2026</div>
+
+</body>
+</html>
