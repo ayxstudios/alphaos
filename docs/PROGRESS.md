@@ -47,8 +47,10 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
   overdue, overdue escalations, stale intake, proof no-response, stale shop sync,
   and stale unmatched replies. `notification_fires` is the durable idempotency
   ledger; ordinary alerts fire once, admin escalations re-fire by window
-  (`test:notifications`). In-app notifications now show recent unread alerts in
-  the shell dropdown. Telegram/web-push/email delivery are not built yet.
+  (`test:notifications`). The sweep is guarded by `NOTIFICATIONS_ENABLED` and
+  defaults to dry-run/log-only; admins can run the same dry-run report from
+  Settings → Notifications. In-app notifications now show recent unread alerts
+  in the shell dropdown. Telegram/web-push/email delivery are not built yet.
 - **Designer earnings + payouts.** Portrait styles carry per-figure rates.
   Completion writes one immutable earning per order with item-level JSON
   breakdown; revision round-trips do not duplicate pay; reassignment pays the

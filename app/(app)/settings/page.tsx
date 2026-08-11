@@ -24,6 +24,7 @@ import {
   GmailBusinessCard,
   type GmailBusinessVM,
 } from "@/components/settings/gmail-business-card";
+import { NotificationDryRunPanel } from "@/components/settings/notification-dry-run-panel";
 import { TemplateEditor, type TemplateVM } from "@/components/settings/template-editor";
 import { ShopStylesPanel, type ShopStylesVM } from "@/components/settings/shop-styles-panel";
 import {
@@ -56,6 +57,7 @@ const SETTINGS_SECTIONS = [
   { key: "shopify", label: "Shopify" },
   { key: "portrait-styles", label: "Portrait Styles" },
   { key: "email", label: "Customer Email" },
+  { key: "notifications", label: "Notifications" },
 ] as const;
 
 type SettingsSection = (typeof SETTINGS_SECTIONS)[number]["key"];
@@ -391,6 +393,16 @@ export default async function SettingsPage({
                 />
               </DataPanel>
             )}
+          </section>
+        )}
+
+        {activeSection === "notifications" && (
+          <section className="flex flex-col gap-4">
+            <SectionHeader
+              title="Notifications"
+              description="Preview the SLA sweep before it is allowed to create alerts."
+            />
+            <NotificationDryRunPanel />
           </section>
         )}
       </div>

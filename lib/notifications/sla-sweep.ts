@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
-import { withSystemContext, type Tx } from "@/lib/db";
+import { withSystemContext, withUserContext, type RequestUser, type Tx } from "@/lib/db";
 import {
   assignments,
   activityLog,
@@ -39,14 +39,46 @@ type SweepAlert = {
 };
 
 export type NotificationSweepResult = {
+  dryRun: boolean;
+  enabled: boolean;
   candidates: number;
+  wouldFire: number;
   fired: number;
   skippedDuplicate: number;
+  noRecipients: number;
+  wouldCreateNotifications: number;
   notificationsCreated: number;
+  byType: SweepBucket[];
+  byBusiness: SweepBusinessBucket[];
+  topRecipients: SweepRecipientBucket[];
 };
 
 export type NotificationSweepOptions = {
   businessIds?: string[];
+  dryRun?: boolean;
+  enabled?: boolean;
+};
+
+export type SweepBucket = {
+  alertType: string;
+  candidates: number;
+  wouldFire: number;
+  fired: number;
+  wouldCreateNotifications: number;
+  notificationsCreated: number;
+};
+
+export type SweepBusinessBucket = SweepBucket & {
+  businessId: string;
+  businessName: string;
+};
+
+export type SweepRecipientBucket = {
+  userId: string;
+  name: string | null;
+  email: string;
+  role: string;
+  wouldReceive: number;
 };
 
 function orderLabel(order: { number: string | null; fallback: string }): string {
@@ -142,34 +174,198 @@ export async function runNotificationSweep(
   opts: NotificationSweepOptions = {},
 ): Promise<NotificationSweepResult> {
   return withSystemContext(async (tx) => {
-    const alerts = await buildAlerts(tx, now, opts);
-    const result: NotificationSweepResult = {
-      candidates: alerts.length,
-      fired: 0,
-      skippedDuplicate: 0,
-      notificationsCreated: 0,
-    };
+    return executeNotificationSweep(tx, now, opts);
+  });
+}
 
+export async function previewNotificationSweep(
+  user: RequestUser,
+  now = new Date(),
+  opts: Omit<NotificationSweepOptions, "dryRun" | "enabled"> = {},
+): Promise<NotificationSweepResult> {
+  return withUserContext(user, (tx) =>
+    executeNotificationSweep(tx, now, { ...opts, dryRun: true, enabled: false }),
+  );
+}
+
+async function executeNotificationSweep(
+  tx: Tx,
+  now: Date,
+  opts: NotificationSweepOptions,
+): Promise<NotificationSweepResult> {
+  const alerts = await buildAlerts(tx, now, opts);
+  const result = await buildSweepResult(tx, alerts, {
+    dryRun: !!opts.dryRun,
+    enabled: opts.enabled ?? !opts.dryRun,
+  });
+
+  if (!opts.dryRun) {
     for (const alert of alerts) {
       const fired = await fireInApp(tx, alert);
       if (fired.fired) {
         result.fired++;
         result.notificationsCreated += fired.notifications;
-      } else {
-        result.skippedDuplicate++;
+        bumpFired(result.byType, alert.alertType, fired.notifications);
+        bumpFired(result.byBusiness, alert.businessId, fired.notifications);
       }
     }
+  }
 
-    console.log(
-      JSON.stringify({
-        ts: new Date().toISOString(),
-        component: "notifications",
-        event: "sla_sweep_complete",
-        ...result,
-      }),
-    );
-    return result;
-  });
+  console.log(
+    JSON.stringify({
+      ts: new Date().toISOString(),
+      component: "notifications",
+      event: opts.dryRun ? "sla_sweep_dry_run" : "sla_sweep_complete",
+      ...result,
+    }),
+  );
+  return result;
+}
+
+async function buildSweepResult(
+  tx: Tx,
+  alerts: SweepAlert[],
+  mode: { dryRun: boolean; enabled: boolean },
+): Promise<NotificationSweepResult> {
+  const existingKeys = await loadExistingDedupeKeys(tx, alerts.map((alert) => alert.dedupeKey));
+  const businessNames = await loadBusinessNames(tx, alerts.map((alert) => alert.businessId));
+  const recipientNames = await loadRecipientNames(tx, alerts.flatMap((alert) => alert.recipients.map((r) => r.id)));
+
+  const byType = new Map<string, SweepBucket>();
+  const byBusiness = new Map<string, SweepBusinessBucket>();
+  const topRecipients = new Map<string, SweepRecipientBucket>();
+  const result: NotificationSweepResult = {
+    dryRun: mode.dryRun,
+    enabled: mode.enabled,
+    candidates: alerts.length,
+    wouldFire: 0,
+    fired: 0,
+    skippedDuplicate: 0,
+    noRecipients: 0,
+    wouldCreateNotifications: 0,
+    notificationsCreated: 0,
+    byType: [],
+    byBusiness: [],
+    topRecipients: [],
+  };
+
+  for (const alert of alerts) {
+    const typeBucket = getTypeBucket(byType, alert.alertType);
+    const businessBucket = getBusinessBucket(byBusiness, alert.businessId, businessNames.get(alert.businessId) ?? "Unknown business");
+    typeBucket.candidates++;
+    businessBucket.candidates++;
+
+    if (alert.recipients.length === 0) {
+      result.noRecipients++;
+      continue;
+    }
+    if (existingKeys.has(alert.dedupeKey)) {
+      result.skippedDuplicate++;
+      continue;
+    }
+
+    result.wouldFire++;
+    result.wouldCreateNotifications += alert.recipients.length;
+    typeBucket.wouldFire++;
+    typeBucket.wouldCreateNotifications += alert.recipients.length;
+    businessBucket.wouldFire++;
+    businessBucket.wouldCreateNotifications += alert.recipients.length;
+
+    for (const recipient of alert.recipients) {
+      const info = recipientNames.get(recipient.id);
+      const bucket =
+        topRecipients.get(recipient.id) ??
+        {
+          userId: recipient.id,
+          name: info?.name ?? null,
+          email: info?.email ?? "unknown",
+          role: info?.role ?? "unknown",
+          wouldReceive: 0,
+        };
+      bucket.wouldReceive++;
+      topRecipients.set(recipient.id, bucket);
+    }
+  }
+
+  result.byType = [...byType.values()].sort((a, b) => b.wouldFire - a.wouldFire || b.candidates - a.candidates);
+  result.byBusiness = [...byBusiness.values()].sort((a, b) => b.wouldFire - a.wouldFire || b.candidates - a.candidates);
+  result.topRecipients = [...topRecipients.values()]
+    .sort((a, b) => b.wouldReceive - a.wouldReceive)
+    .slice(0, 10);
+  return result;
+}
+
+async function loadExistingDedupeKeys(tx: Tx, keys: string[]): Promise<Set<string>> {
+  const unique = [...new Set(keys)];
+  if (unique.length === 0) return new Set();
+  const rows = await tx
+    .select({ dedupeKey: notificationFires.dedupeKey })
+    .from(notificationFires)
+    .where(inArray(notificationFires.dedupeKey, unique));
+  return new Set(rows.map((row) => row.dedupeKey));
+}
+
+async function loadBusinessNames(tx: Tx, businessIds: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(businessIds)];
+  if (unique.length === 0) return new Map();
+  const rows = await tx
+    .select({ id: businesses.id, name: businesses.name })
+    .from(businesses)
+    .where(inArray(businesses.id, unique));
+  return new Map(rows.map((row) => [row.id, row.name]));
+}
+
+async function loadRecipientNames(tx: Tx, userIds: string[]): Promise<Map<string, { name: string | null; email: string; role: string }>> {
+  const unique = [...new Set(userIds)];
+  if (unique.length === 0) return new Map();
+  const rows = await tx
+    .select({ id: users.id, name: users.name, email: users.email, role: users.role })
+    .from(users)
+    .where(inArray(users.id, unique));
+  return new Map(rows.map((row) => [row.id, { name: row.name, email: row.email, role: row.role }]));
+}
+
+function getTypeBucket(map: Map<string, SweepBucket>, alertType: string): SweepBucket {
+  const existing = map.get(alertType);
+  if (existing) return existing;
+  const bucket = {
+    alertType,
+    candidates: 0,
+    wouldFire: 0,
+    fired: 0,
+    wouldCreateNotifications: 0,
+    notificationsCreated: 0,
+  };
+  map.set(alertType, bucket);
+  return bucket;
+}
+
+function getBusinessBucket(map: Map<string, SweepBusinessBucket>, businessId: string, businessName: string): SweepBusinessBucket {
+  const existing = map.get(businessId);
+  if (existing) return existing;
+  const bucket = {
+    businessId,
+    businessName,
+    alertType: "all",
+    candidates: 0,
+    wouldFire: 0,
+    fired: 0,
+    wouldCreateNotifications: 0,
+    notificationsCreated: 0,
+  };
+  map.set(businessId, bucket);
+  return bucket;
+}
+
+function bumpFired<T extends SweepBucket | SweepBusinessBucket>(
+  buckets: T[],
+  key: string,
+  notificationsCreated: number,
+): void {
+  const bucket = buckets.find((b) => b.alertType === key || ("businessId" in b && b.businessId === key));
+  if (!bucket) return;
+  bucket.fired++;
+  bucket.notificationsCreated += notificationsCreated;
 }
 
 async function buildAlerts(tx: Tx, now: Date, opts: NotificationSweepOptions): Promise<SweepAlert[]> {

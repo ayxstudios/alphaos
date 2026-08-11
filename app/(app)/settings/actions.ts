@@ -24,6 +24,7 @@ import {
   type TemplateKey,
 } from "@/lib/email/templates";
 import { appUrl } from "@/lib/urls";
+import { previewNotificationSweep, type NotificationSweepResult } from "@/lib/notifications/sla-sweep";
 import {
   syncShopReceipts,
   type SyncSummary,
@@ -469,6 +470,18 @@ export async function sendGmailTest(businessId: string, toRaw: string): Promise<
     message: okAll ? `Sent ${results.length} test emails to ${to}` : "Some test emails failed — see below",
     results,
   };
+}
+
+export async function runNotificationDryRun(): Promise<
+  { ok: true; report: NotificationSweepResult } | { ok: false; message: string }
+> {
+  try {
+    const user = await requireAdmin();
+    const report = await previewNotificationSweep(user);
+    return { ok: true, report };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Dry-run failed" };
+  }
 }
 
 /* --- Email templates (per business) ------------------------------------- */
