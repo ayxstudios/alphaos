@@ -19,6 +19,7 @@
     "test:transitions": "tsx scripts/test-transitions.ts",
     "test:shopify-figures": "tsx scripts/test-shopify-figures.ts",
     "test:nonportrait": "tsx scripts/test-nonportrait-invariants.ts",
+    "test:earnings": "tsx scripts/test-earnings.ts",
     "test:reconcile": "tsx scripts/test-reconcile.ts",
     "test:etsy-review": "tsx scripts/test-etsy-review.ts"
   },

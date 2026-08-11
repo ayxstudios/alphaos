@@ -249,7 +249,33 @@ export type DesignerBoard = {
     complete: BoardCard[];
   };
   dailyEarnings: number;
+  periodEarnings: number;
+  earningHistory: DesignerEarningHistory[];
 };
+
+export type DesignerEarningHistory = {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  style: string;
+  figureCount: number;
+  rate: string | null;
+  amount: string | null;
+  status: "blocked" | "pending" | "paid" | "voided";
+  createdAt: string;
+};
+
+function styleSummary(breakdown: unknown): string {
+  if (!Array.isArray(breakdown) || breakdown.length === 0) return "Unspecified";
+  const styles = [
+    ...new Set(
+      breakdown
+        .map((row) => (typeof row === "object" && row ? (row as { style?: unknown }).style : null))
+        .filter((style): style is string => typeof style === "string" && style.trim().length > 0),
+    ),
+  ];
+  return styles.length ? styles.join(", ") : "Unspecified";
+}
 
 /** Designer board for `designerId` (self, or a VA viewing ?designer=X). */
 export async function getDesignerBoard(user: RequestUser, designerId?: string): Promise<DesignerBoard> {
@@ -279,10 +305,34 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
     const meta = new Map(rows.map((r) => [r.id, r]));
     const pick = (pred: (r: OrderRow) => boolean) => cards.filter((c) => pred(meta.get(c.orderId)!));
 
-    const [e] = await tx
+    const [daily] = await tx
       .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
       .from(earnings)
-      .where(and(eq(earnings.designerId, target), gte(earnings.createdAt, sql`date_trunc('day', now())`)));
+      .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), gte(earnings.createdAt, sql`date_trunc('day', now())`)));
+
+    const [period] = await tx
+      .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
+      .from(earnings)
+      .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), gte(earnings.createdAt, sql`date_trunc('month', now())`)));
+
+    const earningRows = await tx
+      .select({
+        id: earnings.id,
+        orderId: earnings.orderId,
+        orderNumber: orders.platformOrderName,
+        fallbackOrderNumber: orders.platformOrderId,
+        figureCount: earnings.figureCount,
+        rate: earnings.rate,
+        amount: earnings.amount,
+        status: earnings.status,
+        breakdown: earnings.breakdown,
+        createdAt: earnings.createdAt,
+      })
+      .from(earnings)
+      .innerJoin(orders, eq(orders.id, earnings.orderId))
+      .where(eq(earnings.designerId, target))
+      .orderBy(desc(earnings.createdAt))
+      .limit(20);
 
     return {
       columns: {
@@ -296,7 +346,19 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
         }),
         complete: pick((r) => r.status === "complete"),
       },
-      dailyEarnings: Number(e?.total ?? 0),
+      dailyEarnings: Number(daily?.total ?? 0),
+      periodEarnings: Number(period?.total ?? 0),
+      earningHistory: earningRows.map((earning) => ({
+        id: earning.id,
+        orderId: earning.orderId,
+        orderNumber: earning.orderNumber ?? earning.fallbackOrderNumber,
+        style: styleSummary(earning.breakdown),
+        figureCount: earning.figureCount,
+        rate: earning.rate,
+        amount: earning.amount,
+        status: earning.status,
+        createdAt: earning.createdAt.toISOString(),
+      })),
     };
   });
 }

@@ -185,14 +185,16 @@ function ProductRow({
 }) {
   const [choice, setChoice] = useState("");
   const [newName, setNewName] = useState("");
+  const [newRate, setNewRate] = useState("");
   const productArg = { title: product.title, sku: product.sku };
   const correcting = product.via === "default";
 
   function apply() {
     if (choice === NEW) {
       const name = newName.trim();
-      if (!name) return;
-      run(() => createStyleFromProduct(name, productArg), `Learned as ${name}`);
+      const rate = newRate.trim();
+      if (!name || !rate) return;
+      run(() => createStyleFromProduct(name, rate, productArg), `Learned as ${name}`);
     } else if (choice) {
       const styleName = styles.find((s) => s.id === choice)?.name ?? "style";
       run(() => assignProductToStyle(choice, productArg), `Learned as ${styleName}`);
@@ -232,13 +234,23 @@ function ProductRow({
           <option value={NEW}>+ New style…</option>
         </Select>
         {choice === NEW && (
-          <Input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="New style name"
-            aria-label="New style name"
-            className="h-9 w-40"
-          />
+          <>
+            <Input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="New style name"
+              aria-label="New style name"
+              className="h-9 w-40"
+            />
+            <Input
+              value={newRate}
+              onChange={(e) => setNewRate(e.target.value)}
+              placeholder="Rate"
+              inputMode="decimal"
+              aria-label="New style rate per figure"
+              className="h-9 w-24"
+            />
+          </>
         )}
         <Button
           type="button"
@@ -246,7 +258,7 @@ function ProductRow({
           variant="secondary"
           onClick={apply}
           loading={pending}
-          disabled={!choice || (choice === NEW && !newName.trim())}
+          disabled={!choice || (choice === NEW && (!newName.trim() || !newRate.trim()))}
         >
           {choice === NEW ? "Create" : correcting ? "Correct" : "Assign"}
         </Button>

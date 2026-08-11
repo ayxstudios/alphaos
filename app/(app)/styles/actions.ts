@@ -58,14 +58,24 @@ async function businessDesigners(tx: Tx, businessId: string) {
     .orderBy(asc(users.name));
 }
 
-export async function createStyle(nameRaw: string): Promise<ActionResult> {
+function parseRate(rateRaw: string): string | null {
+  const cleaned = rateRaw.trim().replace(/^\$/, "");
+  if (!cleaned) return null;
+  const value = Number(cleaned);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return value.toFixed(2);
+}
+
+export async function createStyle(nameRaw: string, rateRaw: string): Promise<ActionResult> {
   const user = await requireStaff();
   if (!user) return NOT_PERMITTED;
   const name = nameRaw.trim();
   if (!name) return { ok: false, message: "Enter a style name" };
+  const perFigureRate = parseRate(rateRaw);
+  if (!perFigureRate) return { ok: false, message: "Enter a positive per-figure rate" };
   const businessId = await currentBusinessId(user);
   try {
-    await withUserContext(user, (tx) => tx.insert(styles).values({ businessId, name }));
+    await withUserContext(user, (tx) => tx.insert(styles).values({ businessId, name, perFigureRate }));
   } catch {
     return { ok: false, message: `A style called "${name}" already exists` };
   }
@@ -105,6 +115,20 @@ export async function renameStyle(id: string, nameRaw: string): Promise<ActionRe
   }
   revalidatePath("/styles");
   revalidatePath("/board");
+  return { ok: true };
+}
+
+export async function setStyleRate(id: string, rateRaw: string): Promise<ActionResult> {
+  const user = await requireStaff();
+  if (!user) return NOT_PERMITTED;
+  const perFigureRate = parseRate(rateRaw);
+  if (!perFigureRate) return { ok: false, message: "Enter a positive per-figure rate" };
+  const businessId = await currentBusinessId(user);
+  await withUserContext(user, (tx) =>
+    tx.update(styles).set({ perFigureRate }).where(and(eq(styles.id, id), eq(styles.businessId, businessId))),
+  );
+  revalidatePath("/styles");
+  revalidatePath("/payouts");
   return { ok: true };
 }
 
@@ -215,15 +239,17 @@ export async function assignProductToStyle(styleId: string, product: Product): P
 }
 
 /** Create a new style from an unrecognised product and learn it in one step. */
-export async function createStyleFromProduct(nameRaw: string, product: Product): Promise<ActionResult> {
+export async function createStyleFromProduct(nameRaw: string, rateRaw: string, product: Product): Promise<ActionResult> {
   const user = await requireStaff();
   if (!user) return NOT_PERMITTED;
   const name = nameRaw.trim();
   if (!name) return { ok: false, message: "Enter a style name" };
+  const perFigureRate = parseRate(rateRaw);
+  if (!perFigureRate) return { ok: false, message: "Enter a positive per-figure rate" };
   const businessId = await currentBusinessId(user);
   try {
     await withUserContext(user, async (tx) => {
-      const [created] = await tx.insert(styles).values({ businessId, name }).returning({ id: styles.id });
+      const [created] = await tx.insert(styles).values({ businessId, name, perFigureRate }).returning({ id: styles.id });
       const res = await learnProductStyle(tx, businessId, created.id, product);
       await logStyleLearning(tx, {
         businessId,

@@ -111,6 +111,7 @@ export const emailTemplateKey = pgEnum("email_template_key", [
 export const printProvider = pgEnum("print_provider", ["lumaprints", "gelato"]);
 export const printMethod = pgEnum("print_method", ["api", "manual"]);
 export const earningsStatus = pgEnum("earnings_status", [
+  "blocked",
   "pending",
   "paid",
   "voided",
@@ -345,6 +346,9 @@ export const styles = pgTable(
     titleMatches: text("title_matches").array().notNull().default(sql`'{}'::text[]`),
     // Exact product SKUs mapped to this style — the precise "learned" product key.
     skuMatches: text("sku_matches").array().notNull().default(sql`'{}'::text[]`),
+    // Pay rate for one figure in this style. Nullable so missing config creates
+    // a blocked earning rather than silently paying zero.
+    perFigureRate: numeric("per_figure_rate", { precision: 10, scale: 2 }),
     isDefault: boolean("is_default").notNull().default(false),
     createdAt: createdAt(),
   },
@@ -733,14 +737,34 @@ export const earnings = pgTable(
       .unique()
       .references(() => orders.id, { onDelete: "restrict" }),
     figureCount: integer("figure_count").notNull(),
-    rate: numeric("rate", { precision: 10, scale: 2 }).notNull(),
-    amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+    rate: numeric("rate", { precision: 10, scale: 2 }),
+    amount: numeric("amount", { precision: 10, scale: 2 }),
+    breakdown: jsonb("breakdown").$type<EarningBreakdown[]>(),
     period: text("period").notNull(),
     status: earningsStatus("status").notNull().default("pending"),
+    blockedReason: text("blocked_reason"),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    paidBy: text("paid_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    voidedAt: timestamp("voided_at", { withTimezone: true }),
+    voidedBy: text("voided_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    voidReason: text("void_reason"),
     createdAt: createdAt(),
   },
   (t) => [index("earnings_designer_period_idx").on(t.designerId, t.period)],
 );
+
+export type EarningBreakdown = {
+  orderItemId: string;
+  style: string | null;
+  figureCount: number;
+  rate: string | null;
+  amount: string | null;
+  blockedReason?: string;
+};
 
 // ---------------------------------------------------------------------------
 // System

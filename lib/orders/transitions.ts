@@ -10,10 +10,7 @@ import {
 import {
   orders,
   orderItems,
-  assignments,
-  earnings,
   qcChecks,
-  designerProfiles,
   activityLog,
   users,
   shops,
@@ -26,6 +23,7 @@ import {
 } from "@/lib/qc/checklist";
 import { runAutoAssign } from "./assign";
 import { prepareProofForApproval, draftRevisionReceived } from "@/lib/email/dispatch";
+import { createEarningForCompletion } from "@/lib/orders/earnings";
 
 export type OrderStatus = (typeof orderStatus.enumValues)[number];
 export type TransitionRole = "admin" | "va" | "designer" | "system";
@@ -253,7 +251,7 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
   if (qc) await insertQc(tx, order, actor, qc);
   // Earnings only for design completions. Non-portrait completes never pay
   // (and have no assignment anyway — createEarnings is a double safeguard).
-  if (to === "complete" && !nonPortraitComplete) await createEarnings(tx, order.id, order.businessId);
+  if (to === "complete" && !nonPortraitComplete) await createEarningForCompletion(tx, order.id, order.businessId);
 
   // Email side effects, composed into this transaction so a rolled-back
   // transition never leaves a stray proof or draft. See lib/email/dispatch.ts.
@@ -315,6 +313,11 @@ async function assertFiguresResolved(tx: Tx, orderId: string, platformOrderId: s
     .select({ figureCount: orderItems.figureCount })
     .from(orderItems)
     .where(eq(orderItems.orderId, orderId));
+  if (items.length === 0) {
+    throw new PreconditionError(
+      `Cannot complete order ${platformOrderId}: it has no order items. Add the purchased item first (items drive payout).`,
+    );
+  }
   if (items.some((i) => i.figureCount == null)) {
     throw new PreconditionError(
       `Cannot complete order ${platformOrderId}: it has an unresolved figure count. Resolve it from Orders first (figure count drives payout).`,
@@ -398,43 +401,6 @@ async function insertQc(
     checklistSnapshot: qc.checklist,
     itemResults: qc.itemResults,
   });
-}
-
-async function createEarnings(tx: Tx, orderId: string, businessId: string): Promise<void> {
-  const [assignment] = await tx
-    .select({ designerId: assignments.designerId })
-    .from(assignments)
-    .where(and(eq(assignments.orderId, orderId), eq(assignments.active, true)));
-  if (!assignment) return; // no active assignee — nothing to pay
-
-  const items = await tx
-    .select({ figureCount: orderItems.figureCount })
-    .from(orderItems)
-    .where(eq(orderItems.orderId, orderId));
-  const totalFigures = items.reduce((sum, i) => sum + (i.figureCount ?? 0), 0);
-
-  const [profile] = await tx
-    .select({ rate: designerProfiles.perFigureRate })
-    .from(designerProfiles)
-    .where(eq(designerProfiles.userId, assignment.designerId));
-  const rate = profile?.rate ?? "0";
-  const amount = (totalFigures * Number(rate)).toFixed(2);
-  const period = new Date().toISOString().slice(0, 7); // YYYY-MM
-
-  // One earning per order, ever (protects against double-pay on any re-entry).
-  await tx
-    .insert(earnings)
-    .values({
-      businessId,
-      designerId: assignment.designerId,
-      orderId,
-      figureCount: totalFigures,
-      rate: String(rate),
-      amount,
-      period,
-      status: "pending",
-    })
-    .onConflictDoNothing({ target: earnings.orderId });
 }
 
 async function lastActorName(tx: Tx, orderId: string): Promise<string> {

@@ -9,6 +9,7 @@ export type BusinessStyle = {
   titleMatches: string[];
   skuMatches: string[];
   isDefault: boolean;
+  perFigureRate: string | null;
 };
 
 /**
@@ -23,6 +24,7 @@ export async function listBusinessStyles(tx: Tx, businessId: string): Promise<Bu
       titleMatches: styles.titleMatches,
       skuMatches: styles.skuMatches,
       isDefault: styles.isDefault,
+      perFigureRate: styles.perFigureRate,
     })
     .from(styles)
     .where(eq(styles.businessId, businessId))
@@ -33,6 +35,7 @@ export async function listBusinessStyles(tx: Tx, businessId: string): Promise<Bu
     titleMatches: r.titleMatches ?? [],
     skuMatches: r.skuMatches ?? [],
     isDefault: r.isDefault,
+    perFigureRate: r.perFigureRate,
   }));
 }
 

@@ -6,10 +6,23 @@ import { getRailDesigners } from "@/lib/designers/roster";
 import { DesignerBoard } from "@/components/board/designer-board";
 import { DesignerPicker } from "@/components/board/designer-picker";
 import { DesignerRail } from "@/components/board/designer-rail";
-import { EmptyState, Page, PageHeader, StatCard } from "@/components/ui";
+import { Badge, DataPanel, EmptyState, Page, PageHeader, StatCard } from "@/components/ui";
 import { Columns } from "@/components/ui/icons";
 
 export const dynamic = "force-dynamic";
+
+function money(value: string | null): string {
+  return value == null ? "Needs rate" : `$${Number(value).toFixed(2)}`;
+}
+
+function shortDate(value: string): string {
+  return new Intl.DateTimeFormat("en-AU", {
+    day: "2-digit",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
 
 export default async function BoardPage({
   searchParams,
@@ -50,11 +63,16 @@ export default async function BoardPage({
               </div>
             )}
             {board && (
-              <div className="w-36">
+              <div className="grid w-80 grid-cols-2 gap-2">
                 <StatCard
                   label="Earned today"
                   value={`$${board.dailyEarnings.toFixed(2)}`}
                   tone="success"
+                />
+                <StatCard
+                  label="This month"
+                  value={`$${board.periodEarnings.toFixed(2)}`}
+                  tone="info"
                 />
               </div>
             )}
@@ -68,7 +86,39 @@ export default async function BoardPage({
 
         <div className="min-w-0 flex-1">
           {board ? (
-            <DesignerBoard initial={board.columns} />
+            <div className="flex flex-col gap-4">
+              <DesignerBoard initial={board.columns} />
+              <DataPanel>
+                <div className="border-b border-line px-4 py-3">
+                  <h2 className="text-sm font-semibold text-ink">Earnings history</h2>
+                </div>
+                {board.earningHistory.length === 0 ? (
+                  <p className="px-4 py-4 text-sm text-slate">No completed payable orders yet.</p>
+                ) : (
+                  <div className="divide-y divide-line">
+                    {board.earningHistory.map((earning) => (
+                      <div key={earning.id} className="grid gap-2 px-4 py-3 text-sm md:grid-cols-[1fr_auto_auto_auto_auto] md:items-center">
+                        <div className="min-w-0">
+                          <a href={`/orders/${earning.orderId}`} className="font-medium text-ink hover:text-pigment">
+                            {earning.orderNumber}
+                          </a>
+                          <p className="truncate text-xs text-slate">{earning.style}</p>
+                        </div>
+                        <span className="text-slate">{earning.figureCount} figure{earning.figureCount === 1 ? "" : "s"}</span>
+                        <span className="text-slate">{earning.rate ? `$${Number(earning.rate).toFixed(2)}/fig` : "Mixed or missing rate"}</span>
+                        <span className="font-semibold text-ink">{money(earning.amount)}</span>
+                        <div className="flex items-center justify-between gap-2 md:justify-end">
+                          <Badge variant={earning.status === "blocked" ? "warning" : earning.status === "voided" ? "danger" : earning.status === "paid" ? "success" : "neutral"}>
+                            {earning.status}
+                          </Badge>
+                          <span className="text-xs text-slate">{shortDate(earning.createdAt)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </DataPanel>
+            </div>
           ) : (
             <div className="rounded-card border border-line bg-surface shadow-sm">
               <EmptyState

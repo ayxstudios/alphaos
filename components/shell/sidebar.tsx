@@ -14,6 +14,7 @@ import {
   Columns,
   Palette,
   Brush,
+  ListChecks,
   Users,
   Settings,
   type IconProps,
@@ -27,6 +28,7 @@ const STAFF_NAV: NavItem[] = [
   { label: "Boards", href: "/board", icon: Columns },
   { label: "Designers", href: "/designers", icon: Palette },
   { label: "Portrait Styles", href: "/styles", icon: Brush },
+  { label: "Payouts", href: "/payouts", icon: ListChecks },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Settings", href: "/settings", icon: Settings },
 ];

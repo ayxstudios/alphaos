@@ -6,7 +6,7 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
 
 ## Built and working (verified by tests or live round-trip)
 
-- **Data + RLS.** Drizzle/Neon, migrations 0000–0019. Postgres row-level security
+- **Data + RLS.** Drizzle/Neon, migrations 0000–0021. Postgres row-level security
   on `business_id`; app connects as non-owner `app_user`. Request paths use
   `withUserContext`, background jobs `withSystemContext`.
 - **Order state machine** (`lib/orders/transitions.ts`). All legal transitions +
@@ -43,6 +43,13 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
   inbound polling + queued-email flushing, and R2 retention. Shop sync, Gmail
   poll health, queued email, and unmatched reply health are surfaced on the
   dashboard.
+- **Designer earnings + payouts.** Portrait styles carry per-figure rates.
+  Completion writes one immutable earning per order with item-level JSON
+  breakdown; revision round-trips do not duplicate pay; reassignment pays the
+  active assignee; `fulfillment_only` never pays. Missing style/rate creates a
+  blocked earning instead of blocking customer workflow. Admin Payouts page shows
+  period totals, blocked rows, drilldown, paid marking, voided rows, and CSV
+  export (`test:earnings`).
 
 ## Built but NOT tested against a live API
 
@@ -82,10 +89,11 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
 1. **Connect + live-test Etsy** for one shop (the largest untested surface).
 2. **Connect Gmail** for one business; verify send, scheduled inbound polling,
    queued flush, unmatched reply linking, and dashboard health end-to-end.
-3. **Designer submission upload** (assets `type=submission`) reusing the R2 flow.
-4. **Print provider integration** (`print_jobs` table exists; Shopify writeback
+3. **Live-test designer payout flow** after configuring real style rates for
+   PixArt/Lumina.
+4. **Designer submission upload** (assets `type=submission`) reusing the R2 flow.
+5. **Print provider integration** (`print_jobs` table exists; Shopify writeback
    exists, but no Gelato/Luma Prints API is wired).
-5. **Earnings/payout reporting UI** (`earnings` written on completion; no report).
 
 ## Half-finished / stubs
 

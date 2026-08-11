@@ -28,6 +28,7 @@ export default async function StylesPage() {
       .select({
         id: styles.id,
         name: styles.name,
+        perFigureRate: styles.perFigureRate,
         titleMatches: styles.titleMatches,
         isDefault: styles.isDefault,
       })
@@ -98,6 +99,7 @@ export default async function StylesPage() {
   const styleList: StyleVM[] = styleRows.map((s) => ({
     id: s.id,
     name: s.name,
+    perFigureRate: s.perFigureRate,
     titleMatches: s.titleMatches ?? [],
     isDefault: s.isDefault,
     designerIds: designers.filter((d) => d.styles.includes(s.name.toLowerCase())).map((d) => d.id),

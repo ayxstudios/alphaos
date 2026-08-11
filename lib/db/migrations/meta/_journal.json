@@ -141,6 +141,20 @@
       "when": 1786428751412,
       "tag": "0019_curious_firelord",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786430084418,
+      "tag": "0020_loose_maddog",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786430242078,
+      "tag": "0021_overjoyed_frightful_four",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Badge, Button, Drawer, Input, useToast } from "@/components/ui";
@@ -8,6 +8,7 @@ import { Brush, Plus, XCircle } from "@/components/ui/icons";
 import {
   createStyle,
   renameStyle,
+  setStyleRate,
   setStyleTitleMatches,
   setStyleDefault,
   deleteStyle,
@@ -18,6 +19,7 @@ import {
 export type StyleVM = {
   id: string;
   name: string;
+  perFigureRate: string | null;
   titleMatches: string[];
   isDefault: boolean;
   designerIds: string[];
@@ -35,6 +37,7 @@ export function StylesManager({
   const router = useRouter();
   const toast = useToast();
   const [name, setName] = useState("");
+  const [rate, setRate] = useState("");
   const [pending, start] = useTransition();
 
   function run(action: () => Promise<ActionResult>, ok?: string) {
@@ -51,10 +54,14 @@ export function StylesManager({
 
   function add() {
     const n = name.trim();
-    if (!n) return;
+    const r = rate.trim();
+    if (!n || !r) return;
     run(async () => {
-      const res = await createStyle(n);
-      if (res.ok) setName("");
+      const res = await createStyle(n, r);
+      if (res.ok) {
+        setName("");
+        setRate("");
+      }
       return res;
     }, "Style added");
   }
@@ -81,7 +88,21 @@ export function StylesManager({
             className="sm:max-w-xs"
             aria-label="New style name"
           />
-          <Button type="button" onClick={add} loading={pending} disabled={!name.trim()} className="w-fit">
+          <Input
+            value={rate}
+            onChange={(e) => setRate(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                add();
+              }
+            }}
+            placeholder="Rate per figure"
+            inputMode="decimal"
+            className="sm:max-w-40"
+            aria-label="New style rate per figure"
+          />
+          <Button type="button" onClick={add} loading={pending} disabled={!name.trim() || !rate.trim()} className="w-fit">
             <Plus size={16} /> Add style
           </Button>
         </div>
@@ -116,12 +137,18 @@ function StyleCard({
   pending: boolean;
 }) {
   const [nameDraft, setNameDraft] = useState(style.name);
+  const [rateDraft, setRateDraft] = useState(style.perFigureRate ?? "");
   const [matchInput, setMatchInput] = useState("");
   const [assignOpen, setAssignOpen] = useState(false);
 
   const assignedNames = designers
     .filter((d) => style.designerIds.includes(d.id))
     .map((d) => d.name);
+
+  useEffect(() => {
+    setNameDraft(style.name);
+    setRateDraft(style.perFigureRate ?? "");
+  }, [style.name, style.perFigureRate]);
 
   function saveName() {
     const n = nameDraft.trim();
@@ -141,6 +168,15 @@ function StyleCard({
     }
     setMatchInput("");
     onRun(() => setStyleTitleMatches(style.id, [...style.titleMatches, m]));
+  }
+
+  function saveRate() {
+    const r = rateDraft.trim();
+    if (!r || r === (style.perFigureRate ?? "")) {
+      setRateDraft(style.perFigureRate ?? "");
+      return;
+    }
+    onRun(() => setStyleRate(style.id, r), "Rate saved");
   }
 
   function removeMatch(m: string) {
@@ -164,6 +200,24 @@ function StyleCard({
           className="h-9 max-w-xs font-semibold"
         />
         {style.isDefault && <Badge variant="info" dot>Default</Badge>}
+        {!style.perFigureRate && <Badge variant="warning">Rate missing</Badge>}
+        <label className="flex items-center gap-2 text-xs font-medium text-slate">
+          Per figure
+          <Input
+            value={rateDraft}
+            onChange={(e) => setRateDraft(e.target.value)}
+            onBlur={saveRate}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            inputMode="decimal"
+            aria-label={`${style.name} rate per figure`}
+            className="h-9 w-28"
+          />
+        </label>
         <div className="ml-auto flex items-center gap-2">
           <Button type="button" variant="secondary" size="sm" onClick={() => setAssignOpen(true)}>
             Designers · {style.designerIds.length}
