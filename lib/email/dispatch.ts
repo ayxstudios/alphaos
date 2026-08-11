@@ -1,8 +1,9 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, ne } from "drizzle-orm";
 
 import { withSystemContext, type Tx } from "@/lib/db";
 import { businesses, customers, messages, proofs } from "@/lib/db/schema";
 import { GmailClient, GmailNotConnectedError, GmailReauthRequiredError } from "@/lib/integrations/gmail";
+import { header } from "@/lib/integrations/gmail/mime";
 import { generateProofToken } from "@/lib/proofs/tokens";
 import { proofUrl, uploadUrl } from "@/lib/urls";
 import {
@@ -194,6 +195,7 @@ export async function sendMessage(
         id: messages.id,
         businessId: messages.businessId,
         status: messages.status,
+        orderId: messages.orderId,
         subject: messages.subject,
         body: messages.body,
         address: messages.address,
@@ -235,11 +237,78 @@ export async function sendMessage(
     throw e;
   }
 
+  const prior = await withSystemContext(async (tx) => {
+    if (msg.gmailThreadId) {
+      const [byThread] = await tx
+        .select({
+          threadId: messages.gmailThreadId,
+          rfcMessageId: messages.gmailRfcMessageId,
+        })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.businessId, msg.businessId),
+            eq(messages.gmailThreadId, msg.gmailThreadId),
+            isNotNull(messages.gmailRfcMessageId),
+            ne(messages.id, messageId),
+          ),
+        )
+        .orderBy(desc(messages.createdAt))
+        .limit(1);
+      if (byThread) return byThread;
+    }
+
+    if (msg.orderId) {
+      const [byOrder] = await tx
+        .select({
+          threadId: messages.gmailThreadId,
+          rfcMessageId: messages.gmailRfcMessageId,
+        })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.businessId, msg.businessId),
+            eq(messages.orderId, msg.orderId),
+            isNotNull(messages.gmailThreadId),
+            isNotNull(messages.gmailRfcMessageId),
+            ne(messages.id, messageId),
+          ),
+        )
+        .orderBy(desc(messages.createdAt))
+        .limit(1);
+      if (byOrder) return byOrder;
+    }
+
+    return null;
+  });
+
   try {
+    const threadId = msg.gmailThreadId ?? prior?.threadId ?? undefined;
     const res = await client.send(
-      { to: msg.address, subject: msg.subject ?? "", text: msg.body ?? "" },
-      msg.gmailThreadId ? { threadId: msg.gmailThreadId } : undefined,
+      {
+        to: msg.address,
+        subject: msg.subject ?? "",
+        text: msg.body ?? "",
+        inReplyToMessageId: prior?.rfcMessageId ?? undefined,
+      },
+      threadId ? { threadId } : undefined,
     );
+    let rfcMessageId: string | null = null;
+    try {
+      rfcMessageId = header(await client.getMessage(res.id), "Message-ID");
+    } catch (e) {
+      console.log(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "warn",
+          integration: "gmail",
+          businessId: msg.businessId,
+          event: "sent_message_header_lookup_failed",
+          gmailMessageId: res.id,
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      );
+    }
     await withSystemContext((tx) =>
       tx
         .update(messages)
@@ -248,6 +317,7 @@ export async function sendMessage(
           sentAt: new Date(),
           gmailThreadId: res.threadId,
           gmailMessageId: res.id,
+          gmailRfcMessageId: rfcMessageId,
           error: null,
           ...(opts?.approvedById ? { approvedBy: opts.approvedById } : {}),
         })

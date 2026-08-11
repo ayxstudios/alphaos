@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ADD COLUMN "gmail_rfc_message_id" text;

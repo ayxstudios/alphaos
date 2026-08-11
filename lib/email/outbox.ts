@@ -16,7 +16,7 @@ export type OutboxItem = {
   messageId: string;
   orderId: string | null;
   orderNumber: string | null;
-  status: "draft" | "failed";
+  status: "draft" | "queued" | "failed";
   templateKey: string | null;
   templateLabel: string | null;
   toAddress: string | null;
@@ -28,9 +28,10 @@ export type OutboxItem = {
 };
 
 /**
- * The VA outbox: outbound customer emails awaiting approval (`draft`) plus any
- * that failed to send (`failed`) and need attention. Staff-scoped by RLS. When a
- * business is selected, scoped to it; otherwise across all visible businesses.
+ * The VA outbox: outbound customer emails awaiting approval (`draft`), system-
+ * queued auto-send messages (`queued`), plus any that failed to send (`failed`)
+ * and need attention. Staff-scoped by RLS. When a business is selected, scoped
+ * to it; otherwise across all visible businesses.
  */
 export async function getOutbox(
   user: RequestUser,
@@ -62,7 +63,7 @@ export async function getOutbox(
       .where(
         and(
           eq(messages.direction, "outbound"),
-          inArray(messages.status, ["draft", "failed"]),
+          inArray(messages.status, ["draft", "queued", "failed"]),
           isNull(messages.archivedAt),
           ...(bizFilter ? [bizFilter] : []),
         ),
@@ -86,7 +87,7 @@ export async function getOutbox(
       messageId: r.id,
       orderId: r.orderId,
       orderNumber: r.platformOrderName ?? r.platformOrderId ?? null,
-      status: r.status as "draft" | "failed",
+      status: r.status as "draft" | "queued" | "failed",
       templateKey: r.templateKey,
       templateLabel: r.templateKey ? TEMPLATE_META[r.templateKey as keyof typeof TEMPLATE_META]?.label ?? null : null,
       toAddress: r.address,
@@ -118,6 +119,31 @@ export async function getOutboxCount(
       .select({ id: messages.id })
       .from(messages)
       .where(bizFilter ? and(base, bizFilter) : base);
+    return rows.length;
+  });
+}
+
+/** Count of system-queued outbound emails — for pipeline health visibility. */
+export async function getQueuedEmailCount(
+  user: RequestUser,
+  opts: { businessId: string | null },
+): Promise<number> {
+  return withUserContext(user, async (tx) => {
+    const bizFilter =
+      opts.businessId && opts.businessId !== "all"
+        ? eq(messages.businessId, opts.businessId)
+        : undefined;
+    const rows = await tx
+      .select({ id: messages.id })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.direction, "outbound"),
+          eq(messages.status, "queued"),
+          isNull(messages.archivedAt),
+          ...(bizFilter ? [bizFilter] : []),
+        ),
+      );
     return rows.length;
   });
 }

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { isAuthorizedCron } from "@/lib/cron/auth";
+import { flushQueued } from "@/lib/email/dispatch";
 import { pollMailboxesScheduled } from "@/lib/integrations/gmail";
 
 export const runtime = "nodejs";
@@ -13,6 +14,6 @@ export const maxDuration = 60;
  */
 export async function GET(req: NextRequest) {
   if (!isAuthorizedCron(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const result = await pollMailboxesScheduled();
-  return NextResponse.json(result);
+  const [poll, queuedFlush] = await Promise.all([pollMailboxesScheduled(), flushQueued()]);
+  return NextResponse.json({ poll, queuedFlush });
 }

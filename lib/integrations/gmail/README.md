@@ -15,7 +15,8 @@ transactional provider.
 - `mime.ts` — RFC 2822 multipart/alternative builder; inbound header/plain-text parsing
 - `inbound.ts` — `pollMailbox` / `pollAllMailboxes`: read history since the stored
   cursor, attach inbound replies to the matching order by `gmail_thread_id`, notify
-  VAs, and log to the order timeline. Callable now; schedule with Trigger.dev later.
+  VAs, and log to the order timeline. Scheduled by Vercel Cron through
+  `/api/cron/gmail-poll`.
 
 ## Credentials
 

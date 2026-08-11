@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, desc, eq, ilike, or } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, or } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser } from "@/lib/db";
@@ -18,16 +18,24 @@ async function requireStaff(): Promise<RequestUser | null> {
   return { id: session.user.id, role };
 }
 
-/** Edit a draft's body before it's approved. Draft/failed outbound only. */
+/** Edit a VA-controlled outbound message before it's approved. Queued system email is read-only. */
 export async function updateDraftBody(messageId: string, body: string): Promise<OutboxActionResult> {
   const user = await requireStaff();
   if (!user) return { ok: false, message: "Not permitted" };
-  await withUserContext(user, (tx) =>
+  const rows = await withUserContext(user, (tx) =>
     tx
       .update(messages)
       .set({ body })
-      .where(and(eq(messages.id, messageId), eq(messages.direction, "outbound"))),
+      .where(
+        and(
+          eq(messages.id, messageId),
+          eq(messages.direction, "outbound"),
+          inArray(messages.status, ["draft", "failed"]),
+        ),
+      )
+      .returning({ id: messages.id }),
   );
+  if (!rows.length) return { ok: false, message: "Only draft or failed emails can be edited" };
   revalidatePath("/orders");
   return { ok: true };
 }
@@ -70,7 +78,7 @@ export async function approveAndSend(messageId: string): Promise<OutboxActionRes
   return { ok: true, message: "Email sent" };
 }
 
-/** Discard a draft that shouldn't go, with a required reason (kept for audit). */
+/** Discard an unsent outbound email that shouldn't go, with a required reason (kept for audit). */
 export async function discardDraft(messageId: string, reasonRaw: string): Promise<OutboxActionResult> {
   const user = await requireStaff();
   if (!user) return { ok: false, message: "Not permitted" };
@@ -82,7 +90,7 @@ export async function discardDraft(messageId: string, reasonRaw: string): Promis
       .select({ businessId: messages.businessId, orderId: messages.orderId, status: messages.status })
       .from(messages)
       .where(and(eq(messages.id, messageId), eq(messages.direction, "outbound")));
-    if (!m || m.status === "sent") return { ok: false as const, message: "Only unsent drafts can be discarded" };
+    if (!m || m.status === "sent") return { ok: false as const, message: "Only unsent emails can be discarded" };
     await tx.update(messages).set({ archivedAt: new Date() }).where(eq(messages.id, messageId));
     await tx.insert(activityLog).values({
       businessId: m.businessId,

@@ -8,7 +8,7 @@ import { loadShellData } from "@/lib/shell/context";
 import { businesses, customers, orderItems, orders, shops } from "@/lib/db/schema";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
 import { formatSyncTime, syncHealth } from "@/lib/integrations/sync-health";
-import { getUnmatchedCount } from "@/lib/email/outbox";
+import { getQueuedEmailCount, getUnmatchedCount } from "@/lib/email/outbox";
 import {
   Badge,
   DataPanel,
@@ -99,7 +99,7 @@ export default async function DashboardPage() {
       .orderBy(asc(shops.name)),
   );
 
-  const [mailboxHealth, unmatchedReplies] = await Promise.all([
+  const [mailboxHealth, unmatchedReplies, queuedEmails] = await Promise.all([
     withUserContext(user, async (tx) => {
       const [row] = await tx
         .select({
@@ -113,6 +113,7 @@ export default async function DashboardPage() {
       return row ?? { address: null, historyId: null, lastPolledAt: null };
     }),
     getUnmatchedCount(user, { businessId: selected.id }),
+    getQueuedEmailCount(user, { businessId: selected.id }),
   ]);
   const mailboxLastPolledAt = mailboxHealth.lastPolledAt?.toISOString() ?? null;
   const mailboxConnected = Boolean(mailboxHealth.historyId);
@@ -252,6 +253,22 @@ export default async function DashboardPage() {
                   </div>
                   {unmatchedReplies > 0 ? (
                     <Badge variant="danger" dot>{unmatchedReplies}</Badge>
+                  ) : (
+                    <Badge variant="success" dot>Clear</Badge>
+                  )}
+                </div>
+              </div>
+
+              <div className="border-b border-line pb-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-ink">Queued email</p>
+                    <p className="text-xs text-slate">
+                      Automated customer emails waiting for Gmail send
+                    </p>
+                  </div>
+                  {queuedEmails > 0 ? (
+                    <Badge variant="warning" dot>{queuedEmails}</Badge>
                   ) : (
                     <Badge variant="success" dot>Clear</Badge>
                   )}

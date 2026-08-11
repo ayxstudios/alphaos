@@ -14,11 +14,11 @@ built on Next.js 15 (App Router).
 | Framework      | Next.js 15 (App Router, TypeScript strict)         |
 | Styling        | Tailwind CSS v4                                     |
 | Database / ORM | Neon (serverless Postgres) + Drizzle ORM           |
-| Auth           | Auth.js / NextAuth v5 (Google OAuth + magic link)  |
+| Auth           | Auth.js / NextAuth v5 (email/password credentials) |
 | Object storage | Cloudflare R2                                       |
 | Email          | Gmail / Google Workspace                            |
 | AI             | Anthropic API                                       |
-| Background jobs| Trigger.dev                                         |
+| Background jobs| Vercel Cron                                         |
 
 ## Layout
 
@@ -30,7 +30,7 @@ app/
 lib/
   db/               Drizzle schema + client
   auth/             Auth.js configuration
-  integrations/     etsy/ and shopify/ clients (stubs)
+  integrations/     Etsy, Shopify, Gmail, and scheduler code
 components/ui/      shared UI components
 docs/               this folder
 ```
@@ -43,7 +43,10 @@ docs/               this folder
 
 ## Notes
 
-- The Auth.js **magic-link (Nodemailer) provider is configured but has no
-  database adapter yet** — it will not complete sign-in until the Drizzle
-  adapter is wired up in `lib/auth/index.ts`.
+- Auth is email/password only. There is no signup, Google login, or magic-link
+  provider; users are created with `npm run create-user` or by the seed script.
+- Customer email uses each business's own Gmail mailbox via the Gmail API.
+  Gmail OAuth client IDs/secrets and refresh tokens are stored encrypted per
+  business in the database, configured from Settings.
+- Scheduled jobs are Vercel Cron routes in `vercel.json`.
 - Database commands: `npm run db:generate`, `db:migrate`, `db:push`, `db:studio`.

@@ -134,6 +134,13 @@
       "when": 1786224865379,
       "tag": "0018_complete_the_enforcers",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786428751412,
+      "tag": "0019_curious_firelord",
+      "breakpoints": true
     }
   ]
 }

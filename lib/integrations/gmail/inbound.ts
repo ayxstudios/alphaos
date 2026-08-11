@@ -18,7 +18,7 @@ export type InboundSummary = {
 const MAX_PAGES = 20; // safety bound on history pagination per run
 
 /**
- * Trigger.dev-style polling job (callable now, scheduled later). Reads a
+ * Gmail polling job (called manually or by Vercel Cron). Reads a
  * business's Gmail history since the stored cursor, attaches new INBOUND replies
  * to the matching order by gmail_thread_id, raises a VA notification, and drops
  * an entry on the order timeline. Idempotent by gmail_message_id, so re-running
@@ -193,6 +193,7 @@ async function attachMessage(
       .limit(1);
 
     const subject = header(msg, "Subject");
+    const rfcMessageId = header(msg, "Message-ID");
     const body = extractPlainText(msg);
 
     await tx.insert(messages).values({
@@ -206,6 +207,7 @@ async function attachMessage(
       address: header(msg, "From"),
       gmailThreadId: msg.threadId,
       gmailMessageId,
+      gmailRfcMessageId: rfcMessageId,
       body,
     });
 

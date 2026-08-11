@@ -63,7 +63,7 @@ export function OutboxView({
         <div className="flex flex-wrap items-center gap-2 rounded-card border border-amber/30 bg-amber/5 px-4 py-3 text-sm">
           <AlertTriangle size={16} className="text-amber" />
           <span className="font-medium text-ink">Email sending is OFF for this workspace.</span>
-          <span className="text-slate">Drafts can be reviewed and edited, but Send is blocked until you enable sending.</span>
+          <span className="text-slate">Drafts can be reviewed and edited, but sends are blocked until you enable sending.</span>
           <Link href="/settings" className="ml-auto font-medium text-pigment hover:text-ink">Open Settings</Link>
         </div>
       )}
@@ -87,14 +87,16 @@ export function OutboxView({
         </div>
       )}
 
-      {/* Drafts awaiting approval. */}
+      {/* Drafts, failed sends, and system-queued email. */}
       <div className="rounded-card border border-line bg-surface p-4 shadow-sm">
         <div className="flex items-center gap-2">
           <Mail size={16} className="text-slate" />
           <h2 className="text-base font-semibold text-ink">Outbox</h2>
           {outbox.length > 0 && <Badge variant="neutral">{outbox.length}</Badge>}
         </div>
-        <p className="mt-0.5 text-sm text-slate">Customer emails waiting for a VA to review and send.</p>
+        <p className="mt-0.5 text-sm text-slate">
+          Customer emails waiting for review, retry, or system send. Queued messages are read-only but can be discarded.
+        </p>
         {outbox.length === 0 ? (
           <p className="mt-3 text-sm text-slate">Nothing waiting to send.</p>
         ) : (
@@ -124,6 +126,7 @@ function DraftCard({
   const [body, setBody] = useState(item.body);
   const [discarding, setDiscarding] = useState(false);
   const [reason, setReason] = useState("");
+  const queued = item.status === "queued";
 
   function send() {
     run(async () => {
@@ -143,6 +146,7 @@ function DraftCard({
         className="flex w-full flex-wrap items-center gap-2 px-3 py-2.5 text-left"
       >
         {item.templateLabel && <Badge variant="info">{item.templateLabel}</Badge>}
+        {queued && <Badge variant="warning" dot>System queued</Badge>}
         {item.status === "failed" && <Badge variant="danger" dot>Failed</Badge>}
         <span className="min-w-0 truncate text-sm font-medium text-ink">{item.subject || "(no subject)"}</span>
         <span className="ml-auto text-xs text-slate">
@@ -160,18 +164,34 @@ function DraftCard({
           {item.status === "failed" && item.error && (
             <p className="mt-2 text-xs text-rose">Last error: {item.error}</p>
           )}
-          <Textarea
-            label="Body (editable before sending)"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            rows={10}
-            className="mt-2 font-mono text-xs"
-          />
+          {queued ? (
+            <div className="mt-2 rounded-input border border-amber/25 bg-amber/5 p-3">
+              <p className="text-xs font-medium text-ink">System-queued email</p>
+              <p className="mt-1 text-xs text-slate">
+                This was queued by an automated workflow and will be sent by the next Gmail poll cron run. It is read-only.
+              </p>
+              <p className="mt-3 whitespace-pre-wrap rounded-input border border-line bg-surface p-3 font-mono text-xs text-ink">
+                {item.body || "(empty)"}
+              </p>
+            </div>
+          ) : (
+            <Textarea
+              label="Body (editable before sending)"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={10}
+              className="mt-2 font-mono text-xs"
+            />
+          )}
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Button type="button" size="sm" onClick={send} loading={pending} disabled={!sendingEnabled}>
-              {item.status === "failed" ? "Retry send" : "Approve & send"}
-            </Button>
-            {!sendingEnabled && <span className="text-xs text-amber">Sending is OFF — enable it in Settings.</span>}
+            {!queued && (
+              <>
+                <Button type="button" size="sm" onClick={send} loading={pending} disabled={!sendingEnabled}>
+                  {item.status === "failed" ? "Retry send" : "Approve & send"}
+                </Button>
+                {!sendingEnabled && <span className="text-xs text-amber">Sending is OFF — enable it in Settings.</span>}
+              </>
+            )}
             {item.orderId && (
               <Link href={`/orders/${item.orderId}`} className="text-sm font-medium text-pigment hover:text-ink">
                 Open order

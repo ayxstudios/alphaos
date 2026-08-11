@@ -1,12 +1,12 @@
 # AlphaOS — progress
 
-_Last updated: 2026-08-09. Update this whenever a major piece lands._
+_Last updated: 2026-08-11. Update this whenever a major piece lands._
 
 Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
 
 ## Built and working (verified by tests or live round-trip)
 
-- **Data + RLS.** Drizzle/Neon, migrations 0000–0010. Postgres row-level security
+- **Data + RLS.** Drizzle/Neon, migrations 0000–0019. Postgres row-level security
   on `business_id`; app connects as non-owner `app_user`. Request paths use
   `withUserContext`, background jobs `withSystemContext`.
 - **Order state machine** (`lib/orders/transitions.ts`). All legal transitions +
@@ -40,8 +40,9 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
 - **Reconciliation.** Manual orders promote in place when the platform later
   imports the same number (see decisions).
 - **Scheduled jobs.** Vercel Cron routes exist for all-shop order sync, Gmail
-  inbound polling, and R2 retention. Shop sync and Gmail poll health are surfaced
-  on the dashboard.
+  inbound polling + queued-email flushing, and R2 retention. Shop sync, Gmail
+  poll health, queued email, and unmatched reply health are surfaced on the
+  dashboard.
 
 ## Built but NOT tested against a live API
 
@@ -49,9 +50,10 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
   classification). No live Etsy account has been connected — logic is unexercised
   against the real API. **This is the big untested surface.**
 - **Gmail email layer** (per-business OAuth, DB templates, VA outbox approval
-  gate, scheduled inbound reply poller, unmatched-replies tray with age/24h
-  flags, dashboard unmatched count). No business has connected Gmail yet, so send
-  + inbound have not run live. Photo requests are off by default regardless.
+  gate, visible system-queued email backlog, scheduled queued flush + inbound
+  reply poller, unmatched-replies tray with age/24h flags, dashboard health
+  counts). No business has connected Gmail yet, so send + inbound have not run
+  live. Photo requests are off by default regardless.
 
 ## Key decisions and why
 
@@ -79,7 +81,7 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
 
 1. **Connect + live-test Etsy** for one shop (the largest untested surface).
 2. **Connect Gmail** for one business; verify send, scheduled inbound polling,
-   unmatched reply linking, and dashboard health end-to-end.
+   queued flush, unmatched reply linking, and dashboard health end-to-end.
 3. **Designer submission upload** (assets `type=submission`) reusing the R2 flow.
 4. **Print provider integration** (`print_jobs` table exists; Shopify writeback
    exists, but no Gelato/Luma Prints API is wired).

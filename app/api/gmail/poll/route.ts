@@ -7,9 +7,8 @@ export const runtime = "nodejs";
 
 /**
  * Manual trigger for the inbound reply poller (admin only). The same
- * `pollMailbox` / `pollAllMailboxes` functions are meant to run on a Trigger.dev
- * schedule later; this route lets an admin exercise them now. Pass ?businessId=
- * to poll a single mailbox.
+ * `pollMailbox` / `pollAllMailboxes` functions run from Vercel Cron; this route
+ * lets an admin exercise them now. Pass ?businessId= to poll a single mailbox.
  */
 export async function POST(req: NextRequest) {
   const session = await auth();

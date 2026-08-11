@@ -666,6 +666,9 @@ export const messages = pgTable(
     address: text("address"),
     gmailThreadId: text("gmail_thread_id"),
     gmailMessageId: text("gmail_message_id"),
+    // RFC 5322 Message-ID header value, used for In-Reply-To / References.
+    // This is distinct from Gmail's API message id stored in gmail_message_id.
+    gmailRfcMessageId: text("gmail_rfc_message_id"),
     body: text("body"),
     // Last send error, for a failed outbound message.
     error: text("error"),
