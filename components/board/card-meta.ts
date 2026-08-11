@@ -91,6 +91,19 @@ export function describeEvent(e: CardEvent): string | null {
     case "order.imported":
     case "order.created":
       return "imported this order";
+    case "asset.uploaded": {
+      const type = typeof e.metadata?.type === "string" ? e.metadata.type : "image";
+      const count = typeof e.metadata?.count === "number" ? e.metadata.count : null;
+      const noun =
+        type === "reference"
+          ? "reference photo"
+          : type === "submission"
+            ? "portrait upload"
+            : type === "final"
+              ? "final portrait"
+              : "image";
+      return `uploaded ${count && count > 1 ? `${count} ${noun}s` : `a ${noun}`}`;
+    }
     default:
       break;
   }

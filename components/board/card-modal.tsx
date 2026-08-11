@@ -14,9 +14,17 @@ import {
   LABEL_CLASS,
   relativeTime,
 } from "./card-meta";
-import { loadCard, postComment } from "@/app/(app)/board/actions";
+import {
+  loadCard,
+  postComment,
+  presignCardAssetUploads,
+  saveCardAssetUploads,
+  type CardAssetType,
+} from "@/app/(app)/board/actions";
 import type { BoardCard } from "@/lib/orders/board-data";
 import type { CardDetail, CardEvent, CardImage } from "@/lib/orders/card-detail";
+
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 const dateFmt = new Intl.DateTimeFormat("en-AU", {
   weekday: "short",
@@ -131,6 +139,13 @@ export function CardModal({ card, onClose }: { card: BoardCard; onClose: () => v
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex-1 space-y-5 overflow-y-auto p-5 md:max-h-[85vh]">
             <Gallery images={detail?.images ?? null} cover={card.thumbnailUrl} />
+            <CardUploadPanel
+              orderId={card.orderId}
+              onSaved={(next) => {
+                setDetail(next);
+                setEvents(next.events);
+              }}
+            />
 
             <div className="space-y-1">
               <p className="text-xs font-medium uppercase tracking-wide text-slate">
@@ -269,6 +284,137 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <section className="space-y-2">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-slate">{title}</h3>
       {children}
+    </section>
+  );
+}
+
+function CardUploadPanel({
+  orderId,
+  onSaved,
+}: {
+  orderId: string;
+  onSaved: (detail: CardDetail) => void;
+}) {
+  const toast = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [type, setType] = useState<CardAssetType>("reference");
+  const [uploading, setUploading] = useState(false);
+
+  async function upload(files: File[]) {
+    const images = files.filter((file) => file.type.startsWith("image/"));
+    if (!images.length) {
+      toast({ variant: "danger", title: "No images selected" });
+      return;
+    }
+    const tooBig = images.find((file) => file.size > MAX_UPLOAD_BYTES);
+    if (tooBig) {
+      toast({ variant: "danger", title: "Upload too large", description: `${tooBig.name} is over 25 MB.` });
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const presigned = await presignCardAssetUploads({
+        orderId,
+        type,
+        files: images.map((file) => ({
+          filename: file.name,
+          contentType: file.type,
+          size: file.size,
+        })),
+      });
+      if (!presigned.ok) throw new Error(presigned.message);
+
+      await Promise.all(
+        presigned.uploads.map(async (target, index) => {
+          const put = await fetch(target.uploadUrl, {
+            method: "PUT",
+            headers: { "Content-Type": images[index].type },
+            body: images[index],
+          });
+          if (!put.ok) throw new Error(`Upload failed for ${images[index].name}`);
+        }),
+      );
+
+      const saved = await saveCardAssetUploads({
+        orderId,
+        type,
+        r2Keys: presigned.uploads.map((target) => target.key),
+      });
+      if (!saved.ok) throw new Error(saved.message);
+      onSaved(saved.detail);
+      toast({
+        variant: "success",
+        title: images.length === 1 ? "Photo uploaded" : `${images.length} photos uploaded`,
+      });
+      if (fileRef.current) fileRef.current.value = "";
+    } catch (error) {
+      toast({
+        variant: "danger",
+        title: "Upload failed",
+        description: error instanceof Error ? error.message : "Could not upload photos",
+      });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <section className="rounded-card border border-line bg-canvas/60 p-3">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex min-w-40 flex-1 flex-col gap-1.5">
+          <span className="text-xs font-medium text-ink">Add photos</span>
+          <select
+            value={type}
+            disabled={uploading}
+            onChange={(event) => setType(event.currentTarget.value as CardAssetType)}
+            className={cn(
+              "h-9 rounded-input border border-line bg-surface px-2.5 text-sm text-ink",
+              focusRing,
+            )}
+          >
+            <option value="reference">Reference photos</option>
+            <option value="submission">Portrait upload</option>
+            <option value="final">Final portrait</option>
+          </select>
+        </label>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          loading={uploading}
+          onClick={() => fileRef.current?.click()}
+        >
+          <Camera size={15} />
+          Upload
+        </Button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(event) => event.target.files && void upload(Array.from(event.target.files))}
+        />
+      </div>
+      <button
+        type="button"
+        disabled={uploading}
+        onClick={() => fileRef.current?.click()}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          void upload(Array.from(event.dataTransfer.files));
+        }}
+        className={cn(
+          "mt-3 flex h-16 w-full items-center justify-center gap-2 rounded-input border border-dashed border-line bg-surface text-sm text-slate",
+          "transition-colors hover:border-pigment/40 hover:text-ink disabled:pointer-events-none disabled:opacity-60",
+          focusRing,
+        )}
+      >
+        <Camera size={16} />
+        {uploading ? "Uploading..." : "Drop images here or click Upload"}
+      </button>
     </section>
   );
 }

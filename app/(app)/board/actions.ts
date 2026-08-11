@@ -1,10 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { eq } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
+import { withUserContext, type RequestUser } from "@/lib/db";
+import { activityLog, assets, orders } from "@/lib/db/schema";
 import {
   transition,
+  runTransition,
   OrderTransitionError,
   type OrderStatus,
 } from "@/lib/orders/transitions";
@@ -14,6 +18,14 @@ import {
   type CardDetail,
   type CardEvent,
 } from "@/lib/orders/card-detail";
+import {
+  ALLOWED_IMAGE_TYPES,
+  MAX_UPLOAD_BYTES,
+  assetKey,
+  extFor,
+  isR2Configured,
+  presignUpload,
+} from "@/lib/storage/r2";
 
 export type MoveResult =
   | { ok: true; status: OrderStatus }
@@ -60,6 +72,27 @@ export type CommentResult =
   | { ok: true; event: CardEvent }
   | { ok: false; message: string };
 
+export type CardAssetType = "reference" | "submission" | "final";
+
+export type CardUploadPresignResult =
+  | { ok: true; uploads: { key: string; uploadUrl: string }[] }
+  | { ok: false; message: string };
+
+export type CardUploadSaveResult =
+  | { ok: true; detail: CardDetail }
+  | { ok: false; message: string };
+
+function requireSignedIn(): Promise<RequestUser | { error: string }> {
+  return auth().then((session) => {
+    if (!session?.user) return { error: "Not signed in" };
+    return { id: session.user.id, role: session.user.role };
+  });
+}
+
+function validAssetType(type: string): type is CardAssetType {
+  return type === "reference" || type === "submission" || type === "final";
+}
+
 /** Post a team comment (admin / VA / designer) onto a card's history. */
 export async function postComment(orderId: string, body: string): Promise<CommentResult> {
   const session = await auth();
@@ -71,4 +104,112 @@ export async function postComment(orderId: string, body: string): Promise<Commen
   const event = await addComment(user, orderId, text);
   revalidatePath("/board");
   return { ok: true, event };
+}
+
+/** Presign direct-to-R2 uploads from a board card. Staff and assigned designers are scoped by RLS. */
+export async function presignCardAssetUploads(input: {
+  orderId: string;
+  type: CardAssetType;
+  files: { filename: string; contentType: string; size: number }[];
+}): Promise<CardUploadPresignResult> {
+  const user = await requireSignedIn();
+  if ("error" in user) return { ok: false, message: user.error };
+  if (!validAssetType(input.type)) return { ok: false, message: "Choose a valid upload type" };
+  if (!isR2Configured()) return { ok: false, message: "File storage is not configured" };
+  if (!input.orderId || !Array.isArray(input.files) || input.files.length === 0) {
+    return { ok: false, message: "Nothing to upload" };
+  }
+  if (input.files.length > 20) return { ok: false, message: "Too many files (max 20)" };
+
+  const [order] = await withUserContext(user, (tx) =>
+    tx
+      .select({ businessId: orders.businessId })
+      .from(orders)
+      .where(eq(orders.id, input.orderId))
+      .limit(1),
+  );
+  if (!order) return { ok: false, message: "Order not found" };
+
+  try {
+    const uploads = await Promise.all(
+      input.files.map(async (file) => {
+        if (!ALLOWED_IMAGE_TYPES.test(file.contentType)) {
+          throw new Error(`${file.filename}: not an image`);
+        }
+        if (typeof file.size !== "number" || file.size <= 0 || file.size > MAX_UPLOAD_BYTES) {
+          throw new Error(`${file.filename}: over 25 MB`);
+        }
+        const key = assetKey(order.businessId, input.orderId, input.type, extFor(file.filename, file.contentType));
+        return { key, uploadUrl: await presignUpload({ key, contentType: file.contentType }) };
+      }),
+    );
+    return { ok: true, uploads };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Could not prepare upload" };
+  }
+}
+
+/** Persist board-card uploads after the browser PUT succeeds, then return fresh modal data. */
+export async function saveCardAssetUploads(input: {
+  orderId: string;
+  type: CardAssetType;
+  r2Keys: string[];
+}): Promise<CardUploadSaveResult> {
+  const user = await requireSignedIn();
+  if ("error" in user) return { ok: false, message: user.error };
+  if (!validAssetType(input.type)) return { ok: false, message: "Choose a valid upload type" };
+  const r2Keys = [...new Set((input.r2Keys ?? []).map((key) => key.trim()).filter(Boolean))].slice(0, 20);
+  if (!input.orderId || r2Keys.length === 0) return { ok: false, message: "Nothing to save" };
+
+  try {
+    await withUserContext(user, async (tx) => {
+      const [order] = await tx
+        .select({ id: orders.id, businessId: orders.businessId, status: orders.status })
+        .from(orders)
+        .where(eq(orders.id, input.orderId))
+        .for("update")
+        .limit(1);
+      if (!order) throw new Error("Order not found");
+      const expectedPrefix = `${order.businessId}/${order.id}/${input.type}/`;
+      if (r2Keys.some((key) => !key.startsWith(expectedPrefix))) {
+        throw new Error("Upload key does not match this order");
+      }
+
+      await tx.insert(assets).values(
+        r2Keys.map((r2Key) => ({
+          businessId: order.businessId,
+          orderId: order.id,
+          type: input.type,
+          storage: "r2" as const,
+          r2Key,
+          uploadedBy: user.id,
+        })),
+      );
+
+      await tx.insert(activityLog).values({
+        businessId: order.businessId,
+        orderId: order.id,
+        actorId: user.id,
+        action: "asset.uploaded",
+        metadata: { type: input.type, count: r2Keys.length },
+      });
+
+      if (user.role !== "designer" && input.type === "reference" && order.status === "awaiting_photos") {
+        await runTransition(tx, user, {
+          orderId: order.id,
+          to: "ready_to_assign",
+          expectedFrom: "awaiting_photos",
+          metadata: { via: "card_reference_upload", photoCount: r2Keys.length },
+        });
+      }
+    });
+  } catch (error) {
+    if (error instanceof OrderTransitionError) return { ok: false, message: error.message };
+    return { ok: false, message: error instanceof Error ? error.message : "Could not save upload" };
+  }
+
+  revalidatePath("/board");
+  revalidatePath("/orders");
+  revalidatePath(`/orders/${input.orderId}`);
+  return { ok: true, detail: await getCardDetail(user, input.orderId) };
 }
