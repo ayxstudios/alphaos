@@ -794,6 +794,27 @@ export const activityLog = pgTable(
   (t) => [index("activity_log_order_idx").on(t.orderId, t.createdAt)],
 );
 
+export const notificationFires = pgTable(
+  "notification_fires",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "restrict" }),
+    alertType: text("alert_type").notNull(),
+    subjectType: text("subject_type").notNull(),
+    subjectId: text("subject_id").notNull(),
+    dedupeKey: text("dedupe_key").notNull().unique(),
+    metadata: jsonb("metadata"),
+    triggeredAt: timestamp("triggered_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    index("notification_fires_business_type_idx").on(t.businessId, t.alertType, t.triggeredAt),
+  ],
+);
+
 export const notifications = pgTable(
   "notifications",
   {
@@ -805,9 +826,16 @@ export const notifications = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     type: text("type").notNull(),
+    fireId: text("fire_id").references(() => notificationFires.id, {
+      onDelete: "set null",
+    }),
     orderId: text("order_id").references(() => orders.id, {
       onDelete: "cascade",
     }),
+    title: text("title"),
+    body: text("body"),
+    href: text("href"),
+    metadata: jsonb("metadata"),
     readAt: timestamp("read_at", { withTimezone: true }),
     createdAt: createdAt(),
   },

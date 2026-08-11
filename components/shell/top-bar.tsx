@@ -18,12 +18,15 @@ import type { Role } from "@/lib/auth/config";
 import type { BusinessOption } from "@/lib/shell/context";
 import { Popover } from "./popover";
 import { setBusiness, signOutAction } from "@/app/(app)/actions";
+import { markAllNotificationsRead } from "@/app/(app)/notifications/actions";
+import type { NotificationVM } from "@/lib/notifications/types";
 
 type TopBarProps = {
   user: { name: string; email: string; role: Role };
   options: BusinessOption[];
   selected: BusinessOption;
   unread: number;
+  recentNotifications: NotificationVM[];
   mobileMenuButton?: React.ReactNode;
 };
 
@@ -38,6 +41,7 @@ export function TopBar({
   options,
   selected,
   unread,
+  recentNotifications,
   mobileMenuButton,
 }: TopBarProps) {
   const router = useRouter();
@@ -58,6 +62,13 @@ export function TopBar({
     router.push(
       trimmed ? `/orders?q=${encodeURIComponent(trimmed)}` : "/orders",
     );
+  }
+
+  function markRead() {
+    startTransition(async () => {
+      await markAllNotificationsRead();
+      router.refresh();
+    });
   }
 
   return (
@@ -160,14 +171,53 @@ export function TopBar({
             </>
           }
         >
-          {() => (
-            <div className="flex flex-col gap-1 p-2">
-              <p className="text-sm font-medium text-ink">Notifications</p>
-              <p className="text-xs text-slate">
-                {unread > 0
-                  ? `You have ${unread} unread notification${unread === 1 ? "" : "s"}.`
-                  : "You're all caught up."}
-              </p>
+          {(close) => (
+            <div className="flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 p-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-ink">Notifications</p>
+                {unread > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      markRead();
+                      close();
+                    }}
+                    className="text-xs font-medium text-pigment hover:text-ink"
+                  >
+                    Mark all read
+                  </button>
+                )}
+              </div>
+              {recentNotifications.length === 0 ? (
+                <p className="text-xs text-slate">You&apos;re all caught up.</p>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  {recentNotifications.map((notification) => (
+                    <button
+                      key={notification.id}
+                      type="button"
+                      onClick={() => {
+                        close();
+                        if (notification.href) router.push(notification.href);
+                      }}
+                      className={cn(
+                        "rounded-input px-2 py-2 text-left transition-colors hover:bg-canvas",
+                        focusRing,
+                      )}
+                    >
+                      <p className="text-sm font-medium text-ink">{notification.title}</p>
+                      {notification.body && (
+                        <p className="mt-0.5 line-clamp-2 text-xs text-slate">{notification.body}</p>
+                      )}
+                    </button>
+                  ))}
+                  {unread > recentNotifications.length && (
+                    <p className="px-2 py-1 text-xs text-slate">
+                      {unread - recentNotifications.length} more unread.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </Popover>

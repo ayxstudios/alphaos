@@ -1,10 +1,11 @@
 import { cache } from "react";
 import { cookies } from "next/headers";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { businesses as businessesTable, notifications } from "@/lib/db/schema";
 import { BUSINESS_COOKIE } from "@/lib/shell/constants";
+import { fallbackNotificationTitle, type NotificationVM } from "@/lib/notifications/types";
 
 export type BusinessOption = { id: string; name: string };
 
@@ -15,6 +16,7 @@ export type ShellData = {
   selected: BusinessOption;
   /** Unread notification count for the current user. */
   unread: number;
+  recentNotifications: NotificationVM[];
 };
 
 /**
@@ -33,7 +35,7 @@ export function loadShellData(user: RequestUser): Promise<ShellData> {
 const loadShellCached = cache(
   async (userId: string, role: RequestUser["role"]): Promise<ShellData> => {
     const user: RequestUser = { id: userId, role };
-    const { businesses, unread } = await withUserContext(user, async (tx) => {
+    const { businesses, unread, recentNotifications } = await withUserContext(user, async (tx) => {
       const businesses = await tx
         .select({ id: businessesTable.id, name: businessesTable.name })
         .from(businessesTable)
@@ -42,7 +44,31 @@ const loadShellCached = cache(
         .select({ n: sql<number>`count(*)::int` })
         .from(notifications)
         .where(and(eq(notifications.userId, userId), isNull(notifications.readAt)));
-      return { businesses, unread: unreadRow?.n ?? 0 };
+      const recentRows = await tx
+        .select({
+          id: notifications.id,
+          type: notifications.type,
+          title: notifications.title,
+          body: notifications.body,
+          href: notifications.href,
+          createdAt: notifications.createdAt,
+        })
+        .from(notifications)
+        .where(and(eq(notifications.userId, userId), isNull(notifications.readAt)))
+        .orderBy(desc(notifications.createdAt))
+        .limit(8);
+      return {
+        businesses,
+        unread: unreadRow?.n ?? 0,
+        recentNotifications: recentRows.map((n) => ({
+          id: n.id,
+          type: n.type,
+          title: n.title ?? fallbackNotificationTitle(n.type),
+          body: n.body,
+          href: n.href,
+          createdAt: n.createdAt.toISOString(),
+        })),
+      };
     });
 
     const options: BusinessOption[] = businesses;
@@ -52,6 +78,6 @@ const loadShellCached = cache(
       options.find((o) => o.id === cookieVal) ??
       options[0] ?? { id: "", name: "No workspace" };
 
-    return { options, selected, unread };
+    return { options, selected, unread, recentNotifications };
   },
 );

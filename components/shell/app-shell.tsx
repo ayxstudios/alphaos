@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 import type { Role } from "@/lib/auth/config";
-import type { BusinessOption } from "@/lib/shell/context";
+import type { BusinessOption, ShellData } from "@/lib/shell/context";
 import { ToastProvider } from "@/components/ui";
 import { Menu, X } from "@/components/ui/icons";
 import { focusRing } from "@/components/ui/styles";
@@ -20,6 +20,7 @@ type AppShellProps = {
   options: BusinessOption[];
   selected: BusinessOption;
   unread: number;
+  recentNotifications: ShellData["recentNotifications"];
   initialCollapsed?: boolean;
 };
 
@@ -29,6 +30,7 @@ export function AppShell({
   options,
   selected,
   unread,
+  recentNotifications,
   initialCollapsed = false,
 }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(initialCollapsed);
@@ -88,6 +90,7 @@ export function AppShell({
           options={options}
           selected={selected}
           unread={unread}
+          recentNotifications={recentNotifications}
           mobileMenuButton={
             <button
               type="button"

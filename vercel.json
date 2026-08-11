@@ -4,6 +4,7 @@
   "crons": [
     { "path": "/api/cron/sync", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/gmail-poll", "schedule": "*/15 * * * *" },
+    { "path": "/api/cron/notifications", "schedule": "*/15 * * * *" },
     { "path": "/api/cron/retention", "schedule": "0 3 * * *" }
   ]
 }

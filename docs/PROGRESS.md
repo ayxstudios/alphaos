@@ -43,6 +43,12 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
   inbound polling + queued-email flushing, and R2 retention. Shop sync, Gmail
   poll health, queued email, and unmatched reply health are surfaced on the
   dashboard.
+- **Notification SLA sweep (in-app).** A 15-minute cron route detects due-soon,
+  overdue, overdue escalations, stale intake, proof no-response, stale shop sync,
+  and stale unmatched replies. `notification_fires` is the durable idempotency
+  ledger; ordinary alerts fire once, admin escalations re-fire by window
+  (`test:notifications`). In-app notifications now show recent unread alerts in
+  the shell dropdown. Telegram/web-push/email delivery are not built yet.
 - **Designer earnings + payouts.** Portrait styles carry per-figure rates.
   Completion writes one immutable earning per order with item-level JSON
   breakdown; revision round-trips do not duplicate pay; reassignment pays the
@@ -89,14 +95,16 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
 1. **Connect + live-test Etsy** for one shop (the largest untested surface).
 2. **Connect Gmail** for one business; verify send, scheduled inbound polling,
    queued flush, unmatched reply linking, and dashboard health end-to-end.
-3. **Live-test designer payout flow** after configuring real style rates for
+3. **Add notification channels + routing settings**: Telegram, web push, digest
+   email, per-type routing, batching delivery queue, and required-channel guards.
+4. **Live-test designer payout flow** after configuring real style rates for
    PixArt/Lumina.
-4. **Designer submission upload** (assets `type=submission`) reusing the R2 flow.
-5. **Print provider integration** (`print_jobs` table exists; Shopify writeback
+5. **Designer submission upload** (assets `type=submission`) reusing the R2 flow.
+6. **Print provider integration** (`print_jobs` table exists; Shopify writeback
    exists, but no Gelato/Luma Prints API is wired).
 
 ## Half-finished / stubs
 
 - **48-hour photo reminder** (the second auto-send exception) is not built.
-- **SLA / overdue detection is read-time only** (dashboard/orders/board queries);
-  no background overdue notification sweep exists yet.
+- **Notification external channels** (Telegram, web push, digest email) are not
+  built yet; stages 1-3 are in-app only.
