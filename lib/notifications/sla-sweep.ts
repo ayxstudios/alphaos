@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 import { withSystemContext, type Tx } from "@/lib/db";
@@ -79,12 +79,27 @@ function uniqueRecipients(...groups: Recipient[][]): Recipient[] {
   return out;
 }
 
-function escalationWindow(dueAt: Date, now: Date): number {
-  return Math.floor(Math.max(0, now.getTime() - dueAt.getTime() - 6 * HOUR) / ORDER_ESCALATION_REFIRE_MS);
-}
-
-function shopStaleWindow(staleSince: Date, now: Date): number {
-  return Math.floor(Math.max(0, now.getTime() - staleSince.getTime() - HOUR) / SHOP_SYNC_REFIRE_MS);
+async function repeatIntervalOpen(
+  tx: Tx,
+  alertType: AlertType,
+  subjectType: SweepAlert["subjectType"],
+  subjectId: string,
+  intervalMs: number,
+  now: Date,
+): Promise<boolean> {
+  const [latest] = await tx
+    .select({ triggeredAt: notificationFires.triggeredAt })
+    .from(notificationFires)
+    .where(
+      and(
+        eq(notificationFires.alertType, alertType),
+        eq(notificationFires.subjectType, subjectType),
+        eq(notificationFires.subjectId, subjectId),
+      ),
+    )
+    .orderBy(desc(notificationFires.triggeredAt))
+    .limit(1);
+  return !latest || now.getTime() - latest.triggeredAt.getTime() >= intervalMs;
 }
 
 async function fireInApp(tx: Tx, alert: SweepAlert): Promise<{ fired: boolean; notifications: number }> {
@@ -207,24 +222,34 @@ async function buildAlerts(tx: Tx, now: Date, opts: NotificationSweepOptions): P
     });
 
     if (now.getTime() - order.dueAt.getTime() >= 6 * HOUR) {
-      const window = escalationWindow(order.dueAt, now);
-      alerts.push({
-        businessId: order.businessId,
-        alertType: ALERT_TYPES.orderOverdueEscalated,
-        subjectType: "order",
-        subjectId: order.id,
-        dedupeKey: `order_overdue_escalated:${order.id}:${window}`,
-        recipients: staff.admins,
-        orderId: order.id,
-        title: `${label} is still overdue`,
-        body: `This order has been overdue for ${overdueFor}.`,
-        href: `/orders/${order.id}`,
-        metadata: {
-          dueAt: order.dueAt.toISOString(),
-          overdueForMs: now.getTime() - order.dueAt.getTime(),
-          refireWindow: window,
-        },
-      });
+      const shouldFire = await repeatIntervalOpen(
+        tx,
+        ALERT_TYPES.orderOverdueEscalated,
+        "order",
+        order.id,
+        ORDER_ESCALATION_REFIRE_MS,
+        now,
+      );
+      if (shouldFire) {
+        const window = Math.floor(now.getTime() / ORDER_ESCALATION_REFIRE_MS);
+        alerts.push({
+          businessId: order.businessId,
+          alertType: ALERT_TYPES.orderOverdueEscalated,
+          subjectType: "order",
+          subjectId: order.id,
+          dedupeKey: `order_overdue_escalated:${order.id}:${window}`,
+          recipients: staff.admins,
+          orderId: order.id,
+          title: `${label} is still overdue`,
+          body: `This order has been overdue for ${overdueFor}.`,
+          href: `/orders/${order.id}`,
+          metadata: {
+            dueAt: order.dueAt.toISOString(),
+            overdueForMs: now.getTime() - order.dueAt.getTime(),
+            refireWindow: window,
+          },
+        });
+      }
     }
   }
 
@@ -268,25 +293,35 @@ async function buildAlerts(tx: Tx, now: Date, opts: NotificationSweepOptions): P
     const staleSince = asDate(shop.staleSince);
     const lastSyncAt = shop.lastSyncAt ? asDate(shop.lastSyncAt) : null;
     const staleForMs = now.getTime() - staleSince.getTime();
-    const window = shopStaleWindow(staleSince, now);
-    alerts.push({
-      businessId: shop.businessId,
-      alertType: ALERT_TYPES.shopSyncStale,
-      subjectType: "shop",
-      subjectId: shop.id,
-      dedupeKey: `shop_sync_stale:${shop.id}:${staleSince.getTime()}:${window}`,
-      recipients: staff.admins,
-      title: `${shop.name} sync is stale`,
-      body: `Last successful sync was ${duration(staleForMs)} ago.`,
-      href: "/dashboard",
-      metadata: {
-        shopId: shop.id,
-        shopName: shop.name,
-        lastSyncAt: lastSyncAt?.toISOString() ?? null,
-        staleForMs,
-        refireWindow: window,
-      },
-    });
+    const shouldFire = await repeatIntervalOpen(
+      tx,
+      ALERT_TYPES.shopSyncStale,
+      "shop",
+      shop.id,
+      SHOP_SYNC_REFIRE_MS,
+      now,
+    );
+    if (shouldFire) {
+      const window = Math.floor(now.getTime() / SHOP_SYNC_REFIRE_MS);
+      alerts.push({
+        businessId: shop.businessId,
+        alertType: ALERT_TYPES.shopSyncStale,
+        subjectType: "shop",
+        subjectId: shop.id,
+        dedupeKey: `shop_sync_stale:${shop.id}:${staleSince.getTime()}:${window}`,
+        recipients: staff.admins,
+        title: `${shop.name} sync is stale`,
+        body: `Last successful sync was ${duration(staleForMs)} ago.`,
+        href: "/dashboard",
+        metadata: {
+          shopId: shop.id,
+          shopName: shop.name,
+          lastSyncAt: lastSyncAt?.toISOString() ?? null,
+          staleForMs,
+          refireWindow: window,
+        },
+      });
+    }
   }
 
   for (const message of unmatchedStale) {
