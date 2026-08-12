@@ -3,7 +3,8 @@
 import { useMemo, useState, useTransition } from "react";
 
 import { saveDailyHealthEmailSettings } from "@/app/(app)/settings/actions";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, useToast } from "@/components/ui";
+import { Badge, Button, useToast } from "@/components/ui";
+import { ChevronDown } from "@/components/ui/icons";
 
 export type DailyHealthAdminVM = {
   id: string;
@@ -57,39 +58,35 @@ export function DailyHealthEmailSettingsPanel({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <CardTitle>Daily health email</CardTitle>
-            <CardDescription>
-              Sends the selected business&apos;s morning briefing to chosen admins at 7am Melbourne time.
-            </CardDescription>
+    <details className="group rounded-card border border-line bg-surface shadow-sm">
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="truncate text-sm font-semibold text-ink">Daily health email</span>
+            <Badge variant={enabled ? "success" : "neutral"} dot={enabled}>
+              {enabled ? "On" : "Off"}
+            </Badge>
+            <span className="text-xs text-slate">
+              {selectedCount} recipient{selectedCount === 1 ? "" : "s"}
+            </span>
           </div>
-          <Badge variant={enabled ? "success" : "neutral"} dot={enabled}>
-            {enabled ? "On" : "Off"}
-          </Badge>
         </div>
-      </CardHeader>
-      <CardContent>
-        <label className="flex items-start gap-3 rounded-input border border-line bg-canvas p-3">
+        <ChevronDown size={16} className="text-slate transition-transform group-open:rotate-180" />
+      </summary>
+
+      <div className="border-t border-line p-4">
+        <label className="flex items-center gap-3 rounded-input border border-line bg-canvas p-3">
           <input
             type="checkbox"
-            className="mt-1 h-4 w-4 accent-pigment"
+            className="h-4 w-4 accent-pigment"
             checked={enabled}
             onChange={(event) => setEnabled(event.currentTarget.checked)}
           />
-          <span>
-            <span className="block text-sm font-semibold text-ink">Send morning briefing for {settings.businessName}</span>
-            <span className="mt-1 block text-sm text-slate">
-              Default is off. Gmail must be connected for this business before the cron can send.
-            </span>
-          </span>
+          <span className="text-sm font-semibold text-ink">Send morning briefing for {settings.businessName}</span>
         </label>
 
         <div className="mt-4">
           <p className="text-sm font-semibold text-ink">Recipients</p>
-          <p className="mt-1 text-sm text-slate">Only active admin accounts can receive the report.</p>
           {admins.length === 0 ? (
             <p className="mt-3 rounded-input border border-amber/25 bg-amber/10 p-3 text-sm text-amber">
               No active admins found.
@@ -114,15 +111,12 @@ export function DailyHealthEmailSettingsPanel({
           )}
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-3">
+        <div className="mt-4">
           <Button type="button" onClick={save} loading={pending}>
-            Save briefing settings
+            Save briefing
           </Button>
-          <span className="text-xs text-slate">
-            {selectedCount} recipient{selectedCount === 1 ? "" : "s"} selected
-          </span>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </details>
   );
 }

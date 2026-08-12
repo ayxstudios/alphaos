@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 
-import { Button, Input, Select, Textarea } from "@/components/ui";
+import { Button, InfoBubble, Input, Select, Textarea } from "@/components/ui";
 import { Plus, XCircle } from "@/components/ui/icons";
 import {
   saveShopResolutionRules,
@@ -26,8 +26,6 @@ function parseNumberMap(text: string): Record<string, number> {
   return map;
 }
 
-/** A tag-list editor: current values as removable chips, an input to add, and
- *  click-to-add suggestion chips from recent imports. */
 function StringList({
   label,
   values,
@@ -42,25 +40,49 @@ function StringList({
   placeholder?: string;
 }) {
   const [input, setInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [showAll, setShowAll] = useState(false);
   const add = (v: string) => {
     const t = v.trim();
     if (t && !values.some((x) => x.toLowerCase() === t.toLowerCase())) onChange([...values, t]);
   };
-  const unused = suggestions.filter((s) => !values.some((x) => x.toLowerCase() === s.toLowerCase()));
+  const visibleValues = showAll ? values : values.slice(0, 5);
+  const unused = useMemo(
+    () =>
+      suggestions
+        .filter((s) => !values.some((x) => x.toLowerCase() === s.toLowerCase()))
+        .filter((s) => !search.trim() || s.toLowerCase().includes(search.trim().toLowerCase()))
+        .slice(0, 8),
+    [search, suggestions, values],
+  );
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <span className="text-xs text-slate">{label}</span>
+    <div className="flex flex-col gap-2">
+      <span className="text-xs font-medium text-ink">{label}</span>
       {values.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {values.map((v) => (
-            <span key={v} className="inline-flex items-center gap-1 rounded-input bg-pigment-soft px-2 py-0.5 text-xs text-pigment">
-              {v}
-              <button type="button" onClick={() => onChange(values.filter((x) => x !== v))} aria-label={`Remove ${v}`}>
+        <div className="overflow-hidden rounded-input border border-line bg-canvas">
+          {visibleValues.map((v) => (
+            <div key={v} className="flex items-center gap-2 border-b border-line px-2.5 py-1.5 last:border-b-0">
+              <span className="min-w-0 flex-1 truncate text-xs text-ink">{v}</span>
+              <button
+                type="button"
+                className="text-slate hover:text-rose"
+                onClick={() => onChange(values.filter((x) => x !== v))}
+                aria-label={`Remove ${v}`}
+              >
                 <XCircle size={13} />
               </button>
-            </span>
+            </div>
           ))}
+          {values.length > 5 && (
+            <button
+              type="button"
+              className="w-full px-2.5 py-1.5 text-left text-xs font-medium text-pigment hover:bg-pigment-soft"
+              onClick={() => setShowAll((value) => !value)}
+            >
+              {showAll ? "Show fewer" : `Show all ${values.length}`}
+            </button>
+          )}
         </div>
       )}
       <div className="flex items-center gap-2">
@@ -89,18 +111,35 @@ function StringList({
           Add
         </Button>
       </div>
-      {unused.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {unused.slice(0, 30).map((s) => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => add(s)}
-              className="rounded-input border border-line bg-canvas px-2 py-0.5 text-xs text-ink hover:bg-pigment-soft"
-            >
-              {s}
-            </button>
-          ))}
+      {suggestions.length > 0 && (
+        <div className="relative">
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.currentTarget.value)}
+            placeholder={`Find imported ${label.toLowerCase()}...`}
+            className="h-9"
+          />
+          {search.trim() && (
+            <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-input border border-line bg-surface shadow-md">
+              {unused.length ? (
+                unused.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="block w-full truncate px-3 py-2 text-left text-xs text-ink hover:bg-pigment-soft"
+                    onClick={() => {
+                      add(s);
+                      setSearch("");
+                    }}
+                  >
+                    {s}
+                  </button>
+                ))
+              ) : (
+                <div className="px-3 py-2 text-xs text-slate">No matches</div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -109,7 +148,6 @@ function StringList({
 
 export function ResolutionRulesEditor({
   shopId,
-  platform,
   initialFigureRules,
   initialNonPortraitSkus,
   initialNonPortraitTitles,
@@ -119,7 +157,6 @@ export function ResolutionRulesEditor({
   titleSuggestions,
 }: {
   shopId: string;
-  platform: "etsy" | "shopify";
   initialFigureRules: FigureRule[];
   initialNonPortraitSkus: string[];
   initialNonPortraitTitles: string[];
@@ -139,9 +176,17 @@ export function ResolutionRulesEditor({
   const [saved, setSaved] = useState<string | null>(null);
   const [summary, setSummary] = useState<ReresolveSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [optionSearch, setOptionSearch] = useState("");
 
   const setFig = (i: number, patch: Partial<FigureDraft>) =>
     setFigure((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const optionMatches = useMemo(
+    () =>
+      optionNames
+        .filter((name) => !optionSearch.trim() || name.toLowerCase().includes(optionSearch.trim().toLowerCase()))
+        .slice(0, 8),
+    [optionNames, optionSearch],
+  );
 
   function onSave() {
     setSaved(null);
@@ -182,31 +227,38 @@ export function ResolutionRulesEditor({
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-card border border-line p-3">
-      <div>
-        <h4 className="text-sm font-semibold text-ink">Figure &amp; style rules</h4>
-        <p className="text-xs text-slate">
-          Match is case-insensitive and ignores trailing punctuation. Click a suggested option
-          name to add a rule for it.
-        </p>
-      </div>
+    <div className="flex flex-col gap-4 rounded-input border border-line p-3">
+      <h4 className="text-sm font-semibold text-ink">Import rules</h4>
 
       {optionNames.length > 0 && (
-        <div className="flex flex-col gap-1">
-          <span className="text-xs text-slate">Option names seen in recent imports:</span>
-          <div className="flex flex-wrap gap-1">
-            {optionNames.map((name) => (
-              <button
-                key={name}
-                type="button"
-                onClick={() => setFigure((rs) => [...rs, { match: name, type: "integer", mapText: "" }])}
-                className="rounded-input border border-line bg-canvas px-2 py-0.5 text-xs text-ink hover:bg-pigment-soft"
-                title="Add a figure rule for this option"
-              >
-                {name}
-              </button>
-            ))}
-          </div>
+        <div className="relative">
+          <Input
+            label="Imported option names"
+            value={optionSearch}
+            onChange={(event) => setOptionSearch(event.currentTarget.value)}
+            placeholder="Search option names..."
+          />
+          {optionSearch.trim() && (
+            <div className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-input border border-line bg-surface shadow-md">
+              {optionMatches.length ? (
+                optionMatches.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => {
+                      setFigure((rs) => [...rs, { match: name, type: "integer", mapText: "" }]);
+                      setOptionSearch("");
+                    }}
+                    className="block w-full truncate px-3 py-2 text-left text-xs text-ink hover:bg-pigment-soft"
+                  >
+                    {name}
+                  </button>
+                ))
+              ) : (
+                <div className="px-3 py-2 text-xs text-slate">No matches</div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -248,7 +300,7 @@ export function ResolutionRulesEditor({
                 value={r.mapText}
                 onChange={(e) => setFig(i, { mapText: e.target.value })}
                 rows={3}
-                hint="One per line: value = count (e.g. `two pets = 2`)"
+                placeholder="two pets = 2"
               />
             )}
           </div>
@@ -265,20 +317,9 @@ export function ResolutionRulesEditor({
         </div>
       </div>
 
-      {/* Portrait styles moved to their own workspace-level page. */}
-      <div className="rounded-input border border-line bg-canvas p-3 text-xs text-slate">
-        Portrait styles and their auto-assign rules now live on the{" "}
-        <a href="/styles" className="font-medium text-pigment hover:text-ink">Portrait Styles</a>{" "}
-        page — they&apos;re shared across all of this workspace&apos;s shops.
-      </div>
-
       {/* Non-portrait classification */}
       <div className="flex flex-col gap-2 border-t border-line pt-3">
         <span className="text-xs font-medium text-ink">Non-portrait orders</span>
-        <p className="text-xs text-slate">
-          Orders whose lines are all non-portrait (add-ons, extra prints) import as
-          &ldquo;fulfilment only&rdquo; — no design, no proof, no photo request.
-        </p>
         <StringList
           label="Non-portrait SKUs (exact match)"
           values={skus}
@@ -304,16 +345,14 @@ export function ResolutionRulesEditor({
           className="mt-0.5"
         />
         <span className="text-sm text-ink">
-          Automatically email a photo request when an order needs photos
+          <span className="inline-flex items-center gap-1.5">
+            Auto photo request
+            <InfoBubble label="Auto photo request">
+              Sends the customer a photo upload email when an imported order has no usable photos. Keep off for shops that already collect photos at checkout.
+            </InfoBubble>
+          </span>
           <span className="ml-1 rounded bg-canvas px-1 text-xs text-slate">
             {photoReq ? "ON" : "OFF — default"}
-          </span>
-          <span className="block text-xs text-slate">
-            Off for every shop until you turn it on here. A VA can still send a photo
-            request manually from an order at any time.
-            {platform === "shopify"
-              ? " (Shopify collects photos at checkout — a Shopify order missing photos is flagged in the queue.)"
-              : " (Etsy customers upload via the emailed link.)"}
           </span>
         </span>
       </label>

@@ -4,16 +4,12 @@ import { useState, useTransition } from "react";
 
 import {
   Button,
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  CardFooter,
   Input,
   Select,
   Badge,
+  InfoBubble,
 } from "@/components/ui";
+import { ChevronDown } from "@/components/ui/icons";
 import {
   saveShopifyCredentials,
   testShopifyConnection,
@@ -141,217 +137,214 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
     .filter((uri): uri is string => !!uri);
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between gap-2">
-          <CardTitle>{shop.name}</CardTitle>
-          <div className="flex flex-wrap justify-end gap-2">
-            {health !== "ok" && (
-              <Badge variant="warning" dot>
-                Sync {health === "never" ? "never run" : "stale"}
-              </Badge>
-            )}
-            {webhookStatus.pointingCorrectly ? (
-              <Badge variant="success" dot>Webhook registered</Badge>
-            ) : (
-              <Badge variant="danger" dot>Webhook missing</Badge>
-            )}
+    <details className="group rounded-card border border-line bg-surface shadow-sm">
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="truncate text-sm font-semibold text-ink">{shop.name}</span>
+            <span className="rounded bg-canvas px-1.5 py-0.5 text-[11px] font-medium uppercase text-slate">Shopify</span>
             {shop.status === "connected" ? (
               <Badge variant="success" dot>Connected</Badge>
             ) : (
               <Badge variant="neutral" dot>Not connected</Badge>
             )}
+            {health !== "ok" && (
+              <Badge variant="warning" dot>
+                Sync {health === "never" ? "never run" : "stale"}
+              </Badge>
+            )}
+            {!webhookStatus.pointingCorrectly && (
+              <Badge variant="danger" dot>Webhook missing</Badge>
+            )}
           </div>
         </div>
-        <CardDescription>
-          {shop.shopDomain ?? "no domain set"} · {MODE_LABEL[shop.authType]} · last successful sync{" "}
-          {lastSync} · cursor {cursor} · {shop.ruleCount} figure rule{shop.ruleCount === 1 ? "" : "s"} ·
-          heuristic {shop.allowHeuristic ? "on" : "off"}
-        </CardDescription>
-      </CardHeader>
+        <span className="hidden text-sm text-slate sm:inline">Last sync {lastSync}</span>
+        <ChevronDown size={16} className="text-slate transition-transform group-open:rotate-180" />
+      </summary>
 
-      <CardContent className="flex flex-col gap-4">
-        <form action={saveShopifyCredentials} className="flex flex-col gap-3">
-          <input type="hidden" name="shopId" value={shop.id} />
-          <input type="hidden" name="authType" value={mode} />
+      <div className="border-t border-line p-4">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+          <div className="flex flex-col gap-4">
+            <form action={saveShopifyCredentials} className="grid gap-3 rounded-input border border-line bg-canvas p-3">
+              <input type="hidden" name="shopId" value={shop.id} />
+              <input type="hidden" name="authType" value={mode} />
 
-          <Select
-            label="App type"
-            value={mode}
-            onChange={(e) => setMode(e.target.value as AuthMode)}
-            hint={
-              mode === "client_credentials"
-                ? "Dev Dashboard app: a Client ID + secret exchanged for a short-lived token. The client secret also verifies webhooks."
-                : "Deprecated admin custom app: a permanent access token plus a separate webhook secret."
-            }
-          >
-            <option value="client_credentials">{MODE_LABEL.client_credentials}</option>
-            <option value="legacy">{MODE_LABEL.legacy}</option>
-          </Select>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-medium text-slate">App type</span>
+                <InfoBubble label="Shopify app type">
+                  Use Client ID + secret for the new Shopify Dev Dashboard app. Legacy is only for old permanent-token custom apps.
+                </InfoBubble>
+              </div>
+              <Select
+                value={mode}
+                onChange={(e) => setMode(e.target.value as AuthMode)}
+              >
+                <option value="client_credentials">{MODE_LABEL.client_credentials}</option>
+                <option value="legacy">{MODE_LABEL.legacy}</option>
+              </Select>
 
-          <Input
-            label="Store domain"
-            name="shopDomain"
-            value={domain}
-            onChange={(e) => setDomain(e.target.value)}
-            placeholder="pixart.myshopify.com"
-            autoComplete="off"
-            required
-          />
-
-          {mode === "client_credentials" ? (
-            <>
               <Input
-                label="Client ID"
-                name="clientId"
-                value={clientId}
-                onChange={(e) => setClientId(e.target.value)}
-                placeholder={shop.hasClientId ? "•••••••• (set — enter to replace)" : "Client ID from the Dev Dashboard"}
+                label="Store domain"
+                name="shopDomain"
+                value={domain}
+                onChange={(e) => setDomain(e.target.value)}
+                placeholder="pixart.myshopify.com"
                 autoComplete="off"
-                required={!shop.hasClientId}
+                required
               />
-              <Input
-                label="Client secret"
-                name="clientSecret"
-                type="password"
-                value={clientSecret}
-                onChange={(e) => setClientSecret(e.target.value)}
-                placeholder={shop.hasClientSecret ? "•••••••• (set — leave blank to keep)" : "Also signs webhook HMAC"}
-                autoComplete="off"
-                required={!shop.hasClientSecret}
-              />
-            </>
-          ) : (
-            <>
-              <Input
-                label="Admin API access token"
-                name="accessToken"
-                type="password"
-                value={accessToken}
-                onChange={(e) => setAccessToken(e.target.value)}
-                placeholder={shop.hasToken ? "•••••••• (set — leave blank to keep)" : "shpat_..."}
-                autoComplete="off"
-                required={!shop.hasToken}
-              />
-              <Input
-                label="Webhook secret (custom app API secret key)"
-                name="webhookSecret"
-                type="password"
-                value={webhookSecret}
-                onChange={(e) => setWebhookSecret(e.target.value)}
-                placeholder={shop.hasWebhookSecret ? "•••••••• (set — leave blank to keep)" : "Signs webhook HMAC"}
-                autoComplete="off"
-                required={!shop.hasWebhookSecret}
-              />
-            </>
-          )}
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" variant="secondary" size="sm" onClick={onTest} loading={testing}>
-              Test connection
-            </Button>
-            <Button type="submit" size="sm">
-              Save credentials
-            </Button>
-          </div>
-          {test && (
-            <p className={test.ok ? "text-sm text-sage" : "text-sm text-rose"}>{test.message}</p>
-          )}
-        </form>
+              {mode === "client_credentials" ? (
+                <>
+                  <Input
+                    label="Client ID"
+                    name="clientId"
+                    value={clientId}
+                    onChange={(e) => setClientId(e.target.value)}
+                    placeholder={shop.hasClientId ? "Set - enter to replace" : "Client ID"}
+                    autoComplete="off"
+                    required={!shop.hasClientId}
+                  />
+                  <Input
+                    label="Client secret"
+                    name="clientSecret"
+                    type="password"
+                    value={clientSecret}
+                    onChange={(e) => setClientSecret(e.target.value)}
+                    placeholder={shop.hasClientSecret ? "Set - leave blank to keep" : "Client secret"}
+                    autoComplete="off"
+                    required={!shop.hasClientSecret}
+                  />
+                </>
+              ) : (
+                <>
+                  <Input
+                    label="Admin API access token"
+                    name="accessToken"
+                    type="password"
+                    value={accessToken}
+                    onChange={(e) => setAccessToken(e.target.value)}
+                    placeholder={shop.hasToken ? "Set - leave blank to keep" : "shpat_..."}
+                    autoComplete="off"
+                    required={!shop.hasToken}
+                  />
+                  <Input
+                    label="Webhook secret"
+                    name="webhookSecret"
+                    type="password"
+                    value={webhookSecret}
+                    onChange={(e) => setWebhookSecret(e.target.value)}
+                    placeholder={shop.hasWebhookSecret ? "Set - leave blank to keep" : "Webhook secret"}
+                    autoComplete="off"
+                    required={!shop.hasWebhookSecret}
+                  />
+                </>
+              )}
 
-        <ResolutionRulesEditor
-          shopId={shop.id}
-          platform="shopify"
-          initialFigureRules={shop.figureRules}
-          initialNonPortraitSkus={shop.nonPortraitSkus}
-          initialNonPortraitTitles={shop.nonPortraitTitles}
-          initialPhotoRequestEnabled={shop.photoRequestEnabled}
-          optionNames={shop.optionNames}
-          skuSuggestions={shop.skuSuggestions}
-          titleSuggestions={shop.titleSuggestions}
-        />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" variant="secondary" size="sm" onClick={onTest} loading={testing}>
+                  Test
+                </Button>
+                <Button type="submit" size="sm">
+                  Save credentials
+                </Button>
+              </div>
+              {test && (
+                <p className={test.ok ? "text-sm text-sage" : "text-sm text-rose"}>{test.message}</p>
+              )}
+            </form>
 
-        <form action={saveShopBackfillCutoff} className="rounded-card border border-line bg-canvas p-3">
-          <input type="hidden" name="shopId" value={shop.id} />
-          <div className="flex flex-wrap items-end gap-3">
-            <Input
-              label="Live-order cutoff"
-              name="backfillCutoffDate"
-              type="date"
-              defaultValue={cutoffDate}
-              hint="Orders placed before this date import as archived history."
-              required
-            />
-            <Button type="submit" variant="secondary" size="sm">
-              Save cutoff
-            </Button>
-          </div>
-        </form>
+            <form action={saveShopBackfillCutoff} className="rounded-input border border-line bg-canvas p-3">
+              <input type="hidden" name="shopId" value={shop.id} />
+              <div className="flex flex-wrap items-end gap-3">
+                <Input
+                  label="Live-order cutoff"
+                  name="backfillCutoffDate"
+                  type="date"
+                  defaultValue={cutoffDate}
+                  required
+                />
+                <Button type="submit" variant="secondary" size="sm">
+                  Save cutoff
+                </Button>
+              </div>
+            </form>
 
-        <div className="rounded-card border border-line bg-canvas p-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-ink">Webhook delivery</p>
-              <p className="break-all text-xs text-slate">
-                Expected: <code className="text-ink">{webhookStatus.expectedUrl}</code>
-              </p>
-              <p className="mt-1 break-all text-xs text-slate">
-                Current:{" "}
-                {webhookUris.length
-                  ? webhookUris.map((uri) => <code key={uri} className="mr-2 text-ink">{uri}</code>)
-                  : "not registered"}
-              </p>
+            <div className="rounded-input border border-line bg-canvas p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-ink">Webhook</p>
+                  <p className="truncate text-xs text-slate">
+                    {webhookStatus.pointingCorrectly ? "Registered" : "Not pointing at AlphaOS"}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={onRegisterWebhooks}
+                  loading={registeringWebhooks}
+                  disabled={shop.status !== "connected"}
+                >
+                  Register webhooks
+                </Button>
+              </div>
+              <details className="mt-2">
+                <summary className="cursor-pointer text-xs font-medium text-pigment">Show URLs</summary>
+                <p className="mt-2 break-all text-xs text-slate">Expected: {webhookStatus.expectedUrl}</p>
+                <p className="mt-1 break-all text-xs text-slate">
+                  Current: {webhookUris.length ? webhookUris.join(", ") : "not registered"}
+                </p>
+              </details>
+              {webhookError && <p className="mt-2 text-sm text-rose">{webhookError}</p>}
             </div>
-            <Button
-              type="button"
-              variant="secondary"
-              size="sm"
-              onClick={onRegisterWebhooks}
-              loading={registeringWebhooks}
-              disabled={shop.status !== "connected"}
-            >
-              Register webhooks
-            </Button>
-          </div>
-          {webhookError && <p className="mt-2 text-sm text-rose">{webhookError}</p>}
-        </div>
-      </CardContent>
 
-      <CardFooter className="flex-col items-start gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={onSync}
-            loading={syncing}
-            disabled={shop.status !== "connected"}
-          >
-            Sync now
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onBackfill}
-            loading={backfilling}
-            disabled={shop.status !== "connected"}
-            title="Re-scan 60 days; no customer emails"
-          >
-            Backfill 60d (no email)
-          </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onSync}
+                loading={syncing}
+                disabled={shop.status !== "connected"}
+              >
+                Sync now
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onBackfill}
+                loading={backfilling}
+                disabled={shop.status !== "connected"}
+              >
+                Backfill 60d
+              </Button>
+              <span className="text-xs text-slate">{shop.shopDomain ?? "No domain"} · cursor {cursor}</span>
+            </div>
+            {syncError && <p className="text-sm text-rose">{syncError}</p>}
+            {summary && (
+              <p className="text-sm text-slate">
+                {summary.skippedRun
+                  ? `Sync skipped: ${summary.skippedRun.replace("_", " ")}.`
+                  : `Imported ${summary.imported} new` +
+                    (summary.archived ? `, archived ${summary.archived}` : "") +
+                    (summary.failed ? `, ${summary.failed} failed` : "") +
+                    ` · ${summary.total ?? "?"} total` +
+                    (summary.windowDays ? ` · covering last ${summary.windowDays} days.` : ".")}
+              </p>
+            )}
+          </div>
+
+          <ResolutionRulesEditor
+            shopId={shop.id}
+            initialFigureRules={shop.figureRules}
+            initialNonPortraitSkus={shop.nonPortraitSkus}
+            initialNonPortraitTitles={shop.nonPortraitTitles}
+            initialPhotoRequestEnabled={shop.photoRequestEnabled}
+            optionNames={shop.optionNames}
+            skuSuggestions={shop.skuSuggestions}
+            titleSuggestions={shop.titleSuggestions}
+          />
         </div>
-        {syncError && <p className="text-sm text-rose">{syncError}</p>}
-        {summary && (
-          <p className="text-sm text-slate">
-            {summary.skippedRun
-              ? `Sync skipped: ${summary.skippedRun.replace("_", " ")}.`
-              : `Imported ${summary.imported} new` +
-                (summary.archived ? `, archived ${summary.archived}` : "") +
-                (summary.failed ? `, ${summary.failed} failed` : "") +
-                ` · ${summary.total ?? "?"} total` +
-                (summary.windowDays ? ` · covering last ${summary.windowDays} days.` : ".")}
-          </p>
-        )}
-      </CardFooter>
-    </Card>
+      </div>
+    </details>
   );
 }

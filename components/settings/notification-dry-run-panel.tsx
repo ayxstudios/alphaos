@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 
 import { runNotificationDryRun } from "@/app/(app)/settings/actions";
-import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitle, useToast } from "@/components/ui";
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, useToast } from "@/components/ui";
 import type { NotificationSweepResult } from "@/lib/notifications/sla-sweep";
 
 function label(type: string): string {
@@ -41,9 +41,6 @@ export function NotificationDryRunPanel() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <CardTitle>SLA sweep dry-run</CardTitle>
-            <CardDescription>
-              Computes the notification sweep without writing the fire ledger or fan-out notifications.
-            </CardDescription>
           </div>
           <Badge variant="warning" dot>
             Dry-run
@@ -55,9 +52,6 @@ export function NotificationDryRunPanel() {
           <Button onClick={run} loading={pending}>
             Run dry-run
           </Button>
-          <span className="text-xs text-slate">
-            Cron only sends when <code className="text-ink">NOTIFICATIONS_ENABLED=true</code>.
-          </span>
         </div>
 
         {report && (

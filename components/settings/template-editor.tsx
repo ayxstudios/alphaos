@@ -2,17 +2,8 @@
 
 import { useState, useTransition } from "react";
 
-import {
-  Button,
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardContent,
-  Input,
-  Textarea,
-  Badge,
-} from "@/components/ui";
+import { Button, Input, Textarea, Badge } from "@/components/ui";
+import { ChevronDown } from "@/components/ui/icons";
 import { saveEmailTemplate, resetEmailTemplate } from "@/app/(app)/settings/actions";
 
 export type TemplateVM = {
@@ -33,7 +24,7 @@ export function TemplateEditor({
   templates: TemplateVM[];
 }) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       {templates.map((t) => (
         <TemplateCard key={t.key} businessId={businessId} template={t} />
       ))}
@@ -47,17 +38,16 @@ function TemplateCard({ businessId, template }: { businessId: string; template: 
   const [resetting, startReset] = useTransition();
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between gap-2">
-          <CardTitle>{template.label}</CardTitle>
-          <Badge variant={template.customized ? "info" : "neutral"} dot>
-            {template.customized ? "Customized" : "Default"}
-          </Badge>
-        </div>
-        <CardDescription>{template.description}</CardDescription>
-      </CardHeader>
-      <CardContent>
+    <details className="group rounded-card border border-line bg-surface shadow-sm">
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{template.label}</span>
+        <Badge variant={template.customized ? "info" : "neutral"} dot>
+          {template.customized ? "Customized" : "Default"}
+        </Badge>
+        <ChevronDown size={16} className="text-slate transition-transform group-open:rotate-180" />
+      </summary>
+
+      <div className="border-t border-line p-4">
         <form action={saveEmailTemplate} className="flex flex-col gap-3">
           <input type="hidden" name="businessId" value={businessId} />
           <input type="hidden" name="key" value={template.key} />
@@ -77,7 +67,7 @@ function TemplateCard({ businessId, template }: { businessId: string; template: 
             required
           />
           <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-xs text-slate">Variables:</span>
+            <span className="text-xs text-slate">Variables</span>
             {template.variables.map((v) => (
               <code key={v} className="rounded bg-canvas px-1.5 py-0.5 text-xs text-pigment">
                 {`{{${v}}}`}
@@ -105,7 +95,7 @@ function TemplateCard({ businessId, template }: { businessId: string; template: 
             )}
           </div>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </details>
   );
 }

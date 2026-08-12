@@ -5,7 +5,7 @@ import { useEffect, useState, useTransition } from "react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
-import { X } from "@/components/ui/icons";
+import { ChevronDown, X } from "@/components/ui/icons";
 import { setShopStyles } from "@/app/(app)/settings/actions";
 
 export type ShopStylesVM = {
@@ -71,19 +71,23 @@ function ShopRow({ shop }: { shop: ShopStylesVM }) {
   }
 
   return (
-    <div className="rounded-card border border-line bg-surface p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
+    <details className="group rounded-input border border-line bg-surface">
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-2.5">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-semibold text-ink">{shop.name}</span>
             <span className="rounded bg-canvas px-1.5 py-0.5 text-[11px] font-medium capitalize text-slate">
               {shop.platform}
             </span>
+            <span className="text-xs text-slate">
+              {styles.length} style{styles.length === 1 ? "" : "s"}
+            </span>
           </div>
-          <p className="mt-1 text-xs text-slate">
-            Portrait styles sold by this shop.
-          </p>
         </div>
+        <ChevronDown size={16} className="text-slate transition-transform group-open:rotate-180" />
+      </summary>
+
+      <div className="border-t border-line p-3">
         <div className="flex w-full gap-2 sm:w-72">
           <input
             value={draft}
@@ -114,34 +118,34 @@ function ShopRow({ shop }: { shop: ShopStylesVM }) {
             Add
           </button>
         </div>
-      </div>
 
-      <div className="mt-4 min-h-10 rounded-input border border-line bg-canvas/60 p-2">
-        {styles.length ? (
-          <div className="flex flex-wrap items-center gap-1.5">
-            {styles.map((s) => (
-              <span
-                key={s}
-                className="inline-flex items-center gap-1 rounded-input border border-sage/20 bg-sage/10 py-1 pl-2.5 pr-1 text-xs font-medium text-sage"
-              >
-                {s}
-                <button
-                  type="button"
-                  aria-label={`Remove ${s}`}
-                  onClick={() => remove(s)}
-                  className={cn("rounded p-0.5 hover:bg-sage/20", focusRing)}
+        <div className="mt-3 min-h-10 rounded-input border border-line bg-canvas/60 p-2">
+          {styles.length ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {styles.map((s) => (
+                <span
+                  key={s}
+                  className="inline-flex items-center gap-1 rounded-input border border-sage/20 bg-sage/10 py-1 pl-2.5 pr-1 text-xs font-medium text-sage"
                 >
-                  <X size={12} />
-                </button>
-              </span>
-            ))}
-          </div>
-        ) : (
-          <span className="inline-flex h-6 items-center text-xs text-slate">
-            No styles yet
-          </span>
-        )}
+                  {s}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${s}`}
+                    onClick={() => remove(s)}
+                    className={cn("rounded p-0.5 hover:bg-sage/20", focusRing)}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="inline-flex h-6 items-center text-xs text-slate">
+              No styles yet
+            </span>
+          )}
+        </div>
       </div>
-    </div>
+    </details>
   );
 }

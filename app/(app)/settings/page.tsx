@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
-import { businesses, emailTemplates, shops, users } from "@/lib/db/schema";
+import { businesses, emailTemplates, shops, styles, users } from "@/lib/db/schema";
 import {
   getBusinessGmailCredentials,
   getShopCredentials,
@@ -32,6 +32,7 @@ import {
 } from "@/components/settings/daily-health-email-settings";
 import { TemplateEditor, type TemplateVM } from "@/components/settings/template-editor";
 import { ShopStylesPanel, type ShopStylesVM } from "@/components/settings/shop-styles-panel";
+import { SetupChecklist, type SetupChecklistItem } from "@/components/settings/setup-checklist";
 import {
   defaultTemplateForBusiness,
   EDITABLE_TEMPLATE_KEYS,
@@ -299,6 +300,78 @@ export default async function SettingsPage({
     })
   ).map((s) => ({ id: s.id, name: s.name, platform: s.platform, styles: s.styles ?? [] }));
 
+  const [styleStats] = await withUserContext(user, (tx) =>
+    tx
+      .select({
+        total: sql<number>`count(*)::int`,
+        missingRates: sql<number>`count(*) filter (where ${styles.perFigureRate} is null)::int`,
+      })
+      .from(styles)
+      .where(eq(styles.businessId, selected.id)),
+  );
+
+  const allShopCards = [
+    ...cards.map((shop) => ({
+      platform: "etsy" as const,
+      connected: shop.status === "connected",
+      cutoffSet: !!shop.backfillCutoffAt,
+    })),
+    ...shopifyCards.map((shop) => ({
+      platform: "shopify" as const,
+      connected: shop.status === "connected",
+      cutoffSet: !!shop.backfillCutoffAt,
+    })),
+  ];
+  const firstDisconnected = allShopCards.find((shop) => !shop.connected);
+  const firstMissingCutoff = allShopCards.find((shop) => !shop.cutoffSet);
+  const shopHref = firstDisconnected?.platform === "shopify" ? "/settings?section=shopify" : "/settings?section=etsy";
+  const cutoffHref = firstMissingCutoff?.platform === "shopify" ? "/settings?section=shopify" : "/settings?section=etsy";
+  const shopsConnected = allShopCards.length > 0 && allShopCards.every((shop) => shop.connected);
+  const cutoffsSet = allShopCards.length > 0 && allShopCards.every((shop) => shop.cutoffSet);
+  const stylesReady = Number(styleStats?.total ?? 0) > 0 && Number(styleStats?.missingRates ?? 0) === 0;
+  const checklistItems: SetupChecklistItem[] = [
+    {
+      key: "shops",
+      label: "Shops connected",
+      ok: shopsConnected,
+      detail: `${allShopCards.length} shop${allShopCards.length === 1 ? "" : "s"}`,
+      href: shopHref,
+      action: allShopCards.length ? "Connect remaining" : "Add a shop",
+    },
+    {
+      key: "gmail",
+      label: "Gmail connected",
+      ok: gmailVM.status === "connected",
+      detail: gmailVM.address ?? "Connected",
+      href: "/settings?section=email",
+      action: "Connect Gmail",
+    },
+    {
+      key: "sending",
+      label: "Email sending on",
+      ok: gmailVM.sendingEnabled,
+      detail: "Customer email enabled",
+      href: "/settings?section=email",
+      action: "Turn on sending",
+    },
+    {
+      key: "styles",
+      label: "Styles configured",
+      ok: stylesReady,
+      detail: `${styleStats?.total ?? 0} style${Number(styleStats?.total ?? 0) === 1 ? "" : "s"}`,
+      href: "/styles",
+      action: Number(styleStats?.total ?? 0) ? "Set missing rates" : "Add styles",
+    },
+    {
+      key: "cutoff",
+      label: "Live-order cutoff set",
+      ok: cutoffsSet,
+      detail: "All shops protected",
+      href: cutoffHref,
+      action: "Set cutoff",
+    },
+  ];
+
   return (
     <Page className="grid gap-6 lg:grid-cols-[12rem_minmax(0,1fr)]">
       <aside>
@@ -322,15 +395,12 @@ export default async function SettingsPage({
       <div className="flex min-w-0 flex-col gap-6">
         <PageHeader
           title="Settings"
-          description="Manage shop connections, import rules, Gmail, and customer templates."
         />
+        <SetupChecklist businessName={selected.name} items={checklistItems} />
 
         {activeSection === "etsy" && (
           <section className="flex flex-col gap-4">
-            <SectionHeader
-              title="Etsy shops"
-              description="Connect each Etsy shop with its own app credentials, then import orders."
-            />
+            <SectionHeader title="Etsy shops" />
             {cards.length === 0 ? (
               <DataPanel>
                 <EmptyState
@@ -351,10 +421,7 @@ export default async function SettingsPage({
 
         {activeSection === "shopify" && (
           <section className="flex flex-col gap-4">
-            <SectionHeader
-              title="Shopify shops"
-              description="Connect each store with its domain and custom app Admin API token."
-            />
+            <SectionHeader title="Shopify shops" />
             {shopifyCards.length === 0 ? (
               <DataPanel>
                 <EmptyState
@@ -375,10 +442,7 @@ export default async function SettingsPage({
 
         {activeSection === "portrait-styles" && (
           <section className="flex flex-col gap-4">
-            <SectionHeader
-              title="Portrait Styles"
-              description="List the portrait styles this business sells. These are the styles staff can select on orders and designers can be assigned to."
-            />
+            <SectionHeader title="Portrait Styles" />
             {styleShops.length === 0 ? (
               <DataPanel>
                 <EmptyState
@@ -397,10 +461,7 @@ export default async function SettingsPage({
 
         {activeSection === "email" && (
           <section className="flex flex-col gap-4">
-            <SectionHeader
-              title="Customer email"
-              description="Connect the business mailbox and edit customer-facing templates."
-            />
+            <SectionHeader title="Customer email" />
             {gmailVM ? (
               <>
                 <GmailBusinessCard gmail={gmailVM} />
@@ -408,10 +469,6 @@ export default async function SettingsPage({
                   <h3 className="text-base font-semibold text-ink">
                     Email templates
                   </h3>
-                  <p className="text-sm text-slate">
-                    Edit without a deploy. Variables render server-side; a
-                    customized template overrides the built-in default.
-                  </p>
                 </div>
                 <TemplateEditor
                   businessId={gmailVM.businessId}
@@ -432,10 +489,7 @@ export default async function SettingsPage({
 
         {activeSection === "notifications" && (
           <section className="flex flex-col gap-4">
-            <SectionHeader
-              title="Notifications"
-              description="Configure proactive briefings and preview the SLA sweep before it is allowed to create alerts."
-            />
+            <SectionHeader title="Notifications" />
             <DailyHealthEmailSettingsPanel settings={dailyHealthSettings} admins={dailyHealthAdmins} />
             <NotificationDryRunPanel />
           </section>
