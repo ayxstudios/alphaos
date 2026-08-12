@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 
 import { withSystemContext, type RequestUser } from "../lib/db";
-import { orders, orderItems, assignments, users, shops, designerBusinesses } from "../lib/db/schema";
+import { orders, orderItems, assignments, users, shops, designerBusinesses, assets } from "../lib/db/schema";
 import { DEFAULT_CHECKLIST } from "../lib/qc/checklist";
 import {
   transition,
@@ -46,6 +46,24 @@ async function statusRevisionOf(orderId: string): Promise<{ status: string; revi
   });
 }
 
+async function addSubmission(orderId: string): Promise<void> {
+  await withSystemContext(async (tx) => {
+    const [o] = await tx
+      .select({ businessId: orders.businessId })
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+    if (!o) throw new Error(`Order ${orderId} missing`);
+    await tx.insert(assets).values({
+      businessId: o.businessId,
+      orderId,
+      type: "submission",
+      storage: "cdn",
+      url: `https://example.com/${orderId}.jpg`,
+    });
+  });
+}
+
 async function expectThrow(
   name: string,
   orderId: string,
@@ -77,12 +95,22 @@ async function main() {
       .limit(1);
 
     const orderId = randomUUID();
+    const noSubmissionOrderId = randomUUID();
     const lateOrderId = randomUUID();
     await tx.insert(orders).values({
       id: orderId,
       businessId: shop.businessId,
       shopId: shop.id,
       platformOrderId: `TEST-${Date.now()}`,
+      status: "in_design",
+      source: "manual",
+      uploadToken: randomUUID(),
+    });
+    await tx.insert(orders).values({
+      id: noSubmissionOrderId,
+      businessId: shop.businessId,
+      shopId: shop.id,
+      platformOrderId: `NOSUB-${Date.now()}`,
       status: "in_design",
       source: "manual",
       uploadToken: randomUUID(),
@@ -105,6 +133,13 @@ async function main() {
     });
     await tx.insert(orderItems).values({
       businessId: shop.businessId,
+      orderId: noSubmissionOrderId,
+      figureCount: 1,
+      figureCountSource: "manual",
+      productType: "digital",
+    });
+    await tx.insert(orderItems).values({
+      businessId: shop.businessId,
       orderId: lateOrderId,
       figureCount: 1,
       figureCountSource: "manual",
@@ -119,12 +154,19 @@ async function main() {
     });
     await tx.insert(assignments).values({
       businessId: shop.businessId,
+      orderId: noSubmissionOrderId,
+      designerId: d2.id,
+      active: true,
+      dueAt: new Date(Date.now() + 86400000),
+    });
+    await tx.insert(assignments).values({
+      businessId: shop.businessId,
       orderId: lateOrderId,
       designerId: d2.id,
       active: true,
       dueAt: new Date(Date.now() + 86400000),
     });
-    return { orderId, lateOrderId, d2: d2.id, va: va.id };
+    return { orderId, noSubmissionOrderId, lateOrderId, d2: d2.id, va: va.id };
   });
 
   const designer: RequestUser = { id: ctx.d2, role: "designer" };
@@ -139,6 +181,13 @@ async function main() {
   await expectThrow("designer in_design -> printing", ctx.orderId, t(designer, "printing", "in_design"), "in_design");
 
   console.log("=== designer's one legal edge works ===");
+  await expectThrow(
+    "designer in_design -> awaiting_qc without submission",
+    ctx.noSubmissionOrderId,
+    () => transition(designer, { orderId: ctx.noSubmissionOrderId, to: "awaiting_qc", expectedFrom: "in_design" }),
+    "in_design",
+  );
+  await addSubmission(ctx.orderId);
   await transition(designer, { orderId: ctx.orderId, to: "awaiting_qc", expectedFrom: "in_design" });
   report("designer in_design -> awaiting_qc", (await statusOf(ctx.orderId)) === "awaiting_qc", `status now ${await statusOf(ctx.orderId)}`);
 
@@ -185,6 +234,7 @@ async function main() {
   // --- cleanup -------------------------------------------------------------
   await withSystemContext(async (tx) => {
     await tx.delete(orders).where(eq(orders.id, ctx.orderId)); // cascades items/assignments
+    await tx.delete(orders).where(eq(orders.id, ctx.noSubmissionOrderId)); // cascades items/assignments
     await tx.delete(orders).where(eq(orders.id, ctx.lateOrderId)); // cascades items/assignments
   });
 

@@ -87,7 +87,7 @@ export default async function BoardPage({
         <div className="min-w-0 flex-1">
           {board ? (
             <div className="flex flex-col gap-4">
-              <DesignerBoard initial={board.columns} />
+              <DesignerBoard initial={board.columns} viewerRole={user.role} />
               <DataPanel>
                 <div className="border-b border-line px-4 py-3">
                   <h2 className="text-sm font-semibold text-ink">Earnings history</h2>

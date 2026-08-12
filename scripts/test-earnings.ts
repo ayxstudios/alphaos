@@ -9,6 +9,7 @@ import { and, eq } from "drizzle-orm";
 import { withSystemContext, type RequestUser } from "../lib/db";
 import {
   assignments,
+  assets,
   earnings,
   orderItems,
   orders,
@@ -106,6 +107,24 @@ async function createOrder(input: {
   });
 }
 
+async function addSubmission(orderId: string) {
+  await withSystemContext(async (tx) => {
+    const [order] = await tx
+      .select({ businessId: orders.businessId })
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+    if (!order) throw new Error(`Order ${orderId} missing`);
+    await tx.insert(assets).values({
+      businessId: order.businessId,
+      orderId,
+      type: "submission",
+      storage: "cdn",
+      url: `https://example.com/${orderId}.jpg`,
+    });
+  });
+}
+
 async function cleanupRows() {
   await withSystemContext(async (tx) => {
     for (const orderId of cleanup.orderIds) await tx.delete(earnings).where(eq(earnings.orderId, orderId));
@@ -155,6 +174,7 @@ async function main() {
     );
 
     await transition(va, { orderId, to: "in_design", expectedFrom: "complete", metadata: { revisionReason: "Regression test" } });
+    await addSubmission(orderId);
     await transition(va, { orderId, to: "awaiting_qc", expectedFrom: "in_design" });
     await transition(va, { orderId, to: "awaiting_approval", expectedFrom: "awaiting_qc", metadata: { itemResults: passingItemResults } });
     await transition(va, { orderId, to: "approved", expectedFrom: "awaiting_approval" });

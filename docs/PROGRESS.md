@@ -77,6 +77,12 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
   now moves AlphaOS orders only to `shipped`; `complete` remains a separate
   transition. Shopify/Etsy tracking writeback is attempted and any platform
   failure is recorded on the print job instead of silently stalling.
+- **Designer submission upload.** Designers upload finished portraits from their
+  own `in_design` board cards via direct-to-R2 drag/drop or file picker. Each
+  upload creates a new `assets.type = 'submission'` row; uploads are versioned,
+  never overwritten, and the state machine blocks `awaiting_qc` until at least
+  one submission exists (`test:transitions`). Designers can add replacement
+  versions while the card is in design, but uploads lock after QC.
 
 ## Built but NOT tested against a live API
 
@@ -123,8 +129,7 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
    email, per-type routing, batching delivery queue, and required-channel guards.
 4. **Live-test designer payout flow** after configuring real style rates for
    PixArt/Lumina.
-5. **Designer submission upload** (assets `type=submission`) reusing the R2 flow.
-6. **Print provider API integration** (manual path + product mapping exist, but
+5. **Print provider API integration** (manual path + product mapping exist, but
    no Gelato/Luma Prints API submission/webhooks are wired).
 
 ## Half-finished / stubs

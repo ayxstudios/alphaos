@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 
 import {
   withUserContext,
@@ -15,6 +15,7 @@ import {
   users,
   shops,
   orderStatus,
+  assets,
 } from "@/lib/db/schema";
 import {
   resolveChecklist,
@@ -221,6 +222,9 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
   if (to === "complete" && !nonPortraitComplete) {
     await assertFiguresResolved(tx, orderId, order.platformOrderId);
   }
+  if (to === "awaiting_qc") {
+    await assertHasSubmission(tx, orderId, order.platformOrderId);
+  }
 
   // QC gate — enforced HERE, not just in the UI/action, so a crafted request
   // can't pass QC without every item ticked. The checklist is resolved from the
@@ -313,6 +317,19 @@ async function assertFiguresResolved(tx: Tx, orderId: string, platformOrderId: s
   if (items.some((i) => i.figureCount == null)) {
     throw new PreconditionError(
       `Cannot complete order ${platformOrderId}: it has an unresolved figure count. Resolve it from Orders first (figure count drives payout).`,
+    );
+  }
+}
+
+async function assertHasSubmission(tx: Tx, orderId: string, platformOrderId: string): Promise<void> {
+  const [submission] = await tx
+    .select({ id: assets.id })
+    .from(assets)
+    .where(and(eq(assets.orderId, orderId), eq(assets.type, "submission"), isNull(assets.deletedAt)))
+    .limit(1);
+  if (!submission) {
+    throw new PreconditionError(
+      `Cannot submit order ${platformOrderId} to QC: upload at least one finished portrait first.`,
     );
   }
 }

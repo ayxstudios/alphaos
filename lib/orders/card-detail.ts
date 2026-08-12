@@ -30,6 +30,8 @@ export type CardImage = {
   id: string;
   type: "reference" | "submission" | "final";
   url: string;
+  uploadedBy: string | null;
+  createdAt: string;
 };
 
 export type CardDetail = {
@@ -85,8 +87,12 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
         url: assets.url,
         storage: assets.storage,
         r2Key: assets.r2Key,
+        createdAt: assets.createdAt,
+        uploadedByName: users.name,
+        uploadedByEmail: users.email,
       })
       .from(assets)
+      .leftJoin(users, eq(users.id, assets.uploadedBy))
       .where(
         and(
           eq(assets.orderId, orderId),
@@ -108,7 +114,15 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
             /* skip an image we can't resolve rather than fail the modal */
           }
         }
-        if (url) images.push({ id: a.id, type: a.type as CardImage["type"], url });
+        if (url) {
+          images.push({
+            id: a.id,
+            type: a.type as CardImage["type"],
+            url,
+            uploadedBy: a.uploadedByName ?? a.uploadedByEmail ?? null,
+            createdAt: a.createdAt.toISOString(),
+          });
+        }
       }),
     );
 

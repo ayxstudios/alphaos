@@ -25,6 +25,7 @@ import {
   extFor,
   isR2Configured,
   presignUpload,
+  headObject,
 } from "@/lib/storage/r2";
 
 export type MoveResult =
@@ -123,12 +124,18 @@ export async function presignCardAssetUploads(input: {
 
   const [order] = await withUserContext(user, (tx) =>
     tx
-      .select({ businessId: orders.businessId })
+      .select({ businessId: orders.businessId, status: orders.status })
       .from(orders)
       .where(eq(orders.id, input.orderId))
       .limit(1),
   );
   if (!order) return { ok: false, message: "Order not found" };
+  if (user.role === "designer" && input.type !== "submission") {
+    return { ok: false, message: "Designers can only upload finished portraits." };
+  }
+  if (user.role === "designer" && order.status !== "in_design") {
+    return { ok: false, message: "Finished portraits can only be uploaded while the card is in design." };
+  }
 
   try {
     const uploads = await Promise.all(
@@ -174,6 +181,24 @@ export async function saveCardAssetUploads(input: {
       if (r2Keys.some((key) => !key.startsWith(expectedPrefix))) {
         throw new Error("Upload key does not match this order");
       }
+      if (user.role === "designer" && input.type !== "submission") {
+        throw new Error("Designers can only upload finished portraits");
+      }
+      if (user.role === "designer" && order.status !== "in_design") {
+        throw new Error("Finished portraits can only be uploaded while the card is in design");
+      }
+
+      await Promise.all(
+        r2Keys.map(async (key) => {
+          const head = await headObject(key);
+          if (!head.contentType || !ALLOWED_IMAGE_TYPES.test(head.contentType)) {
+            throw new Error("Uploaded file is not a supported image");
+          }
+          if (!head.contentLength || head.contentLength <= 0 || head.contentLength > MAX_UPLOAD_BYTES) {
+            throw new Error("Uploaded file is over 25 MB");
+          }
+        }),
+      );
 
       await tx.insert(assets).values(
         r2Keys.map((r2Key) => ({

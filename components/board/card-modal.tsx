@@ -25,6 +25,13 @@ import type { BoardCard } from "@/lib/orders/board-data";
 import type { CardDetail, CardEvent, CardImage } from "@/lib/orders/card-detail";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+type ViewerRole = "admin" | "va" | "designer";
+type UploadProgress = {
+  name: string;
+  loaded: number;
+  total: number;
+  status: "queued" | "uploading" | "done" | "failed";
+};
 
 const dateFmt = new Intl.DateTimeFormat("en-AU", {
   weekday: "short",
@@ -34,7 +41,15 @@ const dateFmt = new Intl.DateTimeFormat("en-AU", {
   minute: "2-digit",
 });
 
-export function CardModal({ card, onClose }: { card: BoardCard; onClose: () => void }) {
+export function CardModal({
+  card,
+  viewerRole,
+  onClose,
+}: {
+  card: BoardCard;
+  viewerRole: ViewerRole;
+  onClose: () => void;
+}) {
   const toast = useToast();
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
@@ -140,7 +155,9 @@ export function CardModal({ card, onClose }: { card: BoardCard; onClose: () => v
           <div className="flex-1 space-y-5 overflow-y-auto p-5 md:max-h-[85vh]">
             <Gallery images={detail?.images ?? null} cover={card.thumbnailUrl} />
             <CardUploadPanel
-              orderId={card.orderId}
+              card={card}
+              viewerRole={viewerRole}
+              detail={detail}
               onSaved={(next) => {
                 setDetail(next);
                 setEvents(next.events);
@@ -289,18 +306,40 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function CardUploadPanel({
-  orderId,
+  card,
+  viewerRole,
+  detail,
   onSaved,
 }: {
-  orderId: string;
+  card: BoardCard;
+  viewerRole: ViewerRole;
+  detail: CardDetail | null;
   onSaved: (detail: CardDetail) => void;
 }) {
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [type, setType] = useState<CardAssetType>("reference");
+  const designer = viewerRole === "designer";
+  const canDesignerUpload = card.status === "in_design";
+  const [type, setType] = useState<CardAssetType>(designer ? "submission" : "reference");
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState<UploadProgress[]>([]);
+  const submissions = (detail?.images ?? []).filter((image) => image.type === "submission");
+  const latestSubmission = submissions.at(-1) ?? null;
+  const canUpload = !designer || canDesignerUpload;
+
+  useEffect(() => {
+    if (designer) setType("submission");
+  }, [designer]);
 
   async function upload(files: File[]) {
+    if (!canUpload) {
+      toast({
+        variant: "warning",
+        title: "Upload locked",
+        description: "Finished portraits cannot be changed after the card leaves design.",
+      });
+      return;
+    }
     const images = files.filter((file) => file.type.startsWith("image/"));
     if (!images.length) {
       toast({ variant: "danger", title: "No images selected" });
@@ -313,9 +352,10 @@ function CardUploadPanel({
     }
 
     setUploading(true);
+    setProgress(images.map((file) => ({ name: file.name, loaded: 0, total: file.size, status: "queued" })));
     try {
       const presigned = await presignCardAssetUploads({
-        orderId,
+        orderId: card.orderId,
         type,
         files: images.map((file) => ({
           filename: file.name,
@@ -327,17 +367,18 @@ function CardUploadPanel({
 
       await Promise.all(
         presigned.uploads.map(async (target, index) => {
-          const put = await fetch(target.uploadUrl, {
-            method: "PUT",
-            headers: { "Content-Type": images[index].type },
-            body: images[index],
+          await uploadToR2(target.uploadUrl, images[index], (loaded, total) => {
+            setProgress((rows) =>
+              rows.map((row, i) =>
+                i === index ? { ...row, loaded, total, status: loaded >= total ? "done" : "uploading" } : row,
+              ),
+            );
           });
-          if (!put.ok) throw new Error(`Upload failed for ${images[index].name}`);
         }),
       );
 
       const saved = await saveCardAssetUploads({
-        orderId,
+        orderId: card.orderId,
         type,
         r2Keys: presigned.uploads.map((target) => target.key),
       });
@@ -349,6 +390,7 @@ function CardUploadPanel({
       });
       if (fileRef.current) fileRef.current.value = "";
     } catch (error) {
+      setProgress((rows) => rows.map((row) => (row.status === "done" ? row : { ...row, status: "failed" })));
       toast({
         variant: "danger",
         title: "Upload failed",
@@ -362,31 +404,45 @@ function CardUploadPanel({
   return (
     <section className="rounded-card border border-line bg-canvas/60 p-3">
       <div className="flex flex-wrap items-end gap-2">
-        <label className="flex min-w-40 flex-1 flex-col gap-1.5">
-          <span className="text-xs font-medium text-ink">Add photos</span>
-          <select
-            value={type}
-            disabled={uploading}
-            onChange={(event) => setType(event.currentTarget.value as CardAssetType)}
-            className={cn(
-              "h-9 rounded-input border border-line bg-surface px-2.5 text-sm text-ink",
-              focusRing,
-            )}
-          >
-            <option value="reference">Reference photos</option>
-            <option value="submission">Portrait upload</option>
-            <option value="final">Final portrait</option>
-          </select>
-        </label>
+        {designer ? (
+          <div className="min-w-40 flex-1">
+            <span className="text-xs font-medium text-ink">Finished portrait</span>
+            <p className="mt-1 text-xs text-slate">
+              {canDesignerUpload
+                ? latestSubmission
+                  ? "Upload another version before submitting to QC. The newest version is reviewed first."
+                  : "Upload the finished portrait before moving this card to QC."
+                : "Uploads are locked after the card leaves design."}
+            </p>
+          </div>
+        ) : (
+          <label className="flex min-w-40 flex-1 flex-col gap-1.5">
+            <span className="text-xs font-medium text-ink">Add photos</span>
+            <select
+              value={type}
+              disabled={uploading}
+              onChange={(event) => setType(event.currentTarget.value as CardAssetType)}
+              className={cn(
+                "h-9 rounded-input border border-line bg-surface px-2.5 text-sm text-ink",
+                focusRing,
+              )}
+            >
+              <option value="reference">Reference photos</option>
+              <option value="submission">Portrait upload</option>
+              <option value="final">Final portrait</option>
+            </select>
+          </label>
+        )}
         <Button
           type="button"
           size="sm"
           variant="secondary"
           loading={uploading}
+          disabled={!canUpload}
           onClick={() => fileRef.current?.click()}
         >
           <Camera size={15} />
-          Upload
+          {latestSubmission && designer ? "Replace" : "Upload"}
         </Button>
         <input
           ref={fileRef}
@@ -399,7 +455,7 @@ function CardUploadPanel({
       </div>
       <button
         type="button"
-        disabled={uploading}
+        disabled={uploading || !canUpload}
         onClick={() => fileRef.current?.click()}
         onDragOver={(event) => event.preventDefault()}
         onDrop={(event) => {
@@ -413,10 +469,80 @@ function CardUploadPanel({
         )}
       >
         <Camera size={16} />
-        {uploading ? "Uploading..." : "Drop images here or click Upload"}
+        {uploading
+          ? "Uploading..."
+          : designer
+            ? canDesignerUpload
+              ? "Drop finished portrait here or click Upload"
+              : "Uploads locked after QC"
+            : "Drop images here or click Upload"}
       </button>
+      {progress.length > 0 && (
+        <div className="mt-3 space-y-2">
+          {progress.map((row) => {
+            const pct = row.total > 0 ? Math.round((row.loaded / row.total) * 100) : 0;
+            return (
+              <div key={row.name} className="space-y-1">
+                <div className="flex items-center justify-between gap-2 text-xs">
+                  <span className="truncate text-ink">{row.name}</span>
+                  <span className={row.status === "failed" ? "text-rose" : "text-slate"}>
+                    {row.status === "done" ? "Done" : row.status === "failed" ? "Failed" : `${pct}%`}
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-line">
+                  <div
+                    className={cn("h-full rounded-full", row.status === "failed" ? "bg-rose" : "bg-pigment")}
+                    style={{ width: `${Math.min(100, pct)}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {submissions.length > 0 && (
+        <div className="mt-3">
+          <p className="mb-2 text-xs font-medium text-ink">Portrait versions</p>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {submissions.map((image, index) => (
+              <div key={image.id} className="w-20 shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={image.url} alt="" className="size-20 rounded-input border border-line object-cover" />
+                <p className="mt-1 truncate text-[11px] text-slate">
+                  {index === submissions.length - 1 ? "Latest" : `v${index + 1}`}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
+}
+
+function uploadToR2(
+  url: string,
+  file: File,
+  onProgress: (loaded: number, total: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("Content-Type", file.type);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(event.loaded, event.total);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(file.size, file.size);
+        resolve();
+      } else {
+        reject(new Error(`Upload failed for ${file.name}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error(`Upload failed for ${file.name}`));
+    xhr.send(file);
+  });
 }
 
 function Meta({ label, children }: { label: string; children: React.ReactNode }) {
@@ -430,7 +556,7 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
 
 function Gallery({ images, cover }: { images: CardImage[] | null; cover: string | null }) {
   // Before detail loads, show the cover we already have from the card.
-  const list = images ?? (cover ? [{ id: "cover", type: "reference" as const, url: cover }] : []);
+  const list = images ?? (cover ? [{ id: "cover", type: "reference" as const, url: cover, uploadedBy: null, createdAt: "" }] : []);
   if (list.length === 0) {
     return (
       <div className="flex h-40 items-center justify-center gap-2 rounded-card border border-dashed border-line bg-canvas text-slate">

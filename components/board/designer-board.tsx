@@ -44,7 +44,7 @@ const COLUMNS: { key: ColKey; title: string }[] = [
   { key: "complete", title: "Complete" },
 ];
 
-export function DesignerBoard({ initial }: { initial: Cols }) {
+export function DesignerBoard({ initial, viewerRole }: { initial: Cols; viewerRole: "admin" | "va" | "designer" }) {
   const router = useRouter();
   const toast = useToast();
   const [cols, setCols] = useState<Cols>(initial);
@@ -124,7 +124,7 @@ export function DesignerBoard({ initial }: { initial: Cols }) {
         ))}
       </div>
       <DragOverlay>{active ? <OrderCard card={active} overlay /> : null}</DragOverlay>
-      {openCard && <CardModal card={openCard} onClose={() => setOpenCard(null)} />}
+      {openCard && <CardModal card={openCard} viewerRole={viewerRole} onClose={() => setOpenCard(null)} />}
     </DndContext>
   );
 }
