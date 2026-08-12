@@ -6,31 +6,41 @@ import { useRouter } from "next/navigation";
 import { addTrackingAndCompleteOrder } from "@/app/(app)/orders/actions";
 import { Button, Input, Select, useToast } from "@/components/ui";
 import { CheckCircle, Truck } from "@/components/ui/icons";
+import type { PrintProvider } from "@/lib/print/mapping";
+
+function providerLabel(provider: PrintProvider): string {
+  return provider === "lumaprints" ? "Luma Prints" : "Gelato";
+}
 
 export function TrackingCompleteForm({
   orderId,
   source,
+  provider,
   disabled = false,
 }: {
   orderId: string;
   source: "etsy" | "shopify" | "manual";
+  provider?: PrintProvider;
   disabled?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
-  const [provider, setProvider] = useState<"gelato" | "lumaprints">("gelato");
+  const [selectedProvider, setSelectedProvider] = useState<PrintProvider>(provider ?? "gelato");
   const [trackingNumber, setTrackingNumber] = useState("");
   const [trackingCompany, setTrackingCompany] = useState("");
   const [trackingUrl, setTrackingUrl] = useState("");
+  const [showTrackingUrl, setShowTrackingUrl] = useState(false);
   const [notifyCustomer, setNotifyCustomer] = useState(source === "shopify");
   const [pending, start] = useTransition();
   const isShopify = source === "shopify";
+  const activeProvider = provider ?? selectedProvider;
+  const providerLocked = Boolean(provider);
 
   function submit() {
     start(async () => {
       const res = await addTrackingAndCompleteOrder({
         orderId,
-        provider,
+        provider: activeProvider,
         trackingNumber,
         trackingCompany,
         trackingUrl,
@@ -48,6 +58,7 @@ export function TrackingCompleteForm({
       setTrackingNumber("");
       setTrackingCompany("");
       setTrackingUrl("");
+      setShowTrackingUrl(false);
       router.refresh();
     });
   }
@@ -59,15 +70,22 @@ export function TrackingCompleteForm({
         Add shipping tracking
       </div>
       <div className="mt-3 flex flex-col gap-3">
-        <Select
-          label="Print provider"
-          value={provider}
-          disabled={disabled || pending}
-          onChange={(event) => setProvider(event.currentTarget.value as "gelato" | "lumaprints")}
-        >
-          <option value="gelato">Gelato</option>
-          <option value="lumaprints">Luma Prints</option>
-        </Select>
+        {providerLocked ? (
+          <div className="rounded-input border border-line bg-canvas px-3 py-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">Print provider</p>
+            <p className="mt-1 text-sm font-medium text-ink">{providerLabel(activeProvider)}</p>
+          </div>
+        ) : (
+          <Select
+            label="Print provider"
+            value={selectedProvider}
+            disabled={disabled || pending}
+            onChange={(event) => setSelectedProvider(event.currentTarget.value as PrintProvider)}
+          >
+            <option value="gelato">Gelato</option>
+            <option value="lumaprints">Luma Prints</option>
+          </Select>
+        )}
         <Input
           label="Tracking number"
           value={trackingNumber}
@@ -81,14 +99,27 @@ export function TrackingCompleteForm({
           placeholder="USPS, UPS, FedEx..."
           onChange={(event) => setTrackingCompany(event.currentTarget.value)}
         />
-        <Input
-          label="Tracking URL"
-          type="url"
-          value={trackingUrl}
-          disabled={disabled || pending}
-          placeholder="https://..."
-          onChange={(event) => setTrackingUrl(event.currentTarget.value)}
-        />
+        {showTrackingUrl ? (
+          <Input
+            label="Tracking URL"
+            type="url"
+            value={trackingUrl}
+            disabled={disabled || pending}
+            placeholder="https://..."
+            onChange={(event) => setTrackingUrl(event.currentTarget.value)}
+          />
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-fit"
+            disabled={disabled || pending}
+            onClick={() => setShowTrackingUrl(true)}
+          >
+            Add tracking URL
+          </Button>
+        )}
         {isShopify && (
           <label className="flex items-start gap-2 rounded-input bg-canvas p-3 text-sm text-ink">
             <input

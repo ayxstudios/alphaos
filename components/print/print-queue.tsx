@@ -39,8 +39,6 @@ function fmtDate(value: string | null): string {
 }
 
 export function PrintQueue({ orders }: { orders: PrintQueueItemVM[] }) {
-  const ready = orders.filter((order) => order.status === "approved");
-  const inPrint = orders.filter((order) => order.status === "printing");
   if (!orders.length) {
     return (
       <DataPanel className="p-8">
@@ -55,29 +53,20 @@ export function PrintQueue({ orders }: { orders: PrintQueueItemVM[] }) {
     );
   }
   return (
-    <div className="flex flex-col gap-5">
-      <section className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold text-ink">Ready to print</h2>
-        {ready.length ? ready.map((order) => <PrintOrderCard key={order.id} order={order} />) : (
-          <DataPanel className="p-4 text-sm text-slate">No approved physical orders waiting for print.</DataPanel>
-        )}
-      </section>
-      {inPrint.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold text-ink">In print / tracking</h2>
-          {inPrint.map((order) => <PrintOrderCard key={order.id} order={order} />)}
-        </section>
-      )}
+    <div className="flex flex-col gap-3">
+      {orders.map((order) => <PrintOrderCard key={order.id} order={order} />)}
     </div>
   );
 }
 
 function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
-  const [provider, setProvider] = useState<PrintProvider>(order.defaultProvider);
+  const activeProvider = order.latestPrintJob?.provider ?? order.defaultProvider;
+  const [provider, setProvider] = useState<PrintProvider>(activeProvider);
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
   const canStart = order.status === "approved";
+  const inPrint = order.status === "printing";
 
   function runStart() {
     const formData = new FormData();
@@ -140,25 +129,28 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
 
         <div className="space-y-4 rounded-input border border-line bg-canvas p-4">
           <div className="flex items-center gap-2 font-medium text-ink">
-            <Printer size={16} />
-            Print signal
+            {inPrint ? <Truck size={16} /> : <Printer size={16} />}
+            Print fulfilment
           </div>
-          <Select label="Provider" value={provider} disabled={pending || !canStart} onChange={(e) => setProvider(e.currentTarget.value as PrintProvider)}>
-            <option value="lumaprints">Luma Prints</option>
-            <option value="gelato">Gelato</option>
-          </Select>
-          <Button type="button" disabled={pending || !canStart} loading={pending} onClick={runStart}>
-            <Printer size={15} />
-            Sent to print
-          </Button>
-          {order.status === "printing" && (
-            <div>
-              <div className="flex items-center gap-2 text-sm font-medium text-ink">
-                <Truck size={15} />
-                Tracking
-              </div>
-              <TrackingCompleteForm orderId={order.id} source={order.source} />
-            </div>
+          {canStart ? (
+            <>
+              <Select
+                label="Provider"
+                value={provider}
+                disabled={pending}
+                onChange={(e) => setProvider(e.currentTarget.value as PrintProvider)}
+              >
+                <option value="lumaprints">Luma Prints</option>
+                <option value="gelato">Gelato</option>
+              </Select>
+              <Button type="button" disabled={pending} loading={pending} onClick={runStart}>
+                <Printer size={15} />
+                Sent to print
+              </Button>
+            </>
+          ) : null}
+          {inPrint && (
+            <TrackingCompleteForm orderId={order.id} source={order.source} provider={activeProvider} />
           )}
         </div>
       </div>

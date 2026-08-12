@@ -164,6 +164,7 @@ export default async function PrintQueuePage() {
   );
 
   const vm: PrintQueueItemVM[] = visibleRows.map((order) => {
+    const latestJob = latestPrint.get(order.id);
     return {
       id: order.id,
       orderNumber: order.orderNumber ?? order.fallbackNumber,
@@ -173,13 +174,13 @@ export default async function PrintQueuePage() {
       customerName: customerName(order),
       placedAt: order.placedAt ? order.placedAt.toISOString() : null,
       artworkUrl: assetUrls.get(order.id) ?? null,
-      defaultProvider: defaultPrintProvider(null),
-      latestPrintJob: latestPrint.has(order.id)
+      defaultProvider: latestJob?.provider ?? defaultPrintProvider(null),
+      latestPrintJob: latestJob
         ? {
-            provider: latestPrint.get(order.id)!.provider,
-            status: latestPrint.get(order.id)!.status,
-            trackingNumber: latestPrint.get(order.id)!.trackingNumber,
-            platformSyncError: latestPrint.get(order.id)!.platformSyncError,
+            provider: latestJob.provider,
+            status: latestJob.status,
+            trackingNumber: latestJob.trackingNumber,
+            platformSyncError: latestJob.platformSyncError,
           }
         : null,
     };
