@@ -50,6 +50,16 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
   generated once daily from aggregate-only metrics and cached in
   `daily_health_reports`; if Anthropic is unavailable, the numbers still render
   with a cached/plain fallback.
+- **Morning health briefing delivery.** Vercel Cron calls
+  `/api/cron/daily-health` at both UTC hours that can be 7am in Melbourne; the
+  route checks `Australia/Melbourne` local time so daylight saving does not shift
+  delivery (`test:daily-health`). Per-business delivery defaults off and is
+  configured in Settings → Notifications with explicit active-admin recipients.
+  The email sends via that business's Gmail integration, records sent/failure
+  state on `daily_health_reports`, and creates in-app notifications linking to
+  the dashboard. If Anthropic is unavailable, the numbers still send without an
+  AI narrative; if Gmail is missing or needs reauth, admins get a visible failure
+  notification.
 - **Notification SLA sweep (in-app).** A 15-minute cron route detects due-soon,
   overdue, overdue escalations, stale intake, proof no-response, stale shop sync,
   and stale unmatched replies. `notification_fires` is the durable idempotency
@@ -128,7 +138,8 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
 
 1. **Connect + live-test Etsy** for one shop (the largest untested surface).
 2. **Connect Gmail** for one business; verify send, scheduled inbound polling,
-   queued flush, unmatched reply linking, and dashboard health end-to-end.
+   queued flush, unmatched reply linking, daily health email delivery, and
+   dashboard health end-to-end.
 3. **Add notification channels + routing settings**: Telegram, web push, digest
    email, per-type routing, batching delivery queue, and required-channel guards.
 4. **Live-test designer payout flow** after configuring real style rates for

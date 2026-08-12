@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser } from "@/lib/db";
@@ -11,7 +11,7 @@ import {
   getBusinessGmailCredentials,
   setBusinessGmailCredentials,
 } from "@/lib/db/credentials";
-import { shops, businesses, emailTemplates, printProductMappings } from "@/lib/db/schema";
+import { shops, businesses, emailTemplates, printProductMappings, users } from "@/lib/db/schema";
 import { reresolveShop, type ReresolveSummary } from "@/lib/orders/resolution";
 import type { FigureRule } from "@/lib/integrations/figures";
 import type { GmailCredentials } from "@/lib/integrations/gmail";
@@ -522,6 +522,43 @@ export async function runNotificationDryRun(): Promise<
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Dry-run failed" };
   }
+}
+
+export async function saveDailyHealthEmailSettings(input: {
+  businessId: string;
+  enabled: boolean;
+  recipientIds: string[];
+}): Promise<{ ok: true; message: string } | { ok: false; message: string }> {
+  const user = await requireAdmin();
+  const businessId = input.businessId.trim();
+  if (!businessId) return { ok: false, message: "Business is required." };
+  const requestedIds = [...new Set(input.recipientIds.map((id) => id.trim()).filter(Boolean))];
+  const validRecipients = requestedIds.length
+    ? await withUserContext(user, (tx) =>
+        tx
+          .select({ id: users.id })
+          .from(users)
+          .where(and(inArray(users.id, requestedIds), eq(users.role, "admin"), eq(users.active, true))),
+      )
+    : [];
+  const validIds = validRecipients.map((recipient) => recipient.id);
+  if (input.enabled && !validIds.length) {
+    return { ok: false, message: "Choose at least one active admin recipient before enabling the briefing." };
+  }
+
+  await withUserContext(user, async (tx) => {
+    const [business] = await tx.select({ id: businesses.id }).from(businesses).where(eq(businesses.id, businessId)).limit(1);
+    if (!business) throw new Error("Business not found");
+    await tx
+      .update(businesses)
+      .set({
+        dailyHealthEmailEnabled: input.enabled,
+        dailyHealthEmailRecipientIds: validIds,
+      })
+      .where(eq(businesses.id, businessId));
+  });
+  revalidatePath("/settings");
+  return { ok: true, message: input.enabled ? "Morning briefing delivery enabled." : "Morning briefing delivery disabled." };
 }
 
 /* --- Print fulfilment ---------------------------------------------------- */

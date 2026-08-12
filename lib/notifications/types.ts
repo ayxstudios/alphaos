@@ -31,6 +31,10 @@ export function fallbackNotificationTitle(type: string): string {
       return "Customer reply received";
     case "message.reply_suggestion":
       return "Reply needs review";
+    case "daily_health.sent":
+      return "Morning briefing sent";
+    case "daily_health.failed":
+      return "Morning briefing failed";
     case "gmail.reauth_required":
       return "Gmail needs reconnecting";
     case "etsy.reauth_required":

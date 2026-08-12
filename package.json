@@ -22,6 +22,7 @@
     "test:earnings": "tsx scripts/test-earnings.ts",
     "test:notifications": "tsx scripts/test-notification-sweep.ts",
     "test:reply-print": "tsx scripts/test-reply-print-flow.ts",
+    "test:daily-health": "tsx scripts/test-daily-health-delivery.ts",
     "test:backfill-archive": "tsx scripts/test-backfill-archive.ts",
     "test:reconcile": "tsx scripts/test-reconcile.ts",
     "test:etsy-review": "tsx scripts/test-etsy-review.ts"

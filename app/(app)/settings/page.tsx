@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
-import { businesses, emailTemplates, shops } from "@/lib/db/schema";
+import { businesses, emailTemplates, shops, users } from "@/lib/db/schema";
 import {
   getBusinessGmailCredentials,
   getShopCredentials,
@@ -25,6 +25,11 @@ import {
   type GmailBusinessVM,
 } from "@/components/settings/gmail-business-card";
 import { NotificationDryRunPanel } from "@/components/settings/notification-dry-run-panel";
+import {
+  DailyHealthEmailSettingsPanel,
+  type DailyHealthAdminVM,
+  type DailyHealthEmailSettingsVM,
+} from "@/components/settings/daily-health-email-settings";
 import { TemplateEditor, type TemplateVM } from "@/components/settings/template-editor";
 import { ShopStylesPanel, type ShopStylesVM } from "@/components/settings/shop-styles-panel";
 import {
@@ -255,6 +260,32 @@ export default async function SettingsPage({
     };
   });
 
+  const [dailyHealthBusiness] = await withUserContext(user, (tx) =>
+    tx
+      .select({
+        businessId: businesses.id,
+        businessName: businesses.name,
+        enabled: businesses.dailyHealthEmailEnabled,
+        recipientIds: businesses.dailyHealthEmailRecipientIds,
+      })
+      .from(businesses)
+      .where(eq(businesses.id, selected.id))
+      .limit(1),
+  );
+  const dailyHealthSettings: DailyHealthEmailSettingsVM = {
+    businessId: dailyHealthBusiness?.businessId ?? selected.id,
+    businessName: dailyHealthBusiness?.businessName ?? selected.name,
+    enabled: !!dailyHealthBusiness?.enabled,
+    recipientIds: dailyHealthBusiness?.recipientIds ?? [],
+  };
+  const dailyHealthAdmins: DailyHealthAdminVM[] = await withUserContext(user, (tx) =>
+    tx
+      .select({ id: users.id, name: users.name, email: users.email })
+      .from(users)
+      .where(and(eq(users.role, "admin"), eq(users.active, true)))
+      .orderBy(users.name, users.email),
+  );
+
   // Portrait styles each shop offers — the catalog designer styles are drawn from.
   const styleShops: ShopStylesVM[] = (
     await withUserContext(user, (tx) => {
@@ -403,8 +434,9 @@ export default async function SettingsPage({
           <section className="flex flex-col gap-4">
             <SectionHeader
               title="Notifications"
-              description="Preview the SLA sweep before it is allowed to create alerts."
+              description="Configure proactive briefings and preview the SLA sweep before it is allowed to create alerts."
             />
+            <DailyHealthEmailSettingsPanel settings={dailyHealthSettings} admins={dailyHealthAdmins} />
             <NotificationDryRunPanel />
           </section>
         )}

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { and, desc, eq } from "drizzle-orm";
 
-import { withUserContext, type RequestUser } from "@/lib/db";
+import { SYSTEM_ACTOR_ID, withUserContext, type RequestUser } from "@/lib/db";
 import { dailyHealthReports } from "@/lib/db/schema";
 import type { HealthMetrics, HealthScope } from "@/lib/health/daily-report";
 
@@ -250,4 +250,8 @@ export async function loadDailyNarrative(user: RequestUser, metrics: HealthMetri
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function loadDailyNarrativeForSystem(metrics: HealthMetrics): Promise<NarrativeResult> {
+  return loadDailyNarrative({ id: SYSTEM_ACTOR_ID, role: "admin" }, metrics);
 }

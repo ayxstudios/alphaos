@@ -235,6 +235,13 @@ export const businesses = pgTable("businesses", {
   emailSendingEnabled: boolean("email_sending_enabled").notNull().default(false),
   // Last time the inbound reply poller ran for this mailbox (cron health).
   gmailLastPolledAt: timestamp("gmail_last_polled_at", { withTimezone: true }),
+  // Morning owner/admin briefing. Off by default; recipients are explicit admin
+  // user ids so a newly-created admin is not silently added to every business.
+  dailyHealthEmailEnabled: boolean("daily_health_email_enabled").notNull().default(false),
+  dailyHealthEmailRecipientIds: text("daily_health_email_recipient_ids")
+    .array()
+    .notNull()
+    .default(sql`'{}'::text[]`),
   createdAt: createdAt(),
 });
 
@@ -933,6 +940,9 @@ export const dailyHealthReports = pgTable(
     narrative: text("narrative").notNull(),
     status: text("status").notNull().default("ok"),
     error: text("error"),
+    emailedAt: timestamp("emailed_at", { withTimezone: true }),
+    emailError: text("email_error"),
+    emailRecipients: text("email_recipients").array(),
     generatedAt: timestamp("generated_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

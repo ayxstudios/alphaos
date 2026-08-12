@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, gte, inArray, isNull, lt, notInArray, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
-import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
+import { withSystemContext, withUserContext, type RequestUser, type Tx } from "@/lib/db";
 import {
   activityLog,
   assignments,
@@ -893,4 +893,8 @@ function rateDetail(label: string, rate: number | null) {
 
 export async function loadHealthMetrics(user: RequestUser, scope: HealthScope): Promise<HealthMetrics> {
   return withUserContext(user, (tx) => computeHealthMetricsInTx(tx, scope));
+}
+
+export async function loadHealthMetricsForSystem(scope: HealthScope): Promise<HealthMetrics> {
+  return withSystemContext((tx) => computeHealthMetricsInTx(tx, scope));
 }
