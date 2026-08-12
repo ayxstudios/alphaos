@@ -43,6 +43,13 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
   inbound polling + queued-email flushing, and R2 retention. Shop sync, Gmail
   poll health, queued email, and unmatched reply health are surfaced on the
   dashboard.
+- **Daily health dashboard.** Dashboard computes fresh per-scope metrics on
+  load: shop sync staleness, queued/failed email, stale unmatched replies,
+  blocked earnings, stale intake, proof no-response, order throughput, delivery
+  timeliness, QC/revision rates, capacity, and unassigned work. The narrative is
+  generated once daily from aggregate-only metrics and cached in
+  `daily_health_reports`; if Anthropic is unavailable, the numbers still render
+  with a cached/plain fallback.
 - **Notification SLA sweep (in-app).** A 15-minute cron route detects due-soon,
   overdue, overdue escalations, stale intake, proof no-response, stale shop sync,
   and stale unmatched replies. `notification_fires` is the durable idempotency

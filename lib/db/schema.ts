@@ -610,7 +610,10 @@ export const qcChecks = pgTable(
     reason: text("reason"),
     createdAt: createdAt(),
   },
-  (t) => [index("qc_checks_order_idx").on(t.orderId)],
+  (t) => [
+    index("qc_checks_order_idx").on(t.orderId),
+    index("qc_checks_business_created_idx").on(t.businessId, t.createdAt),
+  ],
 );
 
 export const proofs = pgTable(
@@ -699,6 +702,11 @@ export const messages = pgTable(
     index("messages_gmail_thread_idx").on(t.gmailThreadId),
     // The outbox: pending drafts across the tenant, newest first.
     index("messages_status_idx").on(t.status, t.createdAt),
+    index("messages_business_status_created_idx").on(
+      t.businessId,
+      t.status,
+      t.createdAt,
+    ),
   ],
 );
 
@@ -761,7 +769,14 @@ export const earnings = pgTable(
     voidReason: text("void_reason"),
     createdAt: createdAt(),
   },
-  (t) => [index("earnings_designer_period_idx").on(t.designerId, t.period)],
+  (t) => [
+    index("earnings_designer_period_idx").on(t.designerId, t.period),
+    index("earnings_business_status_created_idx").on(
+      t.businessId,
+      t.status,
+      t.createdAt,
+    ),
+  ],
 );
 
 export type EarningBreakdown = {
@@ -798,7 +813,50 @@ export const activityLog = pgTable(
     metadata: jsonb("metadata"),
     createdAt: createdAt(),
   },
-  (t) => [index("activity_log_order_idx").on(t.orderId, t.createdAt)],
+  (t) => [
+    index("activity_log_order_idx").on(t.orderId, t.createdAt),
+    index("activity_log_business_action_created_idx").on(
+      t.businessId,
+      t.action,
+      t.createdAt,
+    ),
+  ],
+);
+
+export const dailyHealthReports = pgTable(
+  "daily_health_reports",
+  {
+    id: id(),
+    scope: text("scope").notNull(),
+    scopeId: text("scope_id").notNull(),
+    businessId: text("business_id").references(() => businesses.id, {
+      onDelete: "cascade",
+    }),
+    reportDate: text("report_date").notNull(),
+    metricsHash: text("metrics_hash").notNull(),
+    narrative: text("narrative").notNull(),
+    status: text("status").notNull().default("ok"),
+    error: text("error"),
+    generatedAt: timestamp("generated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex("daily_health_reports_scope_date_uq").on(
+      t.scope,
+      t.scopeId,
+      t.reportDate,
+    ),
+    index("daily_health_reports_lookup_idx").on(
+      t.scope,
+      t.scopeId,
+      t.reportDate,
+    ),
+  ],
 );
 
 export const notificationFires = pgTable(

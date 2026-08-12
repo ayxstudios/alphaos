@@ -1,15 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { and, asc, eq, sql } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
-import { withUserContext } from "@/lib/db";
+import { loadHealthMetrics, type CountLink, type DesignerCapacity, type ShopSyncHealth } from "@/lib/health/daily-report";
+import { loadDailyNarrative } from "@/lib/health/narrative";
 import { loadShellData } from "@/lib/shell/context";
-import { businesses, customers, orderItems, orders, shops } from "@/lib/db/schema";
-import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
-import { formatSyncTime, syncHealth } from "@/lib/integrations/sync-health";
-import { getQueuedEmailCount, getUnmatchedCount } from "@/lib/email/outbox";
-import { liveOrderSql, liveOrderWhere } from "@/lib/orders/archive";
 import {
   Badge,
   DataPanel,
@@ -17,325 +12,294 @@ import {
   Page,
   PageHeader,
   SectionHeader,
-  StatCard,
-  StatusChip,
-  TableShell,
-  type OrderStatus,
 } from "@/components/ui";
 import { AlertTriangle, Grid, ListChecks } from "@/components/ui/icons";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-const CLOSED_STATUSES = ["delivered", "complete", "cancelled"] as const;
+type SearchParams = Promise<{ scope?: string }>;
 
-function fmtDate(date: Date | null) {
-  if (!date) return "No due date";
+function formatDateTime(value: string | null) {
+  if (!value) return "Never";
   return new Intl.DateTimeFormat("en-AU", {
     day: "2-digit",
     month: "short",
-  }).format(date);
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
-export default async function DashboardPage() {
+function formatGenerated(value: string | null) {
+  if (!value) return "Metrics current";
+  return `Narrative cached ${formatDateTime(value)}`;
+}
+
+function metricClass(tone: CountLink["tone"]) {
+  return {
+    neutral: "border-line hover:border-slate/40",
+    success: "border-sage/20 hover:border-sage/35",
+    warning: "border-amber/25 hover:border-amber/40",
+    danger: "border-rose/20 hover:border-rose/40",
+  }[tone];
+}
+
+function badgeVariant(tone: CountLink["tone"]) {
+  return tone === "neutral" ? "neutral" : tone;
+}
+
+function pct(value: number | null) {
+  return value == null ? "No data" : `${value}%`;
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
   const { selected } = await loadShellData(user);
-  const now = new Date();
-  const businessFilter = eq(orders.businessId, selected.id);
-  const liveFilter = liveOrderWhere();
+  const sp = await searchParams;
+  const allBusinesses = user.role === "admin" && sp.scope === "all";
+  const scope = allBusinesses
+    ? ({ kind: "all" } as const)
+    : ({ kind: "business", businessId: selected.id, businessName: selected.name } as const);
 
-  const [stats] = await withUserContext(user, (tx) =>
-    tx
-      .select({
-        active: sql<number>`count(*) filter (where ${liveOrderSql()} and ${orders.status} not in ${CLOSED_STATUSES})::int`,
-        overdue: sql<number>`count(*) filter (where ${liveOrderSql()} and ${orders.dueAt} < ${now} and ${orders.status} not in ${CLOSED_STATUSES})::int`,
-        awaitingDetails: sql<number>`count(*) filter (where ${liveOrderSql()} and ${orders.status} = 'awaiting_details')::int`,
-        awaitingPhotos: sql<number>`count(*) filter (where ${liveOrderSql()} and ${orders.status} = 'awaiting_photos')::int`,
-        qc: sql<number>`count(*) filter (where ${liveOrderSql()} and ${orders.status} = 'awaiting_qc')::int`,
-      })
-      .from(orders)
-      .where(businessFilter),
-  );
-
-  const attention = await withUserContext(user, (tx) =>
-    tx
-      .select({
-        id: orders.id,
-        number: orders.platformOrderName,
-        fallbackNumber: orders.platformOrderId,
-        status: orders.status,
-        source: orders.source,
-        dueAt: orders.dueAt,
-        shopName: shops.name,
-        customerEmail: customers.email,
-        customerFirst: customers.firstName,
-        customerLast: customers.lastName,
-        rawImport: orders.rawImport,
-        title: orderItems.title,
-      })
-      .from(orders)
-      .leftJoin(shops, eq(shops.id, orders.shopId))
-      .leftJoin(customers, eq(customers.id, orders.customerId))
-      .leftJoin(orderItems, eq(orderItems.orderId, orders.id))
-      .where(
-        and(
-          businessFilter,
-          liveFilter,
-          sql`(${orders.dueAt} < ${now} or ${orders.status} in ('awaiting_details', 'awaiting_photos', 'awaiting_qc'))`,
-        ),
-      )
-      .orderBy(asc(orders.dueAt))
-      .limit(8),
-  );
-
-  const shopHealth = await withUserContext(user, (tx) =>
-    tx
-      .select({
-        id: shops.id,
-        name: shops.name,
-        platform: shops.platform,
-        lastSyncAt: sql<string | null>`${shops.integrationConfig}->>${"lastSyncAt"}`,
-      })
-      .from(shops)
-      .where(and(eq(shops.businessId, selected.id), eq(shops.active, true)))
-      .orderBy(asc(shops.name)),
-  );
-
-  const [mailboxHealth, unmatchedReplies, queuedEmails] = await Promise.all([
-    withUserContext(user, async (tx) => {
-      const [row] = await tx
-        .select({
-          address: businesses.gmailAddress,
-          historyId: businesses.gmailHistoryId,
-          lastPolledAt: businesses.gmailLastPolledAt,
-        })
-        .from(businesses)
-        .where(eq(businesses.id, selected.id))
-        .limit(1);
-      return row ?? { address: null, historyId: null, lastPolledAt: null };
-    }),
-    getUnmatchedCount(user, { businessId: selected.id }),
-    getQueuedEmailCount(user, { businessId: selected.id }),
-  ]);
-  const mailboxLastPolledAt = mailboxHealth.lastPolledAt?.toISOString() ?? null;
-  const mailboxConnected = Boolean(mailboxHealth.historyId);
-  const mailboxPollHealth = mailboxConnected
-    ? syncHealth(mailboxLastPolledAt, now)
-    : "never";
-
-  const actionTotal =
-    (stats?.awaitingDetails ?? 0) +
-    (stats?.awaitingPhotos ?? 0) +
-    (stats?.qc ?? 0);
+  const metrics = await loadHealthMetrics(user, scope);
+  const narrative = await loadDailyNarrative(user, metrics);
 
   return (
     <Page>
       <PageHeader
         title="Dashboard"
-        description="Today&apos;s operational workload across the selected workspace."
+        description="Daily health report for pipeline integrity and operational movement."
+        eyebrow={metrics.scopeLabel}
         actions={
-          <Link
-            href="/orders"
-            className="inline-flex h-10 items-center rounded-input bg-pigment px-3 text-sm font-medium text-surface transition-opacity hover:opacity-90"
-          >
-            View orders
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {user.role === "admin" && (
+              <div className="inline-flex rounded-input border border-line bg-surface p-1 text-sm shadow-sm">
+                <Link
+                  href="/dashboard"
+                  className={cn(
+                    "rounded-[6px] px-3 py-1.5 font-medium text-slate",
+                    !allBusinesses && "bg-pigment-soft text-pigment",
+                  )}
+                >
+                  Selected
+                </Link>
+                <Link
+                  href="/dashboard?scope=all"
+                  className={cn(
+                    "rounded-[6px] px-3 py-1.5 font-medium text-slate",
+                    allBusinesses && "bg-pigment-soft text-pigment",
+                  )}
+                >
+                  All Businesses
+                </Link>
+              </div>
+            )}
+            <Link
+              href="/orders"
+              className="inline-flex h-10 items-center rounded-input bg-pigment px-3 text-sm font-medium text-surface transition-opacity hover:opacity-90"
+            >
+              View orders
+            </Link>
+          </div>
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard label="Active orders" value={stats?.active ?? 0} />
-        <StatCard
-          label="Overdue"
-          value={stats?.overdue ?? 0}
-          tone={(stats?.overdue ?? 0) > 0 ? "danger" : "neutral"}
-        />
-        <StatCard label="VA actions" value={actionTotal} tone="info" />
-        <StatCard label="QC waiting" value={stats?.qc ?? 0} tone="warning" />
-        <StatCard
-          label="Unmatched replies"
-          value={unmatchedReplies}
-          tone={unmatchedReplies > 0 ? "danger" : "neutral"}
-          detail="Need manual threading"
-        />
+      <DataPanel className="p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="max-w-4xl">
+            <p className="text-sm font-semibold text-ink">Daily briefing</p>
+            <p className="mt-2 text-sm leading-6 text-slate">{narrative.text}</p>
+          </div>
+          <Badge variant={metrics.healthy ? "success" : "warning"} dot>
+            {metrics.healthy ? "Healthy" : "Needs attention"}
+          </Badge>
+        </div>
+        <p className="mt-3 text-xs text-slate">{formatGenerated(narrative.generatedAt)}</p>
+      </DataPanel>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <DataPanel className="p-4">
+          <SectionHeader
+            title="Pipeline integrity"
+            description="Signals that the system itself is capturing, sending, and syncing correctly."
+          />
+          <MetricGrid metrics={metrics.links.pipeline} />
+        </DataPanel>
+
+        <DataPanel className="p-4">
+          <SectionHeader
+            title="Operational state"
+            description="Signals that the work is moving through the business."
+          />
+          <MetricGrid metrics={metrics.links.operations} />
+        </DataPanel>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
         <DataPanel className="overflow-hidden">
           <div className="border-b border-line px-4 py-3">
             <SectionHeader
-              title="Needs attention"
-              description="Overdue orders and work waiting on VA action."
+              title="Shop syncs"
+              description="Each connected shop should sync successfully at least once per hour."
             />
           </div>
-          {attention.length === 0 ? (
+          {metrics.pipeline.shops.length === 0 ? (
             <EmptyState
               icon={Grid}
-              headline="No urgent work"
-              body="Orders that are overdue, awaiting details, awaiting photos or awaiting QC will appear here."
+              headline="No connected shops"
+              body="Connected Etsy and Shopify shops will appear here with their last successful sync time."
             />
           ) : (
-            <TableShell className="rounded-none border-0 shadow-none">
-              <div className="divide-y divide-line">
-                {attention.map((order) => {
-                  const customerName =
-                    [order.customerFirst, order.customerLast]
-                      .filter(Boolean)
-                      .join(" ") ||
-                    order.customerEmail ||
-                    parseEtsyReceiptReview(order.rawImport).buyerName ||
-                    "Unknown customer";
-                  const overdue = order.dueAt ? order.dueAt < now : false;
-                  return (
-                    <Link
-                      key={`${order.id}-${order.title ?? "item"}`}
-                      href={`/orders/${order.id}`}
-                      className="grid gap-2 px-4 py-3 transition-colors hover:bg-canvas md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto] md:items-center"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-ink">
-                          {order.number ?? order.fallbackNumber}
-                        </p>
-                        <p className="truncate text-xs text-slate">
-                          {customerName}
-                        </p>
-                      </div>
-                      <p className="truncate text-sm text-slate">
-                        {order.title ?? order.shopName ?? order.source}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-2 md:justify-end">
-                        {overdue && (
-                          <Badge variant="danger" dot>
-                            Overdue
-                          </Badge>
-                        )}
-                        <StatusChip status={order.status as OrderStatus} />
-                        <span className="text-xs text-slate">
-                          {fmtDate(order.dueAt)}
-                        </span>
-                      </div>
-                    </Link>
-                  );
-                })}
-              </div>
-            </TableShell>
+            <div className="divide-y divide-line">
+              {metrics.pipeline.shops.map((shop) => (
+                <ShopSyncRow key={shop.id} shop={shop} />
+              ))}
+            </div>
           )}
         </DataPanel>
 
-        <div className="flex flex-col gap-5">
-          <DataPanel className="p-4">
-            <SectionHeader title="Pipeline health" />
-            <div className="mt-4 flex flex-col gap-3">
-              <div className="border-b border-line pb-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-ink">Mailbox poll</p>
-                    <p className="text-xs text-slate">
-                      {mailboxHealth.address ?? "No mailbox connected"} · last poll{" "}
-                      {formatSyncTime(mailboxLastPolledAt)}
-                    </p>
-                  </div>
-                  {mailboxPollHealth === "ok" ? (
-                    <Badge variant="success" dot>Healthy</Badge>
-                  ) : (
-                    <Badge variant="warning" dot>
-                      {mailboxConnected ? "Stale" : "Not connected"}
-                    </Badge>
-                  )}
-                </div>
+        <DataPanel className="p-4">
+          <SectionHeader title="Quality and capacity" />
+          <div className="mt-4 space-y-4">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate">Delivery</p>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                <MiniMetric label="On time yesterday" value={pct(metrics.operations.yesterday.onTimeRate)} />
+                <MiniMetric label="On time 7 days" value={pct(metrics.operations.trailing7.onTimeRate)} />
               </div>
-
-              <div className="border-b border-line pb-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-ink">Unmatched replies</p>
-                    <p className="text-xs text-slate">
-                      Replies captured without an order thread
-                    </p>
-                  </div>
-                  {unmatchedReplies > 0 ? (
-                    <Badge variant="danger" dot>{unmatchedReplies}</Badge>
-                  ) : (
-                    <Badge variant="success" dot>Clear</Badge>
-                  )}
-                </div>
-              </div>
-
-              <div className="border-b border-line pb-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-ink">Queued email</p>
-                    <p className="text-xs text-slate">
-                      Automated customer emails waiting for Gmail send
-                    </p>
-                  </div>
-                  {queuedEmails > 0 ? (
-                    <Badge variant="warning" dot>{queuedEmails}</Badge>
-                  ) : (
-                    <Badge variant="success" dot>Clear</Badge>
-                  )}
-                </div>
-              </div>
-
-              {shopHealth.map((shop) => {
-                const health = syncHealth(shop.lastSyncAt, now);
-                return (
-                  <div key={shop.id} className="border-b border-line pb-3 last:border-0 last:pb-0">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-ink">{shop.name}</p>
-                        <p className="text-xs text-slate">
-                          {shop.platform === "shopify" ? "Shopify" : "Etsy"} · last successful sync{" "}
-                          {formatSyncTime(shop.lastSyncAt)}
-                        </p>
-                      </div>
-                      {health === "ok" ? (
-                        <Badge variant="success" dot>Healthy</Badge>
-                      ) : (
-                        <Badge variant="warning" dot>
-                          {health === "never" ? "Never synced" : "Stale"}
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
             </div>
-          </DataPanel>
 
-          <DataPanel className="p-4">
-            <SectionHeader title="Orders workload" />
-            <div className="mt-4 flex flex-col gap-3">
-              <WorkloadLine
-                label="Complete details"
-                value={stats?.awaitingDetails ?? 0}
-              />
-              <WorkloadLine label="Awaiting photos" value={stats?.awaitingPhotos ?? 0} />
-              <WorkloadLine label="Quality control" value={stats?.qc ?? 0} />
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-slate">QC</p>
+              <div className="mt-2 rounded-card border border-line p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-slate">Fail rate</span>
+                  <span className="text-sm font-semibold text-ink">{pct(metrics.operations.trailing7.qcFailRate)}</span>
+                </div>
+                <p className="mt-2 text-xs text-slate">
+                  {metrics.operations.topFailedChecklistItem
+                    ? `Most failed: ${metrics.operations.topFailedChecklistItem.label} (${metrics.operations.topFailedChecklistItem.count})`
+                    : "No failed checklist items in the trailing 7 days."}
+                </p>
+              </div>
             </div>
-            <Link
-              href="/orders?view=active"
-              className="mt-5 inline-flex h-10 w-full items-center justify-center gap-2 rounded-input border border-line bg-surface text-sm font-medium text-ink transition-colors hover:bg-canvas"
-            >
-              <ListChecks size={16} />
-              Open orders
-            </Link>
-          </DataPanel>
-        </div>
+
+            <CapacityList
+              title="Over capacity"
+              empty="No designers are over capacity."
+              designers={metrics.operations.designersOverCapacity}
+              tone="warning"
+            />
+            <CapacityList
+              title="Idle designers"
+              empty="No idle designers with a configured capacity."
+              designers={metrics.operations.designersIdle}
+              tone="neutral"
+            />
+          </div>
+        </DataPanel>
       </div>
     </Page>
   );
 }
 
-function WorkloadLine({ label, value }: { label: string; value: number }) {
+function MetricGrid({ metrics }: { metrics: CountLink[] }) {
   return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="flex items-center gap-2 text-sm text-slate">
-        <AlertTriangle size={15} className="text-pigment" />
-        {label}
-      </span>
-      <span className="text-sm font-semibold text-ink">{value}</span>
+    <div className="mt-4 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+      {metrics.map((metric) => (
+        <Link
+          key={metric.label}
+          href={metric.href}
+          className={cn(
+            "block rounded-card border bg-surface p-3 transition-colors hover:bg-canvas",
+            metricClass(metric.tone),
+          )}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate">{metric.label}</p>
+            <Badge variant={badgeVariant(metric.tone)} dot={metric.tone !== "neutral"}>
+              {metric.count}
+            </Badge>
+          </div>
+          {metric.detail && <p className="mt-3 text-xs leading-5 text-slate">{metric.detail}</p>}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function ShopSyncRow({ shop }: { shop: ShopSyncHealth }) {
+  return (
+    <Link href="/settings" className="grid gap-2 px-4 py-3 transition-colors hover:bg-canvas sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-ink">{shop.name}</p>
+        <p className="text-xs text-slate">
+          {shop.businessName} · {shop.platform === "shopify" ? "Shopify" : "Etsy"} · last successful sync{" "}
+          {formatDateTime(shop.lastSyncAt)}
+        </p>
+      </div>
+      <Badge variant={shop.stale ? "danger" : "success"} dot>
+        {shop.stale ? "Stale" : "Healthy"}
+      </Badge>
+    </Link>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-card border border-line p-3">
+      <p className="text-xs text-slate">{label}</p>
+      <p className="mt-1 text-base font-semibold text-ink">{value}</p>
+    </div>
+  );
+}
+
+function CapacityList({
+  title,
+  empty,
+  designers,
+  tone,
+}: {
+  title: string;
+  empty: string;
+  designers: DesignerCapacity[];
+  tone: "neutral" | "warning";
+}) {
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        {tone === "warning" ? (
+          <AlertTriangle size={15} className="text-amber" />
+        ) : (
+          <ListChecks size={15} className="text-slate" />
+        )}
+        <p className="text-xs font-medium uppercase tracking-wide text-slate">{title}</p>
+      </div>
+      {designers.length === 0 ? (
+        <p className="mt-2 text-sm text-slate">{empty}</p>
+      ) : (
+        <div className="mt-2 space-y-2">
+          {designers.map((designer) => (
+            <Link
+              key={`${title}-${designer.businessName}-${designer.designerId}`}
+              href="/designers"
+              className="block rounded-card border border-line p-3 text-sm transition-colors hover:bg-canvas"
+            >
+              <span className="font-semibold text-ink">{designer.name}</span>
+              <span className="text-slate"> · {designer.businessName}</span>
+              <span className="block text-xs text-slate">
+                {designer.activeWork} active / {designer.dailyCapacity} daily capacity
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
