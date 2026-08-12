@@ -1,6 +1,6 @@
 # AlphaOS — progress
 
-_Last updated: 2026-08-11. Update this whenever a major piece lands._
+_Last updated: 2026-08-12. Update this whenever a major piece lands._
 
 Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
 
@@ -86,8 +86,11 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
 - **Gmail email layer** (per-business OAuth, DB templates, VA outbox approval
   gate, visible system-queued email backlog, scheduled queued flush + inbound
   reply poller, unmatched-replies tray with age/24h flags, dashboard health
-  counts). No business has connected Gmail yet, so send + inbound have not run
-  live. Photo requests are off by default regardless.
+  counts). QC pass now opens a customer email preview, shows the exact portrait
+  attachment and completed checklist, sends through Gmail, and only then moves
+  the order to awaiting approval; failures stay visible in Outbox and do not
+  advance the order. No business has connected Gmail yet, so send + inbound have
+  not run live. Photo requests are off by default regardless.
 
 ## Key decisions and why
 

@@ -1,9 +1,10 @@
 import { and, desc, eq, isNotNull, isNull, ne } from "drizzle-orm";
 
 import { withSystemContext, type Tx } from "@/lib/db";
-import { businesses, customers, messages, proofs } from "@/lib/db/schema";
+import { businesses, customers, messages, notifications, proofs, users } from "@/lib/db/schema";
 import { GmailClient, GmailNotConnectedError, GmailReauthRequiredError } from "@/lib/integrations/gmail";
 import { header } from "@/lib/integrations/gmail/mime";
+import { loadAssetAttachment } from "@/lib/email/attachments";
 import { generateProofToken } from "@/lib/proofs/tokens";
 import { proofUrl, uploadUrl } from "@/lib/urls";
 import {
@@ -85,10 +86,10 @@ async function insertRendered(tx: Tx, p: DraftParams): Promise<string> {
 }
 
 /**
- * Called when an order enters `awaiting_approval` (composed into the transition
- * tx). Creates the proof row + token, then a `proof_ready` DRAFT in the VA
- * outbox. Idempotent: if an undecided proof already exists (e.g. a hold/resume
- * bounce), it is reused and no duplicate draft is created.
+ * Legacy/secondary path called when an order enters `awaiting_approval` outside
+ * the QC email preview flow. Creates the proof row + token, then a legacy
+ * `proof_ready` draft in the VA outbox. The QC screen normally creates and sends
+ * the proof email before it transitions the order.
  */
 export async function prepareProofForApproval(
   tx: Tx,
@@ -187,7 +188,7 @@ export type SendResult = { ok: true } | { ok: false; error: string; retryable: b
  */
 export async function sendMessage(
   messageId: string,
-  opts?: { approvedById?: string },
+  opts?: { approvedById?: string; markRetryableFailed?: boolean },
 ): Promise<SendResult> {
   const msg = await withSystemContext(async (tx) => {
     const [m] = await tx
@@ -201,6 +202,9 @@ export async function sendMessage(
         address: messages.address,
         gmailThreadId: messages.gmailThreadId,
         direction: messages.direction,
+        attachmentAssetId: messages.attachmentAssetId,
+        attachmentFilename: messages.attachmentFilename,
+        attachmentContentType: messages.attachmentContentType,
       })
       .from(messages)
       .where(eq(messages.id, messageId));
@@ -224,6 +228,7 @@ export async function sendMessage(
     return !!b?.on;
   });
   if (!sendingEnabled) {
+    if (opts?.markRetryableFailed) await markFailed(messageId, "Email sending is turned OFF for this business");
     return { ok: false, error: "Email sending is turned OFF for this business", retryable: true };
   }
 
@@ -232,6 +237,7 @@ export async function sendMessage(
     client = await GmailClient.forBusiness(msg.businessId);
   } catch (e) {
     if (e instanceof GmailNotConnectedError) {
+      if (opts?.markRetryableFailed) await markFailed(messageId, "Gmail not connected for this business");
       return { ok: false, error: "Gmail not connected for this business", retryable: true };
     }
     throw e;
@@ -284,12 +290,22 @@ export async function sendMessage(
 
   try {
     const threadId = msg.gmailThreadId ?? prior?.threadId ?? undefined;
+    const attachment = msg.attachmentAssetId
+      ? await withSystemContext((tx) =>
+          loadAssetAttachment(tx, msg.attachmentAssetId!, msg.attachmentFilename, msg.attachmentContentType),
+        )
+      : null;
+    if (msg.attachmentAssetId && !attachment) {
+      await markFailed(messageId, "Attachment asset is missing or unreadable");
+      return { ok: false, error: "Attachment asset is missing or unreadable", retryable: false };
+    }
     const res = await client.send(
       {
         to: msg.address,
         subject: msg.subject ?? "",
         text: msg.body ?? "",
         inReplyToMessageId: prior?.rfcMessageId ?? undefined,
+        ...(attachment ? { attachments: [attachment] } : {}),
       },
       threadId ? { threadId } : undefined,
     );
@@ -327,6 +343,7 @@ export async function sendMessage(
   } catch (e) {
     // A reauth requirement is transient from the message's point of view.
     if (e instanceof GmailReauthRequiredError) {
+      if (opts?.markRetryableFailed) await markFailed(messageId, "Gmail needs re-authentication");
       return { ok: false, error: "Gmail needs re-authentication", retryable: true };
     }
     const error = e instanceof Error ? e.message : String(e);
@@ -338,6 +355,29 @@ export async function sendMessage(
 async function markFailed(messageId: string, error: string): Promise<void> {
   await withSystemContext((tx) =>
     tx.update(messages).set({ status: "failed", error }).where(eq(messages.id, messageId)),
+  );
+}
+
+export async function notifyVaEmailFailure(
+  tx: Tx,
+  args: { businessId: string; orderId: string | null; messageId: string; error: string },
+): Promise<void> {
+  const staff = await tx
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.active, true), eq(users.role, "va")));
+  if (!staff.length) return;
+  await tx.insert(notifications).values(
+    staff.map((staffer) => ({
+      businessId: args.businessId,
+      userId: staffer.id,
+      orderId: args.orderId,
+      type: "email.send_failed",
+      title: "Customer email failed",
+      body: args.error,
+      href: args.orderId ? `/orders/${args.orderId}` : "/orders?view=outbox",
+      metadata: { messageId: args.messageId },
+    })),
   );
 }
 

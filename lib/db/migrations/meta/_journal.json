@@ -183,6 +183,13 @@
       "when": 1786503601633,
       "tag": "0025_silent_blazing_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1786508169079,
+      "tag": "0026_wealthy_natasha_romanoff",
+      "breakpoints": true
     }
   ]
 }

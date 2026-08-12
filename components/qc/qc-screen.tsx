@@ -3,11 +3,17 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Badge, Button, Page, useToast } from "@/components/ui";
+import { Badge, Button, Page, Textarea, useToast } from "@/components/ui";
 import { Check, XCircle } from "@/components/ui/icons";
 import { shortcutFor, type ItemResults } from "@/lib/qc/checklist";
 import type { QcContext } from "@/lib/qc/data";
-import { submitQcPass, submitQcFail, type QcResult } from "@/app/(app)/qc/actions";
+import {
+  confirmQcPassAndSend,
+  prepareQcEmailPreview,
+  submitQcFail,
+  type QcEmailPreviewResult,
+  type QcResult,
+} from "@/app/(app)/qc/actions";
 import { CompareViewer } from "./compare-viewer";
 import { ChecklistPanel } from "./checklist-panel";
 import { VersionStrip } from "./version-strip";
@@ -36,6 +42,8 @@ export function QcScreen({
     ctx.versions.length ? ctx.versions[ctx.versions.length - 1].id : null,
   );
   const [failOpen, setFailOpen] = useState(false);
+  const [emailPreview, setEmailPreview] = useState<Extract<QcEmailPreviewResult, { ok: true }>["preview"] | null>(null);
+  const [emailBody, setEmailBody] = useState("");
   const [legendOpen, setLegendOpen] = useState(true);
 
   // Reset per-order state whenever we land on a new order.
@@ -43,6 +51,8 @@ export function QcScreen({
     setChecked({});
     setSelectedVersionId(ctx.versions.length ? ctx.versions[ctx.versions.length - 1].id : null);
     setFailOpen(false);
+    setEmailPreview(null);
+    setEmailBody("");
   }, [ctx.orderId, ctx.versions]);
 
   useEffect(() => {
@@ -115,15 +125,44 @@ export function QcScreen({
   const doPass = useCallback(() => {
     if (!ctx.isReviewable || !allChecked || pending) return;
     start(async () => {
-      const res = await submitQcPass({
+      const res = await prepareQcEmailPreview({
         orderId: ctx.orderId,
         expectedFrom: ctx.status,
         checklist: ctx.checklist,
         itemResults: checked,
       });
-      handleResult(res, "Passed — sent to approval");
+      if (res.ok) {
+        setEmailPreview(res.preview);
+        setEmailBody(res.preview.body);
+      } else if (res.code === "stale") {
+        toast({ variant: "warning", title: "Already moved", description: res.message });
+        router.refresh();
+      } else {
+        toast({ variant: "danger", title: "Couldn't prepare email", description: res.message });
+      }
     });
-  }, [ctx, allChecked, pending, checked, handleResult]);
+  }, [ctx, allChecked, pending, checked, toast, router]);
+
+  const confirmSend = useCallback(() => {
+    if (!emailPreview || pending) return;
+    start(async () => {
+      const res = await confirmQcPassAndSend({
+        orderId: ctx.orderId,
+        expectedFrom: ctx.status,
+        checklist: ctx.checklist,
+        itemResults: checked,
+        proofId: emailPreview.proofId,
+        templateKey: emailPreview.templateKey,
+        templateReason: emailPreview.templateReason,
+        attachmentAssetId: emailPreview.attachment.assetId,
+        attachmentFingerprint: emailPreview.attachment.fingerprint,
+        subject: emailPreview.subject,
+        body: emailBody,
+      });
+      if (res.ok) setEmailPreview(null);
+      handleResult(res, "Email sent — sent to approval");
+    });
+  }, [checked, ctx, emailBody, emailPreview, handleResult, pending]);
 
   const doFail = useCallback(
     (failedKeys: number[], reason: string) => {
@@ -163,7 +202,7 @@ export function QcScreen({
       }
 
       // The fail dialog owns the keyboard while it's open.
-      if (failOpen || editable) return;
+      if (failOpen || emailPreview || editable) return;
 
       if (e.key === "j" || e.key === "J") {
         if (nextId) { e.preventDefault(); goTo(nextId); }
@@ -199,7 +238,7 @@ export function QcScreen({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [
-    ctx.isReviewable, failOpen, legendOpen, nextId, prevId, shortcutMap,
+    ctx.isReviewable, failOpen, emailPreview, legendOpen, nextId, prevId, shortcutMap,
     goTo, tickAll, toggle, doPass, dismissLegend, openLegend,
   ]);
 
@@ -321,11 +360,118 @@ export function QcScreen({
         onSubmit={doFail}
       />
 
+      {emailPreview && (
+        <EmailPreviewDialog
+          preview={emailPreview}
+          body={emailBody}
+          checklist={ctx.checklist}
+          pending={pending}
+          onBody={setEmailBody}
+          onCancel={() => setEmailPreview(null)}
+          onConfirm={confirmSend}
+        />
+      )}
+
       {legendOpen ? (
         <ShortcutLegend open={legendOpen} onClose={dismissLegend} />
       ) : (
         <LegendToggle onClick={openLegend} />
       )}
     </Page>
+  );
+}
+
+function EmailPreviewDialog({
+  preview,
+  body,
+  checklist,
+  pending,
+  onBody,
+  onCancel,
+  onConfirm,
+}: {
+  preview: Extract<QcEmailPreviewResult, { ok: true }>["preview"];
+  body: string;
+  checklist: QcContext["checklist"];
+  pending: boolean;
+  onBody: (value: string) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-4">
+      <div className="grid max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-modal bg-surface shadow-lg xl:grid-cols-[minmax(0,1fr)_28rem]">
+        <div className="min-h-0 overflow-y-auto p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-display text-xl font-semibold text-ink">Preview customer email</h2>
+              <p className="mt-1 text-sm text-slate">
+                Template: <span className="font-medium text-ink">{preview.templateLabel}</span> · {preview.templateReason}
+              </p>
+            </div>
+            <Badge variant="info">Order {preview.orderNumber}</Badge>
+          </div>
+
+          <div className="mt-4 rounded-card border border-line bg-canvas p-3">
+            <p className="mb-2 text-sm font-medium text-ink">Portrait attached to this email</p>
+            {preview.attachment.url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={preview.attachment.url}
+                alt=""
+                className="max-h-[34rem] w-full rounded-input bg-surface object-contain"
+              />
+            ) : (
+              <div className="flex h-64 items-center justify-center rounded-input bg-surface text-sm text-slate">
+                Preview unavailable, but the stored asset will be attached if readable.
+              </div>
+            )}
+            <p className="mt-2 text-xs text-slate">
+              {preview.attachment.filename} · {preview.attachment.contentType}
+              {preview.attachment.sizeBytes ? ` · ${(preview.attachment.sizeBytes / 1024 / 1024).toFixed(1)} MB raw` : ""}
+            </p>
+          </div>
+
+          <div className="mt-4 rounded-card border border-line p-3">
+            <p className="text-sm font-medium text-ink">QC checklist completed</p>
+            <div className="mt-2 grid gap-1 sm:grid-cols-2">
+              {checklist.items.map((item) => (
+                <div key={item.key} className="flex items-center gap-2 text-sm text-slate">
+                  <Check size={14} className="text-sage" />
+                  <span>{item.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <aside className="min-h-0 overflow-y-auto border-t border-line bg-canvas p-5 xl:border-l xl:border-t-0">
+          <div className="rounded-card border border-line bg-surface p-3 text-sm">
+            <p className="text-xs text-slate">To: <span className="text-ink">{preview.to}</span></p>
+            <p className="mt-1 text-xs text-slate">Subject: <span className="font-medium text-ink">{preview.subject}</span></p>
+            <div className="mt-3 whitespace-pre-wrap rounded-input border border-line bg-canvas p-3 text-sm text-ink">
+              {body}
+            </div>
+          </div>
+
+          <Textarea
+            label="Body edits for this send only"
+            value={body}
+            onChange={(event) => onBody(event.currentTarget.value)}
+            rows={12}
+            className="mt-4 font-mono text-xs"
+          />
+
+          <div className="mt-4 flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={onCancel} disabled={pending}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={onConfirm} loading={pending} disabled={!body.trim()}>
+              Send email & pass QC
+            </Button>
+          </div>
+        </aside>
+      </div>
+    </div>
   );
 }

@@ -102,11 +102,15 @@ export const messageStatus = pgEnum("message_status", [
   "failed",
   "received",
 ]);
-// The three editable, per-business email templates.
+// Editable, per-business email templates.
 export const emailTemplateKey = pgEnum("email_template_key", [
   "photo_request",
   "proof_ready",
   "revision_received",
+  "proof_ready_digital_single",
+  "proof_ready_digital_multi",
+  "proof_ready_physical_single",
+  "proof_ready_physical_multi",
 ]);
 export const printProvider = pgEnum("print_provider", ["lumaprints", "gelato"]);
 export const printMethod = pgEnum("print_method", ["api", "manual"]);
@@ -721,6 +725,13 @@ export const messages = pgTable(
     body: text("body"),
     // Last send error, for a failed outbound message.
     error: text("error"),
+    attachmentAssetId: text("attachment_asset_id").references(() => assets.id, {
+      onDelete: "set null",
+    }),
+    attachmentFilename: text("attachment_filename"),
+    attachmentContentType: text("attachment_content_type"),
+    attachmentSizeBytes: integer("attachment_size_bytes"),
+    metadata: jsonb("metadata"),
     // Resolved-and-hidden: a discarded draft, or an unmatched inbound reply a VA
     // archived. Excludes the row from the outbox / unmatched tray. Reason is in
     // activity_log.
@@ -729,6 +740,11 @@ export const messages = pgTable(
     approvedBy: text("approved_by").references(() => users.id, {
       onDelete: "set null",
     }),
+    manualSentAt: timestamp("manual_sent_at", { withTimezone: true }),
+    manualSentBy: text("manual_sent_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    manualSentReason: text("manual_sent_reason"),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     createdAt: createdAt(),
   },

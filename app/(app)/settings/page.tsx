@@ -33,9 +33,9 @@ import {
   type PrintProductMappingVM,
 } from "@/components/settings/print-product-mappings-panel";
 import {
-  DEFAULT_TEMPLATES,
+  defaultTemplateForBusiness,
+  EDITABLE_TEMPLATE_KEYS,
   TEMPLATE_META,
-  type TemplateKey,
 } from "@/lib/email/templates";
 import { getShopOptionNames, getShopSkusAndTitles } from "@/lib/orders/resolution";
 import { photoRequestEnabled as resolvePhotoRequestEnabled } from "@/lib/integrations/classify";
@@ -246,16 +246,17 @@ export default async function SettingsPage({
       .where(eq(emailTemplates.businessId, selected.id)),
   );
   const overrideMap = new Map(overrides.map((o) => [o.key, o]));
-  templateVMs = (Object.keys(DEFAULT_TEMPLATES) as TemplateKey[]).map((key) => {
+  templateVMs = EDITABLE_TEMPLATE_KEYS.map((key) => {
     const o = overrideMap.get(key);
     const meta = TEMPLATE_META[key];
+    const fallback = defaultTemplateForBusiness(selected, key);
     return {
       key,
       label: meta.label,
       description: meta.description,
       variables: meta.variables,
-      subject: o?.subject ?? DEFAULT_TEMPLATES[key].subject,
-      body: o?.body ?? DEFAULT_TEMPLATES[key].body,
+      subject: o?.subject ?? fallback.subject,
+      body: o?.body ?? fallback.body,
       customized: !!o,
     };
   });

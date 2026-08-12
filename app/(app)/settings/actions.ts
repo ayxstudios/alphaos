@@ -18,6 +18,7 @@ import type { GmailCredentials } from "@/lib/integrations/gmail";
 import { pollMailbox, GmailClient, GmailNotConnectedError, type InboundSummary } from "@/lib/integrations/gmail";
 import {
   DEFAULT_TEMPLATES,
+  EDITABLE_TEMPLATE_KEYS,
   TEMPLATE_META,
   renderTemplate,
   resolveTemplate,
@@ -491,7 +492,7 @@ export async function sendGmailTest(businessId: string, toRaw: string): Promise<
     upload_link: appUrl("/u/sample-test"),
   };
 
-  const keys: TemplateKey[] = ["photo_request", "proof_ready", "revision_received"];
+  const keys: TemplateKey[] = EDITABLE_TEMPLATE_KEYS;
   const results: GmailTestResult["results"] = [];
   for (const key of keys) {
     try {

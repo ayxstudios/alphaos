@@ -22,7 +22,7 @@ import {
   type ItemResults,
 } from "@/lib/qc/checklist";
 import { runAutoAssign } from "./assign";
-import { prepareProofForApproval, draftRevisionReceived } from "@/lib/email/dispatch";
+import { prepareProofForApproval } from "@/lib/email/dispatch";
 import { createEarningForCompletion } from "@/lib/orders/earnings";
 
 export type OrderStatus = (typeof orderStatus.enumValues)[number];
@@ -265,16 +265,8 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
       platformOrderName: order.platformOrderName,
     });
   }
-  if (key === "awaiting_approval->in_design" && input.metadata?.via === "proof_portal") {
-    // Customer-requested revision (not a QC fail): acknowledge it.
-    await draftRevisionReceived(tx, {
-      id: order.id,
-      businessId: order.businessId,
-      customerId: order.customerId,
-      platformOrderId: order.platformOrderId,
-      platformOrderName: order.platformOrderName,
-    });
-  }
+  // Customer revision email is sent after the revised portrait passes QC, not
+  // when the customer first requests changes.
 
   // The full checklist snapshot + per-item results live on the qc_checks row
   // (the audit source of truth); keep the heavy blobs out of activity_log, but

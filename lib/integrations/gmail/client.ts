@@ -8,7 +8,7 @@ import {
 import { businesses, users, notifications } from "@/lib/db/schema";
 import { refreshAccessToken } from "./oauth";
 import { GmailApiError, GmailReauthRequiredError, GmailNotConnectedError } from "./errors";
-import { buildRawMessage, type OutgoingEmail } from "./mime";
+import { buildMimeMessage, buildRawMessage, type OutgoingEmail } from "./mime";
 import {
   GMAIL_API_BASE,
   type GmailCredentials,
@@ -20,6 +20,7 @@ import {
 
 const REFRESH_BUFFER_MS = 120_000; // refresh if <2min to expiry
 const MAX_ATTEMPTS = 4;
+export const GMAIL_MAX_RFC822_BYTES = 36_700_160;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -55,6 +56,18 @@ export class GmailClient {
     opts?: { threadId?: string },
   ): Promise<GmailSendResponse> {
     const from = this.creds.address ?? "me";
+    if (email.attachments?.length) {
+      const mime = buildMimeMessage({ ...email, from });
+      if (mime.byteLength > GMAIL_MAX_RFC822_BYTES) {
+        throw new GmailApiError(
+          413,
+          `Gmail message is too large (${mime.byteLength} bytes). Limit is ${GMAIL_MAX_RFC822_BYTES} bytes including MIME encoding.`,
+        );
+      }
+      const res = await this.uploadMessage(mime);
+      this.log({ event: "email_sent", to: email.to, threadId: res.threadId, messageId: res.id, attachments: email.attachments.length });
+      return res;
+    }
     const raw = buildRawMessage({ ...email, from });
     const res = await this.api<GmailSendResponse>("POST", "/users/me/messages/send", {
       raw,
@@ -120,6 +133,46 @@ export class GmailClient {
       throw new GmailApiError(res.status, `Gmail ${method} ${path}: ${res.status} ${text.slice(0, 200)}`);
     }
     throw new GmailApiError(0, `Gmail ${method} ${path}: exhausted attempts`);
+  }
+
+  private async uploadMessage(mime: Buffer): Promise<GmailSendResponse> {
+    let didReauth = false;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const token = await this.ensureAccessToken();
+      const start = Date.now();
+      const res = await fetch(
+        "https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=media",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+            "Content-Type": "message/rfc822",
+            "Content-Length": String(mime.byteLength),
+          },
+          body: mime as unknown as BodyInit,
+        },
+      );
+      this.log({ method: "POST", path: "/upload/users/me/messages/send", status: res.status, ms: Date.now() - start, attempt });
+
+      if (res.ok) return (await res.json()) as GmailSendResponse;
+
+      if (res.status === 401 && !didReauth) {
+        didReauth = true;
+        await this.refresh();
+        continue;
+      }
+      if (res.status === 429 || res.status >= 500) {
+        if (attempt === MAX_ATTEMPTS) {
+          throw new GmailApiError(res.status, `Gmail message upload failed after ${attempt} attempts`);
+        }
+        await sleep(500 * 2 ** (attempt - 1) + Math.floor(Math.random() * 250));
+        continue;
+      }
+      const text = await res.text().catch(() => "");
+      throw new GmailApiError(res.status, `Gmail message upload: ${res.status} ${text.slice(0, 200)}`);
+    }
+    throw new GmailApiError(0, "Gmail message upload: exhausted attempts");
   }
 
   private tokenValid(): boolean {

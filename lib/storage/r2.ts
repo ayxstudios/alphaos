@@ -4,6 +4,7 @@ import {
   S3Client,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -96,6 +97,28 @@ export function presignUpload(opts: { key: string; contentType: string }): Promi
 /** A short-lived presigned GET for reading a private object (thumbnails, previews). */
 export function presignGet(key: string, expiresIn = GET_TTL_SECONDS): Promise<string> {
   return getSignedUrl(client(), new GetObjectCommand({ Bucket: bucket(), Key: key }), { expiresIn });
+}
+
+export async function headObject(key: string): Promise<{
+  contentType: string | null;
+  contentLength: number | null;
+  eTag: string | null;
+}> {
+  const res = await client().send(new HeadObjectCommand({ Bucket: bucket(), Key: key }));
+  return {
+    contentType: res.ContentType ?? null,
+    contentLength: typeof res.ContentLength === "number" ? res.ContentLength : null,
+    eTag: res.ETag ?? null,
+  };
+}
+
+export async function getObjectBuffer(key: string): Promise<Buffer> {
+  const res = await client().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
+  if (!res.Body) throw new Error("R2 object response had no body");
+  const chunks: Buffer[] = [];
+  const stream = res.Body as AsyncIterable<Uint8Array>;
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
 }
 
 /** Hard-delete an object (retention sweep). */

@@ -25,14 +25,22 @@ export type OutgoingEmail = {
   html?: string;
   /** Set on a reply so the client threads it (References/In-Reply-To). */
   inReplyToMessageId?: string;
+  attachments?: OutgoingAttachment[];
+};
+
+export type OutgoingAttachment = {
+  filename: string;
+  contentType: string;
+  content: Buffer;
 };
 
 /**
- * Build a base64url-encoded MIME message for users.messages.send. Sends a
- * multipart/alternative (text + html) so every client renders it well.
+ * Build an RFC822 MIME message. Sends a multipart/alternative body, optionally
+ * wrapped in multipart/mixed when attachments are present.
  */
-export function buildRawMessage(email: OutgoingEmail): string {
-  const boundary = `=_alpha_${Math.random().toString(36).slice(2)}`;
+export function buildMimeMessage(email: OutgoingEmail): Buffer {
+  const altBoundary = `=_alpha_alt_${Math.random().toString(36).slice(2)}`;
+  const mixedBoundary = `=_alpha_mix_${Math.random().toString(36).slice(2)}`;
   const html = email.html ?? textToHtml(email.text);
   const headers = [
     `From: ${email.from}`,
@@ -44,26 +52,64 @@ export function buildRawMessage(email: OutgoingEmail): string {
     headers.push(`In-Reply-To: ${email.inReplyToMessageId}`);
     headers.push(`References: ${email.inReplyToMessageId}`);
   }
-  headers.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
+  if (email.attachments?.length) {
+    headers.push(`Content-Type: multipart/mixed; boundary="${mixedBoundary}"`);
+  } else {
+    headers.push(`Content-Type: multipart/alternative; boundary="${altBoundary}"`);
+  }
 
-  const body = [
-    `--${boundary}`,
+  const alternative = [
+    `--${altBoundary}`,
     "Content-Type: text/plain; charset=UTF-8",
     "Content-Transfer-Encoding: 8bit",
     "",
     email.text,
     "",
-    `--${boundary}`,
+    `--${altBoundary}`,
     "Content-Type: text/html; charset=UTF-8",
     "Content-Transfer-Encoding: 8bit",
     "",
     html,
     "",
-    `--${boundary}--`,
+    `--${altBoundary}--`,
     "",
   ];
 
-  return b64url(`${headers.join("\r\n")}\r\n\r\n${body.join("\r\n")}`);
+  let body: string[];
+  if (email.attachments?.length) {
+    body = [
+      `--${mixedBoundary}`,
+      `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+      "",
+      alternative.join("\r\n"),
+      ...email.attachments.flatMap((attachment) => [
+        `--${mixedBoundary}`,
+        `Content-Type: ${attachment.contentType}; name="${encodeHeader(attachment.filename)}"`,
+        "Content-Transfer-Encoding: base64",
+        `Content-Disposition: attachment; filename="${encodeHeader(attachment.filename)}"`,
+        "",
+        wrapBase64(attachment.content.toString("base64")),
+        "",
+      ]),
+      `--${mixedBoundary}--`,
+      "",
+    ];
+  } else {
+    body = alternative;
+  }
+
+  return Buffer.from(`${headers.join("\r\n")}\r\n\r\n${body.join("\r\n")}`, "utf8");
+}
+
+/**
+ * Build a base64url-encoded MIME message for the JSON users.messages.send path.
+ */
+export function buildRawMessage(email: OutgoingEmail): string {
+  return b64url(buildMimeMessage(email));
+}
+
+function wrapBase64(input: string): string {
+  return input.replace(/.{1,76}/g, "$&\r\n").trimEnd();
 }
 
 /** Minimal, safe text→HTML: escape, linkify http(s) URLs, paragraphs from blank lines. */

@@ -11,6 +11,7 @@ import {
   approveAndSend,
   updateDraftBody,
   discardDraft,
+  markEmailSentManually,
   linkReplyToOrder,
   archiveReply,
   searchOrdersForLink,
@@ -125,7 +126,9 @@ function DraftCard({
   const [open, setOpen] = useState(false);
   const [body, setBody] = useState(item.body);
   const [discarding, setDiscarding] = useState(false);
+  const [manualSent, setManualSent] = useState(false);
   const [reason, setReason] = useState("");
+  const [manualReason, setManualReason] = useState("");
   const queued = item.status === "queued";
 
   function send() {
@@ -197,6 +200,11 @@ function DraftCard({
                 Open order
               </Link>
             )}
+            {!queued && !manualSent && (
+              <Button type="button" size="sm" variant="ghost" onClick={() => setManualSent(true)}>
+                Mark sent manually
+              </Button>
+            )}
             {!discarding ? (
               <Button type="button" size="sm" variant="ghost" className="ml-auto" onClick={() => setDiscarding(true)}>
                 Discard
@@ -225,6 +233,28 @@ function DraftCard({
               </div>
             )}
           </div>
+          {manualSent && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-input border border-line bg-canvas p-2">
+              <Input
+                value={manualReason}
+                onChange={(e) => setManualReason(e.target.value)}
+                placeholder="Manual send reason (required)"
+                aria-label="Manual send reason"
+                className="h-8 w-72"
+              />
+              <Button
+                type="button"
+                size="sm"
+                disabled={!manualReason.trim()}
+                onClick={() => run(() => markEmailSentManually(item.messageId, manualReason))}
+              >
+                Confirm manual send
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setManualSent(false)}>
+                Cancel
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

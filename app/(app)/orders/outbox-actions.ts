@@ -5,8 +5,10 @@ import { and, desc, eq, ilike, inArray, or } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser } from "@/lib/db";
-import { activityLog, customers, messages, orders } from "@/lib/db/schema";
-import { sendMessage } from "@/lib/email/dispatch";
+import { activityLog, customers, messages, orders, proofs } from "@/lib/db/schema";
+import { notifyVaEmailFailure, sendMessage } from "@/lib/email/dispatch";
+import { transition, OrderTransitionError } from "@/lib/orders/transitions";
+import type { ItemResults } from "@/lib/qc/checklist";
 
 export type OutboxActionResult = { ok: true; message?: string } | { ok: false; message: string };
 
@@ -51,15 +53,37 @@ export async function approveAndSend(messageId: string): Promise<OutboxActionRes
 
   const meta = await withUserContext(user, async (tx) => {
     const [m] = await tx
-      .select({ businessId: messages.businessId, orderId: messages.orderId, templateKey: messages.templateKey, address: messages.address })
+      .select({
+        businessId: messages.businessId,
+        orderId: messages.orderId,
+        templateKey: messages.templateKey,
+        address: messages.address,
+        proofId: messages.proofId,
+        metadata: messages.metadata,
+      })
       .from(messages)
       .where(and(eq(messages.id, messageId), eq(messages.direction, "outbound")));
     return m ?? null;
   });
   if (!meta) return { ok: false, message: "Message not found" };
 
-  const res = await sendMessage(messageId, { approvedById: user.id });
+  const res = await sendMessage(messageId, { approvedById: user.id, markRetryableFailed: true });
   if (!res.ok) {
+    await withUserContext(user, async (tx) => {
+      await notifyVaEmailFailure(tx, {
+        businessId: meta.businessId,
+        orderId: meta.orderId,
+        messageId,
+        error: res.error ?? "Send failed",
+      });
+      await tx.insert(activityLog).values({
+        businessId: meta.businessId,
+        orderId: meta.orderId,
+        actorId: user.id,
+        action: "email.send_failed",
+        metadata: { messageId, templateKey: meta.templateKey, to: meta.address, error: res.error },
+      });
+    });
     // The safety rail returns a retryable "turned OFF" error — surface it plainly.
     return { ok: false, message: res.error ?? "Send failed" };
   }
@@ -73,9 +97,62 @@ export async function approveAndSend(messageId: string): Promise<OutboxActionRes
       metadata: { messageId, templateKey: meta.templateKey, to: meta.address, approvedBy: user.id },
     }),
   );
+  const advanced = await advanceQcEmailIfNeeded(user, meta.orderId, meta.proofId, meta.metadata);
+  if (!advanced.ok) return advanced;
   revalidatePath("/orders");
   revalidatePath("/dashboard");
+  if (meta.orderId) revalidatePath(`/orders/${meta.orderId}`);
   return { ok: true, message: "Email sent" };
+}
+
+export async function markEmailSentManually(messageId: string, reasonRaw: string): Promise<OutboxActionResult> {
+  const user = await requireStaff();
+  if (!user) return { ok: false, message: "Not permitted" };
+  const reason = reasonRaw.trim();
+  if (!reason) return { ok: false, message: "A reason is required" };
+
+  const meta = await withUserContext(user, async (tx) => {
+    const [m] = await tx
+      .select({
+        id: messages.id,
+        businessId: messages.businessId,
+        orderId: messages.orderId,
+        templateKey: messages.templateKey,
+        address: messages.address,
+        proofId: messages.proofId,
+        metadata: messages.metadata,
+      })
+      .from(messages)
+      .where(and(eq(messages.id, messageId), eq(messages.direction, "outbound"), inArray(messages.status, ["draft", "failed"])));
+    if (!m) return null;
+    await tx
+      .update(messages)
+      .set({
+        status: "sent",
+        sentAt: new Date(),
+        approvedBy: user.id,
+        manualSentAt: new Date(),
+        manualSentBy: user.id,
+        manualSentReason: reason,
+        error: null,
+      })
+      .where(eq(messages.id, messageId));
+    await tx.insert(activityLog).values({
+      businessId: m.businessId,
+      orderId: m.orderId,
+      actorId: user.id,
+      action: "email.marked_sent_manually",
+      metadata: { messageId, templateKey: m.templateKey, to: m.address, reason },
+    });
+    return m;
+  });
+  if (!meta) return { ok: false, message: "Only draft or failed emails can be marked sent manually" };
+  const advanced = await advanceQcEmailIfNeeded(user, meta.orderId, meta.proofId, meta.metadata);
+  if (!advanced.ok) return advanced;
+  revalidatePath("/orders");
+  revalidatePath("/dashboard");
+  if (meta.orderId) revalidatePath(`/orders/${meta.orderId}`);
+  return { ok: true, message: "Marked sent manually" };
 }
 
 /** Discard an unsent outbound email that shouldn't go, with a required reason (kept for audit). */
@@ -196,4 +273,43 @@ export async function archiveReply(messageId: string, reasonRaw: string): Promis
     revalidatePath("/dashboard");
     return { ok: true as const, message: "Reply archived" };
   });
+}
+
+async function advanceQcEmailIfNeeded(
+  user: RequestUser,
+  orderId: string | null,
+  proofId: string | null,
+  metadata: unknown,
+): Promise<OutboxActionResult> {
+  if (!orderId) return { ok: true };
+  const qcPass = metadata && typeof metadata === "object" ? (metadata as { qcPass?: unknown }).qcPass : null;
+  if (!qcPass || typeof qcPass !== "object") return { ok: true };
+  const itemResults = (qcPass as { itemResults?: unknown }).itemResults as ItemResults | undefined;
+  const expectedFrom = (qcPass as { expectedFrom?: unknown }).expectedFrom;
+  if (expectedFrom !== "awaiting_qc" || !itemResults) return { ok: true };
+
+  const [order] = await withUserContext(user, (tx) =>
+    tx.select({ status: orders.status }).from(orders).where(eq(orders.id, orderId)).limit(1),
+  );
+  if (!order || order.status !== "awaiting_qc") return { ok: true };
+
+  try {
+    await transition(user, {
+      orderId,
+      to: "awaiting_approval",
+      expectedFrom: "awaiting_qc",
+      metadata: { itemResults, via: "outbox_email_send" },
+    });
+    if (proofId) {
+      await withUserContext(user, (tx) =>
+        tx.update(proofs).set({ sentAt: new Date() }).where(eq(proofs.id, proofId)),
+      );
+    }
+    return { ok: true };
+  } catch (error) {
+    if (error instanceof OrderTransitionError) {
+      return { ok: false, message: `Email sent, but order could not advance: ${error.message}` };
+    }
+    throw error;
+  }
 }
