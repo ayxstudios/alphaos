@@ -117,6 +117,57 @@ export class EtsyClient {
     throw new EtsyApiError(0, `Etsy GET ${path}: exhausted attempts`);
   }
 
+  async apiPostForm<T>(path: string, body: Record<string, string | number | boolean | null | undefined>): Promise<T> {
+    const form = new URLSearchParams();
+    for (const [key, value] of Object.entries(body)) {
+      if (value !== null && value !== undefined && String(value).trim()) form.set(key, String(value));
+    }
+
+    let didReauth = false;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const token = await this.ensureAccessToken();
+      await this.throttle();
+      const start = Date.now();
+      const res = await fetch(`${ETSY_API_BASE}${path}`, {
+        method: "POST",
+        headers: {
+          "x-api-key": etsyApiKey(this.creds),
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: form,
+      });
+      this.log({
+        method: "POST",
+        path,
+        status: res.status,
+        ms: Date.now() - start,
+        attempt,
+        remainingThisSecond: res.headers.get("x-remaining-this-second"),
+        remainingToday: res.headers.get("x-remaining-today"),
+      });
+
+      if (res.ok) return (await res.json()) as T;
+
+      if (res.status === 401 && !didReauth) {
+        didReauth = true;
+        await this.refresh();
+        continue;
+      }
+      if (res.status === 429 || res.status >= 500) {
+        if (attempt === MAX_ATTEMPTS) {
+          throw new EtsyApiError(res.status, `Etsy POST ${path} failed after ${attempt} attempts`);
+        }
+        await sleep(this.backoffMs(res, attempt));
+        continue;
+      }
+      const text = await res.text().catch(() => "");
+      throw new EtsyApiError(res.status, `Etsy POST ${path}: ${res.status} ${text.slice(0, 200)}`);
+    }
+    throw new EtsyApiError(0, `Etsy POST ${path}: exhausted attempts`);
+  }
+
   get credentials(): EtsyCredentials {
     return this.creds;
   }

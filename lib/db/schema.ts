@@ -476,6 +476,41 @@ export const orders = pgTable(
   ],
 );
 
+export const orderShippingAddresses = pgTable(
+  "order_shipping_addresses",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "restrict" }),
+    orderId: text("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    source: text("source").notNull().default("platform"),
+    name: text("name"),
+    firstName: text("first_name"),
+    lastName: text("last_name"),
+    company: text("company"),
+    addressLine1: text("address_line_1"),
+    addressLine2: text("address_line_2"),
+    city: text("city"),
+    state: text("state"),
+    postalCode: text("postal_code"),
+    countryCode: text("country_code"),
+    phone: text("phone"),
+    email: text("email"),
+    raw: jsonb("raw"),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    uniqueIndex("order_shipping_addresses_order_uq").on(t.orderId),
+    index("order_shipping_addresses_business_idx").on(t.businessId),
+  ],
+);
+
 export const orderItems = pgTable(
   "order_items",
   {
@@ -723,15 +758,60 @@ export const printJobs = pgTable(
     provider: printProvider("provider").notNull(),
     method: printMethod("method").notNull(),
     externalId: text("external_id"),
+    providerOrderId: text("provider_order_id"),
+    providerOrderNumber: text("provider_order_number"),
+    providerPayload: jsonb("provider_payload"),
+    providerResponse: jsonb("provider_response"),
     trackingNumber: text("tracking_number"),
     trackingCompany: text("tracking_company"),
     trackingUrl: text("tracking_url"),
     shopifyFulfillmentId: text("shopify_fulfillment_id"),
     shopifySyncedAt: timestamp("shopify_synced_at", { withTimezone: true }),
+    platformSyncedAt: timestamp("platform_synced_at", { withTimezone: true }),
+    platformSyncError: text("platform_sync_error"),
     status: text("status"),
+    error: text("error"),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    rejectedAt: timestamp("rejected_at", { withTimezone: true }),
+    shippedAt: timestamp("shipped_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
-  (t) => [index("print_jobs_order_idx").on(t.orderId)],
+  (t) => [
+    index("print_jobs_order_idx").on(t.orderId),
+    index("print_jobs_business_status_idx").on(t.businessId, t.status, t.createdAt),
+    index("print_jobs_provider_order_idx").on(t.provider, t.providerOrderId),
+  ],
+);
+
+export const printProductMappings = pgTable(
+  "print_product_mappings",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "restrict" }),
+    shopId: text("shop_id")
+      .notNull()
+      .references(() => shops.id, { onDelete: "cascade" }),
+    provider: printProvider("provider").notNull(),
+    matchType: text("match_type").notNull().default("sku_exact"),
+    sourceSku: text("source_sku"),
+    titleContains: text("title_contains"),
+    variantContains: text("variant_contains"),
+    label: text("label"),
+    providerProductId: text("provider_product_id").notNull(),
+    providerConfig: jsonb("provider_config"),
+    active: boolean("active").notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    index("print_product_mappings_shop_provider_idx").on(t.shopId, t.provider),
+    index("print_product_mappings_business_idx").on(t.businessId),
+  ],
 );
 
 export const earnings = pgTable(

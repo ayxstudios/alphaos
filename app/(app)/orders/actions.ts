@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
@@ -12,6 +12,7 @@ import {
   orderItems,
   orders,
   printJobs,
+  shops,
   styles,
   users,
 } from "@/lib/db/schema";
@@ -35,6 +36,7 @@ import {
   type ShopifyCredentials,
   type ShopifyFulfillmentResult,
 } from "@/lib/integrations/shopify";
+import { createEtsyReceiptShipment, type EtsyCredentials } from "@/lib/integrations/etsy";
 
 type BulkSkipped = {
   orderId: string;
@@ -89,13 +91,11 @@ const REVISION_FROM_STATUSES = new Set<OrderStatus>([
   "complete",
 ]);
 
-const TRACKING_COMPLETION_PATHS: Partial<Record<OrderStatus, OrderStatus[]>> = {
-  approved: ["printing", "shipped", "delivered", "complete"],
-  printing: ["shipped", "delivered", "complete"],
-  shipped: ["delivered", "complete"],
-  delivered: ["complete"],
-  fulfillment_only: ["complete"],
-  complete: [],
+const TRACKING_SHIP_PATHS: Partial<Record<OrderStatus, OrderStatus[]>> = {
+  approved: ["printing", "shipped"],
+  printing: ["shipped"],
+  shipped: [],
+  fulfillment_only: ["printing", "shipped"],
 };
 
 async function requireStaff(): Promise<RequestUser | { error: string }> {
@@ -364,8 +364,10 @@ export async function addTrackingAndCompleteOrder(
         status: orders.status,
         platformOrderId: orders.platformOrderId,
         platformOrderName: orders.platformOrderName,
+        shopExternalId: shops.externalShopId,
       })
       .from(orders)
+      .innerJoin(shops, eq(shops.id, orders.shopId))
       .where(eq(orders.id, orderId))
       .limit(1);
 
@@ -378,8 +380,8 @@ export async function addTrackingAndCompleteOrder(
       .from(orderItems)
       .where(eq(orderItems.orderId, orderId));
     const credentials =
-      order.source === "shopify"
-        ? ((await getShopCredentials(tx, order.shopId)) as ShopifyCredentials)
+      order.source === "shopify" || order.source === "etsy"
+        ? await getShopCredentials(tx, order.shopId)
         : null;
     return { order, items, credentials };
   });
@@ -390,26 +392,19 @@ export async function addTrackingAndCompleteOrder(
   if (!hasPhysicalItem) {
     return { ok: false, message: "Tracking can only be added to physical orders." };
   }
-  if (!(order.status in TRACKING_COMPLETION_PATHS)) {
+  if (!(order.status in TRACKING_SHIP_PATHS)) {
     return {
       ok: false,
-      message: `Order must be approved, in print, shipped, delivered, fulfillment-only, or complete before adding final tracking.`,
+      message: `Order must be approved, in print, shipped, or fulfillment-only before adding final tracking.`,
     };
-  }
-  if (order.status !== "fulfillment_only" && order.status !== "complete") {
-    const unresolvedFigures = items.some((item) => item.figureCount == null);
-    if (unresolvedFigures) {
-      return {
-        ok: false,
-        message: "Resolve figure counts before completing this order. Figure count drives payout.",
-      };
-    }
   }
 
   let shopifyResult: ShopifyFulfillmentResult | null = null;
+  let etsyResult: unknown = null;
+  let platformSyncError: string | null = null;
   if (order.source === "shopify") {
     try {
-      const freshCredentials = await freshShopifyCredentials(snapshot.credentials!);
+      const freshCredentials = await freshShopifyCredentials(snapshot.credentials as ShopifyCredentials);
       shopifyResult = await fulfillShopifyOrderWithTracking(
         order.shopId,
         order.platformOrderId,
@@ -419,9 +414,11 @@ export async function addTrackingAndCompleteOrder(
           trackingCompany,
           trackingUrl,
           notifyCustomer: input.notifyCustomer ?? true,
+          closeOrder: false,
         },
       );
     } catch (error) {
+      platformSyncError = error instanceof Error ? error.message : "Shopify fulfillment failed.";
       console.log(
         JSON.stringify({
           ts: new Date().toISOString(),
@@ -431,13 +428,36 @@ export async function addTrackingAndCompleteOrder(
           shopId: order.shopId,
           orderId: order.id,
           platformOrderId: order.platformOrderId,
-          error: error instanceof Error ? error.message : String(error),
+          error: platformSyncError,
         }),
       );
-      return {
-        ok: false,
-        message: error instanceof Error ? error.message : "Shopify fulfillment failed.",
-      };
+    }
+  } else if (order.source === "etsy") {
+    try {
+      const etsyCredentials = snapshot.credentials as EtsyCredentials;
+      etsyResult = await createEtsyReceiptShipment({
+        shopId: order.shopId,
+        businessId: order.businessId,
+        etsyShopId: etsyCredentials.etsyShopId ?? order.shopExternalId,
+        receiptId: order.platformOrderId,
+        credentials: etsyCredentials,
+        trackingNumber,
+        trackingCompany,
+      });
+    } catch (error) {
+      platformSyncError = error instanceof Error ? error.message : "Etsy shipment writeback failed.";
+      console.log(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "warn",
+          integration: "etsy",
+          event: "shipment_writeback_failed",
+          shopId: order.shopId,
+          orderId: order.id,
+          platformOrderId: order.platformOrderId,
+          error: platformSyncError,
+        }),
+      );
     }
   }
 
@@ -454,31 +474,49 @@ export async function addTrackingAndCompleteOrder(
         .limit(1);
       if (!current) throw new OrderTransitionError("not_found", "Order not found.");
 
-      const path = TRACKING_COMPLETION_PATHS[current.status as OrderStatus];
+      const path = TRACKING_SHIP_PATHS[current.status as OrderStatus];
       if (!path) {
         throw new OrderTransitionError(
           "illegal",
-          `Order must be approved, in print, shipped, delivered, fulfillment-only, or complete before adding final tracking.`,
+          `Order must be approved, in print, shipped, or fulfillment-only before adding final tracking.`,
         );
       }
 
-      await tx.insert(printJobs).values({
+      const now = new Date();
+      const [existingJob] = await tx
+        .select({ id: printJobs.id })
+        .from(printJobs)
+        .where(eq(printJobs.orderId, orderId))
+        .orderBy(desc(printJobs.createdAt))
+        .limit(1);
+      const printJobValues = {
         businessId: current.businessId,
         orderId,
         provider: input.provider,
-        method: "manual",
+        method: "manual" as const,
         externalId: shopifyResult?.fulfillmentId ?? null,
+        providerResponse: shopifyResult ?? etsyResult ?? null,
         trackingNumber,
         trackingCompany: trackingCompany ?? null,
         trackingUrl: trackingUrl ?? null,
         shopifyFulfillmentId: shopifyResult?.fulfillmentId ?? null,
-        shopifySyncedAt: shopifyResult ? new Date() : null,
+        shopifySyncedAt: shopifyResult ? now : null,
+        platformSyncedAt: shopifyResult || etsyResult ? now : null,
+        platformSyncError,
+        shippedAt: now,
         status: shopifyResult
-          ? shopifyResult.closed
-            ? "shopify_fulfilled_closed"
-            : "shopify_fulfilled"
-          : "tracking_added",
-      });
+          ? "shopify_fulfilled"
+          : etsyResult
+            ? "etsy_shipment_created"
+            : platformSyncError
+              ? "tracking_added_platform_error"
+              : "tracking_added",
+      };
+      if (existingJob) {
+        await tx.update(printJobs).set(printJobValues).where(eq(printJobs.id, existingJob.id));
+      } else {
+        await tx.insert(printJobs).values(printJobValues);
+      }
       await tx.insert(activityLog).values({
         businessId: current.businessId,
         orderId,
@@ -488,7 +526,8 @@ export async function addTrackingAndCompleteOrder(
           provider: input.provider,
           trackingCompany: trackingCompany ?? null,
           shopifyFulfillmentId: shopifyResult?.fulfillmentId ?? null,
-          shopifyClosed: shopifyResult?.closed ?? null,
+          etsyShipmentCreated: Boolean(etsyResult),
+          platformSyncError,
           via: "order_detail_tracking_card",
         },
       });
@@ -500,9 +539,10 @@ export async function addTrackingAndCompleteOrder(
           to,
           expectedFrom,
           metadata: {
-            via: "tracking_added_complete",
+            via: "tracking_added_shipped",
             trackingNumber,
             shopifyFulfillmentId: shopifyResult?.fulfillmentId ?? null,
+            platformSyncError,
           },
         });
         expectedFrom = to;
@@ -518,18 +558,16 @@ export async function addTrackingAndCompleteOrder(
   revalidatePath(`/orders/${orderId}`);
   revalidatePath("/orders");
   revalidatePath("/board");
+  revalidatePath("/queue/print");
   revalidatePath("/dashboard");
 
-  if (shopifyResult) {
-    return {
-      ok: true,
-      message: shopifyResult.closeWarning
-        ? "Tracking added and Shopify fulfillment created. Shopify did not close/archive the order; see warning."
-        : "Tracking added, Shopify fulfillment created, and order completed.",
-      closeWarning: shopifyResult.closeWarning,
-    };
-  }
-  return { ok: true, message: "Tracking added and order completed." };
+  return {
+    ok: true,
+    message: "Tracking was saved and the order was marked shipped.",
+    closeWarning: platformSyncError
+      ? `Tracking saved in AlphaOS, but platform writeback failed: ${platformSyncError}`
+      : shopifyResult?.closeWarning ?? null,
+  };
 }
 
 /* --- Order style setter (with learning) --------------------------------- */

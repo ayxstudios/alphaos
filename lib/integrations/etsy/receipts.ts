@@ -7,6 +7,7 @@ import { getShopCredentials, setShopCredentials } from "@/lib/db/credentials";
 import { shops, orders, customers, activityLog } from "@/lib/db/schema";
 import { reconcileManualOrder } from "@/lib/orders/reconcile";
 import { isBeforeBackfillCutoff } from "@/lib/orders/archive";
+import { normalizeEtsyReceiptAddress, upsertOrderShippingAddress } from "@/lib/shipping/address";
 import { EtsyClient } from "./client";
 import { ReauthRequiredError } from "./errors";
 import type {
@@ -217,6 +218,7 @@ async function importReceipt(args: {
   const dueAt = computeDueAt(placedAt, slaConfig);
   const archived = isBeforeBackfillCutoff(placedAt, config);
   const archivedAt = archived ? new Date() : null;
+  const shippingAddress = normalizeEtsyReceiptAddress(receipt);
 
   return withSystemContext(async (tx) => {
     // Customer, only when Etsy actually gave us an email.
@@ -244,7 +246,15 @@ async function importReceipt(args: {
       photoUrls: [], // Etsy has no photos at import
       rawImport: receipt,
     });
-    if (rec.reconciled) return "reconciled";
+    if (rec.reconciled) {
+      await upsertOrderShippingAddress(tx, {
+        businessId,
+        orderId: rec.orderId!,
+        source: "platform",
+        address: shippingAddress,
+      });
+      return "reconciled";
+    }
 
     const inserted = await tx
       .insert(orders)
@@ -270,6 +280,13 @@ async function importReceipt(args: {
 
     if (!inserted.length) return "skipped";
     const orderId = inserted[0].id;
+
+    await upsertOrderShippingAddress(tx, {
+      businessId,
+      orderId,
+      source: "platform",
+      address: shippingAddress,
+    });
 
     await tx.insert(activityLog).values({
       businessId,

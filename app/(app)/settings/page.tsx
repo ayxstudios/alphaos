@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
-import { businesses, emailTemplates, shops } from "@/lib/db/schema";
+import { businesses, emailTemplates, printProductMappings, shops } from "@/lib/db/schema";
 import {
   getBusinessGmailCredentials,
   getShopCredentials,
@@ -27,6 +27,11 @@ import {
 import { NotificationDryRunPanel } from "@/components/settings/notification-dry-run-panel";
 import { TemplateEditor, type TemplateVM } from "@/components/settings/template-editor";
 import { ShopStylesPanel, type ShopStylesVM } from "@/components/settings/shop-styles-panel";
+import {
+  PrintProductMappingsPanel,
+  type PrintMappingShopVM,
+  type PrintProductMappingVM,
+} from "@/components/settings/print-product-mappings-panel";
 import {
   DEFAULT_TEMPLATES,
   TEMPLATE_META,
@@ -56,6 +61,7 @@ const SETTINGS_SECTIONS = [
   { key: "etsy", label: "Etsy" },
   { key: "shopify", label: "Shopify" },
   { key: "portrait-styles", label: "Portrait Styles" },
+  { key: "print-fulfilment", label: "Print Fulfilment" },
   { key: "email", label: "Customer Email" },
   { key: "notifications", label: "Notifications" },
 ] as const;
@@ -267,6 +273,42 @@ export default async function SettingsPage({
     })
   ).map((s) => ({ id: s.id, name: s.name, platform: s.platform, styles: s.styles ?? [] }));
 
+  const printMappingShops: PrintMappingShopVM[] = await Promise.all(
+    styleShops.map(async (shop) => {
+      const suggestions = await getShopSkusAndTitles(user, shop.id);
+      return {
+        id: shop.id,
+        name: shop.name,
+        platform: shop.platform,
+        skuSuggestions: suggestions.skus,
+        titleSuggestions: suggestions.titles,
+      };
+    }),
+  );
+  const printMappings: PrintProductMappingVM[] = (
+    await withUserContext(user, (tx) =>
+      tx
+        .select({
+          id: printProductMappings.id,
+          shopId: printProductMappings.shopId,
+          provider: printProductMappings.provider,
+          matchType: printProductMappings.matchType,
+          sourceSku: printProductMappings.sourceSku,
+          titleContains: printProductMappings.titleContains,
+          variantContains: printProductMappings.variantContains,
+          label: printProductMappings.label,
+          providerProductId: printProductMappings.providerProductId,
+          providerConfig: printProductMappings.providerConfig,
+          active: printProductMappings.active,
+        })
+        .from(printProductMappings)
+        .where(and(eq(printProductMappings.businessId, selected.id), eq(printProductMappings.active, true))),
+    )
+  ).map((mapping) => ({
+    ...mapping,
+    shopName: styleShops.find((shop) => shop.id === mapping.shopId)?.name ?? "Unknown shop",
+  }));
+
   return (
     <Page className="grid gap-6 lg:grid-cols-[12rem_minmax(0,1fr)]">
       <aside>
@@ -360,6 +402,16 @@ export default async function SettingsPage({
                 <ShopStylesPanel shops={styleShops} />
               </DataPanel>
             )}
+          </section>
+        )}
+
+        {activeSection === "print-fulfilment" && (
+          <section className="flex flex-col gap-4">
+            <SectionHeader
+              title="Print Fulfilment"
+              description="Map sold physical products to provider products. Exact SKU matches run before title/variant fallback rules."
+            />
+            <PrintProductMappingsPanel shops={printMappingShops} mappings={printMappings} />
           </section>
         )}
 

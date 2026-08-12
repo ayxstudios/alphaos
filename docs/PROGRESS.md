@@ -65,6 +65,18 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
   blocked earning instead of blocking customer workflow. Admin Payouts page shows
   period totals, blocked rows, drilldown, paid marking, voided rows, and CSV
   export (`test:earnings`).
+- **Manual print fulfilment.** Approved physical orders appear in
+  `/queue/print` with final/latest portrait artwork, product details, shipping
+  address, provider choice, product mapping status, and tracking controls.
+  Shopify imports now persist `shippingAddress`; Etsy imports persist receipt
+  address fields when Etsy exposes them, but the stored receipt audit found only
+  79/3,170 existing Etsy receipts with non-empty usable address fields, so Etsy
+  physical orders must visibly support VA-entered addresses. Product mappings are
+  configured in Settings → Print Fulfilment: exact SKU wins, title/variant
+  contains is fallback, and unmapped products block manual print start. Tracking
+  now moves AlphaOS orders only to `shipped`; `complete` remains a separate
+  transition. Shopify/Etsy tracking writeback is attempted and any platform
+  failure is recorded on the print job instead of silently stalling.
 
 ## Built but NOT tested against a live API
 
@@ -109,8 +121,8 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
 4. **Live-test designer payout flow** after configuring real style rates for
    PixArt/Lumina.
 5. **Designer submission upload** (assets `type=submission`) reusing the R2 flow.
-6. **Print provider integration** (`print_jobs` table exists; Shopify writeback
-   exists, but no Gelato/Luma Prints API is wired).
+6. **Print provider API integration** (manual path + product mapping exist, but
+   no Gelato/Luma Prints API submission/webhooks are wired).
 
 ## Half-finished / stubs
 

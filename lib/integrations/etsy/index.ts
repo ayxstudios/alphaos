@@ -7,6 +7,7 @@
 
 export { EtsyClient, discoverEtsyShopId, etsyApiKey } from "./client";
 export { syncShopReceipts, getShopReceipts, type SyncSummary } from "./receipts";
+export { createEtsyReceiptShipment, type EtsyShipmentResult } from "./fulfillment";
 export { resolveFigureCount, resolveStyle } from "./figures";
 export {
   buildAuthorizeUrl,

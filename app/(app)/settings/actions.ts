@@ -11,7 +11,7 @@ import {
   getBusinessGmailCredentials,
   setBusinessGmailCredentials,
 } from "@/lib/db/credentials";
-import { shops, businesses, emailTemplates } from "@/lib/db/schema";
+import { shops, businesses, emailTemplates, printProductMappings } from "@/lib/db/schema";
 import { reresolveShop, type ReresolveSummary } from "@/lib/orders/resolution";
 import type { FigureRule } from "@/lib/integrations/figures";
 import type { GmailCredentials } from "@/lib/integrations/gmail";
@@ -521,6 +521,91 @@ export async function runNotificationDryRun(): Promise<
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Dry-run failed" };
   }
+}
+
+/* --- Print fulfilment ---------------------------------------------------- */
+
+function assertPrintProvider(value: string): "gelato" | "lumaprints" {
+  if (value === "gelato" || value === "lumaprints") return value;
+  throw new Error("Unknown print provider");
+}
+
+function assertPrintMatchType(value: string): "sku_exact" | "title_variant_contains" {
+  if (value === "sku_exact" || value === "title_variant_contains") return value;
+  throw new Error("Unknown print mapping matcher");
+}
+
+export async function savePrintProductMapping(formData: FormData): Promise<void> {
+  const user = await requireAdmin();
+  const mappingId = String(formData.get("mappingId") ?? "").trim();
+  const shopId = String(formData.get("shopId") ?? "").trim();
+  const provider = assertPrintProvider(String(formData.get("provider") ?? ""));
+  const matchType = assertPrintMatchType(String(formData.get("matchType") ?? "sku_exact"));
+  const sourceSku = String(formData.get("sourceSku") ?? "").trim();
+  const titleContains = String(formData.get("titleContains") ?? "").trim();
+  const variantContains = String(formData.get("variantContains") ?? "").trim();
+  const label = String(formData.get("label") ?? "").trim();
+  const providerProductId = String(formData.get("providerProductId") ?? "").trim();
+  const providerConfigRaw = String(formData.get("providerConfig") ?? "").trim();
+  if (!shopId || !providerProductId) throw new Error("Shop and provider product id are required");
+  if (matchType === "sku_exact" && !sourceSku) throw new Error("Exact SKU mappings require a source SKU");
+  if (matchType === "title_variant_contains" && !titleContains && !variantContains) {
+    throw new Error("Contains mappings require a title or variant fragment");
+  }
+
+  let providerConfig: unknown = null;
+  if (providerConfigRaw) {
+    try {
+      providerConfig = JSON.parse(providerConfigRaw);
+    } catch {
+      throw new Error("Provider config must be valid JSON");
+    }
+  }
+
+  await withUserContext(user, async (tx) => {
+    const [shop] = await tx
+      .select({ id: shops.id, businessId: shops.businessId })
+      .from(shops)
+      .where(eq(shops.id, shopId))
+      .limit(1);
+    if (!shop) throw new Error("Shop not found");
+
+    const values = {
+      businessId: shop.businessId,
+      shopId,
+      provider,
+      matchType,
+      sourceSku: sourceSku || null,
+      titleContains: titleContains || null,
+      variantContains: variantContains || null,
+      label: label || null,
+      providerProductId,
+      providerConfig,
+      active: true,
+      updatedAt: new Date(),
+    };
+    if (mappingId) {
+      await tx.update(printProductMappings).set(values).where(eq(printProductMappings.id, mappingId));
+    } else {
+      await tx.insert(printProductMappings).values(values);
+    }
+  });
+  revalidatePath("/settings");
+  revalidatePath("/queue/print");
+}
+
+export async function deactivatePrintProductMapping(formData: FormData): Promise<void> {
+  const user = await requireAdmin();
+  const mappingId = String(formData.get("mappingId") ?? "").trim();
+  if (!mappingId) throw new Error("Missing mapping");
+  await withUserContext(user, (tx) =>
+    tx
+      .update(printProductMappings)
+      .set({ active: false, updatedAt: new Date() })
+      .where(eq(printProductMappings.id, mappingId)),
+  );
+  revalidatePath("/settings");
+  revalidatePath("/queue/print");
 }
 
 /* --- Email templates (per business) ------------------------------------- */

@@ -15,6 +15,11 @@ import { classifyOrder, photoRequestEnabled } from "../classify";
 import { reconcileManualOrder } from "@/lib/orders/reconcile";
 import { runAutoAssign } from "@/lib/orders/assign";
 import { isBeforeBackfillCutoff } from "@/lib/orders/archive";
+import {
+  normalizeShopifyAddress,
+  upsertOrderShippingAddress,
+  type ShippingAddressInput,
+} from "@/lib/shipping/address";
 import type {
   GqlOrder,
   GqlOrdersResponse,
@@ -77,6 +82,7 @@ export type NormalizedOrder = {
   email: string | null;
   firstName: string | null;
   lastName: string | null;
+  shippingAddress?: ShippingAddressInput | null;
   lineItems: NormalizedLineItem[];
 };
 
@@ -110,6 +116,19 @@ query($cursor: String, $q: String) {
       createdAt
       email
       customer { firstName lastName email }
+      shippingAddress {
+        firstName
+        lastName
+        company
+        address1
+        address2
+        city
+        province
+        provinceCode
+        zip
+        countryCodeV2
+        phone
+      }
       lineItems(first: 50) {
         nodes {
           sku
@@ -409,6 +428,13 @@ export async function importShopifyOrder(args: {
     );
     if (assetValues.length) await tx.insert(assets).values(assetValues);
 
+    await upsertOrderShippingAddress(tx, {
+      businessId: shop.businessId,
+      orderId,
+      source: "platform",
+      address: order.shippingAddress ?? null,
+    });
+
     // Shopify orders route straight to a designer: the moment an order is ready to
     // assign (photos attached, figures resolved, has an email) we auto-assign it to
     // the best-ranked available designer, so it lands in their queue instead of
@@ -498,6 +524,19 @@ query($id: ID!) {
     createdAt
     email
     customer { firstName lastName email }
+    shippingAddress {
+      firstName
+      lastName
+      company
+      address1
+      address2
+      city
+      province
+      provinceCode
+      zip
+      countryCodeV2
+      phone
+    }
     lineItems(first: 50) {
       nodes {
         sku
@@ -558,6 +597,7 @@ export function normalizeGraphqlOrder(o: GqlOrder): NormalizedOrder {
     email: o.email ?? o.customer?.email ?? null,
     firstName: o.customer?.firstName ?? null,
     lastName: o.customer?.lastName ?? null,
+    shippingAddress: normalizeShopifyAddress(o.shippingAddress),
     lineItems: o.lineItems.nodes.map((li) => {
       const attrs = li.customAttributes ?? [];
       return {

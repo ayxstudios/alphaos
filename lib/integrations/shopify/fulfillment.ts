@@ -50,6 +50,7 @@ export type ShopifyTrackingInput = {
   trackingCompany?: string;
   trackingUrl?: string;
   notifyCustomer?: boolean;
+  closeOrder?: boolean;
 };
 
 const ORDER_FULFILLMENT_QUERY = `
@@ -166,19 +167,21 @@ export async function fulfillShopifyOrderWithTracking(
 
   let closed = false;
   let closeWarning: string | null = null;
-  const closeData = await client
-    .graphql<OrderCloseData>(ORDER_CLOSE_MUTATION, { input: { id: order.id } })
-    .catch((error) => {
-      closeWarning = error instanceof Error ? error.message : String(error);
-      return null;
-    });
+  if (tracking.closeOrder) {
+    const closeData = await client
+      .graphql<OrderCloseData>(ORDER_CLOSE_MUTATION, { input: { id: order.id } })
+      .catch((error) => {
+        closeWarning = error instanceof Error ? error.message : String(error);
+        return null;
+      });
 
-  if (closeData) {
-    const closePayload = closeData.orderClose;
-    if (closePayload.userErrors.length || !closePayload.order) {
-      closeWarning = userErrorMessage(closePayload.userErrors) || "Shopify did not close the order.";
-    } else {
-      closed = true;
+    if (closeData) {
+      const closePayload = closeData.orderClose;
+      if (closePayload.userErrors.length || !closePayload.order) {
+        closeWarning = userErrorMessage(closePayload.userErrors) || "Shopify did not close the order.";
+      } else {
+        closed = true;
+      }
     }
   }
 

@@ -74,6 +74,13 @@ export type EtsyReceipt = {
   created_timestamp: number; // unix seconds
   name: string | null; // buyer / ship-to name
   buyer_email: string | null; // requires email_r
+  first_line?: string | null;
+  second_line?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
+  country_iso?: string | null;
+  formatted_address?: string | null;
   transactions: EtsyTransaction[];
 };
 

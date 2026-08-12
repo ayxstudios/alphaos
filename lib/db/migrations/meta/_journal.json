@@ -176,6 +176,13 @@
       "when": 1786500593451,
       "tag": "0024_broken_masked_marvel",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786503601633,
+      "tag": "0025_silent_blazing_skull",
+      "breakpoints": true
     }
   ]
 }

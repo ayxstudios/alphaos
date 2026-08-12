@@ -88,6 +88,19 @@ export type GqlOrder = {
   createdAt: string; // ISO
   email: string | null;
   customer: { firstName: string | null; lastName: string | null; email: string | null } | null;
+  shippingAddress: {
+    firstName: string | null;
+    lastName: string | null;
+    company: string | null;
+    address1: string | null;
+    address2: string | null;
+    city: string | null;
+    province: string | null;
+    provinceCode: string | null;
+    zip: string | null;
+    countryCodeV2: string | null;
+    phone: string | null;
+  } | null;
   lineItems: { nodes: GqlLineItem[] };
 };
 

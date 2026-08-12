@@ -56,7 +56,7 @@ export function TrackingCompleteForm({
     <div className="mt-4 border-t border-line pt-4">
       <div className="flex items-center gap-2 text-sm font-medium text-ink">
         <Truck size={16} />
-        Add final tracking
+        Add shipping tracking
       </div>
       <div className="mt-3 flex flex-col gap-3">
         <Select
@@ -110,7 +110,7 @@ export function TrackingCompleteForm({
           onClick={submit}
         >
           <CheckCircle size={15} />
-          {isShopify ? "Add tracking & complete in Shopify" : "Add tracking & complete"}
+          {isShopify ? "Add tracking & fulfill in Shopify" : "Add tracking & mark shipped"}
         </Button>
       </div>
     </div>

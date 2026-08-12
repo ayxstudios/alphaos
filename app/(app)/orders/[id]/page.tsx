@@ -272,6 +272,8 @@ export default async function OrderDetailPage({
           trackingUrl: printJobs.trackingUrl,
           shopifyFulfillmentId: printJobs.shopifyFulfillmentId,
           shopifySyncedAt: printJobs.shopifySyncedAt,
+          platformSyncedAt: printJobs.platformSyncedAt,
+          platformSyncError: printJobs.platformSyncError,
           createdAt: printJobs.createdAt,
         })
         .from(printJobs)
@@ -707,13 +709,17 @@ export default async function OrderDetailPage({
                     }
                   />
                   <div>
-                    <dt className="text-xs font-medium text-slate">Shopify writeback</dt>
+                    <dt className="text-xs font-medium text-slate">Platform writeback</dt>
                     <dd className="mt-0.5 text-slate">
-                      {order.source !== "shopify"
-                        ? "Not applicable for this order source."
-                        : latestTracking?.shopifyFulfillmentId
+                      {latestTracking?.platformSyncError
+                        ? `Failed: ${latestTracking.platformSyncError}`
+                        : order.source === "shopify" && latestTracking?.shopifyFulfillmentId
                           ? `Fulfilled in Shopify · ${fmtDateTime(latestTracking.shopifySyncedAt)}`
-                          : "No Shopify fulfillment created from AlphaOS yet."}
+                          : order.source === "etsy" && latestTracking?.platformSyncedAt
+                            ? `Shipment created in Etsy · ${fmtDateTime(latestTracking.platformSyncedAt)}`
+                            : order.source === "manual"
+                              ? "Not applicable for manual orders."
+                              : "No platform writeback created from AlphaOS yet."}
                     </dd>
                   </div>
                 </>
