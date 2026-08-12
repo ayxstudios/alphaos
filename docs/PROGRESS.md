@@ -40,16 +40,17 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
 - **Reconciliation.** Manual orders promote in place when the platform later
   imports the same number (see decisions).
 - **Scheduled jobs.** Vercel Cron routes exist for all-shop order sync, Gmail
-  inbound polling + queued-email flushing, and R2 retention. Shop sync, Gmail
-  poll health, queued email, and unmatched reply health are surfaced on the
-  dashboard.
-- **Daily health dashboard.** Dashboard computes fresh per-scope metrics on
-  load: shop sync staleness, queued/failed email, stale unmatched replies,
-  blocked earnings, stale intake, proof no-response, order throughput, delivery
-  timeliness, QC/revision rates, capacity, and unassigned work. The narrative is
-  generated once daily from aggregate-only metrics and cached in
-  `daily_health_reports`; if Anthropic is unavailable, the numbers still render
-  with a cached/plain fallback.
+  inbound polling + queued-email flushing, daily health briefing delivery, and
+  R2 retention. Shop sync, Gmail poll health, queued email, and unmatched reply
+  health are surfaced on `/health` for admins.
+- **VA dashboard + admin system health.** `/dashboard` is the selected-business
+  VA work launcher: awaiting QC, needs details, overdue, awaiting customer,
+  ready to print, email triage, and unassigned work, each linking directly to
+  the relevant queue/view. `/health` is admin-only and holds pipeline integrity,
+  per-shop sync status, and the daily narrative. Health metrics compute fresh on
+  load; the narrative is generated once daily from aggregate-only metrics and
+  cached in `daily_health_reports`; if Anthropic is unavailable, the numbers
+  still render with a cached/plain fallback.
 - **Morning health briefing delivery.** Vercel Cron calls
   `/api/cron/daily-health` at both UTC hours that can be 7am in Melbourne; the
   route checks `Australia/Melbourne` local time so daylight saving does not shift
@@ -57,7 +58,7 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
   configured in Settings → Notifications with explicit active-admin recipients.
   The email sends via that business's Gmail integration, records sent/failure
   state on `daily_health_reports`, and creates in-app notifications linking to
-  the dashboard. If Anthropic is unavailable, the numbers still send without an
+  `/health`. If Anthropic is unavailable, the numbers still send without an
   AI narrative; if Gmail is missing or needs reauth, admins get a visible failure
   notification.
 - **Notification SLA sweep (in-app).** A 15-minute cron route detects due-soon,

@@ -18,13 +18,15 @@ import {
   Truck,
   Users,
   Settings,
+  AlertTriangle,
   type IconProps,
 } from "@/components/ui/icons";
 
 type NavItem = { label: string; href: string; icon: ComponentType<IconProps> };
 
-const STAFF_NAV: NavItem[] = [
+const ADMIN_NAV: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: Grid },
+  { label: "System Health", href: "/health", icon: AlertTriangle },
   { label: "Orders", href: "/orders", icon: Package },
   { label: "Boards", href: "/board", icon: Columns },
   { label: "Ready to Print", href: "/queue/print", icon: Truck },
@@ -33,6 +35,16 @@ const STAFF_NAV: NavItem[] = [
   { label: "Payouts", href: "/payouts", icon: ListChecks },
   { label: "Customers", href: "/customers", icon: Users },
   { label: "Settings", href: "/settings", icon: Settings },
+];
+
+const VA_NAV: NavItem[] = [
+  { label: "Dashboard", href: "/dashboard", icon: Grid },
+  { label: "Orders", href: "/orders", icon: Package },
+  { label: "Boards", href: "/board", icon: Columns },
+  { label: "Ready to Print", href: "/queue/print", icon: Truck },
+  { label: "Designers", href: "/designers", icon: Palette },
+  { label: "Portrait Styles", href: "/styles", icon: Brush },
+  { label: "Customers", href: "/customers", icon: Users },
 ];
 
 const DESIGNER_NAV: NavItem[] = [
@@ -55,7 +67,8 @@ export function Sidebar({
   onNavigate,
 }: SidebarProps) {
   const pathname = usePathname();
-  const nav = role === "designer" ? DESIGNER_NAV : STAFF_NAV;
+  const nav = role === "designer" ? DESIGNER_NAV : role === "admin" ? ADMIN_NAV : VA_NAV;
+  const homeHref = role === "designer" ? "/board" : "/dashboard";
 
   return (
     <aside
@@ -71,7 +84,7 @@ export function Sidebar({
         )}
       >
         <Link
-          href="/dashboard"
+          href={homeHref}
           onClick={onNavigate}
           aria-label="AlphaOS dashboard"
           className={cn(

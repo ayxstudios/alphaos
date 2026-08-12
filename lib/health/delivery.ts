@@ -244,8 +244,8 @@ async function markSentAndNotify(business: BusinessSetting, metrics: HealthMetri
         userId: recipient.id,
         type: "daily_health.sent",
         title: `Morning briefing sent for ${business.name}`,
-        body: `${summaryLine(metrics)} Open the dashboard for the full report.`,
-        href: "/dashboard",
+        body: `${summaryLine(metrics)} Open System Health for the full report.`,
+        href: "/health",
         metadata: { reportDate: metrics.reportDate, healthy: metrics.healthy },
       })),
     );
@@ -322,7 +322,7 @@ function buildHealthEmail(
     narrativeText ? "Narrative" : "Narrative unavailable",
     narrativeText ?? "Metrics are current, but the narrative was not generated.",
     "",
-    `Dashboard: ${appUrl("/dashboard")}`,
+    `System Health: ${appUrl("/health")}`,
     `Sent to: ${recipients.map((recipient) => recipient.email).join(", ")}`,
   ].join("\n");
 
@@ -341,7 +341,7 @@ function buildHealthEmail(
     `<p style="font-size:15px;line-height:1.55;margin:0;color:${narrativeText ? "#16222E" : "#5C6B7A"}">${escapeHtml(narrativeText ?? "Metrics are current, but the narrative was not generated.")}</p>`,
     `</div>`,
     `<div style="padding:16px 18px;border-top:1px solid #E6E2DC">`,
-    `<a href="${appUrl("/dashboard")}" style="display:inline-block;background:#5B4BC4;color:#FFFFFF;text-decoration:none;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700">Open dashboard</a>`,
+    `<a href="${appUrl("/health")}" style="display:inline-block;background:#5B4BC4;color:#FFFFFF;text-decoration:none;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700">Open System Health</a>`,
     `</div>`,
     `</div>`,
     `</div>`,

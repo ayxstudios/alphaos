@@ -816,12 +816,14 @@ export default async function OrdersPage({
       </FilterBar>
 
       {(outbox.length > 0 || unmatched.length > 0) && (
-        <OutboxView
-          outbox={outbox}
-          unmatched={unmatched}
-          sendingEnabled={emailConfig.emailSendingEnabled}
-          businessId={selected.id}
-        />
+        <div id="outbox" className="scroll-mt-24">
+          <OutboxView
+            outbox={outbox}
+            unmatched={unmatched}
+            sendingEnabled={emailConfig.emailSendingEnabled}
+            businessId={selected.id}
+          />
+        </div>
       )}
 
       <TableShell>

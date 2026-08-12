@@ -784,21 +784,21 @@ function buildLinks(input: {
     {
       label: "Queued emails",
       count: input.queuedEmails,
-      href: "/orders",
+      href: "/orders?view=active#outbox",
       tone: input.queuedEmails > 0 ? "warning" : "success",
       detail: "System mail waiting for Gmail",
     },
     {
       label: "Failed emails",
       count: input.failedEmails,
-      href: "/orders",
+      href: "/orders?view=active#outbox",
       tone: input.failedEmails > 0 ? "danger" : "success",
       detail: "Customer email needs intervention",
     },
     {
       label: "Unmatched replies >24h",
       count: input.staleUnmatchedReplies,
-      href: "/orders",
+      href: "/orders?view=active#outbox",
       tone: input.staleUnmatchedReplies > 0 ? "danger" : "success",
       detail: "Replies captured without an order thread",
     },
@@ -857,7 +857,7 @@ function buildLinks(input: {
       count: input.overdueNow,
       href: "/orders?view=overdue",
       tone: input.overdueNow > 0 ? "danger" : "success",
-      detail: input.worstOverdueHours == null ? "No overdue work" : `Worst is ${input.worstOverdueHours}h overdue`,
+      detail: overdueDetail(input.worstOverdueHours),
     },
     {
       label: "QC fail rate",
@@ -890,7 +890,7 @@ function buildLinks(input: {
       count: input.unassigned,
       href: "/orders?view=unassigned",
       tone: input.unassigned > 0 ? "warning" : "success",
-      detail: input.noEligibleSample > 0 ? `${input.noEligibleSample} sampled with no eligible style match` : undefined,
+      detail: undefined,
     },
   ];
 
@@ -899,6 +899,15 @@ function buildLinks(input: {
 
 function rateDetail(label: string, rate: number | null) {
   return rate == null ? `${label}: no data` : `${label}: ${rate}%`;
+}
+
+function overdueDetail(hours: number | null) {
+  if (hours == null) return "No overdue work";
+  if (hours >= 48) {
+    const days = Math.floor(hours / 24);
+    return `Worst is ${days} day${days === 1 ? "" : "s"} overdue`;
+  }
+  return `Worst is ${hours}h overdue`;
 }
 
 export async function loadHealthMetrics(user: RequestUser, scope: HealthScope): Promise<HealthMetrics> {

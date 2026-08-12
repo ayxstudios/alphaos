@@ -1,305 +1,230 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import type { ReactElement } from "react";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
-import { loadHealthMetrics, type CountLink, type DesignerCapacity, type ShopSyncHealth } from "@/lib/health/daily-report";
-import { loadDailyNarrative } from "@/lib/health/narrative";
+import { withUserContext } from "@/lib/db";
+import { messages, orders } from "@/lib/db/schema";
+import { liveOrderWhere } from "@/lib/orders/archive";
 import { loadShellData } from "@/lib/shell/context";
-import {
-  Badge,
-  DataPanel,
-  EmptyState,
-  Page,
-  PageHeader,
-  SectionHeader,
-} from "@/components/ui";
-import { AlertTriangle, Grid, ListChecks } from "@/components/ui/icons";
+import { Badge, DataPanel, Page, PageHeader } from "@/components/ui";
+import { AlertTriangle, ArrowRight, CheckCircle, Inbox, Mail, Printer, User } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ scope?: string }>;
+const ACTIVE_STATES = [
+  "awaiting_details",
+  "triage",
+  "awaiting_photos",
+  "ready_to_assign",
+  "in_design",
+  "awaiting_qc",
+  "awaiting_approval",
+  "approved",
+  "printing",
+  "shipped",
+  "fulfillment_only",
+  "on_hold",
+] as const;
 
-function formatDateTime(value: string | null) {
-  if (!value) return "Never";
-  return new Intl.DateTimeFormat("en-AU", {
-    day: "2-digit",
-    month: "short",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
+type WorkItem = {
+  label: string;
+  count: number;
+  href: string;
+  detail: string;
+  tone: "danger" | "warning" | "neutral" | "success";
+  icon: (props: { size?: number; className?: string }) => ReactElement;
+};
+
+function dateOrNull(value: Date | string | null): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
 }
 
-function formatGenerated(value: string | null) {
-  if (!value) return "Metrics current";
-  return `Narrative cached ${formatDateTime(value)}`;
+function overdueAge(now: Date, dueAt: Date | string | null): string {
+  const due = dateOrNull(dueAt);
+  if (!due) return "No due date";
+  const hours = Math.max(0, (now.getTime() - due.getTime()) / 3_600_000);
+  if (hours >= 48) {
+    const days = Math.floor(hours / 24);
+    return `Worst is ${days} day${days === 1 ? "" : "s"} overdue`;
+  }
+  const rounded = Math.round(hours * 10) / 10;
+  return `Worst is ${rounded}h overdue`;
 }
 
-function metricClass(tone: CountLink["tone"]) {
-  return {
-    neutral: "border-line hover:border-slate/40",
-    success: "border-sage/20 hover:border-sage/35",
-    warning: "border-amber/25 hover:border-amber/40",
-    danger: "border-rose/20 hover:border-rose/40",
-  }[tone];
-}
-
-function badgeVariant(tone: CountLink["tone"]) {
-  return tone === "neutral" ? "neutral" : tone;
-}
-
-function pct(value: number | null) {
-  return value == null ? "No data" : `${value}%`;
-}
-
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
-  const { selected } = await loadShellData(user);
-  const sp = await searchParams;
-  const allBusinesses = user.role === "admin" && sp.scope === "all";
-  const scope = allBusinesses
-    ? ({ kind: "all" } as const)
-    : ({ kind: "business", businessId: selected.id, businessName: selected.name } as const);
+  if (user.role === "designer") redirect("/board");
 
-  const metrics = await loadHealthMetrics(user, scope);
-  const narrative = await loadDailyNarrative(user, metrics);
+  const { selected } = await loadShellData(user);
+  const now = new Date();
+  const counts = await withUserContext(user, async (tx) => {
+    const businessFilter = eq(orders.businessId, selected.id);
+    const liveFilter = liveOrderWhere();
+
+    const [orderCounts] = await tx
+      .select({
+        awaitingQc: sql<number>`count(*) filter (where ${eq(orders.status, "awaiting_qc")})::int`,
+        needsDetails: sql<number>`count(*) filter (where ${eq(orders.status, "awaiting_details")})::int`,
+        overdue: sql<number>`count(*) filter (where ${inArray(orders.status, [...ACTIVE_STATES])} and ${orders.dueAt} is not null and ${orders.dueAt} < now())::int`,
+        worstDueAt: sql<Date | string | null>`min(${orders.dueAt}) filter (where ${inArray(orders.status, [...ACTIVE_STATES])} and ${orders.dueAt} is not null and ${orders.dueAt} < now())`,
+        awaitingCustomer: sql<number>`count(*) filter (where ${eq(orders.status, "awaiting_approval")})::int`,
+        readyToPrint: sql<number>`count(*) filter (where ${eq(orders.status, "approved")} and exists (select 1 from order_items oi where oi.order_id = ${orders.id} and oi.product_type = 'physical'))::int`,
+        unassigned: sql<number>`count(*) filter (where ${eq(orders.status, "ready_to_assign")} and not exists (select 1 from assignments a where a.order_id = ${orders.id} and a.active))::int`,
+      })
+      .from(orders)
+      .where(and(businessFilter, liveFilter));
+
+    const [emailCounts] = await tx
+      .select({
+        unmatched: sql<number>`count(*) filter (where ${eq(messages.direction, "inbound")} and ${messages.orderId} is null)::int`,
+        outboxAction: sql<number>`count(*) filter (where ${eq(messages.direction, "outbound")} and ${inArray(messages.status, ["draft", "failed"])})::int`,
+      })
+      .from(messages)
+      .where(and(eq(messages.businessId, selected.id), isNull(messages.archivedAt)));
+
+    return {
+      awaitingQc: orderCounts?.awaitingQc ?? 0,
+      needsDetails: orderCounts?.needsDetails ?? 0,
+      overdue: orderCounts?.overdue ?? 0,
+      worstDueAt: orderCounts?.worstDueAt ?? null,
+      awaitingCustomer: orderCounts?.awaitingCustomer ?? 0,
+      readyToPrint: orderCounts?.readyToPrint ?? 0,
+      unassigned: orderCounts?.unassigned ?? 0,
+      unmatched: emailCounts?.unmatched ?? 0,
+      outboxAction: emailCounts?.outboxAction ?? 0,
+    };
+  });
+
+  const emailTriage = counts.unmatched + counts.outboxAction;
+  const work: WorkItem[] = [
+    {
+      label: "Awaiting QC",
+      count: counts.awaitingQc,
+      href: "/orders?view=awaiting_qc",
+      detail: "Portraits ready for VA review",
+      tone: counts.awaitingQc ? "warning" : "success",
+      icon: CheckCircle,
+    },
+    {
+      label: "Needs details",
+      count: counts.needsDetails,
+      href: "/orders?view=needs_details",
+      detail: "Etsy orders waiting for VA completion",
+      tone: counts.needsDetails ? "warning" : "success",
+      icon: Inbox,
+    },
+    {
+      label: "Overdue orders",
+      count: counts.overdue,
+      href: "/orders?view=overdue&sort=due&dir=asc",
+      detail: counts.overdue ? overdueAge(now, counts.worstDueAt) : "No overdue work",
+      tone: counts.overdue ? "danger" : "success",
+      icon: AlertTriangle,
+    },
+    {
+      label: "Awaiting customer",
+      count: counts.awaitingCustomer,
+      href: "/orders?view=awaiting_customer",
+      detail: "Proofs waiting for customer approval or revisions",
+      tone: counts.awaitingCustomer ? "warning" : "success",
+      icon: Mail,
+    },
+    {
+      label: "Ready to print",
+      count: counts.readyToPrint,
+      href: "/queue/print",
+      detail: "Approved physical orders waiting for print",
+      tone: counts.readyToPrint ? "warning" : "success",
+      icon: Printer,
+    },
+    {
+      label: "Email triage",
+      count: emailTriage,
+      href: "/orders?view=active#outbox",
+      detail: `${counts.unmatched} unmatched replies, ${counts.outboxAction} outbox items`,
+      tone: emailTriage ? "danger" : "success",
+      icon: Mail,
+    },
+    {
+      label: "Unassigned orders",
+      count: counts.unassigned,
+      href: "/orders?view=unassigned",
+      detail: "Ready to assign with no active designer",
+      tone: counts.unassigned ? "warning" : "success",
+      icon: User,
+    },
+  ];
 
   return (
     <Page>
       <PageHeader
         title="Dashboard"
-        description="Daily health report for pipeline integrity and operational movement."
-        eyebrow={metrics.scopeLabel}
+        description="What needs doing today for the selected business."
+        eyebrow={selected.name}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {user.role === "admin" && (
-              <div className="inline-flex rounded-input border border-line bg-surface p-1 text-sm shadow-sm">
-                <Link
-                  href="/dashboard"
-                  className={cn(
-                    "rounded-[6px] px-3 py-1.5 font-medium text-slate",
-                    !allBusinesses && "bg-pigment-soft text-pigment",
-                  )}
-                >
-                  Selected
-                </Link>
-                <Link
-                  href="/dashboard?scope=all"
-                  className={cn(
-                    "rounded-[6px] px-3 py-1.5 font-medium text-slate",
-                    allBusinesses && "bg-pigment-soft text-pigment",
-                  )}
-                >
-                  All Businesses
-                </Link>
-              </div>
-            )}
-            <Link
-              href="/orders"
-              className="inline-flex h-10 items-center rounded-input bg-pigment px-3 text-sm font-medium text-surface transition-opacity hover:opacity-90"
-            >
-              View orders
-            </Link>
-          </div>
+          <Link
+            href="/orders"
+            className="inline-flex h-10 items-center rounded-input bg-pigment px-3 text-sm font-medium text-surface transition-opacity hover:opacity-90"
+          >
+            View orders
+          </Link>
         }
       />
 
-      <DataPanel className="p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="max-w-4xl">
-            <p className="text-sm font-semibold text-ink">Daily briefing</p>
-            <p className="mt-2 text-sm leading-6 text-slate">{narrative.text}</p>
-          </div>
-          <Badge variant={metrics.healthy ? "success" : "warning"} dot>
-            {metrics.healthy ? "Healthy" : "Needs attention"}
-          </Badge>
-        </div>
-        <p className="mt-3 text-xs text-slate">{formatGenerated(narrative.generatedAt)}</p>
-      </DataPanel>
-
-      <div className="grid gap-5 xl:grid-cols-2">
-        <DataPanel className="p-4">
-          <SectionHeader
-            title="Pipeline integrity"
-            description="Signals that the system itself is capturing, sending, and syncing correctly."
-          />
-          <MetricGrid metrics={metrics.links.pipeline} />
-        </DataPanel>
-
-        <DataPanel className="p-4">
-          <SectionHeader
-            title="Operational state"
-            description="Signals that the work is moving through the business."
-          />
-          <MetricGrid metrics={metrics.links.operations} />
-        </DataPanel>
-      </div>
-
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_24rem]">
-        <DataPanel className="overflow-hidden">
-          <div className="border-b border-line px-4 py-3">
-            <SectionHeader
-              title="Shop syncs"
-              description="Each connected shop should sync successfully at least once per hour."
-            />
-          </div>
-          {metrics.pipeline.shops.length === 0 ? (
-            <EmptyState
-              icon={Grid}
-              headline="No connected shops"
-              body="Connected Etsy and Shopify shops will appear here with their last successful sync time."
-            />
-          ) : (
-            <div className="divide-y divide-line">
-              {metrics.pipeline.shops.map((shop) => (
-                <ShopSyncRow key={shop.id} shop={shop} />
-              ))}
-            </div>
-          )}
-        </DataPanel>
-
-        <DataPanel className="p-4">
-          <SectionHeader title="Quality and capacity" />
-          <div className="mt-4 space-y-4">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate">Delivery</p>
-              <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
-                <MiniMetric label="On time yesterday" value={pct(metrics.operations.yesterday.onTimeRate)} />
-                <MiniMetric label="On time 7 days" value={pct(metrics.operations.trailing7.onTimeRate)} />
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-slate">QC</p>
-              <div className="mt-2 rounded-card border border-line p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-slate">Fail rate</span>
-                  <span className="text-sm font-semibold text-ink">{pct(metrics.operations.trailing7.qcFailRate)}</span>
-                </div>
-                <p className="mt-2 text-xs text-slate">
-                  {metrics.operations.topFailedChecklistItem
-                    ? `Most failed: ${metrics.operations.topFailedChecklistItem.label} (${metrics.operations.topFailedChecklistItem.count})`
-                    : "No failed checklist items in the trailing 7 days."}
-                </p>
-              </div>
-            </div>
-
-            <CapacityList
-              title="Over capacity"
-              empty="No designers are over capacity."
-              designers={metrics.operations.designersOverCapacity}
-              tone="warning"
-            />
-            <CapacityList
-              title="Idle designers"
-              empty="No idle designers with a configured capacity."
-              designers={metrics.operations.designersIdle}
-              tone="neutral"
-            />
-          </div>
-        </DataPanel>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {work.map((item, index) => (
+          <WorkCard key={item.label} item={item} priority={index + 1} />
+        ))}
       </div>
     </Page>
   );
 }
 
-function MetricGrid({ metrics }: { metrics: CountLink[] }) {
+function WorkCard({ item, priority }: { item: WorkItem; priority: number }) {
+  const Icon = item.icon;
   return (
-    <div className="mt-4 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
-      {metrics.map((metric) => (
-        <Link
-          key={metric.label}
-          href={metric.href}
-          className={cn(
-            "block rounded-card border bg-surface p-3 transition-colors hover:bg-canvas",
-            metricClass(metric.tone),
-          )}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate">{metric.label}</p>
-            <Badge variant={badgeVariant(metric.tone)} dot={metric.tone !== "neutral"}>
-              {metric.count}
-            </Badge>
+    <Link href={item.href} className="group block">
+      <DataPanel className={cn(
+        "h-full p-5 transition-colors group-hover:bg-canvas",
+        item.tone === "danger" && "border-rose/25",
+        item.tone === "warning" && "border-amber/25",
+        item.tone === "success" && "border-sage/20",
+      )}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className={cn(
+              "flex size-10 items-center justify-center rounded-input",
+              item.tone === "danger" ? "bg-rose/10 text-rose" :
+                item.tone === "warning" ? "bg-amber/10 text-amber" :
+                  item.tone === "success" ? "bg-sage/10 text-sage" :
+                    "bg-pigment-soft text-pigment",
+            )}>
+              <Icon size={18} />
+            </span>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate">Priority {priority}</p>
+              <h2 className="mt-1 text-base font-semibold text-ink">{item.label}</h2>
+            </div>
           </div>
-          {metric.detail && <p className="mt-3 text-xs leading-5 text-slate">{metric.detail}</p>}
-        </Link>
-      ))}
-    </div>
-  );
-}
-
-function ShopSyncRow({ shop }: { shop: ShopSyncHealth }) {
-  return (
-    <Link href="/settings" className="grid gap-2 px-4 py-3 transition-colors hover:bg-canvas sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-      <div className="min-w-0">
-        <p className="truncate text-sm font-semibold text-ink">{shop.name}</p>
-        <p className="text-xs text-slate">
-          {shop.businessName} · {shop.platform === "shopify" ? "Shopify" : "Etsy"} · last successful sync{" "}
-          {formatDateTime(shop.lastSyncAt)}
-        </p>
-      </div>
-      <Badge variant={shop.stale ? "danger" : "success"} dot>
-        {shop.stale ? "Stale" : "Healthy"}
-      </Badge>
-    </Link>
-  );
-}
-
-function MiniMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-card border border-line p-3">
-      <p className="text-xs text-slate">{label}</p>
-      <p className="mt-1 text-base font-semibold text-ink">{value}</p>
-    </div>
-  );
-}
-
-function CapacityList({
-  title,
-  empty,
-  designers,
-  tone,
-}: {
-  title: string;
-  empty: string;
-  designers: DesignerCapacity[];
-  tone: "neutral" | "warning";
-}) {
-  return (
-    <div>
-      <div className="flex items-center gap-2">
-        {tone === "warning" ? (
-          <AlertTriangle size={15} className="text-amber" />
-        ) : (
-          <ListChecks size={15} className="text-slate" />
-        )}
-        <p className="text-xs font-medium uppercase tracking-wide text-slate">{title}</p>
-      </div>
-      {designers.length === 0 ? (
-        <p className="mt-2 text-sm text-slate">{empty}</p>
-      ) : (
-        <div className="mt-2 space-y-2">
-          {designers.map((designer) => (
-            <Link
-              key={`${title}-${designer.businessName}-${designer.designerId}`}
-              href="/designers"
-              className="block rounded-card border border-line p-3 text-sm transition-colors hover:bg-canvas"
-            >
-              <span className="font-semibold text-ink">{designer.name}</span>
-              <span className="text-slate"> · {designer.businessName}</span>
-              <span className="block text-xs text-slate">
-                {designer.activeWork} active / {designer.dailyCapacity} daily capacity
-              </span>
-            </Link>
-          ))}
+          <Badge variant={item.tone === "neutral" ? "neutral" : item.tone} dot={item.count > 0}>
+            {item.count}
+          </Badge>
         </div>
-      )}
-    </div>
+        <div className="mt-6 flex items-end justify-between gap-4">
+          <div>
+            <p className="text-5xl font-semibold leading-none text-ink">{item.count}</p>
+            <p className="mt-2 text-sm leading-5 text-slate">{item.detail}</p>
+          </div>
+          <ArrowRight size={20} className="mb-1 shrink-0 text-slate transition-transform group-hover:translate-x-0.5 group-hover:text-pigment" />
+        </div>
+      </DataPanel>
+    </Link>
   );
 }
