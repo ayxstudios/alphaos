@@ -56,6 +56,7 @@ import { OrderRevisionForm } from "@/components/orders/order-revision-form";
 import { OrderReassignForm } from "@/components/orders/order-reassign-form";
 import { OrderStyleSetter } from "@/components/orders/order-style-setter";
 import { TrackingCompleteForm } from "@/components/orders/tracking-complete-form";
+import { ReplyClassificationSuggestion } from "@/components/orders/reply-classification-suggestion";
 import { styles as stylesTable } from "@/lib/db/schema";
 import { currentMatchForProduct, countOrdersForProduct } from "@/lib/orders/style-learning";
 
@@ -86,6 +87,38 @@ function customerDisplay(input: {
     input.email ||
     "Unknown customer"
   );
+}
+
+type ReplySuggestionVM = {
+  messageId: string;
+  intent: "approval" | "revision_request" | "question" | "unclear";
+  confidence: number;
+  rationale: string;
+  strippedText: string;
+  decided: boolean;
+};
+
+function replySuggestion(message: {
+  id: string;
+  metadata: unknown;
+}): ReplySuggestionVM | null {
+  const metadata = message.metadata && typeof message.metadata === "object" && !Array.isArray(message.metadata)
+    ? (message.metadata as Record<string, unknown>)
+    : null;
+  const raw = metadata?.replyClassification;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const classification = raw as Record<string, unknown>;
+  const intent = classification.intent;
+  if (intent !== "approval" && intent !== "revision_request" && intent !== "question" && intent !== "unclear") return null;
+  const decision = classification.vaDecision;
+  return {
+    messageId: message.id,
+    intent,
+    confidence: typeof classification.confidence === "number" ? classification.confidence : 0,
+    rationale: typeof classification.rationale === "string" ? classification.rationale : "",
+    strippedText: typeof classification.strippedText === "string" ? classification.strippedText : "",
+    decided: Boolean(decision),
+  };
 }
 
 function titleCase(value: string | null | undefined) {
@@ -289,6 +322,7 @@ export default async function OrderDetailPage({
           subject: messages.subject,
           body: messages.body,
           address: messages.address,
+          metadata: messages.metadata,
           sentAt: messages.sentAt,
           createdAt: messages.createdAt,
         })
@@ -760,6 +794,7 @@ export default async function OrderDetailPage({
                 {timeline.map((m) => {
                   const inbound = m.direction === "inbound";
                   const when = m.sentAt ?? m.createdAt;
+                  const suggestion = inbound ? replySuggestion(m) : null;
                   return (
                     <li key={m.id} className="px-4 py-3">
                       <div className="mb-1 flex flex-wrap items-center gap-2">
@@ -775,6 +810,7 @@ export default async function OrderDetailPage({
                       </div>
                       {m.subject && <p className="text-sm font-medium text-ink">{m.subject}</p>}
                       {m.body && <p className="mt-1 whitespace-pre-wrap text-sm text-slate line-clamp-5">{m.body}</p>}
+                      {editable && suggestion && <ReplyClassificationSuggestion suggestion={suggestion} />}
                       {editable && inbound && m.body && (
                         <details className="mt-3 rounded-input bg-canvas p-2">
                           <summary className="cursor-pointer text-xs font-medium text-pigment">

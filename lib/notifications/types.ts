@@ -29,6 +29,8 @@ export function fallbackNotificationTitle(type: string): string {
   switch (type) {
     case "message.received":
       return "Customer reply received";
+    case "message.reply_suggestion":
+      return "Reply needs review";
     case "gmail.reauth_required":
       return "Gmail needs reconnecting";
     case "etsy.reauth_required":

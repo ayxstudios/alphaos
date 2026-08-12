@@ -66,17 +66,16 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
   period totals, blocked rows, drilldown, paid marking, voided rows, and CSV
   export (`test:earnings`).
 - **Manual print fulfilment.** Approved physical orders appear in
-  `/queue/print` with final/latest portrait artwork, product details, shipping
-  address, provider choice, product mapping status, and tracking controls.
-  Shopify imports now persist `shippingAddress`; Etsy imports persist receipt
-  address fields when Etsy exposes them, but the stored receipt audit found only
-  79/3,170 existing Etsy receipts with non-empty usable address fields, so Etsy
-  physical orders must visibly support VA-entered addresses. Product mappings are
-  configured in Settings → Print Fulfilment: exact SKU wins, title/variant
-  contains is fallback, and unmapped products block manual print start. Tracking
-  now moves AlphaOS orders only to `shipped`; `complete` remains a separate
-  transition. Shopify/Etsy tracking writeback is attempted and any platform
-  failure is recorded on the print job instead of silently stalling.
+  `/queue/print`, oldest first, with the platform order number, shop, customer,
+  latest/final portrait link, provider choice, and tracking controls. The VA
+  triggers printing in Gelato/Luma Prints from the provider's own dashboard, then
+  records "Sent to print" in AlphaOS; that creates a manual `print_jobs` row and
+  moves the order to `printing` (`test:reply-print`). Product mapping/API
+  submission UI is hidden because the connected sales platforms already carry the
+  product/address into the providers. Tracking now moves AlphaOS orders only to
+  `shipped`; `complete` remains a separate transition. Shopify/Etsy tracking
+  writeback is attempted and any platform failure is recorded on the print job
+  instead of silently stalling.
 - **Designer submission upload.** Designers upload finished portraits from their
   own `in_design` board cards via direct-to-R2 drag/drop or file picker. Each
   upload creates a new `assets.type = 'submission'` row; uploads are versioned,
@@ -95,8 +94,13 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
   counts). QC pass now opens a customer email preview, shows the exact portrait
   attachment and completed checklist, sends through Gmail, and only then moves
   the order to awaiting approval; failures stay visible in Outbox and do not
-  advance the order. No business has connected Gmail yet, so send + inbound have
-  not run live. Photo requests are off by default regardless.
+  advance the order. Inbound replies attached to orders in `awaiting_approval`
+  are quote-stripped and, when Anthropic is configured, classified as approval /
+  revision / question / unclear; approval/revision are VA-confirmed suggestions,
+  never automatic transitions, and VA decisions are logged for accuracy review
+  (`test:reply-print`). If Anthropic is unavailable, inbound still arrives and
+  notifies staff with no suggestion. No business has connected Gmail yet, so
+  send + inbound have not run live. Photo requests are off by default regardless.
 
 ## Key decisions and why
 
@@ -129,8 +133,9 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
    email, per-type routing, batching delivery queue, and required-channel guards.
 4. **Live-test designer payout flow** after configuring real style rates for
    PixArt/Lumina.
-5. **Print provider API integration** (manual path + product mapping exist, but
-   no Gelato/Luma Prints API submission/webhooks are wired).
+5. **Evaluate print API later only if needed.** Current direction is manual
+   provider-dashboard triggering; Gelato/Luma Prints API submission/webhooks are
+   intentionally not wired.
 
 ## Half-finished / stubs
 

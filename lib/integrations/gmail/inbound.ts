@@ -2,7 +2,8 @@ import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
 import { withSystemContext } from "@/lib/db";
 import { getBusinessGmailCredentials } from "@/lib/db/credentials";
-import { activityLog, businesses, messages, notifications, users } from "@/lib/db/schema";
+import { activityLog, businesses, messages, notifications, orders, users } from "@/lib/db/schema";
+import { classifyProofReply, type ReplyClassification } from "@/lib/email/reply-classifier";
 import { GmailClient } from "./client";
 import { GmailReauthRequiredError } from "./errors";
 import { extractPlainText, header } from "./mime";
@@ -164,6 +165,15 @@ export async function pollAllMailboxes(): Promise<InboundSummary[]> {
  * Fetch one inbound message and, if it belongs to a known thread, persist it and
  * notify. Returns true when a new inbound row was created.
  */
+type AttachedMessage = {
+  messageId: string;
+  orderId: string | null;
+  businessId: string;
+  orderStatus: string | null;
+  subject: string | null;
+  body: string;
+};
+
 async function attachMessage(
   client: GmailClient,
   businessId: string,
@@ -175,19 +185,20 @@ async function attachMessage(
   // Skip our own sends that slipped through without a SENT label.
   if (selfAddress && from.includes(selfAddress)) return false;
 
-  return withSystemContext(async (tx) => {
+  const attached = await withSystemContext<AttachedMessage | null>(async (tx) => {
     // Idempotency: never insert the same Gmail message twice.
     const [existing] = await tx
       .select({ id: messages.id })
       .from(messages)
       .where(eq(messages.gmailMessageId, gmailMessageId))
       .limit(1);
-    if (existing) return false;
+    if (existing) return null;
 
     // Match the reply to an order by the thread we originally sent on.
     const [threadMatch] = await tx
-      .select({ orderId: messages.orderId, customerId: messages.customerId })
+      .select({ orderId: messages.orderId, customerId: messages.customerId, orderStatus: orders.status })
       .from(messages)
+      .leftJoin(orders, eq(orders.id, messages.orderId))
       .where(and(eq(messages.gmailThreadId, msg.threadId), isNotNull(messages.orderId)))
       .orderBy(desc(messages.createdAt))
       .limit(1);
@@ -196,7 +207,7 @@ async function attachMessage(
     const rfcMessageId = header(msg, "Message-ID");
     const body = extractPlainText(msg);
 
-    await tx.insert(messages).values({
+    const [inserted] = await tx.insert(messages).values({
       businessId,
       orderId: threadMatch?.orderId ?? null,
       customerId: threadMatch?.customerId ?? null,
@@ -209,7 +220,7 @@ async function attachMessage(
       gmailMessageId,
       gmailRfcMessageId: rfcMessageId,
       body,
-    });
+    }).returning({ id: messages.id });
 
     // Timeline entry (only when we could tie it to an order).
     if (threadMatch?.orderId) {
@@ -239,8 +250,101 @@ async function attachMessage(
     }
 
     logInbound(businessId, { event: "reply_attached", gmailMessageId, orderId: threadMatch?.orderId ?? null });
-    return true;
+    return {
+      messageId: inserted.id,
+      orderId: threadMatch?.orderId ?? null,
+      businessId,
+      orderStatus: threadMatch?.orderStatus ?? null,
+      subject,
+      body,
+    };
   });
+  if (!attached) return false;
+  if (attached.orderId && attached.orderStatus === "awaiting_approval") {
+    await classifyAndStoreReply(attached);
+  }
+  return true;
+}
+
+async function classifyAndStoreReply(attached: AttachedMessage): Promise<void> {
+  const classification = await classifyProofReply({ subject: attached.subject, body: attached.body });
+  if (!classification) {
+    logInbound(attached.businessId, { event: "reply_classification_unavailable", messageId: attached.messageId });
+    return;
+  }
+
+  await withSystemContext(async (tx) => {
+    const [current] = await tx
+      .select({ metadata: messages.metadata, orderId: messages.orderId })
+      .from(messages)
+      .where(eq(messages.id, attached.messageId))
+      .limit(1);
+    if (!current) return;
+    const metadata = mergeReplyClassification(current.metadata, classification);
+    await tx.update(messages).set({ metadata }).where(eq(messages.id, attached.messageId));
+    await tx.insert(activityLog).values({
+      businessId: attached.businessId,
+      orderId: attached.orderId,
+      actorId: null,
+      action: "message.reply_classified",
+      metadata: {
+        messageId: attached.messageId,
+        classification: metadata.replyClassification,
+      },
+    });
+
+    if (classification.intent === "approval" || classification.intent === "revision_request") {
+      const staff = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(and(inArray(users.role, ["admin", "va"]), eq(users.active, true)));
+      if (staff.length) {
+        const title =
+          classification.intent === "approval"
+            ? "Reply may approve this proof"
+            : "Reply may request a revision";
+        const body =
+          classification.intent === "approval"
+            ? "Review the customer reply and confirm whether to mark the order approved."
+            : "Review the customer reply and confirm whether to send the order back to design.";
+        await tx.insert(notifications).values(
+          staff.map((s) => ({
+            businessId: attached.businessId,
+            userId: s.id,
+            type: "message.reply_suggestion",
+            orderId: attached.orderId,
+            title,
+            body,
+            href: `/orders/${attached.orderId}`,
+            metadata: { messageId: attached.messageId, intent: classification.intent },
+          })),
+        );
+      }
+    }
+  });
+  logInbound(attached.businessId, {
+    event: "reply_classified",
+    messageId: attached.messageId,
+    intent: classification.intent,
+    confidence: classification.confidence,
+  });
+}
+
+function mergeReplyClassification(metadata: unknown, classification: ReplyClassification) {
+  const base = metadata && typeof metadata === "object" && !Array.isArray(metadata)
+    ? (metadata as Record<string, unknown>)
+    : {};
+  return {
+    ...base,
+    replyClassification: {
+      model: classification.model,
+      intent: classification.intent,
+      confidence: classification.confidence,
+      rationale: classification.rationale,
+      strippedText: classification.strippedText,
+      classifiedAt: new Date().toISOString(),
+    },
+  };
 }
 
 function logInbound(businessId: string, extra: Record<string, unknown>): void {

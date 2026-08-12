@@ -1,26 +1,19 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser } from "@/lib/db";
-import {
-  activityLog,
-  assets,
-  orderItems,
-  orderShippingAddresses,
-  orders,
-  printJobs,
-  printProductMappings,
-} from "@/lib/db/schema";
+import { activityLog, orders } from "@/lib/db/schema";
 import {
   formatShippingAddress,
   isShippingAddressComplete,
   upsertOrderShippingAddress,
 } from "@/lib/shipping/address";
-import { defaultPrintProvider, matchPrintProductMapping, type PrintProvider } from "@/lib/print/mapping";
-import { runTransition, OrderTransitionError, type OrderStatus } from "@/lib/orders/transitions";
+import type { PrintProvider } from "@/lib/print/mapping";
+import { OrderTransitionError } from "@/lib/orders/transitions";
+import { recordManualPrintSignal } from "@/lib/print/manual";
 
 export type PrintActionResult = { ok: true; message: string } | { ok: false; message: string };
 
@@ -103,114 +96,7 @@ export async function createManualPrintJob(formData: FormData): Promise<PrintAct
 
   try {
     const result = await withUserContext(user, async (tx) => {
-      const [order] = await tx
-        .select({
-          id: orders.id,
-          businessId: orders.businessId,
-          shopId: orders.shopId,
-          status: orders.status,
-          number: orders.platformOrderName,
-          fallbackNumber: orders.platformOrderId,
-        })
-        .from(orders)
-        .where(eq(orders.id, orderId))
-        .for("update")
-        .limit(1);
-      if (!order) return { ok: false as const, message: "Order not found." };
-      if (order.status !== "approved" && order.status !== "fulfillment_only") {
-        return { ok: false as const, message: "Only approved physical orders can enter print." };
-      }
-
-      const itemRows = await tx
-        .select({
-          id: orderItems.id,
-          sku: orderItems.sku,
-          title: orderItems.title,
-          variation: orderItems.variation,
-          productType: orderItems.productType,
-        })
-        .from(orderItems)
-        .where(eq(orderItems.orderId, orderId));
-      const physicalItems = itemRows.filter((item) => item.productType === "physical");
-      if (!physicalItems.length) return { ok: false as const, message: "This order has no physical items to print." };
-
-      const [address] = await tx
-        .select()
-        .from(orderShippingAddresses)
-        .where(eq(orderShippingAddresses.orderId, orderId))
-        .limit(1);
-      if (!isShippingAddressComplete(address)) {
-        return { ok: false as const, message: "Add a complete shipping address before starting print." };
-      }
-
-      const assetRows = await tx
-        .select({ id: assets.id, type: assets.type, url: assets.url, r2Key: assets.r2Key })
-        .from(assets)
-        .where(
-          and(
-            eq(assets.orderId, orderId),
-            inArray(assets.type, ["final", "submission"]),
-            isNull(assets.deletedAt),
-          ),
-        )
-        .orderBy(desc(assets.createdAt));
-      const artwork = assetRows.find((asset) => asset.type === "final") ?? assetRows[0] ?? null;
-      if (!artwork) return { ok: false as const, message: "Upload final artwork before starting print." };
-
-      const mappingRows = await tx
-        .select()
-        .from(printProductMappings)
-        .where(and(eq(printProductMappings.shopId, order.shopId), eq(printProductMappings.active, true)));
-      const mappedItems = physicalItems.map((item) => ({
-        item,
-        mapping: matchPrintProductMapping(item, mappingRows, provider),
-      }));
-      const unmapped = mappedItems.filter((row) => !row.mapping);
-      if (unmapped.length) {
-        return { ok: false as const, message: "Map every physical product before starting print." };
-      }
-
-      const now = new Date();
-      await tx.insert(printJobs).values({
-        businessId: order.businessId,
-        orderId,
-        provider,
-        method: "manual",
-        status: "manual_in_progress",
-        submittedAt: now,
-        providerPayload: {
-          source: "manual",
-          artworkAssetId: artwork.id,
-          addressSource: address.source,
-          mappings: mappedItems.map((row) => ({
-            orderItemId: row.item.id,
-            sku: row.item.sku,
-            title: row.item.title,
-            providerProductId: row.mapping?.providerProductId,
-            mappingId: row.mapping?.id,
-          })),
-          defaultProviderForAddress: defaultPrintProvider(address.countryCode),
-        },
-      });
-      await tx.insert(activityLog).values({
-        businessId: order.businessId,
-        orderId,
-        actorId: user.id,
-        action: "print.manual_started",
-        metadata: {
-          provider,
-          artworkAssetId: artwork.id,
-          via: "print_queue",
-          orderNumber: order.number ?? order.fallbackNumber,
-        },
-      });
-      await runTransition(tx, user, {
-        orderId,
-        to: "printing",
-        expectedFrom: order.status as OrderStatus,
-        metadata: { via: "print_queue_manual_start", provider },
-      });
-      return { ok: true as const, message: "Manual print job started." };
+      return recordManualPrintSignal(tx, user, { orderId, provider });
     });
 
     revalidatePath("/queue/print");

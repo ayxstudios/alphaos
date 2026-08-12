@@ -37,6 +37,7 @@ import {
   type ShopifyFulfillmentResult,
 } from "@/lib/integrations/shopify";
 import { createEtsyReceiptShipment, type EtsyCredentials } from "@/lib/integrations/etsy";
+import { applyReplyClassificationDecision } from "@/lib/email/reply-decisions";
 
 type BulkSkipped = {
   orderId: string;
@@ -64,6 +65,8 @@ export type TrackingCompleteInput = {
   trackingUrl?: string;
   notifyCustomer?: boolean;
 };
+
+export type ReplyDecisionResult = { ok: true; message: string } | { ok: false; message: string };
 
 const REASSIGNABLE_STATUSES = new Set<OrderStatus>([
   "awaiting_details",
@@ -568,6 +571,53 @@ export async function addTrackingAndCompleteOrder(
       ? `Tracking saved in AlphaOS, but platform writeback failed: ${platformSyncError}`
       : shopifyResult?.closeWarning ?? null,
   };
+}
+
+export async function confirmReplyApproval(messageId: string): Promise<ReplyDecisionResult> {
+  const user = await requireStaff();
+  if ("error" in user) return { ok: false, message: user.error };
+  return decideReplySuggestion(user, messageId, "approved");
+}
+
+export async function confirmReplyRevision(messageId: string): Promise<ReplyDecisionResult> {
+  const user = await requireStaff();
+  if ("error" in user) return { ok: false, message: user.error };
+  return decideReplySuggestion(user, messageId, "revision");
+}
+
+export async function dismissReplySuggestion(messageId: string): Promise<ReplyDecisionResult> {
+  const user = await requireStaff();
+  if ("error" in user) return { ok: false, message: user.error };
+  return decideReplySuggestion(user, messageId, "dismissed");
+}
+
+async function decideReplySuggestion(
+  user: RequestUser,
+  messageId: string,
+  decision: "approved" | "revision" | "dismissed",
+): Promise<ReplyDecisionResult> {
+  const id = messageId.trim();
+  if (!id) return { ok: false, message: "Message is required." };
+  let orderId: string | null = null;
+  try {
+    const result = await withUserContext(user, async (tx) => {
+      const applied = await applyReplyClassificationDecision(tx, user, id, decision);
+      if (applied.ok) orderId = applied.orderId;
+      else if (applied.orderId) orderId = applied.orderId;
+      return { ok: applied.ok, message: applied.message };
+    });
+    if (orderId) {
+      revalidatePath(`/orders/${orderId}`);
+      revalidatePath("/orders");
+      revalidatePath("/board");
+      revalidatePath("/queue/print");
+      revalidatePath("/dashboard");
+    }
+    return result;
+  } catch (error) {
+    if (error instanceof OrderTransitionError) return { ok: false, message: error.message };
+    throw error;
+  }
 }
 
 /* --- Order style setter (with learning) --------------------------------- */
