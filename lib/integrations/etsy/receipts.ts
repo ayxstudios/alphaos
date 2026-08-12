@@ -6,6 +6,7 @@ import { withSystemContext } from "@/lib/db";
 import { getShopCredentials, setShopCredentials } from "@/lib/db/credentials";
 import { shops, orders, customers, activityLog } from "@/lib/db/schema";
 import { reconcileManualOrder } from "@/lib/orders/reconcile";
+import { isBeforeBackfillCutoff } from "@/lib/orders/archive";
 import { EtsyClient } from "./client";
 import { ReauthRequiredError } from "./errors";
 import type {
@@ -27,6 +28,7 @@ function isNumericShopId(value: string | undefined): value is string {
 
 export type SyncSummary = {
   imported: number;
+  archived: number;
   skipped: number;
   failed: number;
   reconciled?: number; // manual orders matched + promoted in place
@@ -60,8 +62,11 @@ export function getShopReceipts(
  * Etsy imports never send automated email (a VA completes details first), so
  * there is no email-suppression flag as there is for Shopify backfills.
  */
-export async function syncShopReceipts(shopId: string): Promise<SyncSummary> {
-  const empty: SyncSummary = { imported: 0, skipped: 0, failed: 0, errors: [] };
+export async function syncShopReceipts(
+  shopId: string,
+  opts: { mode?: "sync" | "backfill" } = {},
+): Promise<SyncSummary> {
+  const empty: SyncSummary = { imported: 0, archived: 0, skipped: 0, failed: 0, errors: [] };
 
   // 1. Claim the shop (concurrency guard) + load creds/config under a row lock.
   const claim = await withSystemContext(async (tx) => {
@@ -105,7 +110,7 @@ export async function syncShopReceipts(shopId: string): Promise<SyncSummary> {
       setShopCredentials(tx, shopId, { ...client.credentials, etsyShopId }),
     );
   }
-  const summary: SyncSummary = { imported: 0, skipped: 0, failed: 0, errors: [] };
+  const summary: SyncSummary = { imported: 0, archived: 0, skipped: 0, failed: 0, errors: [] };
   let maxCreated = cfg.syncCursor ? Number(cfg.syncCursor) : 0;
 
   try {
@@ -120,10 +125,15 @@ export async function syncShopReceipts(shopId: string): Promise<SyncSummary> {
           const result = await importReceipt({
             shopId,
             businessId: shop.businessId,
+            config: cfg,
             slaConfig: shop.slaConfig as Record<string, unknown> | null,
             receipt,
+            via: opts.mode ?? "sync",
           });
-          if (result === "imported") summary.imported++;
+          if (result === "imported" || result === "archived") {
+            summary.imported++;
+            if (result === "archived") summary.archived++;
+          }
           else if (result === "reconciled") summary.reconciled = (summary.reconciled ?? 0) + 1;
           else summary.skipped++;
           maxCreated = Math.max(maxCreated, receipt.created_timestamp);
@@ -195,14 +205,18 @@ export async function syncShopReceipts(shopId: string): Promise<SyncSummary> {
 async function importReceipt(args: {
   shopId: string;
   businessId: string;
+  config: EtsyIntegrationConfig;
   slaConfig: Record<string, unknown> | null;
   receipt: EtsyReceipt;
-}): Promise<"imported" | "skipped" | "reconciled"> {
-  const { shopId, businessId, slaConfig, receipt } = args;
+  via: "sync" | "backfill";
+}): Promise<"imported" | "archived" | "skipped" | "reconciled"> {
+  const { shopId, businessId, config, slaConfig, receipt, via } = args;
   const email = receipt.buyer_email?.trim().toLowerCase() || null;
   const [firstName, lastName] = splitName(receipt.name);
   const placedAt = new Date(receipt.created_timestamp * 1000);
   const dueAt = computeDueAt(placedAt, slaConfig);
+  const archived = isBeforeBackfillCutoff(placedAt, config);
+  const archivedAt = archived ? new Date() : null;
 
   return withSystemContext(async (tx) => {
     // Customer, only when Etsy actually gave us an email.
@@ -248,6 +262,8 @@ async function importReceipt(args: {
         uploadToken: randomUUID(),
         needsReview: false,
         rawImport: receipt,
+        archivedAt,
+        archiveReason: archived ? "Imported before shop backfill cutoff" : null,
       })
       .onConflictDoNothing({ target: [orders.shopId, orders.platformOrderId] })
       .returning({ id: orders.id });
@@ -264,13 +280,16 @@ async function importReceipt(args: {
       toState: "awaiting_details",
       metadata: {
         source: "etsy",
+        via,
         receiptId: receipt.receipt_id,
         hasEmail: !!email,
         transactionCount: receipt.transactions?.length ?? 0,
+        archived,
+        backfillCutoffAt: config.backfillCutoffAt ?? null,
       },
     });
 
-    return "imported";
+    return archived ? "archived" : "imported";
   });
 }
 

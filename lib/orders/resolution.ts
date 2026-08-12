@@ -141,6 +141,7 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
         platformOrderName: orders.platformOrderName,
         customerId: orders.customerId,
         status: orders.status,
+        archivedAt: orders.archivedAt,
       })
       .from(orders)
       .where(eq(orders.shopId, shopId)),
@@ -320,7 +321,7 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
       // leaving them stranded in the VA review queue. An order that already has an
       // active assignee is never disturbed.
       let assignedTo: string | null = null;
-      if (newStatus === "ready_to_assign" && !needsReview) {
+      if (newStatus === "ready_to_assign" && !needsReview && !o.archivedAt) {
         const [active] = await tx
           .select({ orderId: assignments.orderId })
           .from(assignments)

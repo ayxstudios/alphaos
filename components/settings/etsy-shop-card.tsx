@@ -15,7 +15,7 @@ import {
   Badge,
 } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
-import { saveEtsyCredentials, triggerSync, backfillEtsyShop } from "@/app/(app)/settings/actions";
+import { saveEtsyCredentials, triggerSync, backfillEtsyShop, saveShopBackfillCutoff } from "@/app/(app)/settings/actions";
 import { ResolutionRulesEditor } from "@/components/settings/resolution-rules-editor";
 import { formatSyncTime, syncHealth } from "@/lib/integrations/sync-health";
 import type { SyncSummary } from "@/lib/integrations/etsy";
@@ -29,6 +29,7 @@ export type EtsyShopVM = {
   etsyShopId: string | null;
   lastSyncCursor: string | null;
   lastSyncAt: string | null;
+  backfillCutoffAt: string | null;
   allowHeuristic: boolean;
   ruleCount: number;
   figureRules: FigureRule[];
@@ -65,7 +66,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
   }
 
   function onBackfill() {
-    if (!confirm("Backfill re-scans the last 60 days with NO customer emails sent. Continue?")) return;
+    if (!confirm("Backfill re-scans the last 60 days. Orders before the cutoff import as archived. Continue?")) return;
     setError(null);
     setSummary(null);
     startBackfill(async () => {
@@ -82,6 +83,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
   const cursor = shop.lastSyncCursor
     ? new Date(Number(shop.lastSyncCursor) * 1000).toLocaleString()
     : "none";
+  const cutoffDate = shop.backfillCutoffAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
 
   return (
     <Card>
@@ -138,6 +140,23 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
           skuSuggestions={shop.skuSuggestions}
           titleSuggestions={shop.titleSuggestions}
         />
+
+        <form action={saveShopBackfillCutoff} className="rounded-card border border-line bg-canvas p-3">
+          <input type="hidden" name="shopId" value={shop.id} />
+          <div className="flex flex-wrap items-end gap-3">
+            <Input
+              label="Live-order cutoff"
+              name="backfillCutoffDate"
+              type="date"
+              defaultValue={cutoffDate}
+              hint="Orders placed before this date import as archived history."
+              required
+            />
+            <Button type="submit" variant="secondary" size="sm">
+              Save cutoff
+            </Button>
+          </div>
+        </form>
       </CardContent>
 
       <CardFooter className="flex-col items-start gap-3">
@@ -183,7 +202,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
           <p className="text-sm text-slate">
             {summary.skippedRun
               ? `Sync skipped: ${summary.skippedRun.replace("_", " ")}.`
-              : `Imported ${summary.imported}, skipped ${summary.skipped}, failed ${summary.failed}.`}
+              : `Imported ${summary.imported}, archived ${summary.archived}, skipped ${summary.skipped}, failed ${summary.failed}.`}
           </p>
         )}
       </CardFooter>

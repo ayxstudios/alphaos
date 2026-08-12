@@ -14,6 +14,7 @@ import { listBusinessStyles, matchStyle } from "@/lib/designers/styles";
 import { classifyOrder, photoRequestEnabled } from "../classify";
 import { reconcileManualOrder } from "@/lib/orders/reconcile";
 import { runAutoAssign } from "@/lib/orders/assign";
+import { isBeforeBackfillCutoff } from "@/lib/orders/archive";
 import type {
   GqlOrder,
   GqlOrdersResponse,
@@ -30,6 +31,7 @@ const DEFAULT_TURNAROUND_DAYS = 3;
 
 export type SyncSummary = {
   imported: number;
+  archived: number;
   skipped: number;
   failed: number;
   skippedRun?: "already_running" | "not_connected";
@@ -133,9 +135,9 @@ query($cursor: String, $q: String) {
  */
 export async function syncShopOrders(
   shopId: string,
-  opts: { suppressCustomerEmail?: boolean } = {},
+  opts: { suppressCustomerEmail?: boolean; mode?: "sync" | "backfill" } = {},
 ): Promise<SyncSummary> {
-  const empty: SyncSummary = { imported: 0, skipped: 0, failed: 0, errors: [] };
+  const empty: SyncSummary = { imported: 0, archived: 0, skipped: 0, failed: 0, errors: [] };
 
   const claim = await withSystemContext(async (tx) => {
     await tx.execute(sql`select id from shops where id = ${shopId} for update`);
@@ -177,7 +179,7 @@ export async function syncShopOrders(
     suppressCustomerEmail: !!opts.suppressCustomerEmail,
   };
   const client = new ShopifyClient(shopId, creds);
-  const summary: SyncSummary = { imported: 0, skipped: 0, failed: 0, errors: [] };
+  const summary: SyncSummary = { imported: 0, archived: 0, skipped: 0, failed: 0, errors: [] };
   let maxCreated = cfg.syncCursor ?? "";
 
   try {
@@ -203,8 +205,11 @@ export async function syncShopOrders(
       for (const node of data.orders.nodes) {
         const normalized = normalizeGraphqlOrder(node);
         try {
-          const result = await importShopifyOrder({ shop: ctx, order: normalized, via: "sync" });
-          if (result === "imported") summary.imported++;
+          const result = await importShopifyOrder({ shop: ctx, order: normalized, via: opts.mode ?? "sync" });
+          if (result === "imported" || result === "archived") {
+            summary.imported++;
+            if (result === "archived") summary.archived++;
+          }
           else if (result === "reconciled") summary.reconciled = (summary.reconciled ?? 0) + 1;
           else summary.skipped++;
           if (node.createdAt > maxCreated) maxCreated = node.createdAt;
@@ -249,7 +254,7 @@ export async function syncShopOrders(
 
     // Best-effort: auto-send the queued photo-request emails for this business.
     // Skipped entirely on a backfill so no historical order gets emailed.
-    if (summary.imported > 0 && !opts.suppressCustomerEmail) {
+    if (summary.imported - summary.archived > 0 && !opts.suppressCustomerEmail) {
       await flushQueued(shop.businessId).catch((e) =>
         logShopify(shopId, { level: "error", event: "photo_request_flush_failed", error: String(e) }),
       );
@@ -274,8 +279,8 @@ export async function syncShopOrders(
 export async function importShopifyOrder(args: {
   shop: ShopContext;
   order: NormalizedOrder;
-  via: "webhook" | "sync";
-}): Promise<"imported" | "skipped" | "reconciled"> {
+  via: "webhook" | "sync" | "backfill";
+}): Promise<"imported" | "archived" | "skipped" | "reconciled"> {
   const { shop, order, via } = args;
   const email = order.email?.trim().toLowerCase() || null;
 
@@ -314,6 +319,8 @@ export async function importShopifyOrder(args: {
   const needsReview = !email || (klass === "portrait" && items.some((i) => i.source === "unresolved"));
   const dueAt = computeDueAt(order.createdAt, shop.slaConfig);
   const uploadToken = randomUUID();
+  const archived = isBeforeBackfillCutoff(order.createdAt, shop.config);
+  const archivedAt = archived ? new Date() : null;
 
   return withSystemContext(async (tx) => {
     let customerId: string | null = null;
@@ -355,6 +362,8 @@ export async function importShopifyOrder(args: {
         dueAt,
         uploadToken,
         needsReview,
+        archivedAt,
+        archiveReason: archived ? "Imported before shop backfill cutoff" : null,
       })
       .onConflictDoNothing({ target: [orders.shopId, orders.platformOrderId] })
       .returning({ id: orders.id });
@@ -409,7 +418,7 @@ export async function importShopifyOrder(args: {
     // Skipped on a backfill (suppressCustomerEmail) so re-scanning history never
     // dumps old orders into designers' live queues or skews their daily capacity.
     let assignedTo: string | null = null;
-    if (status === "ready_to_assign" && !needsReview && !shop.suppressCustomerEmail) {
+    if (status === "ready_to_assign" && !needsReview && !shop.suppressCustomerEmail && !archived) {
       assignedTo = (
         await runAutoAssign(tx, { orderId, businessId: shop.businessId, assignedBy: null })
       ).assigned;
@@ -433,6 +442,8 @@ export async function importShopifyOrder(args: {
         hasEmail: !!email,
         photoCount: assetValues.length,
         needsReview,
+        archived,
+        backfillCutoffAt: shop.config.backfillCutoffAt ?? null,
         assignedTo,
         autoAssigned: assignedTo != null,
         figures: items.map((i) => ({ count: i.count, source: i.source, note: i.note, style: matchStyle(i.li.title, i.li.sku, businessStyles) })),
@@ -449,7 +460,8 @@ export async function importShopifyOrder(args: {
     if (
       status === "awaiting_photos" &&
       photoRequestEnabled(shop.config) &&
-      !shop.suppressCustomerEmail
+      !shop.suppressCustomerEmail &&
+      !archived
     ) {
       await queuePhotoRequest(tx, {
         id: orderId,
@@ -461,7 +473,7 @@ export async function importShopifyOrder(args: {
       });
     }
 
-    return "imported";
+    return archived ? "archived" : "imported";
   });
 }
 

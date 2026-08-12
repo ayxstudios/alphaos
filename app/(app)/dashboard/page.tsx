@@ -9,6 +9,7 @@ import { businesses, customers, orderItems, orders, shops } from "@/lib/db/schem
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
 import { formatSyncTime, syncHealth } from "@/lib/integrations/sync-health";
 import { getQueuedEmailCount, getUnmatchedCount } from "@/lib/email/outbox";
+import { liveOrderSql, liveOrderWhere } from "@/lib/orders/archive";
 import {
   Badge,
   DataPanel,
@@ -42,15 +43,16 @@ export default async function DashboardPage() {
   const { selected } = await loadShellData(user);
   const now = new Date();
   const businessFilter = eq(orders.businessId, selected.id);
+  const liveFilter = liveOrderWhere();
 
   const [stats] = await withUserContext(user, (tx) =>
     tx
       .select({
-        active: sql<number>`count(*) filter (where ${orders.status} not in ${CLOSED_STATUSES})::int`,
-        overdue: sql<number>`count(*) filter (where ${orders.dueAt} < ${now} and ${orders.status} not in ${CLOSED_STATUSES})::int`,
-        awaitingDetails: sql<number>`count(*) filter (where ${orders.status} = 'awaiting_details')::int`,
-        awaitingPhotos: sql<number>`count(*) filter (where ${orders.status} = 'awaiting_photos')::int`,
-        qc: sql<number>`count(*) filter (where ${orders.status} = 'awaiting_qc')::int`,
+        active: sql<number>`count(*) filter (where ${liveOrderSql()} and ${orders.status} not in ${CLOSED_STATUSES})::int`,
+        overdue: sql<number>`count(*) filter (where ${liveOrderSql()} and ${orders.dueAt} < ${now} and ${orders.status} not in ${CLOSED_STATUSES})::int`,
+        awaitingDetails: sql<number>`count(*) filter (where ${liveOrderSql()} and ${orders.status} = 'awaiting_details')::int`,
+        awaitingPhotos: sql<number>`count(*) filter (where ${liveOrderSql()} and ${orders.status} = 'awaiting_photos')::int`,
+        qc: sql<number>`count(*) filter (where ${liveOrderSql()} and ${orders.status} = 'awaiting_qc')::int`,
       })
       .from(orders)
       .where(businessFilter),
@@ -79,6 +81,7 @@ export default async function DashboardPage() {
       .where(
         and(
           businessFilter,
+          liveFilter,
           sql`(${orders.dueAt} < ${now} or ${orders.status} in ('awaiting_details', 'awaiting_photos', 'awaiting_qc'))`,
         ),
       )

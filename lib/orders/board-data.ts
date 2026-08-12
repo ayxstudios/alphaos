@@ -16,6 +16,7 @@ import {
 import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
 import { issueLabels } from "@/lib/proofs/issues";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
+import { liveOrderWhere } from "@/lib/orders/archive";
 import type { OrderStatus } from "./transitions";
 
 /** A revision the designer must act on — from QC, or from the customer. */
@@ -299,7 +300,7 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
         assignments,
         and(eq(assignments.orderId, orders.id), eq(assignments.active, true), eq(assignments.designerId, target)),
       )
-      .where(inArray(orders.status, ["ready_to_assign", "in_design", "awaiting_qc", "complete"]))) as OrderRow[];
+      .where(and(inArray(orders.status, ["ready_to_assign", "in_design", "awaiting_qc", "complete"]), liveOrderWhere()))) as OrderRow[];
 
     const cards = await enrich(tx, rows, user.role);
     const meta = new Map(rows.map((r) => [r.id, r]));

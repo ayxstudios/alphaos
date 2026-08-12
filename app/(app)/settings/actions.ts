@@ -25,10 +25,12 @@ import {
 } from "@/lib/email/templates";
 import { appUrl } from "@/lib/urls";
 import { previewNotificationSweep, type NotificationSweepResult } from "@/lib/notifications/sla-sweep";
+import { ensureBackfillCutoff } from "@/lib/orders/archive";
 import {
   syncShopReceipts,
   type SyncSummary,
   type EtsyCredentials,
+  type EtsyIntegrationConfig,
 } from "@/lib/integrations/etsy";
 import {
   syncShopOrders,
@@ -39,11 +41,18 @@ import {
   type SyncSummary as ShopifySyncSummary,
   type ShopifyCredentials,
   type ShopifyAuthType,
+  type ShopifyIntegrationConfig,
   type ShopifyWebhookRegistrationResult,
 } from "@/lib/integrations/shopify";
 
 function normalizeDomain(input: string): string {
   return input.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "").toLowerCase();
+}
+
+function cutoffFromDateInput(value: string): string {
+  const raw = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) throw new Error("Cutoff date must be YYYY-MM-DD");
+  return new Date(`${raw}T00:00:00.000Z`).toISOString();
 }
 
 async function requireAdmin(): Promise<RequestUser> {
@@ -97,6 +106,28 @@ export async function saveEtsyCredentials(formData: FormData): Promise<void> {
   await withUserContext(user, async (tx) => {
     const creds = (await getShopCredentials(tx, shopId)) as EtsyCredentials;
     await setShopCredentials(tx, shopId, { ...creds, keystring, sharedSecret });
+    const [s] = await tx.select({ cfg: shops.integrationConfig }).from(shops).where(eq(shops.id, shopId));
+    await tx
+      .update(shops)
+      .set({ integrationConfig: ensureBackfillCutoff((s?.cfg ?? {}) as EtsyIntegrationConfig) })
+      .where(eq(shops.id, shopId));
+  });
+  revalidatePath("/settings");
+}
+
+export async function saveShopBackfillCutoff(formData: FormData): Promise<void> {
+  const user = await requireAdmin();
+  const shopId = String(formData.get("shopId") ?? "");
+  const cutoff = cutoffFromDateInput(String(formData.get("backfillCutoffDate") ?? ""));
+  if (!shopId) throw new Error("Missing shop");
+
+  await withUserContext(user, async (tx) => {
+    const [s] = await tx.select({ cfg: shops.integrationConfig }).from(shops).where(eq(shops.id, shopId));
+    const cfg = (s?.cfg ?? {}) as Record<string, unknown>;
+    await tx
+      .update(shops)
+      .set({ integrationConfig: { ...cfg, backfillCutoffAt: cutoff } })
+      .where(eq(shops.id, shopId));
   });
   revalidatePath("/settings");
 }
@@ -112,7 +143,7 @@ export async function triggerSync(shopId: string): Promise<SyncSummary> {
 export async function backfillEtsyShop(shopId: string): Promise<SyncSummary> {
   const user = await requireAdmin();
   await resetCursor(user, shopId);
-  const summary = await syncShopReceipts(shopId);
+  const summary = await syncShopReceipts(shopId, { mode: "backfill" });
   revalidatePath("/settings");
   return summary;
 }
@@ -209,8 +240,16 @@ export async function saveShopifyCredentials(formData: FormData): Promise<void> 
       await setShopCredentials(tx, shopId, savedCreds);
     }
 
-    // Keep external_shop_id aligned with the domain so the webhook can find it.
-    await tx.update(shops).set({ externalShopId: shopDomain }).where(eq(shops.id, shopId));
+    // Keep external_shop_id aligned with the domain so the webhook can find it,
+    // and initialize the historical-import cutoff the first time the shop connects.
+    const [s] = await tx.select({ cfg: shops.integrationConfig }).from(shops).where(eq(shops.id, shopId));
+    await tx
+      .update(shops)
+      .set({
+        externalShopId: shopDomain,
+        integrationConfig: ensureBackfillCutoff((s?.cfg ?? {}) as ShopifyIntegrationConfig),
+      })
+      .where(eq(shops.id, shopId));
   });
 
   if (savedCreds) {
@@ -270,7 +309,7 @@ async function resetCursor(user: RequestUser, shopId: string): Promise<void> {
 export async function backfillShopifyShop(shopId: string): Promise<ShopifySyncSummary> {
   const user = await requireAdmin();
   await resetCursor(user, shopId);
-  const summary = await syncShopOrders(shopId, { suppressCustomerEmail: true });
+  const summary = await syncShopOrders(shopId, { suppressCustomerEmail: true, mode: "backfill" });
   revalidatePath("/settings");
   revalidatePath("/orders");
   revalidatePath("/board");

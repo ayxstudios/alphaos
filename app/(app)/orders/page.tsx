@@ -36,6 +36,7 @@ import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
 import { resolveFigureCount, type NormalizedVariation } from "@/lib/integrations/figures";
 import { stageTimer } from "@/lib/orders/stage-timers";
 import { getOutbox, getUnmatchedReplies } from "@/lib/email/outbox";
+import { liveOrderWhere } from "@/lib/orders/archive";
 
 export const dynamic = "force-dynamic";
 
@@ -389,12 +390,13 @@ export default async function OrdersPage({
     : 20;
   const requestedPage = intParam(params.page, 1);
   const businessFilter = eq(orders.businessId, selected.id);
+  const liveFilter = liveOrderWhere();
 
   const countRow = await withUserContext(user, async (tx) => {
     const countSel = Object.fromEntries(
       VIEWS.map((view) => [view.key, sql<number>`count(*) filter (where ${viewWhere(view.key)})::int`]),
     ) as Record<ViewKey, SQL<number>>;
-    const [row] = await tx.select(countSel).from(orders).where(businessFilter);
+    const [row] = await tx.select(countSel).from(orders).where(and(businessFilter, liveFilter));
     const counts = {} as Record<ViewKey, number>;
     for (const view of VIEWS) counts[view.key] = Number(row?.[view.key] ?? 0);
     return counts;
@@ -426,6 +428,7 @@ export default async function OrdersPage({
   const statusFilter = statusFilterWhere(status);
   const whereParts = [
     businessFilter,
+    liveFilter,
     viewWhere(selectedView),
     queryFilter,
     sourceFilter,

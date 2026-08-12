@@ -55,6 +55,7 @@ type OrderRow = {
   source: string;
   dueAt: Date | null;
   placedAt: Date | null;
+  archivedAt: Date | null;
   createdAt: Date;
   notes: string | null;
   revisionCount: number;
@@ -188,8 +189,8 @@ function assetSummary(rows: AssetCountRow[]) {
   ].join(" · ");
 }
 
-function activeStatuses(status: string) {
-  return !["delivered", "complete", "cancelled"].includes(status);
+function activeStatuses(order: { status: string; archivedAt: Date | null }) {
+  return !order.archivedAt && !["delivered", "complete", "cancelled"].includes(order.status);
 }
 
 export default async function CustomerDetailPage({
@@ -229,6 +230,7 @@ export default async function CustomerDetailPage({
         source: orders.source,
         dueAt: orders.dueAt,
         placedAt: orders.placedAt,
+        archivedAt: orders.archivedAt,
         createdAt: orders.createdAt,
         notes: orders.notes,
         revisionCount: orders.revisionCount,
@@ -401,7 +403,7 @@ export default async function CustomerDetailPage({
   const assetsByOrder = groupByOrder(assetCountRows);
   const activityByOrder = groupByOrder(activityRows);
   const shopNames = new Set(orderRows.map((order) => order.shopName).filter(Boolean));
-  const openOrders = orderRows.filter((order) => activeStatuses(order.status));
+  const openOrders = orderRows.filter((order) => activeStatuses(order));
   const latestOrder = orderRows[0] ?? null;
   const latestMessage = messageRows[0] ?? null;
   const now = new Date();

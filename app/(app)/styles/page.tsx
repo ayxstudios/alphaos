@@ -9,6 +9,7 @@ import { Page, PageHeader } from "@/components/ui";
 import { StylesManager, type StyleVM, type DesignerOption } from "@/components/styles/styles-manager";
 import { UnrecognisedPanel, type UnrecognisedProduct, type IgnoredProduct } from "@/components/styles/unrecognised-panel";
 import { listBusinessStyles, describeStyleMatch } from "@/lib/designers/styles";
+import { liveOrderWhere } from "@/lib/orders/archive";
 
 // Statuses that are not portrait design work — a null style there is expected.
 const NON_PORTRAIT_STATES = ["fulfillment_only", "triage", "cancelled"] as const;
@@ -61,7 +62,7 @@ export default async function StylesPage() {
       })
       .from(orderItems)
       .innerJoin(orders, eq(orders.id, orderItems.orderId))
-      .where(and(eq(orderItems.businessId, selected.id), notInArray(orders.status, [...NON_PORTRAIT_STATES])))
+      .where(and(eq(orderItems.businessId, selected.id), liveOrderWhere(), notInArray(orders.status, [...NON_PORTRAIT_STATES])))
       .groupBy(orderItems.title, orderItems.sku)
       .orderBy(desc(sql`count(distinct ${orderItems.orderId})`));
 

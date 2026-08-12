@@ -457,6 +457,10 @@ export const orders = pgTable(
     // transaction as the transition. Distinguishes In Design from Revisions on the
     // boards without scanning activity_log. 0 = first pass.
     revisionCount: integer("revision_count").notNull().default(0),
+    // Historical platform orders imported before a shop's backfill cutoff. Kept
+    // for customer history/search, excluded from active operations and alerts.
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    archiveReason: text("archive_reason"),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
@@ -465,6 +469,9 @@ export const orders = pgTable(
   (t) => [
     uniqueIndex("orders_shop_platform_uq").on(t.shopId, t.platformOrderId),
     index("orders_board_idx").on(t.businessId, t.status, t.dueAt),
+    index("orders_live_board_idx")
+      .on(t.businessId, t.status, t.dueAt)
+      .where(sql`${t.archivedAt} is null`),
     index("orders_customer_idx").on(t.customerId),
   ],
 );

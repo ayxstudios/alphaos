@@ -4,12 +4,16 @@ import { cookies } from "next/headers";
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
 import { getShopCredentials, setShopCredentials } from "@/lib/db/credentials";
+import { shops } from "@/lib/db/schema";
+import { ensureBackfillCutoff } from "@/lib/orders/archive";
 import {
   discoverEtsyShopId,
   exchangeCodeForTokens,
   verifyOAuthState,
   type EtsyCredentials,
+  type EtsyIntegrationConfig,
 } from "@/lib/integrations/etsy";
+import { eq } from "drizzle-orm";
 
 export const runtime = "nodejs";
 const OAUTH_COOKIE = "etsy_oauth";
@@ -68,7 +72,14 @@ export async function GET(req: NextRequest) {
       etsyUserId,
       etsyShopId,
     };
-    await withUserContext(user, (tx) => setShopCredentials(tx, shopId, updated));
+    await withUserContext(user, async (tx) => {
+      await setShopCredentials(tx, shopId, updated);
+      const [s] = await tx.select({ cfg: shops.integrationConfig }).from(shops).where(eq(shops.id, shopId));
+      await tx
+        .update(shops)
+        .set({ integrationConfig: ensureBackfillCutoff((s?.cfg ?? {}) as EtsyIntegrationConfig) })
+        .where(eq(shops.id, shopId));
+    });
 
     return settings("connected=1");
   } catch {

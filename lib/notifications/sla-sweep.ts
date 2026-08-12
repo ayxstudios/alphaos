@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 import { withSystemContext, withUserContext, type RequestUser, type Tx } from "@/lib/db";
+import { liveOrderWhere } from "@/lib/orders/archive";
 import {
   assignments,
   activityLog,
@@ -570,6 +571,7 @@ async function loadDueSoon(tx: Tx, now: Date, opts: NotificationSweepOptions) {
     .where(
       and(
         sql`${orders.dueAt} is not null`,
+        liveOrderWhere(),
         sql`${orders.dueAt} > ${now}`,
         lte(orders.dueAt, new Date(now.getTime() + 4 * HOUR)),
         sql`${orders.status} not in ${CLOSED_STATUSES}`,
@@ -593,6 +595,7 @@ async function loadOverdue(tx: Tx, now: Date, opts: NotificationSweepOptions) {
     .where(
       and(
         sql`${orders.dueAt} is not null`,
+        liveOrderWhere(),
         lte(orders.dueAt, now),
         sql`${orders.status} not in ${CLOSED_STATUSES}`,
         ...(businessFilter(orders.businessId, opts) ? [businessFilter(orders.businessId, opts)!] : []),
@@ -618,6 +621,7 @@ async function loadIntakeStale(tx: Tx, now: Date, opts: NotificationSweepOptions
     .where(
       and(
         inArray(orders.status, [...INTAKE_STATES]),
+        liveOrderWhere(),
         lte(statusSince, new Date(now.getTime() - 48 * HOUR)),
         ...(businessFilter(orders.businessId, opts) ? [businessFilter(orders.businessId, opts)!] : []),
       ),
@@ -640,6 +644,7 @@ async function loadProofStale(tx: Tx, now: Date, opts: NotificationSweepOptions)
     .where(
       and(
         isNull(proofs.decision),
+        liveOrderWhere(),
         eq(messages.status, "sent"),
         sql`${messages.sentAt} is not null`,
         lte(messages.sentAt, new Date(now.getTime() - 72 * HOUR)),

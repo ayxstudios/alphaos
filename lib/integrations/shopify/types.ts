@@ -63,6 +63,7 @@ export type ShopifyIntegrationConfig = {
   syncCursor?: string; // ISO of the newest order createdAt imported
   syncingSince?: string; // ISO; concurrency guard
   lastSyncAt?: string; // ISO; last successful sync completion, not the cursor
+  backfillCutoffAt?: string; // ISO; orders placed before this import archived
 };
 
 /* --- GraphQL order query response --------------------------------------- */

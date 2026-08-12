@@ -10,6 +10,7 @@ import {
   orderItems,
   earnings,
 } from "@/lib/db/schema";
+import { liveOrderWhere } from "@/lib/orders/archive";
 
 const DESIGNER_SLA_HOURS = 24;
 
@@ -128,6 +129,7 @@ export async function runAutoAssign(
         eq(assignments.active, true),
         inArray(assignments.designerId, ids),
         inArray(orders.status, ["in_design", "awaiting_qc"]),
+        liveOrderWhere(),
       ),
     )
     .groupBy(assignments.designerId)) {

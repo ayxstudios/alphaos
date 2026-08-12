@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
+import { liveOrderWhere } from "@/lib/orders/archive";
 import {
   orders,
   orderItems,
@@ -213,8 +214,8 @@ export async function getQcQueueIds(
       .from(orders)
       .where(
         bizFilter
-          ? and(eq(orders.status, "awaiting_qc"), bizFilter)
-          : eq(orders.status, "awaiting_qc"),
+          ? and(eq(orders.status, "awaiting_qc"), liveOrderWhere(), bizFilter)
+          : and(eq(orders.status, "awaiting_qc"), liveOrderWhere()),
       )
       // NULL due dates sort last, then oldest in QC first.
       .orderBy(sql`${orders.dueAt} asc nulls last`, asc(orders.createdAt));

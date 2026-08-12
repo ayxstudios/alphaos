@@ -43,6 +43,7 @@ export type EtsyIntegrationConfig = {
   syncCursor?: string; // ISO of the newest created_timestamp imported
   syncingSince?: string; // ISO; concurrency guard
   lastSyncAt?: string; // ISO; last successful sync completion, not the cursor
+  backfillCutoffAt?: string; // ISO; receipts placed before this import archived
 };
 
 export type EtsyTokenResponse = {

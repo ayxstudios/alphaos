@@ -20,6 +20,7 @@ import {
   triggerShopifySync,
   backfillShopifyShop,
   registerShopifyWebhooks,
+  saveShopBackfillCutoff,
 } from "@/app/(app)/settings/actions";
 import { ResolutionRulesEditor } from "@/components/settings/resolution-rules-editor";
 import { formatSyncTime, syncHealth } from "@/lib/integrations/sync-health";
@@ -40,6 +41,7 @@ export type ShopifyShopVM = {
   hasWebhookSecret: boolean;
   lastSyncCursor: string | null;
   lastSyncAt: string | null;
+  backfillCutoffAt: string | null;
   webhookStatus: ShopifyWebhookStatus;
   allowHeuristic: boolean;
   ruleCount: number;
@@ -107,7 +109,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
   }
 
   function onBackfill() {
-    if (!confirm("Backfill re-scans the last 60 days with NO customer emails sent. Continue?")) return;
+    if (!confirm("Backfill re-scans the last 60 days. Orders before the cutoff import as archived and no customer emails are sent. Continue?")) return;
     setSyncError(null);
     setSummary(null);
     startBackfill(async () => {
@@ -133,6 +135,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
   const health = syncHealth(shop.lastSyncAt);
   const lastSync = formatSyncTime(shop.lastSyncAt);
   const cursor = shop.lastSyncCursor ? new Date(shop.lastSyncCursor).toLocaleString() : "none";
+  const cutoffDate = shop.backfillCutoffAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
   const webhookUris = webhookStatus.subscriptions
     .map((sub) => sub.uri)
     .filter((uri): uri is string => !!uri);
@@ -268,6 +271,23 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
           titleSuggestions={shop.titleSuggestions}
         />
 
+        <form action={saveShopBackfillCutoff} className="rounded-card border border-line bg-canvas p-3">
+          <input type="hidden" name="shopId" value={shop.id} />
+          <div className="flex flex-wrap items-end gap-3">
+            <Input
+              label="Live-order cutoff"
+              name="backfillCutoffDate"
+              type="date"
+              defaultValue={cutoffDate}
+              hint="Orders placed before this date import as archived history."
+              required
+            />
+            <Button type="submit" variant="secondary" size="sm">
+              Save cutoff
+            </Button>
+          </div>
+        </form>
+
         <div className="rounded-card border border-line bg-canvas p-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
@@ -325,6 +345,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
             {summary.skippedRun
               ? `Sync skipped: ${summary.skippedRun.replace("_", " ")}.`
               : `Imported ${summary.imported} new` +
+                (summary.archived ? `, archived ${summary.archived}` : "") +
                 (summary.failed ? `, ${summary.failed} failed` : "") +
                 ` · ${summary.total ?? "?"} total` +
                 (summary.windowDays ? ` · covering last ${summary.windowDays} days.` : ".")}

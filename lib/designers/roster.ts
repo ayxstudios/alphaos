@@ -3,6 +3,7 @@ import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { assignments, designerProfiles, orders, users } from "@/lib/db/schema";
+import { liveOrderWhere } from "@/lib/orders/archive";
 
 export type RailDesigner = {
   id: string;
@@ -128,6 +129,7 @@ export async function getDesignerRoster(user: RequestUser): Promise<DesignerRow[
           eq(assignments.active, true),
           inArray(assignments.designerId, ids),
           inArray(orders.status, ["in_design", "awaiting_qc"]),
+          liveOrderWhere(),
         ),
       )
       .groupBy(assignments.designerId)) {
