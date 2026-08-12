@@ -126,7 +126,8 @@ function all(...conditions: (SQL | undefined)[]) {
 
 function isoOrNull(value: Date | string | null): string | null {
   if (!value) return null;
-  return value instanceof Date ? value.toISOString() : value;
+  const date = dateOrNull(value);
+  return date ? date.toISOString() : null;
 }
 
 function percent(numerator: number, denominator: number): number | null {
@@ -134,8 +135,16 @@ function percent(numerator: number, denominator: number): number | null {
   return Math.round((numerator / denominator) * 1000) / 10;
 }
 
-function hoursBetween(later: Date, earlier: Date): number {
-  return Math.max(0, Math.round(((later.getTime() - earlier.getTime()) / 3_600_000) * 10) / 10);
+function dateOrNull(value: Date | string | null): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function hoursBetween(later: Date, earlier: Date | string): number | null {
+  const earlierDate = dateOrNull(earlier);
+  if (!earlierDate) return null;
+  return Math.max(0, Math.round(((later.getTime() - earlierDate.getTime()) / 3_600_000) * 10) / 10);
 }
 
 function zonedDateKey(date: Date, timeZone = HEALTH_TIME_ZONE): string {
@@ -598,7 +607,7 @@ async function computeHealthMetricsInTx(tx: Tx, scope: HealthScope): Promise<Hea
   const overdueRow = await tx
     .select({
       count: sql<number>`count(*)::int`,
-      worstDueAt: sql<Date | null>`min(${orders.dueAt})`,
+      worstDueAt: sql<Date | string | null>`min(${orders.dueAt})`,
     })
     .from(orders)
     .where(
@@ -680,6 +689,7 @@ async function computeHealthMetricsInTx(tx: Tx, scope: HealthScope): Promise<Hea
   const staleUnmatchedReplies = unmatchedRow[0]?.n ?? 0;
   const overdueNow = overdueRow[0]?.count ?? 0;
   const worstDueAt = overdueRow[0]?.worstDueAt ?? null;
+  const worstOverdueHours = worstDueAt ? hoursBetween(now, worstDueAt) : null;
   const pipelineUnhealthy =
     shopHealth.some((shop) => shop.stale) ||
     queuedEmails > 0 ||
@@ -718,7 +728,7 @@ async function computeHealthMetricsInTx(tx: Tx, scope: HealthScope): Promise<Hea
       trailing7,
       previous7,
       overdueNow,
-      worstOverdueHours: worstDueAt ? hoursBetween(now, worstDueAt) : null,
+      worstOverdueHours,
       topFailedChecklistItem: topFailedChecklistItem(failedQcRows),
       designersOverCapacity: capacity.over,
       designersIdle: capacity.idle,
@@ -735,7 +745,7 @@ async function computeHealthMetricsInTx(tx: Tx, scope: HealthScope): Promise<Hea
       proofNoResponse,
       staleShopCount: shopHealth.filter((shop) => shop.stale).length,
       overdueNow,
-      worstOverdueHours: worstDueAt ? hoursBetween(now, worstDueAt) : null,
+      worstOverdueHours,
       yesterday,
       trailing7,
       overCapacity: capacity.over.length,
