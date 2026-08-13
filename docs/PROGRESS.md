@@ -47,10 +47,11 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
   VA work launcher: awaiting QC, needs details, overdue, awaiting customer,
   ready to print, email triage, and unassigned work, each linking directly to
   the relevant queue/view. `/health` is admin-only and holds pipeline integrity,
-  per-shop sync status, and the daily narrative. Health metrics compute fresh on
-  load; the narrative is generated once daily from aggregate-only metrics and
-  cached in `daily_health_reports`; if Anthropic is unavailable, the numbers
-  still render with a cached/plain fallback.
+  per-shop sync status, and, when `ANTHROPIC_API_KEY` is configured, the daily
+  narrative. Health metrics compute fresh on load; the narrative is generated
+  once daily from aggregate-only metrics and cached in `daily_health_reports`.
+  With no Anthropic key, the narrative UI is intentionally hidden and the
+  numbers stand alone.
 - **Morning health briefing delivery.** Vercel Cron calls
   `/api/cron/daily-health` at both UTC hours that can be 7am in Melbourne; the
   route checks `Australia/Melbourne` local time so daylight saving does not shift
@@ -58,9 +59,9 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
   configured in Settings → Notifications with explicit active-admin recipients.
   The email sends via that business's Gmail integration, records sent/failure
   state on `daily_health_reports`, and creates in-app notifications linking to
-  `/health`. If Anthropic is unavailable, the numbers still send without an
-  AI narrative; if Gmail is missing or needs reauth, admins get a visible failure
-  notification.
+  `/health`. If `ANTHROPIC_API_KEY` is absent, the email omits the narrative
+  section entirely; if Gmail is missing or needs reauth, admins get a visible
+  failure notification.
 - **Notification SLA sweep (in-app).** A 15-minute cron route detects due-soon,
   overdue, overdue escalations, stale intake, proof no-response, stale shop sync,
   and stale unmatched replies. `notification_fires` is the durable idempotency
@@ -106,12 +107,21 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
   attachment and completed checklist, sends through Gmail, and only then moves
   the order to awaiting approval; failures stay visible in Outbox and do not
   advance the order. Inbound replies attached to orders in `awaiting_approval`
-  are quote-stripped and, when Anthropic is configured, classified as approval /
-  revision / question / unclear; approval/revision are VA-confirmed suggestions,
-  never automatic transitions, and VA decisions are logged for accuracy review
-  (`test:reply-print`). If Anthropic is unavailable, inbound still arrives and
-  notifies staff with no suggestion. No business has connected Gmail yet, so
-  send + inbound have not run live. Photo requests are off by default regardless.
+  are quote-stripped and, when `ANTHROPIC_API_KEY` is configured, classified as
+  approval / revision / question / unclear; approval/revision are VA-confirmed
+  suggestions, never automatic transitions, and VA decisions are logged for
+  accuracy review (`test:reply-print`). With no Anthropic key, the classification
+  path is skipped entirely, no suggestion UI is shown, and inbound still arrives
+  and notifies staff normally. No business has connected Gmail yet, so send +
+  inbound have not run live. Photo requests are off by default regardless.
+
+## Feature flags
+
+- **Anthropic-backed features are hidden unless `ANTHROPIC_API_KEY` is set.**
+  This single runtime flag gates the daily health narrative, inbound reply
+  classification suggestions, and any future Auto-QC UI. Do not treat the
+  missing narrative/suggestions as broken when the key is absent; the intended
+  state is invisible, not an empty placeholder.
 
 ## Key decisions and why
 

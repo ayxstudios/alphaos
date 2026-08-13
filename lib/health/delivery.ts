@@ -1,5 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 
+import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
 import { withSystemContext } from "@/lib/db";
 import { businesses, dailyHealthReports, notifications, users } from "@/lib/db/schema";
 import { GmailClient, GmailNotConnectedError, GmailReauthRequiredError } from "@/lib/integrations/gmail";
@@ -10,7 +11,11 @@ import {
   type CountLink,
   type HealthMetrics,
 } from "@/lib/health/daily-report";
-import { loadDailyNarrativeForSystem, type NarrativeResult } from "@/lib/health/narrative";
+import {
+  ensureDailyHealthReportForSystem,
+  loadDailyNarrativeForSystem,
+  type NarrativeResult,
+} from "@/lib/health/narrative";
 
 export type DailyHealthDeliveryResult = {
   checkedAt: string;
@@ -118,7 +123,8 @@ async function deliverForBusiness(business: BusinessSetting): Promise<DailyHealt
     businessId: business.id,
     businessName: business.name,
   });
-  const narrative = await loadDailyNarrativeForSystem(metrics);
+  const narrative = anthropicFeaturesEnabled() ? await loadDailyNarrativeForSystem(metrics) : null;
+  if (!narrative) await ensureDailyHealthReportForSystem(metrics);
   const recipients = await loadRecipients(business.recipientIds);
 
   if (await alreadyEmailed(business.id, metrics.reportDate)) {
@@ -300,12 +306,12 @@ function summaryLine(metrics: HealthMetrics): string {
 function buildHealthEmail(
   business: BusinessSetting,
   metrics: HealthMetrics,
-  narrative: NarrativeResult,
+  narrative: NarrativeResult | null,
   recipients: Recipient[],
 ) {
   const subjectStatus = metrics.healthy ? "Healthy" : "Needs attention";
   const subject = `AlphaOS morning briefing: ${business.name} — ${subjectStatus}`;
-  const narrativeText = narrative.status === "fallback" ? null : narrative.text;
+  const narrativeText = narrative && narrative.status !== "fallback" && narrative.status !== "disabled" ? narrative.text : null;
   const pipelineRows = metrics.links.pipeline;
   const operationRows = metrics.links.operations;
 
@@ -318,9 +324,7 @@ function buildHealthEmail(
     "",
     "Operational state",
     ...operationRows.map((row) => textMetric(row)),
-    "",
-    narrativeText ? "Narrative" : "Narrative unavailable",
-    narrativeText ?? "Metrics are current, but the narrative was not generated.",
+    ...(narrativeText ? ["", "Narrative", narrativeText] : []),
     "",
     `System Health: ${appUrl("/health")}`,
     `Sent to: ${recipients.map((recipient) => recipient.email).join(", ")}`,
@@ -336,10 +340,14 @@ function buildHealthEmail(
     `</div>`,
     htmlSection("Pipeline integrity", pipelineRows),
     htmlSection("Operational state", operationRows),
-    `<div style="padding:16px 18px;border-top:1px solid #E6E2DC">`,
-    `<h2 style="font-size:15px;margin:0 0 8px">Narrative</h2>`,
-    `<p style="font-size:15px;line-height:1.55;margin:0;color:${narrativeText ? "#16222E" : "#5C6B7A"}">${escapeHtml(narrativeText ?? "Metrics are current, but the narrative was not generated.")}</p>`,
-    `</div>`,
+    narrativeText
+      ? [
+          `<div style="padding:16px 18px;border-top:1px solid #E6E2DC">`,
+          `<h2 style="font-size:15px;margin:0 0 8px">Narrative</h2>`,
+          `<p style="font-size:15px;line-height:1.55;margin:0;color:#16222E">${escapeHtml(narrativeText)}</p>`,
+          `</div>`,
+        ].join("")
+      : "",
     `<div style="padding:16px 18px;border-top:1px solid #E6E2DC">`,
     `<a href="${appUrl("/health")}" style="display:inline-block;background:#5B4BC4;color:#FFFFFF;text-decoration:none;border-radius:8px;padding:10px 12px;font-size:14px;font-weight:700">Open System Health</a>`,
     `</div>`,

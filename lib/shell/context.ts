@@ -2,6 +2,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
+import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { businesses as businessesTable, notifications } from "@/lib/db/schema";
 import { BUSINESS_COOKIE } from "@/lib/shell/constants";
@@ -35,6 +36,11 @@ export function loadShellData(user: RequestUser): Promise<ShellData> {
 const loadShellCached = cache(
   async (userId: string, role: RequestUser["role"]): Promise<ShellData> => {
     const user: RequestUser = { id: userId, role };
+    const notificationFilters = [
+      eq(notifications.userId, userId),
+      isNull(notifications.readAt),
+      ...(!anthropicFeaturesEnabled() ? [sql`${notifications.type} <> 'message.reply_suggestion'`] : []),
+    ];
     const { businesses, unread, recentNotifications } = await withUserContext(user, async (tx) => {
       const businesses = await tx
         .select({ id: businessesTable.id, name: businessesTable.name })
@@ -43,7 +49,7 @@ const loadShellCached = cache(
       const [unreadRow] = await tx
         .select({ n: sql<number>`count(*)::int` })
         .from(notifications)
-        .where(and(eq(notifications.userId, userId), isNull(notifications.readAt)));
+        .where(and(...notificationFilters));
       const recentRows = await tx
         .select({
           id: notifications.id,
@@ -54,7 +60,7 @@ const loadShellCached = cache(
           createdAt: notifications.createdAt,
         })
         .from(notifications)
-        .where(and(eq(notifications.userId, userId), isNull(notifications.readAt)))
+        .where(and(...notificationFilters))
         .orderBy(desc(notifications.createdAt))
         .limit(8);
       return {

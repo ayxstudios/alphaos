@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { and, desc, eq } from "drizzle-orm";
 
+import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
 import { SYSTEM_ACTOR_ID, withUserContext, type RequestUser } from "@/lib/db";
 import { dailyHealthReports } from "@/lib/db/schema";
 import type { HealthMetrics, HealthScope } from "@/lib/health/daily-report";
@@ -13,12 +14,13 @@ const FALLBACK_TEXT = "Narrative unavailable; metrics are current.";
 
 export type NarrativeResult = {
   text: string;
-  status: "cached" | "generated" | "fallback";
+  status: "cached" | "generated" | "fallback" | "disabled";
   generatedAt: string | null;
 };
 
 type CachedReport = {
   narrative: string;
+  status: string;
   generatedAt: Date;
 };
 
@@ -141,6 +143,7 @@ async function loadTodaysCache(user: RequestUser, metrics: HealthMetrics): Promi
     const [row] = await tx
       .select({
         narrative: dailyHealthReports.narrative,
+        status: dailyHealthReports.status,
         generatedAt: dailyHealthReports.generatedAt,
       })
       .from(dailyHealthReports)
@@ -162,6 +165,7 @@ async function loadPreviousCache(user: RequestUser, scope: HealthScope): Promise
     const [row] = await tx
       .select({
         narrative: dailyHealthReports.narrative,
+        status: dailyHealthReports.status,
         generatedAt: dailyHealthReports.generatedAt,
       })
       .from(dailyHealthReports)
@@ -176,7 +180,7 @@ async function saveNarrative(
   user: RequestUser,
   metrics: HealthMetrics,
   narrative: string,
-  status: "ok" | "fallback",
+  status: "ok" | "fallback" | "disabled",
   error?: string,
 ) {
   const key = scopeKey(metrics.scope);
@@ -211,8 +215,12 @@ async function saveNarrative(
 }
 
 export async function loadDailyNarrative(user: RequestUser, metrics: HealthMetrics): Promise<NarrativeResult> {
+  if (!anthropicFeaturesEnabled()) {
+    return { text: "", status: "disabled", generatedAt: null };
+  }
+
   const today = await loadTodaysCache(user, metrics);
-  if (today) {
+  if (today && today.status !== "disabled") {
     return {
       text: today.narrative,
       status: today.narrative === FALLBACK_TEXT ? "fallback" : "cached",
@@ -234,7 +242,8 @@ export async function loadDailyNarrative(user: RequestUser, metrics: HealthMetri
     await saveNarrative(user, metrics, text, "ok");
     return { text, status: "generated", generatedAt: new Date().toISOString() };
   } catch (error) {
-    const text = previous?.narrative ?? FALLBACK_TEXT;
+    const previousUsable = previous && previous.status !== "disabled" && previous.narrative ? previous : null;
+    const text = previousUsable?.narrative ?? FALLBACK_TEXT;
     await saveNarrative(
       user,
       metrics,
@@ -245,7 +254,7 @@ export async function loadDailyNarrative(user: RequestUser, metrics: HealthMetri
     return {
       text,
       status: "fallback",
-      generatedAt: previous?.generatedAt.toISOString() ?? null,
+      generatedAt: previousUsable?.generatedAt.toISOString() ?? null,
     };
   } finally {
     clearTimeout(timeout);
@@ -254,4 +263,8 @@ export async function loadDailyNarrative(user: RequestUser, metrics: HealthMetri
 
 export async function loadDailyNarrativeForSystem(metrics: HealthMetrics): Promise<NarrativeResult> {
   return loadDailyNarrative({ id: SYSTEM_ACTOR_ID, role: "admin" }, metrics);
+}
+
+export async function ensureDailyHealthReportForSystem(metrics: HealthMetrics): Promise<void> {
+  await saveNarrative({ id: SYSTEM_ACTOR_ID, role: "admin" }, metrics, "", "disabled");
 }

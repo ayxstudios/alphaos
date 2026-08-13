@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { and, asc, desc, eq } from "drizzle-orm";
 
+import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
 import {
@@ -393,6 +394,7 @@ export default async function OrderDetailPage({
   });
   const sourceLabel = `${order.shopName} · ${titleCase(order.shopPlatform ?? order.source)}`;
   const editable = user.role === "admin" || user.role === "va";
+  const showAiFeatures = anthropicFeaturesEnabled();
   const canCreateRevision = editable && REVISION_FROM_STATUSES.has(order.status as OrderStatus);
   const revisionStarter =
     timeline.find((m) => m.direction === "inbound" && m.body)?.body ??
@@ -794,7 +796,7 @@ export default async function OrderDetailPage({
                 {timeline.map((m) => {
                   const inbound = m.direction === "inbound";
                   const when = m.sentAt ?? m.createdAt;
-                  const suggestion = inbound ? replySuggestion(m) : null;
+                  const suggestion = showAiFeatures && inbound ? replySuggestion(m) : null;
                   return (
                     <li key={m.id} className="px-4 py-3">
                       <div className="mb-1 flex flex-wrap items-center gap-2">

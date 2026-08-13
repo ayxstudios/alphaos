@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
 import { auth } from "@/lib/auth";
 import { loadHealthMetrics, type CountLink, type ShopSyncHealth } from "@/lib/health/daily-report";
 import { loadDailyNarrative } from "@/lib/health/narrative";
@@ -59,7 +60,8 @@ export default async function HealthPage({
     : ({ kind: "business", businessId: selected.id, businessName: selected.name } as const);
 
   const metrics = await loadHealthMetrics(user, scope);
-  const narrative = await loadDailyNarrative(user, metrics);
+  const showAiFeatures = anthropicFeaturesEnabled();
+  const narrative = showAiFeatures ? await loadDailyNarrative(user, metrics) : null;
 
   return (
     <Page>
@@ -91,18 +93,20 @@ export default async function HealthPage({
         }
       />
 
-      <DataPanel className="p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="max-w-4xl">
-            <p className="text-sm font-semibold text-ink">Daily briefing</p>
-            <p className="mt-2 text-sm leading-6 text-slate">{narrative.text}</p>
+      {narrative && (
+        <DataPanel className="p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="max-w-4xl">
+              <p className="text-sm font-semibold text-ink">Daily briefing</p>
+              <p className="mt-2 text-sm leading-6 text-slate">{narrative.text}</p>
+            </div>
+            <Badge variant={metrics.healthy ? "success" : "warning"} dot>
+              {metrics.healthy ? "Healthy" : "Needs attention"}
+            </Badge>
           </div>
-          <Badge variant={metrics.healthy ? "success" : "warning"} dot>
-            {metrics.healthy ? "Healthy" : "Needs attention"}
-          </Badge>
-        </div>
-        <p className="mt-3 text-xs text-slate">{formatGenerated(narrative.generatedAt)}</p>
-      </DataPanel>
+          <p className="mt-3 text-xs text-slate">{formatGenerated(narrative.generatedAt)}</p>
+        </DataPanel>
+      )}
 
       <DataPanel className="p-4">
         <SectionHeader

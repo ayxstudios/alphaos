@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 
+import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
 import { withSystemContext } from "@/lib/db";
 import { getBusinessGmailCredentials } from "@/lib/db/credentials";
 import { activityLog, businesses, messages, notifications, orders, users } from "@/lib/db/schema";
@@ -260,7 +261,7 @@ async function attachMessage(
     };
   });
   if (!attached) return false;
-  if (attached.orderId && attached.orderStatus === "awaiting_approval") {
+  if (anthropicFeaturesEnabled() && attached.orderId && attached.orderStatus === "awaiting_approval") {
     await classifyAndStoreReply(attached);
   }
   return true;
