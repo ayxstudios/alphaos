@@ -37,6 +37,8 @@ export function fallbackNotificationTitle(type: string): string {
       return "Morning briefing failed";
     case "gmail.reauth_required":
       return "Gmail needs reconnecting";
+    case "gmail.mailbox_stalled":
+      return "Gmail poller is stalled";
     case "etsy.reauth_required":
       return "Etsy needs reconnecting";
     case ALERT_TYPES.orderDueSoon:

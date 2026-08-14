@@ -111,14 +111,20 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
   dispatcher/failure handling as QC email. QC pass opens a customer email
   preview, shows the exact portrait attachment and completed checklist, sends
   through Gmail, and only then moves the order to awaiting approval; failures
-  stay visible in Outbox and do not advance the order. Inbound replies attach by
-  Gmail thread; when unmatched, the UI suggests matches from both Shopify order
-  names (`PC...`) and Etsy receipt IDs in the subject, or sender email, but never
-  auto-links. No-reply/do-not-reply mail and per-business ignored senders are
-  stored with `messages.suppressed_at`, hidden by default, reversible, and
-  visible through a suppressed-count toggle. Inbound replies attached to orders
-  in `awaiting_approval` are quote-stripped and, when `ANTHROPIC_API_KEY` is
-  configured, classified as approval / revision / question / unclear;
+  stay visible in Outbox and do not advance the order. Inbound polling has
+  per-message error isolation: DRAFT history entries are skipped, deleted/404
+  messages do not abort the mailbox run, skip reasons are logged per poll, and
+  the history cursor still advances so one bad history entry cannot wedge a
+  mailbox (`test:gmail-poll`). `/health` shows each connected mailbox's last
+  successful poll time and flags cursor stalls when Gmail reports newer history.
+  Inbound replies attach by Gmail thread; when unmatched, the UI suggests matches
+  from both Shopify order names (`PC...`) and Etsy receipt IDs in the subject, or
+  sender email, but never auto-links. No-reply/do-not-reply mail and
+  per-business ignored senders are stored with `messages.suppressed_at`, hidden
+  by default, reversible, and visible through a suppressed-count toggle. Inbound
+  replies attached to orders in `awaiting_approval` are quote-stripped and, when
+  `ANTHROPIC_API_KEY` is configured, classified as approval / revision /
+  question / unclear;
   approval/revision are VA-confirmed suggestions, never automatic transitions,
   and VA decisions are logged for accuracy review (`test:reply-print`). With no
   Anthropic key, the classification path is skipped entirely, no suggestion UI is

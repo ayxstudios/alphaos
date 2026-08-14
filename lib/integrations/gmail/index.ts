@@ -24,7 +24,9 @@ export {
   pollMailbox,
   pollAllMailboxes,
   pollMailboxesScheduled,
+  detectGmailMailboxStalls,
   type InboundSummary,
+  type GmailMailboxStall,
   type PollBatchResult,
 } from "./inbound";
 export {

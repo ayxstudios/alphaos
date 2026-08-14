@@ -3,11 +3,11 @@ import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
 import { withSystemContext } from "@/lib/db";
 import { getBusinessGmailCredentials } from "@/lib/db/credentials";
-import { activityLog, businesses, messages, notifications, orders, users } from "@/lib/db/schema";
+import { activityLog, businesses, notificationFires, notifications, messages, orders, users } from "@/lib/db/schema";
 import { classifyProofReply, type ReplyClassification } from "@/lib/email/reply-classifier";
 import { resolveSuppressionReason } from "@/lib/email/suppression";
 import { GmailClient } from "./client";
-import { GmailReauthRequiredError } from "./errors";
+import { GmailApiError, GmailReauthRequiredError } from "./errors";
 import { extractPlainText, header } from "./mime";
 import type { GmailCredentials, GmailHistoryMessage } from "./types";
 
@@ -15,10 +15,19 @@ export type InboundSummary = {
   businessId: string;
   attached: number;
   skipped: number;
+  fetched: number;
+  skippedReasons: {
+    sent: number;
+    draft: number;
+    duplicateOrSelf: number;
+    notFound: number;
+    fetchError: number;
+  };
   skippedRun?: "not_connected" | "needs_reauth";
 };
 
 const MAX_PAGES = 20; // safety bound on history pagination per run
+type GmailMessageReader = Pick<GmailClient, "getMessage">;
 
 /**
  * Gmail polling job (called manually or by Vercel Cron). Reads a
@@ -28,7 +37,19 @@ const MAX_PAGES = 20; // safety bound on history pagination per run
  * over an overlapping history window never double-inserts.
  */
 export async function pollMailbox(businessId: string): Promise<InboundSummary> {
-  const base: InboundSummary = { businessId, attached: 0, skipped: 0 };
+  const base: InboundSummary = {
+    businessId,
+    attached: 0,
+    skipped: 0,
+    fetched: 0,
+    skippedReasons: {
+      sent: 0,
+      draft: 0,
+      duplicateOrSelf: 0,
+      notFound: 0,
+      fetchError: 0,
+    },
+  };
 
   const start = await withSystemContext(async (tx) => {
     const [biz] = await tx
@@ -69,20 +90,7 @@ export async function pollMailbox(businessId: string): Promise<InboundSummary> {
     throw err;
   }
 
-  // Dedupe ids, skip anything we sent (has the SENT label).
-  const seen = new Set<string>();
-  const summary = { ...base };
-  for (const m of added) {
-    if (seen.has(m.id)) continue;
-    seen.add(m.id);
-    if (m.labelIds?.includes("SENT")) {
-      summary.skipped++;
-      continue;
-    }
-    const attached = await attachMessage(client, businessId, m.id, selfAddress);
-    if (attached) summary.attached++;
-    else summary.skipped++;
-  }
+  const summary = await processHistoryMessages({ client, businessId, historyMessages: added, selfAddress });
 
   // Advance the cursor so the next run starts after what we processed, and stamp
   // the poll time (drives cron ordering + the dashboard mailbox health).
@@ -96,7 +104,76 @@ export async function pollMailbox(businessId: string): Promise<InboundSummary> {
       .where(eq(businesses.id, businessId)),
   );
 
-  logInbound(businessId, { event: "poll_complete", attached: summary.attached, skipped: summary.skipped });
+  logInbound(businessId, {
+    event: "poll_complete",
+    historyStart: start.biz.historyId,
+    historyEnd: latestHistoryId,
+    historyMessagesAdded: added.length,
+    fetched: summary.fetched,
+    attached: summary.attached,
+    skipped: summary.skipped,
+    skippedReasons: summary.skippedReasons,
+  });
+  return summary;
+}
+
+export async function processHistoryMessages(args: {
+  client: GmailMessageReader;
+  businessId: string;
+  historyMessages: GmailHistoryMessage[];
+  selfAddress: string;
+}): Promise<InboundSummary> {
+  const summary: InboundSummary = {
+    businessId: args.businessId,
+    attached: 0,
+    skipped: 0,
+    fetched: 0,
+    skippedReasons: {
+      sent: 0,
+      draft: 0,
+      duplicateOrSelf: 0,
+      notFound: 0,
+      fetchError: 0,
+    },
+  };
+  const seen = new Set<string>();
+  for (const m of args.historyMessages) {
+    if (seen.has(m.id)) continue;
+    seen.add(m.id);
+    if (m.labelIds?.includes("DRAFT")) {
+      summary.skipped++;
+      summary.skippedReasons.draft++;
+      continue;
+    }
+    if (m.labelIds?.includes("SENT")) {
+      summary.skipped++;
+      summary.skippedReasons.sent++;
+      continue;
+    }
+    summary.fetched++;
+    try {
+      const attached = await attachMessage(args.client, args.businessId, m.id, args.selfAddress);
+      if (attached) summary.attached++;
+      else {
+        summary.skipped++;
+        summary.skippedReasons.duplicateOrSelf++;
+      }
+    } catch (err) {
+      summary.skipped++;
+      if (err instanceof GmailApiError && err.status === 404) {
+        summary.skippedReasons.notFound++;
+      } else {
+        summary.skippedReasons.fetchError++;
+        logInbound(args.businessId, {
+          level: "error",
+          event: "message_fetch_failed",
+          gmailMessageId: m.id,
+          threadId: m.threadId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  }
   return summary;
 }
 
@@ -105,7 +182,15 @@ export type PollBatchResult = {
   processed: number;
   skippedOverBudget: number;
   attached: number;
-  mailboxes: { businessId: string; attached: number; skipped: number; skippedRun?: string }[];
+  mailboxes: {
+    businessId: string;
+    attached: number;
+    skipped: number;
+    fetched: number;
+    skippedReasons: InboundSummary["skippedReasons"];
+    skippedRun?: string;
+  }[];
+  stalls: GmailMailboxStall[];
 };
 
 /**
@@ -125,7 +210,7 @@ export async function pollMailboxesScheduled(opts: { budgetMs?: number } = {}): 
   );
 
   const start = Date.now();
-  const result: PollBatchResult = { budgetMs, processed: 0, skippedOverBudget: 0, attached: 0, mailboxes: [] };
+  const result: PollBatchResult = { budgetMs, processed: 0, skippedOverBudget: 0, attached: 0, mailboxes: [], stalls: [] };
   for (const r of rows) {
     if (Date.now() - start > budgetMs) {
       result.skippedOverBudget++;
@@ -135,12 +220,27 @@ export async function pollMailboxesScheduled(opts: { budgetMs?: number } = {}): 
       const s = await pollMailbox(r.id);
       result.processed++;
       result.attached += s.attached;
-      result.mailboxes.push({ businessId: r.id, attached: s.attached, skipped: s.skipped, skippedRun: s.skippedRun });
+      result.mailboxes.push({
+        businessId: r.id,
+        attached: s.attached,
+        skipped: s.skipped,
+        fetched: s.fetched,
+        skippedReasons: s.skippedReasons,
+        skippedRun: s.skippedRun,
+      });
     } catch (err) {
       logInbound(r.id, { level: "error", event: "poll_failed", error: String(err) });
-      result.mailboxes.push({ businessId: r.id, attached: 0, skipped: 0, skippedRun: "error" });
+      result.mailboxes.push({
+        businessId: r.id,
+        attached: 0,
+        skipped: 0,
+        fetched: 0,
+        skippedReasons: { sent: 0, draft: 0, duplicateOrSelf: 0, notFound: 0, fetchError: 0 },
+        skippedRun: "error",
+      });
     }
   }
+  result.stalls = await detectGmailMailboxStalls({ notifyAdmins: true });
   return result;
 }
 
@@ -163,6 +263,113 @@ export async function pollAllMailboxes(): Promise<InboundSummary[]> {
   return out;
 }
 
+export type GmailMailboxStall = {
+  businessId: string;
+  businessName: string;
+  gmailAddress: string | null;
+  dbHistoryId: string;
+  gmailHistoryId: string;
+  lastPolledAt: string | null;
+  ageHours: number | null;
+};
+
+export async function detectGmailMailboxStalls(opts: { notifyAdmins?: boolean; businessId?: string } = {}): Promise<GmailMailboxStall[]> {
+  const cutoff = new Date(Date.now() - 60 * 60 * 1000);
+  const candidates = await withSystemContext((tx) =>
+    tx
+      .select({
+        id: businesses.id,
+        name: businesses.name,
+        gmailAddress: businesses.gmailAddress,
+        historyId: businesses.gmailHistoryId,
+        lastPolledAt: businesses.gmailLastPolledAt,
+      })
+      .from(businesses)
+      .where(
+        and(
+          isNotNull(businesses.gmailHistoryId),
+          isNotNull(businesses.gmailCredentials),
+          ...(opts.businessId ? [eq(businesses.id, opts.businessId)] : []),
+          sql`(${businesses.gmailLastPolledAt} is null or ${businesses.gmailLastPolledAt} < ${cutoff})`,
+        ),
+      ),
+  );
+
+  const stalls: GmailMailboxStall[] = [];
+  for (const candidate of candidates) {
+    if (!candidate.historyId) continue;
+    try {
+      const client = await GmailClient.forBusiness(candidate.id);
+      const profile = await client.getProfile();
+      if (profile.historyId === candidate.historyId) continue;
+      const ageHours = candidate.lastPolledAt
+        ? Math.round(((Date.now() - candidate.lastPolledAt.getTime()) / 3_600_000) * 10) / 10
+        : null;
+      stalls.push({
+        businessId: candidate.id,
+        businessName: candidate.name,
+        gmailAddress: candidate.gmailAddress,
+        dbHistoryId: candidate.historyId,
+        gmailHistoryId: profile.historyId,
+        lastPolledAt: candidate.lastPolledAt?.toISOString() ?? null,
+        ageHours,
+      });
+    } catch (err) {
+      logInbound(candidate.id, {
+        level: "error",
+        event: "stall_check_failed",
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  if (opts.notifyAdmins && stalls.length) {
+    await notifyMailboxStalls(stalls);
+  }
+  return stalls;
+}
+
+async function notifyMailboxStalls(stalls: GmailMailboxStall[]): Promise<void> {
+  const windowKey = new Date().toISOString().slice(0, 13);
+  await withSystemContext(async (tx) => {
+    const admins = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.role, "admin"), eq(users.active, true)));
+    if (!admins.length) return;
+
+    for (const stall of stalls) {
+      const dedupeKey = `gmail_mailbox_stalled:${stall.businessId}:${windowKey}`;
+      const [fire] = await tx
+        .insert(notificationFires)
+        .values({
+          businessId: stall.businessId,
+          alertType: "gmail.mailbox_stalled",
+          subjectType: "business",
+          subjectId: stall.businessId,
+          dedupeKey,
+          metadata: stall,
+        })
+        .onConflictDoNothing({ target: notificationFires.dedupeKey })
+        .returning({ id: notificationFires.id });
+      if (!fire) continue;
+
+      await tx.insert(notifications).values(
+        admins.map((admin) => ({
+          businessId: stall.businessId,
+          userId: admin.id,
+          type: "gmail.mailbox_stalled",
+          fireId: fire.id,
+          title: "Gmail poller is stalled",
+          body: `${stall.businessName} has newer Gmail history but has not advanced its cursor for ${stall.ageHours ?? "unknown"}h.`,
+          href: "/health",
+          metadata: stall,
+        })),
+      );
+    }
+  });
+}
+
 /**
  * Fetch one inbound message and, if it belongs to a known thread, persist it and
  * notify. Returns true when a new inbound row was created.
@@ -178,7 +385,7 @@ type AttachedMessage = {
 };
 
 async function attachMessage(
-  client: GmailClient,
+  client: GmailMessageReader,
   businessId: string,
   gmailMessageId: string,
   selfAddress: string,

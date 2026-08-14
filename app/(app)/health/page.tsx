@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
 import { auth } from "@/lib/auth";
-import { loadHealthMetrics, type CountLink, type ShopSyncHealth } from "@/lib/health/daily-report";
+import { loadHealthMetrics, type CountLink, type GmailMailboxHealth, type ShopSyncHealth } from "@/lib/health/daily-report";
 import { loadDailyNarrative } from "@/lib/health/narrative";
 import { loadShellData } from "@/lib/shell/context";
 import { Badge, DataPanel, EmptyState, Page, PageHeader, SectionHeader } from "@/components/ui";
@@ -137,6 +137,28 @@ export default async function HealthPage({
           </div>
         )}
       </DataPanel>
+
+      <DataPanel className="overflow-hidden">
+        <div className="border-b border-line px-4 py-3">
+          <SectionHeader
+            title="Mailbox polls"
+            description="Each connected mailbox should advance whenever Gmail has newer history."
+          />
+        </div>
+        {metrics.pipeline.gmailMailboxes.length === 0 ? (
+          <EmptyState
+            icon={Grid}
+            headline="No connected mailboxes"
+            body="Connected Gmail mailboxes will appear here with their last successful poll time."
+          />
+        ) : (
+          <div className="divide-y divide-line">
+            {metrics.pipeline.gmailMailboxes.map((mailbox) => (
+              <MailboxPollRow key={mailbox.businessId} mailbox={mailbox} />
+            ))}
+          </div>
+        )}
+      </DataPanel>
     </Page>
   );
 }
@@ -180,5 +202,26 @@ function ShopSyncRow({ shop }: { shop: ShopSyncHealth }) {
         {shop.stale ? "Stale" : "Healthy"}
       </Badge>
     </Link>
+  );
+}
+
+function MailboxPollRow({ mailbox }: { mailbox: GmailMailboxHealth }) {
+  return (
+    <div className="grid gap-2 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-ink">{mailbox.businessName}</p>
+        <p className="text-xs text-slate">
+          {mailbox.gmailAddress ?? "Gmail mailbox"} · last successful poll {formatDateTime(mailbox.lastPolledAt)}
+        </p>
+        {mailbox.stalled && (
+          <p className="mt-1 text-xs text-slate">
+            AlphaOS cursor {mailbox.dbHistoryId}; Gmail current {mailbox.gmailHistoryId}
+          </p>
+        )}
+      </div>
+      <Badge variant={mailbox.stalled ? "danger" : "success"} dot>
+        {mailbox.stalled ? `Stalled${mailbox.ageHours != null ? ` ${mailbox.ageHours}h` : ""}` : "Healthy"}
+      </Badge>
+    </div>
   );
 }

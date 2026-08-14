@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gte, inArray, isNull, lt, notInArray, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lt, notInArray, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 import { withSystemContext, withUserContext, type RequestUser, type Tx } from "@/lib/db";
@@ -17,6 +17,7 @@ import {
   shops,
   users,
 } from "@/lib/db/schema";
+import { detectGmailMailboxStalls, type GmailMailboxStall } from "@/lib/integrations/gmail";
 import { liveOrderSql, liveOrderWhere } from "@/lib/orders/archive";
 import { DEFAULT_CHECKLIST, type ChecklistSnapshot, type ItemResults } from "@/lib/qc/checklist";
 
@@ -45,6 +46,17 @@ export type ShopSyncHealth = {
   platform: "etsy" | "shopify";
   lastSyncAt: string | null;
   stale: boolean;
+};
+
+export type GmailMailboxHealth = {
+  businessId: string;
+  businessName: string;
+  gmailAddress: string | null;
+  lastPolledAt: string | null;
+  stalled: boolean;
+  dbHistoryId: string | null;
+  gmailHistoryId: string | null;
+  ageHours: number | null;
 };
 
 export type RateWindow = {
@@ -80,7 +92,10 @@ export type HealthMetrics = {
   healthy: boolean;
   pipeline: {
     shops: ShopSyncHealth[];
+    gmailMailboxes: GmailMailboxHealth[];
+    gmailStalls: GmailMailboxStall[];
     staleShopCount: number;
+    gmailStallCount: number;
     queuedEmails: number;
     failedEmails: number;
     staleUnmatchedReplies: number;
@@ -574,6 +589,23 @@ async function computeHealthMetricsInTx(tx: Tx, scope: HealthScope): Promise<Hea
     .innerJoin(businesses, eq(businesses.id, shops.businessId))
     .where(all(scope.kind === "business" ? eq(shops.businessId, scope.businessId) : undefined, eq(shops.active, true)))
     .orderBy(asc(businesses.name), asc(shops.name));
+  const gmailMailboxRows = await tx
+    .select({
+      businessId: businesses.id,
+      businessName: businesses.name,
+      gmailAddress: businesses.gmailAddress,
+      historyId: businesses.gmailHistoryId,
+      lastPolledAt: businesses.gmailLastPolledAt,
+    })
+    .from(businesses)
+    .where(
+      all(
+        scopedWhere(scope, businesses.id),
+        isNotNull(businesses.gmailCredentials),
+        isNotNull(businesses.gmailHistoryId),
+      ),
+    )
+    .orderBy(asc(businesses.name));
   const emailRows = await tx
     .select({
       queued: sql<number>`count(*) filter (where ${messages.status} = 'queued')::int`,
@@ -716,7 +748,21 @@ async function computeHealthMetricsInTx(tx: Tx, scope: HealthScope): Promise<Hea
     healthy: !pipelineUnhealthy && !operationsUnhealthy,
     pipeline: {
       shops: shopHealth,
+      gmailMailboxes: gmailMailboxRows.map((mailbox) => ({
+        businessId: mailbox.businessId,
+        businessName: mailbox.businessName,
+        gmailAddress: mailbox.gmailAddress,
+        lastPolledAt: mailbox.lastPolledAt?.toISOString() ?? null,
+        stalled: false,
+        dbHistoryId: mailbox.historyId,
+        gmailHistoryId: null,
+        ageHours: mailbox.lastPolledAt
+          ? Math.round(((now.getTime() - mailbox.lastPolledAt.getTime()) / 3_600_000) * 10) / 10
+          : null,
+      })),
+      gmailStalls: [],
       staleShopCount: shopHealth.filter((shop) => shop.stale).length,
+      gmailStallCount: 0,
       queuedEmails,
       failedEmails,
       staleUnmatchedReplies,
@@ -745,6 +791,7 @@ async function computeHealthMetricsInTx(tx: Tx, scope: HealthScope): Promise<Hea
       staleIntake,
       proofNoResponse,
       staleShopCount: shopHealth.filter((shop) => shop.stale).length,
+      gmailStallCount: 0,
       overdueNow,
       worstOverdueHours,
       yesterday,
@@ -765,6 +812,7 @@ function buildLinks(input: {
   staleIntake: number;
   proofNoResponse: number;
   staleShopCount: number;
+  gmailStallCount: number;
   overdueNow: number;
   worstOverdueHours: number | null;
   yesterday: ThroughputWindow;
@@ -781,6 +829,13 @@ function buildLinks(input: {
       href: "/settings",
       tone: input.staleShopCount > 0 ? "danger" : "success",
       detail: "Last successful sync older than 1 hour",
+    },
+    {
+      label: "Mailbox poll stalls",
+      count: input.gmailStallCount,
+      href: "/health",
+      tone: input.gmailStallCount > 0 ? "danger" : "success",
+      detail: "Gmail has newer history but AlphaOS has not advanced the cursor",
     },
     {
       label: "Queued emails",
@@ -912,9 +967,57 @@ function overdueDetail(hours: number | null) {
 }
 
 export async function loadHealthMetrics(user: RequestUser, scope: HealthScope): Promise<HealthMetrics> {
-  return withUserContext(user, (tx) => computeHealthMetricsInTx(tx, scope));
+  const metrics = await withUserContext(user, (tx) => computeHealthMetricsInTx(tx, scope));
+  return withGmailStalls(metrics);
 }
 
 export async function loadHealthMetricsForSystem(scope: HealthScope): Promise<HealthMetrics> {
-  return withSystemContext((tx) => computeHealthMetricsInTx(tx, scope));
+  const metrics = await withSystemContext((tx) => computeHealthMetricsInTx(tx, scope));
+  return withGmailStalls(metrics);
+}
+
+async function withGmailStalls(metrics: HealthMetrics): Promise<HealthMetrics> {
+  const gmailStalls = await detectGmailMailboxStalls({
+    businessId: metrics.scope.kind === "business" ? metrics.scope.businessId : undefined,
+  });
+  const links = buildLinks({
+    queuedEmails: metrics.pipeline.queuedEmails,
+    failedEmails: metrics.pipeline.failedEmails,
+    staleUnmatchedReplies: metrics.pipeline.staleUnmatchedReplies,
+    blockedEarnings: metrics.pipeline.blockedEarnings,
+    staleIntake: metrics.pipeline.staleIntake,
+    proofNoResponse: metrics.pipeline.proofNoResponse,
+    staleShopCount: metrics.pipeline.staleShopCount,
+    gmailStallCount: gmailStalls.length,
+    overdueNow: metrics.operations.overdueNow,
+    worstOverdueHours: metrics.operations.worstOverdueHours,
+    yesterday: metrics.operations.yesterday,
+    trailing7: metrics.operations.trailing7,
+    overCapacity: metrics.operations.designersOverCapacity.length,
+    idle: metrics.operations.designersIdle.length,
+    unassigned: metrics.operations.unassigned,
+    noEligibleSample: metrics.operations.noEligibleDesignerSample,
+  });
+  return {
+    ...metrics,
+    healthy: metrics.healthy && gmailStalls.length === 0,
+    pipeline: {
+      ...metrics.pipeline,
+      gmailMailboxes: metrics.pipeline.gmailMailboxes.map((mailbox) => {
+        const stall = gmailStalls.find((s) => s.businessId === mailbox.businessId);
+        return stall
+          ? {
+              ...mailbox,
+              stalled: true,
+              dbHistoryId: stall.dbHistoryId,
+              gmailHistoryId: stall.gmailHistoryId,
+              ageHours: stall.ageHours,
+            }
+          : mailbox;
+      }),
+      gmailStalls,
+      gmailStallCount: gmailStalls.length,
+    },
+    links,
+  };
 }
