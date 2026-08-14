@@ -8,8 +8,7 @@ export const maxDuration = 60;
 
 /**
  * Manual/programmatic sync trigger (admin). syncShopReceipts runs as a system
- * job (withSystemContext, actor null); this handler only gates access. A cron
- * trigger can be added later (with a shared-secret header).
+ * job (withSystemContext, actor null); this handler only gates access.
  */
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -23,6 +22,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "missing shopId" }, { status: 400 });
   }
 
-  const summary = await syncShopReceipts(shopId);
+  const summary = await syncShopReceipts(shopId, { trigger: "manual" });
   return NextResponse.json(summary);
 }

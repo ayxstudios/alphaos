@@ -28,7 +28,7 @@ export type SyncAllResult = {
   shops: { shopId: string; platform: string; outcome: string }[];
 };
 
-export async function syncAllShops(opts: { budgetMs?: number } = {}): Promise<SyncAllResult> {
+export async function syncAllShops(opts: { budgetMs?: number; trigger?: "cron" | "manual" } = {}): Promise<SyncAllResult> {
   const budgetMs = opts.budgetMs ?? DEFAULT_BUDGET_MS;
 
   const shopRows = await withSystemContext((tx) =>
@@ -56,7 +56,10 @@ export async function syncAllShops(opts: { budgetMs?: number } = {}): Promise<Sy
 
     let outcome = "ok";
     try {
-      const summary = s.platform === "etsy" ? await syncShopReceipts(s.id) : await syncShopOrders(s.id);
+      const summary =
+        s.platform === "etsy"
+          ? await syncShopReceipts(s.id, { trigger: opts.trigger ?? "cron" })
+          : await syncShopOrders(s.id, { trigger: opts.trigger ?? "cron" });
       outcome = summary.skippedRun
         ? `skipped:${summary.skippedRun}`
         : `imported ${summary.imported}, reconciled ${summary.reconciled ?? 0}, failed ${summary.failed}`;

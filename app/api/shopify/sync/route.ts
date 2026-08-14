@@ -17,6 +17,6 @@ export async function POST(req: NextRequest) {
   if (!shopId || typeof shopId !== "string") {
     return NextResponse.json({ error: "missing shopId" }, { status: 400 });
   }
-  const summary = await syncShopOrders(shopId);
+  const summary = await syncShopOrders(shopId, { trigger: "manual" });
   return NextResponse.json(summary);
 }

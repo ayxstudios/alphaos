@@ -204,6 +204,13 @@
       "when": 1786681322890,
       "tag": "0028_rapid_ink",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1786683949619,
+      "tag": "0029_mean_magneto",
+      "breakpoints": true
     }
   ]
 }

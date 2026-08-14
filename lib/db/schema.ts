@@ -121,6 +121,12 @@ export const earningsStatus = pgEnum("earnings_status", [
   "voided",
 ]);
 export const qcResult = pgEnum("qc_result", ["pass", "fail"]);
+export const jobRunStatus = pgEnum("job_run_status", [
+  "running",
+  "ok",
+  "failed",
+  "partial",
+]);
 
 // ---------------------------------------------------------------------------
 // Auth.js tables (no RLS — see file header)
@@ -927,6 +933,34 @@ export type EarningBreakdown = {
 // ---------------------------------------------------------------------------
 // System
 // ---------------------------------------------------------------------------
+
+export const jobRuns = pgTable(
+  "job_runs",
+  {
+    id: id(),
+    jobName: text("job_name").notNull(),
+    businessId: text("business_id").references(() => businesses.id, {
+      onDelete: "set null",
+    }),
+    shopId: text("shop_id").references(() => shops.id, {
+      onDelete: "set null",
+    }),
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    status: jobRunStatus("status").notNull().default("running"),
+    itemsProcessed: integer("items_processed").notNull().default(0),
+    itemsFailed: integer("items_failed").notNull().default(0),
+    error: text("error"),
+    metadata: jsonb("metadata"),
+  },
+  (t) => [
+    index("job_runs_lookup_idx").on(t.jobName, t.businessId, t.shopId, t.startedAt),
+    index("job_runs_started_idx").on(t.startedAt),
+    index("job_runs_status_idx").on(t.status, t.startedAt),
+  ],
+);
 
 // Append-only. The RLS migration grants INSERT + SELECT only; with FORCE RLS
 // and no UPDATE/DELETE policy, rows are immutable even to the table owner.

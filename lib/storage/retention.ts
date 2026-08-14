@@ -2,6 +2,7 @@ import { and, eq, isNull, lt, sql } from "drizzle-orm";
 
 import { withSystemContext } from "@/lib/db";
 import { assets } from "@/lib/db/schema";
+import { pruneJobRunsOlderThan } from "@/lib/jobs/ledger";
 import { deleteObject } from "./r2";
 
 /**
@@ -22,6 +23,7 @@ export type SweepSummary = {
   objectsDeleted: number;
   rowsMarked: number;
   errors: number;
+  jobRunsPruned: number;
   incomplete: boolean; // true => more remain; the next nightly run resumes
 };
 
@@ -32,7 +34,7 @@ export type SweepSummary = {
  */
 export async function sweepExpiredAssets(opts: { budgetMs?: number } = {}): Promise<SweepSummary> {
   const budgetMs = opts.budgetMs ?? DEFAULT_BUDGET_MS;
-  const summary: SweepSummary = { scanned: 0, objectsDeleted: 0, rowsMarked: 0, errors: 0, incomplete: false };
+  const summary: SweepSummary = { scanned: 0, objectsDeleted: 0, rowsMarked: 0, errors: 0, jobRunsPruned: 0, incomplete: false };
   const start = Date.now();
 
   const expired = await withSystemContext((tx) =>
@@ -82,6 +84,7 @@ export async function sweepExpiredAssets(opts: { budgetMs?: number } = {}): Prom
 
   // A full batch likely means more remain even if we didn't hit the time budget.
   if (expired.length === BATCH) summary.incomplete = true;
+  summary.jobRunsPruned = await pruneJobRunsOlderThan(30);
 
   console.log(
     JSON.stringify({ ts: new Date().toISOString(), component: "retention", event: "sweep_complete", ...summary }),

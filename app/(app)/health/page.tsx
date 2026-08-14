@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
 import { auth } from "@/lib/auth";
-import { loadHealthMetrics, type CountLink, type GmailMailboxHealth, type ShopSyncHealth } from "@/lib/health/daily-report";
+import { loadHealthMetrics, type CountLink, type GmailMailboxHealth, type JobRunHealth, type ShopSyncHealth } from "@/lib/health/daily-report";
 import { loadDailyNarrative } from "@/lib/health/narrative";
 import { loadShellData } from "@/lib/shell/context";
 import { Badge, DataPanel, EmptyState, Page, PageHeader, SectionHeader } from "@/components/ui";
@@ -116,6 +116,20 @@ export default async function HealthPage({
         <MetricGrid metrics={metrics.links.pipeline} />
       </DataPanel>
 
+      <DataPanel id="background-jobs" className="overflow-hidden">
+        <div className="border-b border-line px-4 py-3">
+          <SectionHeader
+            title="Background jobs"
+            description="Each scheduled job should keep producing successful ledger rows."
+          />
+        </div>
+        <div className="divide-y divide-line">
+          {metrics.pipeline.jobs.map((job) => (
+            <JobRunRow key={job.key} job={job} />
+          ))}
+        </div>
+      </DataPanel>
+
       <DataPanel className="overflow-hidden">
         <div className="border-b border-line px-4 py-3">
           <SectionHeader
@@ -184,6 +198,53 @@ function MetricGrid({ metrics }: { metrics: CountLink[] }) {
           {metric.detail && <p className="mt-3 text-xs leading-5 text-slate">{metric.detail}</p>}
         </Link>
       ))}
+    </div>
+  );
+}
+
+function jobBadge(job: JobRunHealth) {
+  if (job.status === "missing") return { variant: "danger" as const, label: "Missing" };
+  if (job.stale) return { variant: "danger" as const, label: "Stale" };
+  if (job.status === "failed") return { variant: "danger" as const, label: "Failed" };
+  if (job.status === "partial") return { variant: "warning" as const, label: "Partial" };
+  if (job.status === "running") return { variant: "warning" as const, label: "Running" };
+  return { variant: "success" as const, label: "Healthy" };
+}
+
+function failureDetail(job: JobRunHealth) {
+  const failedOrders = Array.isArray(job.metadata?.failedOrders) ? job.metadata.failedOrders : null;
+  const failedReceipts = Array.isArray(job.metadata?.failedReceipts) ? job.metadata.failedReceipts : null;
+  const failed = failedOrders ?? failedReceipts;
+  if (!failed?.length) return null;
+  return failed
+    .slice(0, 5)
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return null;
+      const value = "platformOrderId" in entry ? entry.platformOrderId : "receiptId" in entry ? entry.receiptId : null;
+      return value ? String(value) : null;
+    })
+    .filter(Boolean)
+    .join(", ");
+}
+
+function JobRunRow({ job }: { job: JobRunHealth }) {
+  const badge = jobBadge(job);
+  const failedIds = failureDetail(job);
+  return (
+    <div className="grid gap-2 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-ink">{job.label}</p>
+        <p className="text-xs text-slate">
+          Last run {formatDateTime(job.lastRunAt)}
+          {job.expectedIntervalMinutes ? ` · expected every ${job.expectedIntervalMinutes >= 1440 ? "24h" : `${job.expectedIntervalMinutes}m`}` : ""}
+          {job.itemsProcessed || job.itemsFailed ? ` · ${job.itemsProcessed} processed, ${job.itemsFailed} failed` : ""}
+        </p>
+        {job.error && <p className="mt-1 text-xs text-rose">{job.error}</p>}
+        {failedIds && <p className="mt-1 text-xs text-slate">Failed IDs: {failedIds}</p>}
+      </div>
+      <Badge variant={badge.variant} dot>
+        {badge.label}
+      </Badge>
     </div>
   );
 }

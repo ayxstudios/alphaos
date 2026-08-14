@@ -15,6 +15,7 @@ import { classifyOrder, photoRequestEnabled } from "../classify";
 import { reconcileManualOrder } from "@/lib/orders/reconcile";
 import { runAutoAssign } from "@/lib/orders/assign";
 import { isBeforeBackfillCutoff } from "@/lib/orders/archive";
+import { failJobRun, finishJobRun, JOB_NAMES, startJobRun } from "@/lib/jobs/ledger";
 import {
   normalizeShopifyAddress,
   upsertOrderShippingAddress,
@@ -154,7 +155,7 @@ query($cursor: String, $q: String) {
  */
 export async function syncShopOrders(
   shopId: string,
-  opts: { suppressCustomerEmail?: boolean; mode?: "sync" | "backfill" } = {},
+  opts: { suppressCustomerEmail?: boolean; mode?: "sync" | "backfill"; trigger?: "cron" | "manual" | "backfill" } = {},
 ): Promise<SyncSummary> {
   const empty: SyncSummary = { imported: 0, archived: 0, skipped: 0, failed: 0, errors: [] };
 
@@ -173,10 +174,10 @@ export async function syncShopOrders(
 
     const cfg = (shop.integrationConfig ?? {}) as ShopifyIntegrationConfig;
     if (cfg.syncingSince && Date.now() - new Date(cfg.syncingSince).getTime() < STALE_LOCK_MS) {
-      return { kind: "already_running" as const };
+      return { kind: "already_running" as const, shop, cfg };
     }
     const creds = (await getShopCredentials(tx, shopId)) as ShopifyCredentials;
-    if (!isShopifyConnected(creds)) return { kind: "not_connected" as const };
+    if (!isShopifyConnected(creds)) return { kind: "not_connected" as const, shop, cfg };
 
     await tx
       .update(shops)
@@ -186,8 +187,32 @@ export async function syncShopOrders(
     return { kind: "ok" as const, shop, cfg, creds };
   });
 
-  if (claim.kind === "already_running") return { ...empty, skippedRun: "already_running" };
-  if (claim.kind === "not_connected") return { ...empty, skippedRun: "not_connected" };
+  const trigger = opts.trigger ?? (opts.mode === "backfill" ? "backfill" : "manual");
+  const jobRunId = await startJobRun({
+    jobName: JOB_NAMES.shopSync,
+    scope: { businessId: claim.shop.businessId, shopId },
+    metadata: { platform: "shopify", trigger, mode: opts.mode ?? "sync" },
+  });
+
+  if (claim.kind === "already_running") {
+    await finishJobRun(jobRunId, {
+      status: "partial",
+      itemsProcessed: 0,
+      itemsFailed: 0,
+      metadata: { platform: "shopify", trigger, skippedRun: "already_running", syncingSince: claim.cfg.syncingSince ?? null },
+    });
+    return { ...empty, skippedRun: "already_running" };
+  }
+  if (claim.kind === "not_connected") {
+    await finishJobRun(jobRunId, {
+      status: "failed",
+      itemsProcessed: 0,
+      itemsFailed: 1,
+      error: "Shopify shop is not connected",
+      metadata: { platform: "shopify", trigger, skippedRun: "not_connected" },
+    });
+    return { ...empty, skippedRun: "not_connected" };
+  }
 
   const { shop, cfg, creds } = claim;
   const ctx: ShopContext = {
@@ -278,6 +303,27 @@ export async function syncShopOrders(
         logShopify(shopId, { level: "error", event: "photo_request_flush_failed", error: String(e) }),
       );
     }
+    await finishJobRun(jobRunId, {
+      status: summary.failed > 0 ? "partial" : "ok",
+      itemsProcessed: summary.imported + summary.skipped + summary.failed + (summary.reconciled ?? 0),
+      itemsFailed: summary.failed,
+      metadata: {
+        platform: "shopify",
+        trigger,
+        mode: opts.mode ?? "sync",
+        imported: summary.imported,
+        archived: summary.archived,
+        skipped: summary.skipped,
+        reconciled: summary.reconciled ?? 0,
+        failed: summary.failed,
+        failedOrders: summary.errors.slice(0, 50),
+        total: summary.total ?? null,
+        windowStart: summary.windowStart ?? null,
+        windowDays: summary.windowDays ?? null,
+        syncCursor: newCursor,
+        lastSyncAt,
+      },
+    });
     return summary;
   } catch (err) {
     await withSystemContext((tx) =>
@@ -286,6 +332,7 @@ export async function syncShopOrders(
         .set({ integrationConfig: { ...cfg, syncingSince: undefined } })
         .where(eq(shops.id, shopId)),
     );
+    await failJobRun(jobRunId, err, { platform: "shopify", trigger, mode: opts.mode ?? "sync" });
     throw err;
   }
 }

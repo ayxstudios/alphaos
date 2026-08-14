@@ -8,6 +8,7 @@ import { shops, orders, customers, activityLog } from "@/lib/db/schema";
 import { reconcileManualOrder } from "@/lib/orders/reconcile";
 import { isBeforeBackfillCutoff } from "@/lib/orders/archive";
 import { normalizeEtsyReceiptAddress, upsertOrderShippingAddress } from "@/lib/shipping/address";
+import { failJobRun, finishJobRun, JOB_NAMES, startJobRun } from "@/lib/jobs/ledger";
 import { EtsyClient } from "./client";
 import { ReauthRequiredError } from "./errors";
 import type {
@@ -65,7 +66,7 @@ export function getShopReceipts(
  */
 export async function syncShopReceipts(
   shopId: string,
-  opts: { mode?: "sync" | "backfill" } = {},
+  opts: { mode?: "sync" | "backfill"; trigger?: "cron" | "manual" | "backfill" } = {},
 ): Promise<SyncSummary> {
   const empty: SyncSummary = { imported: 0, archived: 0, skipped: 0, failed: 0, errors: [] };
 
@@ -86,10 +87,10 @@ export async function syncShopReceipts(
 
     const cfg = (shop.integrationConfig ?? {}) as EtsyIntegrationConfig;
     if (cfg.syncingSince && Date.now() - new Date(cfg.syncingSince).getTime() < STALE_LOCK_MS) {
-      return { kind: "already_running" as const };
+      return { kind: "already_running" as const, shop, cfg };
     }
     const creds = (await getShopCredentials(tx, shopId)) as EtsyCredentials;
-    if (creds.status !== "connected") return { kind: "needs_reauth" as const };
+    if (creds.status !== "connected") return { kind: "needs_reauth" as const, shop, cfg };
 
     await tx
       .update(shops)
@@ -99,8 +100,32 @@ export async function syncShopReceipts(
     return { kind: "ok" as const, shop, cfg, creds };
   });
 
-  if (claim.kind === "already_running") return { ...empty, skippedRun: "already_running" };
-  if (claim.kind === "needs_reauth") return { ...empty, skippedRun: "needs_reauth" };
+  const trigger = opts.trigger ?? (opts.mode === "backfill" ? "backfill" : "manual");
+  const jobRunId = await startJobRun({
+    jobName: JOB_NAMES.shopSync,
+    scope: { businessId: claim.shop.businessId, shopId },
+    metadata: { platform: "etsy", trigger, mode: opts.mode ?? "sync" },
+  });
+
+  if (claim.kind === "already_running") {
+    await finishJobRun(jobRunId, {
+      status: "partial",
+      itemsProcessed: 0,
+      itemsFailed: 0,
+      metadata: { platform: "etsy", trigger, skippedRun: "already_running", syncingSince: claim.cfg.syncingSince ?? null },
+    });
+    return { ...empty, skippedRun: "already_running" };
+  }
+  if (claim.kind === "needs_reauth") {
+    await finishJobRun(jobRunId, {
+      status: "failed",
+      itemsProcessed: 0,
+      itemsFailed: 1,
+      error: "Etsy shop needs reauthorization",
+      metadata: { platform: "etsy", trigger, skippedRun: "needs_reauth" },
+    });
+    return { ...empty, skippedRun: "needs_reauth" };
+  }
 
   const { shop, cfg, creds } = claim;
   const client = new EtsyClient(shopId, shop.businessId, creds);
@@ -175,6 +200,24 @@ export async function syncShopReceipts(
 
     // Etsy sends no automated customer email (photos come after a VA completes
     // details), so there is nothing to flush here.
+    await finishJobRun(jobRunId, {
+      status: summary.failed > 0 ? "partial" : "ok",
+      itemsProcessed: summary.imported + summary.skipped + summary.failed + (summary.reconciled ?? 0),
+      itemsFailed: summary.failed,
+      metadata: {
+        platform: "etsy",
+        trigger,
+        mode: opts.mode ?? "sync",
+        imported: summary.imported,
+        archived: summary.archived,
+        skipped: summary.skipped,
+        reconciled: summary.reconciled ?? 0,
+        failed: summary.failed,
+        failedReceipts: summary.errors.slice(0, 50),
+        syncCursor: String(maxCreated || Math.floor(Date.now() / 1000)),
+        lastSyncAt,
+      },
+    });
     return summary;
   } catch (err) {
     // Failure: release the lock but DO NOT advance the cursor (safe resume).
@@ -184,7 +227,17 @@ export async function syncShopReceipts(
         .set({ integrationConfig: { ...cfg, syncingSince: undefined } })
         .where(eq(shops.id, shopId)),
     );
-    if (err instanceof ReauthRequiredError) return { ...summary, skippedRun: "needs_reauth" };
+    if (err instanceof ReauthRequiredError) {
+      await finishJobRun(jobRunId, {
+        status: "failed",
+        itemsProcessed: summary.imported + summary.skipped + summary.failed + (summary.reconciled ?? 0),
+        itemsFailed: summary.failed + 1,
+        error: "Etsy shop needs reauthorization",
+        metadata: { platform: "etsy", trigger, skippedRun: "needs_reauth", failedReceipts: summary.errors.slice(0, 50) },
+      });
+      return { ...summary, skippedRun: "needs_reauth" };
+    }
+    await failJobRun(jobRunId, err, { platform: "etsy", trigger, mode: opts.mode ?? "sync", failedReceipts: summary.errors.slice(0, 50) });
     throw err;
   }
 }

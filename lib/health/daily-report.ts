@@ -9,6 +9,7 @@ import {
   designerBusinesses,
   designerProfiles,
   earnings,
+  jobRuns,
   messages,
   orderItems,
   orders,
@@ -18,6 +19,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import { detectGmailMailboxStalls, type GmailMailboxStall } from "@/lib/integrations/gmail";
+import { JOB_NAMES, type JobName, type JobRunStatus } from "@/lib/jobs/ledger";
 import { liveOrderSql, liveOrderWhere } from "@/lib/orders/archive";
 import { DEFAULT_CHECKLIST, type ChecklistSnapshot, type ItemResults } from "@/lib/qc/checklist";
 
@@ -59,6 +61,24 @@ export type GmailMailboxHealth = {
   ageHours: number | null;
 };
 
+export type JobRunHealth = {
+  key: string;
+  jobName: string;
+  label: string;
+  businessName: string | null;
+  shopName: string | null;
+  expectedIntervalMinutes: number | null;
+  lastRunAt: string | null;
+  finishedAt: string | null;
+  status: JobRunStatus | "missing";
+  stale: boolean;
+  unhealthy: boolean;
+  itemsProcessed: number;
+  itemsFailed: number;
+  error: string | null;
+  metadata: Record<string, unknown> | null;
+};
+
 export type RateWindow = {
   count: number;
   rate: number | null;
@@ -94,8 +114,10 @@ export type HealthMetrics = {
     shops: ShopSyncHealth[];
     gmailMailboxes: GmailMailboxHealth[];
     gmailStalls: GmailMailboxStall[];
+    jobs: JobRunHealth[];
     staleShopCount: number;
     gmailStallCount: number;
+    unhealthyJobCount: number;
     queuedEmails: number;
     failedEmails: number;
     staleUnmatchedReplies: number;
@@ -568,6 +590,187 @@ async function loadUnassigned(tx: Tx, scope: HealthScope) {
   };
 }
 
+const MINUTE = 60 * 1000;
+const DAY = 24 * 60 * MINUTE;
+
+type JobSpec = {
+  jobName: JobName;
+  label: string;
+  businessId?: string | null;
+  businessName?: string | null;
+  shopId?: string | null;
+  shopName?: string | null;
+  expectedIntervalMs: number | null;
+};
+
+function jobKey(input: { jobName: string; businessId?: string | null; shopId?: string | null }) {
+  return `${input.jobName}:${input.businessId ?? ""}:${input.shopId ?? ""}`;
+}
+
+function isJobUnhealthy(status: JobRunHealth["status"], stale: boolean) {
+  return stale || status === "failed" || status === "partial";
+}
+
+function jobLabel(jobName: string) {
+  switch (jobName) {
+    case JOB_NAMES.cronSync:
+      return "Shop sync cron";
+    case JOB_NAMES.cronGmailPoll:
+      return "Gmail poll cron";
+    case JOB_NAMES.cronNotifications:
+      return "SLA sweep cron";
+    case JOB_NAMES.cronRetention:
+      return "Retention cron";
+    case JOB_NAMES.cronDailyHealth:
+      return "Daily briefing cron";
+    case JOB_NAMES.shopSync:
+      return "Shop sync";
+    case JOB_NAMES.dailyHealthBusiness:
+      return "Business briefing";
+    case JOB_NAMES.shopifyWebhookImport:
+      return "Shopify webhook import";
+    default:
+      return jobName;
+  }
+}
+
+async function loadJobRunHealth(tx: Tx, scope: HealthScope, now: Date): Promise<JobRunHealth[]> {
+  const aggregateSpecs: JobSpec[] = [
+    { jobName: JOB_NAMES.cronSync, label: "Shop sync cron", expectedIntervalMs: 15 * MINUTE },
+    { jobName: JOB_NAMES.cronGmailPoll, label: "Gmail poll cron", expectedIntervalMs: 15 * MINUTE },
+    { jobName: JOB_NAMES.cronNotifications, label: "SLA sweep cron", expectedIntervalMs: 15 * MINUTE },
+    { jobName: JOB_NAMES.cronRetention, label: "Retention cron", expectedIntervalMs: DAY },
+    { jobName: JOB_NAMES.cronDailyHealth, label: "Daily briefing cron", expectedIntervalMs: DAY },
+  ];
+
+  const [shopSpecs, briefingSpecs, recentRuns] = await Promise.all([
+    tx
+      .select({
+        id: shops.id,
+        name: shops.name,
+        platform: shops.platform,
+        businessId: shops.businessId,
+        businessName: businesses.name,
+      })
+      .from(shops)
+      .innerJoin(businesses, eq(businesses.id, shops.businessId))
+      .where(
+        all(
+          scopedWhere(scope, shops.businessId),
+          eq(shops.active, true),
+          sql`(${shops.integrationConfig} ->> 'syncCursor') is not null`,
+        ),
+      )
+      .orderBy(asc(businesses.name), asc(shops.name)),
+    tx
+      .select({
+        businessId: businesses.id,
+        businessName: businesses.name,
+      })
+      .from(businesses)
+      .where(all(scopedWhere(scope, businesses.id), eq(businesses.dailyHealthEmailEnabled, true)))
+      .orderBy(asc(businesses.name)),
+    tx
+      .select({
+        jobName: jobRuns.jobName,
+        businessId: jobRuns.businessId,
+        shopId: jobRuns.shopId,
+        startedAt: jobRuns.startedAt,
+        finishedAt: jobRuns.finishedAt,
+        status: jobRuns.status,
+        itemsProcessed: jobRuns.itemsProcessed,
+        itemsFailed: jobRuns.itemsFailed,
+        error: jobRuns.error,
+        metadata: jobRuns.metadata,
+      })
+      .from(jobRuns)
+      .where(gte(jobRuns.startedAt, new Date(now.getTime() - 31 * DAY)))
+      .orderBy(desc(jobRuns.startedAt))
+      .limit(10_000),
+  ]);
+
+  const scopedShopSpecs: JobSpec[] = shopSpecs.map((shop) => ({
+    jobName: JOB_NAMES.shopSync,
+    label: `Shop sync - ${shop.name}`,
+    businessId: shop.businessId,
+    businessName: shop.businessName,
+    shopId: shop.id,
+    shopName: shop.name,
+    expectedIntervalMs: 15 * MINUTE,
+  }));
+  const scopedBriefingSpecs: JobSpec[] = briefingSpecs.map((business) => ({
+    jobName: JOB_NAMES.dailyHealthBusiness,
+    label: `Daily briefing - ${business.businessName}`,
+    businessId: business.businessId,
+    businessName: business.businessName,
+    expectedIntervalMs: DAY,
+  }));
+
+  const shopNames = new Map(shopSpecs.map((shop) => [shop.id, { name: shop.name, businessName: shop.businessName }]));
+  const businessNames = new Map([
+    ...shopSpecs.map((shop) => [shop.businessId, shop.businessName] as const),
+    ...briefingSpecs.map((business) => [business.businessId, business.businessName] as const),
+  ]);
+  const latest = new Map<string, (typeof recentRuns)[number]>();
+  for (const run of recentRuns) {
+    if (scope.kind === "business" && run.businessId && run.businessId !== scope.businessId) continue;
+    const key = jobKey(run);
+    if (!latest.has(key)) latest.set(key, run);
+  }
+
+  const rows: JobRunHealth[] = [...aggregateSpecs, ...scopedShopSpecs, ...scopedBriefingSpecs].map((spec) => {
+    const run = latest.get(jobKey(spec));
+    const lastRunAt = run?.startedAt ?? null;
+    const stale = spec.expectedIntervalMs != null && (!lastRunAt || now.getTime() - lastRunAt.getTime() > spec.expectedIntervalMs);
+    const status = (run?.status ?? "missing") as JobRunHealth["status"];
+    return {
+      key: jobKey(spec),
+      jobName: spec.jobName,
+      label: spec.label,
+      businessName: spec.businessName ?? null,
+      shopName: spec.shopName ?? null,
+      expectedIntervalMinutes: spec.expectedIntervalMs == null ? null : Math.round(spec.expectedIntervalMs / MINUTE),
+      lastRunAt: lastRunAt?.toISOString() ?? null,
+      finishedAt: run?.finishedAt?.toISOString() ?? null,
+      status,
+      stale,
+      unhealthy: isJobUnhealthy(status, stale),
+      itemsProcessed: run?.itemsProcessed ?? 0,
+      itemsFailed: run?.itemsFailed ?? 0,
+      error: run?.error ?? null,
+      metadata: (run?.metadata as Record<string, unknown> | null) ?? null,
+    };
+  });
+
+  for (const run of recentRuns.filter((r) => r.jobName === JOB_NAMES.shopifyWebhookImport)) {
+    if (scope.kind === "business" && run.businessId !== scope.businessId) continue;
+    const key = jobKey(run);
+    if (rows.some((row) => row.key === key)) continue;
+    const shop = run.shopId ? shopNames.get(run.shopId) : null;
+    const businessName = run.businessId ? businessNames.get(run.businessId) ?? shop?.businessName ?? null : null;
+    const status = run.status as JobRunHealth["status"];
+    rows.push({
+      key,
+      jobName: run.jobName,
+      label: shop ? `Shopify webhook import - ${shop.name}` : jobLabel(run.jobName),
+      businessName,
+      shopName: shop?.name ?? null,
+      expectedIntervalMinutes: null,
+      lastRunAt: run.startedAt.toISOString(),
+      finishedAt: run.finishedAt?.toISOString() ?? null,
+      status,
+      stale: false,
+      unhealthy: isJobUnhealthy(status, false),
+      itemsProcessed: run.itemsProcessed,
+      itemsFailed: run.itemsFailed,
+      error: run.error,
+      metadata: (run.metadata as Record<string, unknown> | null) ?? null,
+    });
+  }
+
+  return rows.sort((a, b) => Number(b.unhealthy) - Number(a.unhealthy) || a.label.localeCompare(b.label));
+}
+
 async function computeHealthMetricsInTx(tx: Tx, scope: HealthScope): Promise<HealthMetrics> {
   const now = new Date();
   const todayStart = startOfZonedDay(now);
@@ -678,6 +881,7 @@ async function computeHealthMetricsInTx(tx: Tx, scope: HealthScope): Promise<Hea
   const proofNoResponse = await loadProofNoResponse(tx, scope, now);
   const capacity = await loadDesignerCapacity(tx, scope);
   const unassigned = await loadUnassigned(tx, scope);
+  const jobHealth = await loadJobRunHealth(tx, scope, now);
 
   const shopHealth: ShopSyncHealth[] = shopsRows.map((shop) => {
     const parsed = shop.lastSyncAt ? new Date(shop.lastSyncAt) : null;
@@ -723,8 +927,10 @@ async function computeHealthMetricsInTx(tx: Tx, scope: HealthScope): Promise<Hea
   const overdueNow = overdueRow[0]?.count ?? 0;
   const worstDueAt = overdueRow[0]?.worstDueAt ?? null;
   const worstOverdueHours = worstDueAt ? hoursBetween(now, worstDueAt) : null;
+  const unhealthyJobCount = jobHealth.filter((job) => job.unhealthy).length;
   const pipelineUnhealthy =
     shopHealth.some((shop) => shop.stale) ||
+    unhealthyJobCount > 0 ||
     queuedEmails > 0 ||
     failedEmails > 0 ||
     staleUnmatchedReplies > 0 ||
@@ -761,8 +967,10 @@ async function computeHealthMetricsInTx(tx: Tx, scope: HealthScope): Promise<Hea
           : null,
       })),
       gmailStalls: [],
+      jobs: jobHealth,
       staleShopCount: shopHealth.filter((shop) => shop.stale).length,
       gmailStallCount: 0,
+      unhealthyJobCount,
       queuedEmails,
       failedEmails,
       staleUnmatchedReplies,
@@ -800,6 +1008,7 @@ async function computeHealthMetricsInTx(tx: Tx, scope: HealthScope): Promise<Hea
       idle: capacity.idle.length,
       unassigned: unassigned.unassigned,
       noEligibleSample: unassigned.noEligibleSample,
+      unhealthyJobCount,
     }),
   };
 }
@@ -813,6 +1022,7 @@ function buildLinks(input: {
   proofNoResponse: number;
   staleShopCount: number;
   gmailStallCount: number;
+  unhealthyJobCount: number;
   overdueNow: number;
   worstOverdueHours: number | null;
   yesterday: ThroughputWindow;
@@ -823,6 +1033,13 @@ function buildLinks(input: {
   noEligibleSample: number;
 }) {
   const pipeline: CountLink[] = [
+    {
+      label: "Background jobs",
+      count: input.unhealthyJobCount,
+      href: "#background-jobs",
+      tone: input.unhealthyJobCount > 0 ? "danger" : "success",
+      detail: "Missing, stale, failed, or partial job runs",
+    },
     {
       label: "Stale shop syncs",
       count: input.staleShopCount,
@@ -989,6 +1206,7 @@ async function withGmailStalls(metrics: HealthMetrics): Promise<HealthMetrics> {
     proofNoResponse: metrics.pipeline.proofNoResponse,
     staleShopCount: metrics.pipeline.staleShopCount,
     gmailStallCount: gmailStalls.length,
+    unhealthyJobCount: metrics.pipeline.unhealthyJobCount,
     overdueNow: metrics.operations.overdueNow,
     worstOverdueHours: metrics.operations.worstOverdueHours,
     yesterday: metrics.operations.yesterday,

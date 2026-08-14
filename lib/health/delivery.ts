@@ -4,6 +4,7 @@ import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
 import { withSystemContext } from "@/lib/db";
 import { businesses, dailyHealthReports, notifications, users } from "@/lib/db/schema";
 import { GmailClient, GmailNotConnectedError, GmailReauthRequiredError } from "@/lib/integrations/gmail";
+import { finishJobRun, JOB_NAMES, startJobRun } from "@/lib/jobs/ledger";
 import { appUrl } from "@/lib/urls";
 import {
   HEALTH_TIME_ZONE,
@@ -118,31 +119,51 @@ export async function deliverDailyHealthReports(opts: {
 }
 
 async function deliverForBusiness(business: BusinessSetting): Promise<DailyHealthDeliveryResult["businesses"][number]> {
-  const metrics = await loadHealthMetricsForSystem({
-    kind: "business",
-    businessId: business.id,
-    businessName: business.name,
+  const runId = await startJobRun({
+    jobName: JOB_NAMES.dailyHealthBusiness,
+    scope: { businessId: business.id },
+    metadata: { businessName: business.name },
   });
-  const narrative = anthropicFeaturesEnabled() ? await loadDailyNarrativeForSystem(metrics) : null;
-  if (!narrative) await ensureDailyHealthReportForSystem(metrics);
-  const recipients = await loadRecipients(business.recipientIds);
-
-  if (await alreadyEmailed(business.id, metrics.reportDate)) {
-    return {
+  let metrics: HealthMetrics | null = null;
+  let recipients: Recipient[] = [];
+  try {
+    metrics = await loadHealthMetricsForSystem({
+      kind: "business",
       businessId: business.id,
       businessName: business.name,
-      status: "skipped_already_sent",
-      recipients: recipients.length,
-    };
-  }
+    });
+    const narrative = anthropicFeaturesEnabled() ? await loadDailyNarrativeForSystem(metrics) : null;
+    if (!narrative) await ensureDailyHealthReportForSystem(metrics);
+    recipients = await loadRecipients(business.recipientIds);
 
-  if (!recipients.length) {
-    const error = "Daily health email is enabled but no active admin recipients are selected.";
-    await markFailedAndNotify(business, metrics, [], error);
-    return { businessId: business.id, businessName: business.name, status: "failed", recipients: 0, error };
-  }
+    if (await alreadyEmailed(business.id, metrics.reportDate)) {
+      await finishJobRun(runId, {
+        status: "ok",
+        itemsProcessed: 0,
+        itemsFailed: 0,
+        metadata: { businessName: business.name, reportDate: metrics.reportDate, skipped: "already_sent", recipients: recipients.length },
+      });
+      return {
+        businessId: business.id,
+        businessName: business.name,
+        status: "skipped_already_sent",
+        recipients: recipients.length,
+      };
+    }
 
-  try {
+    if (!recipients.length) {
+      const error = "Daily health email is enabled but no active admin recipients are selected.";
+      await markFailedAndNotify(business, metrics, [], error);
+      await finishJobRun(runId, {
+        status: "failed",
+        itemsProcessed: 1,
+        itemsFailed: 1,
+        error,
+        metadata: { businessName: business.name, reportDate: metrics.reportDate, recipients: 0 },
+      });
+      return { businessId: business.id, businessName: business.name, status: "failed", recipients: 0, error };
+    }
+
     const client = await GmailClient.forBusiness(business.id);
     const email = buildHealthEmail(business, metrics, narrative, recipients);
     await client.send({
@@ -152,6 +173,12 @@ async function deliverForBusiness(business: BusinessSetting): Promise<DailyHealt
       html: email.html,
     });
     await markSentAndNotify(business, metrics, recipients);
+    await finishJobRun(runId, {
+      status: "ok",
+      itemsProcessed: 1,
+      itemsFailed: 0,
+      metadata: { businessName: business.name, reportDate: metrics.reportDate, recipients: recipients.length },
+    });
     return {
       businessId: business.id,
       businessName: business.name,
@@ -165,9 +192,18 @@ async function deliverForBusiness(business: BusinessSetting): Promise<DailyHealt
         : error instanceof GmailReauthRequiredError
           ? "Gmail needs reconnecting for this business."
           : error instanceof Error
-            ? error.message
-            : "Daily health email failed.";
-    await markFailedAndNotify(business, metrics, recipients, message);
+          ? error.message
+          : "Daily health email failed.";
+    if (metrics) {
+      await markFailedAndNotify(business, metrics, recipients, message);
+    }
+    await finishJobRun(runId, {
+      status: "failed",
+      itemsProcessed: metrics ? 1 : 0,
+      itemsFailed: 1,
+      error: message,
+      metadata: { businessName: business.name, reportDate: metrics?.reportDate ?? null, recipients: recipients.length },
+    });
     console.log(
       JSON.stringify({
         ts: new Date().toISOString(),

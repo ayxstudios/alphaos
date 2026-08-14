@@ -42,7 +42,11 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
 - **Scheduled jobs.** Vercel Cron routes exist for all-shop order sync, Gmail
   inbound polling + queued-email flushing, daily health briefing delivery, and
   R2 retention. Shop sync, Gmail poll health, queued email, and unmatched reply
-  health are surfaced on `/health` for admins.
+  health are surfaced on `/health` for admins. Every cron plus Shopify webhook
+  async import now writes a `job_runs` ledger row with status, counts, error,
+  and metadata; `/health` shows stale/missing/failed/partial jobs, and sync
+  item-level import failures are recorded as `partial` instead of being masked
+  by an advanced `lastSyncAt`.
 - **VA dashboard + admin system health.** `/dashboard` is the selected-business
   VA work launcher: awaiting QC, needs details, overdue, awaiting customer,
   ready to print, email triage, and unassigned work, each linking directly to

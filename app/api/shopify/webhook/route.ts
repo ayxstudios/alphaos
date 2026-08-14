@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { withSystemContext } from "@/lib/db";
 import { getShopCredentials } from "@/lib/db/credentials";
 import { flushQueued } from "@/lib/email/dispatch";
+import { failJobRun, finishJobRun, JOB_NAMES, startJobRun } from "@/lib/jobs/ledger";
 import { shops } from "@/lib/db/schema";
 import {
   verifyShopifyHmac,
@@ -80,6 +81,15 @@ export async function POST(req: NextRequest) {
   // Process after the 200 is sent. Errors are logged; the order can be
   // re-imported idempotently by a later sync.
   after(async () => {
+    const runId = await startJobRun({
+      jobName: JOB_NAMES.shopifyWebhookImport,
+      scope: { businessId: ctx.businessId, shopId: ctx.id },
+      metadata: {
+        platformOrderId: String(payload.id),
+        topic,
+        shopDomain: domain,
+      },
+    });
     try {
       // The REST payload has no structured variant options, so re-fetch the order
       // over GraphQL to resolve figure count through the same path as the sync.
@@ -109,7 +119,26 @@ export async function POST(req: NextRequest) {
 
       const result = await importShopifyOrder({ shop: ctx, order, via: "webhook" });
       // Auto-send the photo request in near-real-time for a webhook import.
-      if (result === "imported") await flushQueued(ctx.businessId);
+      let flushError: string | null = null;
+      if (result === "imported") {
+        await flushQueued(ctx.businessId).catch((error) => {
+          flushError = error instanceof Error ? error.message : String(error);
+        });
+      }
+      const partial = resolution === "rest_fallback" || !!flushError;
+      await finishJobRun(runId, {
+        status: partial ? "partial" : "ok",
+        itemsProcessed: 1,
+        itemsFailed: partial ? 1 : 0,
+        metadata: {
+          platformOrderId: String(payload.id),
+          topic,
+          shopDomain: domain,
+          resolution,
+          result,
+          flushError,
+        },
+      });
       console.log(
         JSON.stringify({
           ts: new Date().toISOString(),
@@ -122,6 +151,11 @@ export async function POST(req: NextRequest) {
         }),
       );
     } catch (err) {
+      await failJobRun(runId, err, {
+        platformOrderId: String(payload.id),
+        topic,
+        shopDomain: domain,
+      });
       console.log(
         JSON.stringify({
           ts: new Date().toISOString(),

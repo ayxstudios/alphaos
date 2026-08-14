@@ -135,7 +135,7 @@ export async function saveShopBackfillCutoff(formData: FormData): Promise<void> 
 
 export async function triggerSync(shopId: string): Promise<SyncSummary> {
   await requireAdmin();
-  const summary = await syncShopReceipts(shopId);
+  const summary = await syncShopReceipts(shopId, { trigger: "manual" });
   revalidatePath("/settings");
   return summary;
 }
@@ -144,7 +144,7 @@ export async function triggerSync(shopId: string): Promise<SyncSummary> {
 export async function backfillEtsyShop(shopId: string): Promise<SyncSummary> {
   const user = await requireAdmin();
   await resetCursor(user, shopId);
-  const summary = await syncShopReceipts(shopId, { mode: "backfill" });
+  const summary = await syncShopReceipts(shopId, { mode: "backfill", trigger: "backfill" });
   revalidatePath("/settings");
   return summary;
 }
@@ -275,7 +275,7 @@ export async function saveShopifyCredentials(formData: FormData): Promise<void> 
 
 export async function triggerShopifySync(shopId: string): Promise<ShopifySyncSummary> {
   await requireAdmin();
-  const summary = await syncShopOrders(shopId);
+  const summary = await syncShopOrders(shopId, { trigger: "manual" });
   revalidatePath("/settings");
   return summary;
 }
@@ -310,7 +310,7 @@ async function resetCursor(user: RequestUser, shopId: string): Promise<void> {
 export async function backfillShopifyShop(shopId: string): Promise<ShopifySyncSummary> {
   const user = await requireAdmin();
   await resetCursor(user, shopId);
-  const summary = await syncShopOrders(shopId, { suppressCustomerEmail: true, mode: "backfill" });
+  const summary = await syncShopOrders(shopId, { suppressCustomerEmail: true, mode: "backfill", trigger: "backfill" });
   revalidatePath("/settings");
   revalidatePath("/orders");
   revalidatePath("/board");
