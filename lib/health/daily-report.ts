@@ -597,6 +597,7 @@ async function computeHealthMetricsInTx(tx: Tx, scope: HealthScope): Promise<Hea
         eq(messages.direction, "inbound"),
         isNull(messages.orderId),
         isNull(messages.archivedAt),
+        isNull(messages.suppressedAt),
         lt(messages.createdAt, staleReplyCutoff),
       ),
     );
@@ -784,21 +785,21 @@ function buildLinks(input: {
     {
       label: "Queued emails",
       count: input.queuedEmails,
-      href: "/orders?view=active#outbox",
+      href: "/emails",
       tone: input.queuedEmails > 0 ? "warning" : "success",
       detail: "System mail waiting for Gmail",
     },
     {
       label: "Failed emails",
       count: input.failedEmails,
-      href: "/orders?view=active#outbox",
+      href: "/emails",
       tone: input.failedEmails > 0 ? "danger" : "success",
       detail: "Customer email needs intervention",
     },
     {
       label: "Unmatched replies >24h",
       count: input.staleUnmatchedReplies,
-      href: "/orders?view=active#outbox",
+      href: "/emails",
       tone: input.staleUnmatchedReplies > 0 ? "danger" : "success",
       detail: "Replies captured without an order thread",
     },

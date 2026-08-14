@@ -58,6 +58,7 @@ import { OrderReassignForm } from "@/components/orders/order-reassign-form";
 import { OrderStyleSetter } from "@/components/orders/order-style-setter";
 import { TrackingCompleteForm } from "@/components/orders/tracking-complete-form";
 import { ReplyClassificationSuggestion } from "@/components/orders/reply-classification-suggestion";
+import { ComposeButton } from "@/components/emails/compose-button";
 import { styles as stylesTable } from "@/lib/db/schema";
 import { currentMatchForProduct, countOrdersForProduct } from "@/lib/orders/style-learning";
 
@@ -432,6 +433,17 @@ export default async function OrderDetailPage({
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <StatusChip status={order.status as OrderStatus} />
+            {editable && order.customerEmail && (
+              <ComposeButton
+                businessId={order.businessId}
+                to={order.customerEmail}
+                subject={`Re: ${order.platformOrderName ?? order.platformOrderId}`}
+                orderId={order.id}
+                customerId={order.customerId}
+                label="Compose"
+                size="sm"
+              />
+            )}
             {editable && (
               <Link
                 href={`/orders/${order.id}/complete`}

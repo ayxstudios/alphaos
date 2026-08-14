@@ -39,6 +39,7 @@ export async function updateDraftBody(messageId: string, body: string): Promise<
   );
   if (!rows.length) return { ok: false, message: "Only draft or failed emails can be edited" };
   revalidatePath("/orders");
+  revalidatePath("/emails");
   return { ok: true };
 }
 
@@ -100,6 +101,7 @@ export async function approveAndSend(messageId: string): Promise<OutboxActionRes
   const advanced = await advanceQcEmailIfNeeded(user, meta.orderId, meta.proofId, meta.metadata);
   if (!advanced.ok) return advanced;
   revalidatePath("/orders");
+  revalidatePath("/emails");
   revalidatePath("/dashboard");
   if (meta.orderId) revalidatePath(`/orders/${meta.orderId}`);
   return { ok: true, message: "Email sent" };
@@ -150,6 +152,7 @@ export async function markEmailSentManually(messageId: string, reasonRaw: string
   const advanced = await advanceQcEmailIfNeeded(user, meta.orderId, meta.proofId, meta.metadata);
   if (!advanced.ok) return advanced;
   revalidatePath("/orders");
+  revalidatePath("/emails");
   revalidatePath("/dashboard");
   if (meta.orderId) revalidatePath(`/orders/${meta.orderId}`);
   return { ok: true, message: "Marked sent manually" };
@@ -177,6 +180,7 @@ export async function discardDraft(messageId: string, reasonRaw: string): Promis
       metadata: { messageId, reason },
     });
     revalidatePath("/orders");
+    revalidatePath("/emails");
     revalidatePath("/dashboard");
     return { ok: true as const, message: "Draft discarded" };
   });
@@ -243,6 +247,7 @@ export async function linkReplyToOrder(messageId: string, orderId: string): Prom
       metadata: { channel: "email", subject: m.subject, from: m.address, manuallyLinkedBy: user.id },
     });
     revalidatePath("/orders");
+    revalidatePath("/emails");
     revalidatePath("/dashboard");
     revalidatePath(`/orders/${o.id}`);
     return { ok: true as const, message: "Reply linked to order" };
@@ -270,6 +275,7 @@ export async function archiveReply(messageId: string, reasonRaw: string): Promis
       metadata: { messageId, from: m.address, subject: m.subject, reason },
     });
     revalidatePath("/orders");
+    revalidatePath("/emails");
     revalidatePath("/dashboard");
     return { ok: true as const, message: "Reply archived" };
   });

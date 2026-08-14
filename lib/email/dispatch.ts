@@ -375,7 +375,7 @@ export async function notifyVaEmailFailure(
       type: "email.send_failed",
       title: "Customer email failed",
       body: args.error,
-      href: args.orderId ? `/orders/${args.orderId}` : "/orders?view=outbox",
+      href: args.orderId ? `/orders/${args.orderId}` : "/emails",
       metadata: { messageId: args.messageId },
     })),
   );

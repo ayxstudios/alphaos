@@ -5,6 +5,7 @@ import { withSystemContext } from "@/lib/db";
 import { getBusinessGmailCredentials } from "@/lib/db/credentials";
 import { activityLog, businesses, messages, notifications, orders, users } from "@/lib/db/schema";
 import { classifyProofReply, type ReplyClassification } from "@/lib/email/reply-classifier";
+import { resolveSuppressionReason } from "@/lib/email/suppression";
 import { GmailClient } from "./client";
 import { GmailReauthRequiredError } from "./errors";
 import { extractPlainText, header } from "./mime";
@@ -173,6 +174,7 @@ type AttachedMessage = {
   orderStatus: string | null;
   subject: string | null;
   body: string;
+  suppressed: boolean;
 };
 
 async function attachMessage(
@@ -207,6 +209,7 @@ async function attachMessage(
     const subject = header(msg, "Subject");
     const rfcMessageId = header(msg, "Message-ID");
     const body = extractPlainText(msg);
+    const suppression = await resolveSuppressionReason(tx, businessId, header(msg, "From"));
 
     const [inserted] = await tx.insert(messages).values({
       businessId,
@@ -221,6 +224,9 @@ async function attachMessage(
       gmailMessageId,
       gmailRfcMessageId: rfcMessageId,
       body,
+      ...(suppression
+        ? { suppressedAt: new Date(), suppressedReason: suppression }
+        : {}),
     }).returning({ id: messages.id });
 
     // Timeline entry (only when we could tie it to an order).
@@ -235,22 +241,31 @@ async function attachMessage(
     }
 
     // Raise a notification for every VA + admin so a reply gets triaged.
-    const staff = await tx
-      .select({ id: users.id })
-      .from(users)
-      .where(and(inArray(users.role, ["admin", "va"]), eq(users.active, true)));
-    if (staff.length) {
-      await tx.insert(notifications).values(
-        staff.map((s) => ({
-          businessId,
-          userId: s.id,
-          type: "message.received",
-          orderId: threadMatch?.orderId ?? null,
-        })),
-      );
+    // Suppressed mail is still stored, but it stays quiet unless a VA views it.
+    if (!suppression) {
+      const staff = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(and(inArray(users.role, ["admin", "va"]), eq(users.active, true)));
+      if (staff.length) {
+        await tx.insert(notifications).values(
+          staff.map((s) => ({
+            businessId,
+            userId: s.id,
+            type: "message.received",
+            orderId: threadMatch?.orderId ?? null,
+            href: threadMatch?.orderId ? `/orders/${threadMatch.orderId}` : "/emails",
+          })),
+        );
+      }
     }
 
-    logInbound(businessId, { event: "reply_attached", gmailMessageId, orderId: threadMatch?.orderId ?? null });
+    logInbound(businessId, {
+      event: "reply_attached",
+      gmailMessageId,
+      orderId: threadMatch?.orderId ?? null,
+      suppressed: !!suppression,
+    });
     return {
       messageId: inserted.id,
       orderId: threadMatch?.orderId ?? null,
@@ -258,10 +273,11 @@ async function attachMessage(
       orderStatus: threadMatch?.orderStatus ?? null,
       subject,
       body,
+      suppressed: !!suppression,
     };
   });
   if (!attached) return false;
-  if (anthropicFeaturesEnabled() && attached.orderId && attached.orderStatus === "awaiting_approval") {
+  if (!attached.suppressed && anthropicFeaturesEnabled() && attached.orderId && attached.orderStatus === "awaiting_approval") {
     await classifyAndStoreReply(attached);
   }
   return true;

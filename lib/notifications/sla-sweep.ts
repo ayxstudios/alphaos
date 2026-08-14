@@ -690,6 +690,7 @@ async function loadUnmatchedStale(tx: Tx, now: Date, opts: NotificationSweepOpti
         eq(messages.direction, "inbound"),
         isNull(messages.orderId),
         isNull(messages.archivedAt),
+        isNull(messages.suppressedAt),
         lte(messages.createdAt, new Date(now.getTime() - 24 * HOUR)),
         ...(businessFilter(messages.businessId, opts) ? [businessFilter(messages.businessId, opts)!] : []),
       ),

@@ -35,6 +35,7 @@ import {
   Pencil,
   Users,
 } from "@/components/ui/icons";
+import { ComposeButton } from "@/components/emails/compose-button";
 
 export const dynamic = "force-dynamic";
 
@@ -417,6 +418,16 @@ export default async function CustomerDetailPage({
           <Link href="/customers" className="text-pigment hover:underline">
             Customers
           </Link>
+        }
+        actions={
+          <ComposeButton
+            businessId={customer.businessId}
+            to={customer.email}
+            subject={latestOrder ? `Re: ${latestOrder.number ?? latestOrder.fallbackNumber}` : ""}
+            customerId={customer.id}
+            orderId={latestOrder?.id ?? null}
+            label="Compose"
+          />
         }
       />
 

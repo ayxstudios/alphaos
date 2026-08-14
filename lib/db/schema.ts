@@ -386,6 +386,33 @@ export const ignoredProducts = pgTable(
   (t) => [index("ignored_products_business_idx").on(t.businessId)],
 );
 
+// Per-business inbound email suppression. Messages are still stored, but hidden
+// from triage by default when the sender matches one of these reversible rules.
+export const emailSenderIgnores = pgTable(
+  "email_sender_ignores",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "cascade" }),
+    value: text("value").notNull(),
+    matchType: text("match_type").notNull().default("email"),
+    note: text("note"),
+    active: boolean("active").notNull().default(true),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("email_sender_ignores_business_value_uq").on(
+      t.businessId,
+      sql`lower(${t.value})`,
+    ),
+    index("email_sender_ignores_business_idx").on(t.businessId),
+  ],
+);
+
 export const notificationChannels = pgTable("notification_channels", {
   id: id(),
   userId: text("user_id")
@@ -743,6 +770,10 @@ export const messages = pgTable(
     // archived. Excludes the row from the outbox / unmatched tray. Reason is in
     // activity_log.
     archivedAt: timestamp("archived_at", { withTimezone: true }),
+    // Suppressed inbound mail remains searchable and reversible, but stays out
+    // of the default triage surfaces and notification fanout.
+    suppressedAt: timestamp("suppressed_at", { withTimezone: true }),
+    suppressedReason: text("suppressed_reason"),
     toneScore: numeric("tone_score", { precision: 5, scale: 2 }),
     approvedBy: text("approved_by").references(() => users.id, {
       onDelete: "set null",
@@ -765,6 +796,8 @@ export const messages = pgTable(
       t.status,
       t.createdAt,
     ),
+    index("messages_business_created_idx").on(t.businessId, t.createdAt),
+    index("messages_business_suppressed_idx").on(t.businessId, t.suppressedAt),
   ],
 );
 

@@ -19,6 +19,7 @@ import {
   Users,
   Settings,
   AlertTriangle,
+  Mail,
   type IconProps,
 } from "@/components/ui/icons";
 
@@ -28,6 +29,7 @@ const ADMIN_NAV: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: Grid },
   { label: "System Health", href: "/health", icon: AlertTriangle },
   { label: "Orders", href: "/orders", icon: Package },
+  { label: "Emails", href: "/emails", icon: Mail },
   { label: "Boards", href: "/board", icon: Columns },
   { label: "Ready to Print", href: "/queue/print", icon: Truck },
   { label: "Designers", href: "/designers", icon: Palette },
@@ -40,6 +42,7 @@ const ADMIN_NAV: NavItem[] = [
 const VA_NAV: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: Grid },
   { label: "Orders", href: "/orders", icon: Package },
+  { label: "Emails", href: "/emails", icon: Mail },
   { label: "Boards", href: "/board", icon: Columns },
   { label: "Ready to Print", href: "/queue/print", icon: Truck },
   { label: "Designers", href: "/designers", icon: Palette },

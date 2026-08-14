@@ -83,7 +83,7 @@ export default async function DashboardPage() {
 
     const [emailCounts] = await tx
       .select({
-        unmatched: sql<number>`count(*) filter (where ${eq(messages.direction, "inbound")} and ${messages.orderId} is null)::int`,
+        unmatched: sql<number>`count(*) filter (where ${eq(messages.direction, "inbound")} and ${messages.orderId} is null and ${messages.suppressedAt} is null)::int`,
         outboxAction: sql<number>`count(*) filter (where ${eq(messages.direction, "outbound")} and ${inArray(messages.status, ["draft", "failed"])})::int`,
       })
       .from(messages)
@@ -147,7 +147,7 @@ export default async function DashboardPage() {
     {
       label: "Email triage",
       count: emailTriage,
-      href: "/orders?view=active#outbox",
+      href: "/emails",
       detail: `${counts.unmatched} unmatched replies, ${counts.outboxAction} outbox items`,
       tone: emailTriage ? "danger" : "success",
       icon: Mail,

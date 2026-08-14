@@ -197,6 +197,13 @@
       "when": 1786515509015,
       "tag": "0027_normal_calypso",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1786681322890,
+      "tag": "0028_rapid_ink",
+      "breakpoints": true
     }
   ]
 }

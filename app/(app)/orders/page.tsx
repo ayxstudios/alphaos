@@ -9,7 +9,6 @@ import { loadShellData } from "@/lib/shell/context";
 import {
   activityLog,
   assignments,
-  businesses,
   customers,
   orderItems,
   orders,
@@ -25,17 +24,17 @@ import {
   PageHeader,
   StatCard,
   TableShell,
+  DataPanel,
 } from "@/components/ui";
-import { Package, Plus, Search } from "@/components/ui/icons";
+import { Mail, Package, Plus, Search } from "@/components/ui/icons";
 import { OrdersOperationsTable, type OrdersDashboardRow } from "@/components/orders/orders-operations-table";
 import { OrdersFilterSelect } from "@/components/orders/orders-filter-select";
 import { OrdersViewPreference } from "@/components/orders/orders-view-preference";
-import { OutboxView } from "@/components/orders/outbox-view";
 import { cn } from "@/lib/utils";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
 import { resolveFigureCount, type NormalizedVariation } from "@/lib/integrations/figures";
 import { stageTimer } from "@/lib/orders/stage-timers";
-import { getOutbox, getUnmatchedReplies } from "@/lib/email/outbox";
+import { getEmailNeedsActionCounts } from "@/lib/email/outbox";
 import { liveOrderWhere } from "@/lib/orders/archive";
 
 export const dynamic = "force-dynamic";
@@ -686,18 +685,8 @@ export default async function OrdersPage({
   }
   currentParams.set("view", selectedView);
 
-  const [emailConfig, outbox, unmatched] = await Promise.all([
-    withUserContext(user, async (tx) => {
-      const [row] = await tx
-        .select({ emailSendingEnabled: businesses.emailSendingEnabled })
-        .from(businesses)
-        .where(eq(businesses.id, selected.id))
-        .limit(1);
-      return row ?? { emailSendingEnabled: false };
-    }),
-    getOutbox(user, { businessId: selected.id }),
-    getUnmatchedReplies(user, { businessId: selected.id }),
-  ]);
+  const emailNeedsAction = await getEmailNeedsActionCounts(user, { businessId: selected.id });
+  const emailAttention = emailNeedsAction.unmatched + emailNeedsAction.failed;
 
   return (
     <Page className="max-w-none">
@@ -815,15 +804,19 @@ export default async function OrdersPage({
         </div>
       </FilterBar>
 
-      {(outbox.length > 0 || unmatched.length > 0) && (
-        <div id="outbox" className="scroll-mt-24">
-          <OutboxView
-            outbox={outbox}
-            unmatched={unmatched}
-            sendingEnabled={emailConfig.emailSendingEnabled}
-            businessId={selected.id}
-          />
-        </div>
+      {emailAttention > 0 && (
+        <DataPanel className="flex flex-wrap items-center gap-3 border-rose/25 bg-rose/[0.03] px-4 py-3">
+          <Mail size={16} className="text-rose" />
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-ink">{emailAttention} email item{emailAttention === 1 ? "" : "s"} need action</p>
+            <p className="text-xs text-slate">
+              {emailNeedsAction.unmatched} unmatched replies, {emailNeedsAction.failed} failed sends
+            </p>
+          </div>
+          <Link href="/emails" className="ml-auto inline-flex h-9 items-center rounded-input bg-pigment px-3 text-sm font-medium text-surface hover:opacity-90">
+            Open Emails
+          </Link>
+        </DataPanel>
       )}
 
       <TableShell>
