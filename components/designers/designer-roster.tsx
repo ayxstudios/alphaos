@@ -170,7 +170,7 @@ function Row({
               disabled={first}
               onClick={() => onReorder(d.userId, "up")}
               className={cn(
-                "flex size-5 items-center justify-center rounded text-slate hover:bg-canvas hover:text-ink disabled:opacity-30",
+                "flex size-10 items-center justify-center rounded text-slate hover:bg-canvas hover:text-ink disabled:opacity-30",
                 focusRing,
               )}
             >
@@ -182,7 +182,7 @@ function Row({
               disabled={last}
               onClick={() => onReorder(d.userId, "down")}
               className={cn(
-                "flex size-5 items-center justify-center rounded text-slate hover:bg-canvas hover:text-ink disabled:opacity-30",
+                "flex size-10 items-center justify-center rounded text-slate hover:bg-canvas hover:text-ink disabled:opacity-30",
                 focusRing,
               )}
             >
