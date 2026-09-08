@@ -12,6 +12,8 @@ export const JOB_NAMES = {
   cronDailyHealth: "cron.daily_health",
   dailyHealthBusiness: "daily_health.business",
   shopifyWebhookImport: "shopify.webhook_import",
+  cronPrintReconcile: "cron.print_reconcile",
+  gelatoWebhook: "gelato.webhook",
 } as const;
 
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];
