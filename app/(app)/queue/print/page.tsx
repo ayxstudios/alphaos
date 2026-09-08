@@ -138,8 +138,17 @@ export default async function PrintQueuePage() {
               provider: printJobs.provider,
               status: printJobs.status,
               trackingNumber: printJobs.trackingNumber,
+              trackingCompany: printJobs.trackingCompany,
+              trackingUrl: printJobs.trackingUrl,
               platformSyncError: printJobs.platformSyncError,
               createdAt: printJobs.createdAt,
+              submittedAt: printJobs.submittedAt,
+              providerStatus: printJobs.providerStatus,
+              providerStatusReason: printJobs.providerStatusReason,
+              providerCheckedAt: printJobs.providerCheckedAt,
+              reconcileState: printJobs.reconcileState,
+              reconcileNote: printJobs.reconcileNote,
+              missingFlaggedAt: printJobs.missingFlaggedAt,
             })
             .from(printJobs)
             .where(inArray(printJobs.orderId, visibleIds))
@@ -180,7 +189,16 @@ export default async function PrintQueuePage() {
             provider: latestJob.provider,
             status: latestJob.status,
             trackingNumber: latestJob.trackingNumber,
+            trackingCompany: latestJob.trackingCompany,
+            trackingUrl: latestJob.trackingUrl,
             platformSyncError: latestJob.platformSyncError,
+            submittedAt: latestJob.submittedAt ? latestJob.submittedAt.toISOString() : null,
+            providerStatus: latestJob.providerStatus,
+            providerStatusReason: latestJob.providerStatusReason,
+            providerCheckedAt: latestJob.providerCheckedAt ? latestJob.providerCheckedAt.toISOString() : null,
+            reconcileState: latestJob.reconcileState,
+            reconcileNote: latestJob.reconcileNote,
+            missingFlaggedAt: latestJob.missingFlaggedAt ? latestJob.missingFlaggedAt.toISOString() : null,
           }
         : null,
     };
