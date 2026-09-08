@@ -1,15 +1,29 @@
-import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+
+import { and, desc, eq, ilike, inArray, isNotNull, or, sql } from "drizzle-orm";
 
 import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
-import { withSystemContext } from "@/lib/db";
+import { withSystemContext, type Tx } from "@/lib/db";
 import { getBusinessGmailCredentials } from "@/lib/db/credentials";
-import { activityLog, businesses, notificationFires, notifications, messages, orders, users } from "@/lib/db/schema";
+import {
+  activityLog,
+  businesses,
+  customers,
+  notificationFires,
+  notifications,
+  messages,
+  orders,
+  shops,
+  users,
+} from "@/lib/db/schema";
 import { classifyProofReply, type ReplyClassification } from "@/lib/email/reply-classifier";
 import { resolveSuppressionReason } from "@/lib/email/suppression";
+import { normalizeOrderNumber } from "@/lib/orders/reconcile";
 import { GmailClient } from "./client";
 import { GmailApiError, GmailReauthRequiredError } from "./errors";
+import { isEtsyNotificationSender, parseEtsyEmail, type ParsedEtsyEmail } from "./etsy-mail";
 import { extractPlainText, header } from "./mime";
-import type { GmailCredentials, GmailHistoryMessage } from "./types";
+import type { GmailCredentials, GmailHistoryMessage, GmailMessage } from "./types";
 
 export type InboundSummary = {
   businessId: string;
@@ -395,6 +409,14 @@ async function attachMessage(
   // Skip our own sends that slipped through without a SENT label.
   if (selfAddress && from.includes(selfAddress)) return false;
 
+  // Etsy has no messaging API (CLAUDE.md): every buyer message and sale
+  // notification instead arrives as an email FROM Etsy itself to the shop's
+  // mailbox. Route those through the Etsy-specific parser/matcher instead of
+  // treating them as a generic customer reply.
+  if (isEtsyNotificationSender(from)) {
+    return attachEtsyNotification(businessId, gmailMessageId, msg);
+  }
+
   const attached = await withSystemContext<AttachedMessage | null>(async (tx) => {
     // Idempotency: never insert the same Gmail message twice.
     const [existing] = await tx
@@ -488,6 +510,264 @@ async function attachMessage(
     await classifyAndStoreReply(attached);
   }
   return true;
+}
+
+/**
+ * Find the order this Etsy notification is about. Receipt id is authoritative
+ * (Etsy's human order number IS the receipt id — matches either a fully
+ * synced order or a not-yet-reconciled `manual:` stub whose platform_order_name
+ * is the same number, see lib/orders/reconcile.ts). Falling back to buyer name
+ * + shop is a heuristic ("regarding my portrait" with no order number quoted)
+ * — Etsy conversation notifications usually carry only the buyer's Etsy
+ * username, which rarely matches a real customer name, so this fallback is
+ * expected to miss more often than it hits; a miss lands in the unmatched tray.
+ */
+async function matchEtsyOrder(
+  tx: Tx,
+  businessId: string,
+  parsed: ParsedEtsyEmail,
+): Promise<{ orderId: string; customerId: string | null } | null> {
+  if (parsed.receiptId) {
+    const [byReceipt] = await tx
+      .select({ id: orders.id, customerId: orders.customerId })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.businessId, businessId),
+          or(eq(orders.platformOrderId, parsed.receiptId), eq(orders.platformOrderName, parsed.receiptId)),
+        ),
+      )
+      .orderBy(desc(orders.createdAt))
+      .limit(1);
+    if (byReceipt) return { orderId: byReceipt.id, customerId: byReceipt.customerId };
+  }
+
+  if (!parsed.buyerName) return null;
+  let shopIds: string[] | null = null;
+  if (parsed.shopName) {
+    const shopRows = await tx
+      .select({ id: shops.id })
+      .from(shops)
+      .where(and(eq(shops.businessId, businessId), eq(shops.platform, "etsy"), ilike(shops.name, `%${parsed.shopName}%`)));
+    if (shopRows.length) shopIds = shopRows.map((r) => r.id);
+  }
+  const needle = `%${parsed.buyerName}%`;
+  const custRows = await tx
+    .select({ id: customers.id })
+    .from(customers)
+    .where(
+      and(
+        eq(customers.businessId, businessId),
+        or(ilike(customers.firstName, needle), sql`concat_ws(' ', ${customers.firstName}, ${customers.lastName}) ilike ${needle}`),
+      ),
+    );
+  if (!custRows.length) return null;
+  const custIds = custRows.map((c) => c.id);
+  const candidates = await tx
+    .select({ id: orders.id, shopId: orders.shopId, customerId: orders.customerId })
+    .from(orders)
+    .where(and(eq(orders.businessId, businessId), inArray(orders.customerId, custIds)))
+    .orderBy(desc(orders.createdAt))
+    .limit(10);
+  if (!candidates.length) return null;
+  const scoped = shopIds ? candidates.filter((c) => shopIds!.includes(c.shopId)) : candidates;
+  const pick = scoped[0] ?? candidates[0];
+  return { orderId: pick.id, customerId: pick.customerId };
+}
+
+/**
+ * Which Etsy shop (under this business) a sale notification belongs to, so a
+ * not-yet-imported sale can create a properly-shopped order stub. Matches the
+ * parsed shop name when the email states one; falls back to the business's
+ * only active Etsy shop when there is exactly one (the common case — most
+ * businesses run one Etsy shop per mailbox).
+ */
+async function resolveEtsyShop(tx: Tx, businessId: string, shopName: string | null): Promise<string | null> {
+  const rows = await tx
+    .select({ id: shops.id, name: shops.name })
+    .from(shops)
+    .where(and(eq(shops.businessId, businessId), eq(shops.platform, "etsy"), eq(shops.active, true)));
+  if (!rows.length) return null;
+  if (shopName) {
+    const needle = shopName.trim().toLowerCase();
+    const match = rows.find((r) => r.name.toLowerCase().includes(needle) || needle.includes(r.name.toLowerCase()));
+    if (match) return match.id;
+  }
+  return rows.length === 1 ? rows[0].id : null;
+}
+
+/**
+ * A "You made a sale!" notification for a receipt AlphaOS has not imported
+ * yet (the sync hasn't run, or the shop isn't connected at all) still tells a
+ * VA a real order exists. Create the same `manual:` sentinel stub the manual
+ * order form uses, in `awaiting_details` (mirrors syncShopReceipts's own
+ * import shape) — when the real Etsy sync later imports this receipt,
+ * reconcileManualOrder promotes this row in place instead of duplicating it.
+ */
+async function createEtsySaleStub(
+  tx: Tx,
+  businessId: string,
+  parsed: ParsedEtsyEmail,
+): Promise<{ orderId: string; createdOrder: true } | { orderId: null; createdOrder: false; reason: string }> {
+  if (!parsed.receiptId) return { orderId: null, createdOrder: false, reason: "No receipt id in the sale email" };
+  const shopId = await resolveEtsyShop(tx, businessId, parsed.shopName);
+  if (!shopId) return { orderId: null, createdOrder: false, reason: "Could not determine which Etsy shop this sale belongs to" };
+
+  const norm = normalizeOrderNumber(parsed.receiptId);
+  const [inserted] = await tx
+    .insert(orders)
+    .values({
+      businessId,
+      shopId,
+      customerId: null,
+      platformOrderId: `manual:${norm}`,
+      platformOrderName: parsed.receiptId,
+      status: "awaiting_details",
+      source: "manual",
+      placedAt: new Date(),
+      uploadToken: randomUUID(),
+      needsReview: false,
+      notes: parsed.buyerName ? `Customer: ${parsed.buyerName}` : null,
+      rawImport: { source: "etsy_sale_email", receiptId: parsed.receiptId, buyerName: parsed.buyerName, itemTitle: parsed.itemTitle, shopName: parsed.shopName },
+    })
+    .onConflictDoNothing({ target: [orders.shopId, orders.platformOrderId] })
+    .returning({ id: orders.id });
+
+  if (!inserted) {
+    // Another concurrent poll already created it (or a real order number
+    // collision) — look it up rather than treat this as a failure.
+    const [existing] = await tx
+      .select({ id: orders.id })
+      .from(orders)
+      .where(and(eq(orders.shopId, shopId), eq(orders.platformOrderId, `manual:${norm}`)))
+      .limit(1);
+    if (existing) return { orderId: existing.id, createdOrder: true };
+    return { orderId: null, createdOrder: false, reason: "Could not create the order stub" };
+  }
+
+  await tx.insert(activityLog).values({
+    businessId,
+    orderId: inserted.id,
+    actorId: null,
+    action: "order.imported",
+    fromState: null,
+    toState: "awaiting_details",
+    metadata: { source: "etsy_sale_email", receiptId: parsed.receiptId, shopName: parsed.shopName },
+  });
+  return { orderId: inserted.id, createdOrder: true };
+}
+
+const ETSY_NOTIFICATION_TITLES: Record<EtsyEmailKindLike, string> = {
+  message: "New Etsy message",
+  sale: "New Etsy sale",
+  shipped: "Etsy shipping update",
+};
+type EtsyEmailKindLike = ParsedEtsyEmail["kind"];
+
+/**
+ * Attach (or file as unmatched) one Etsy notification email. Distinct from
+ * attachMessage: the sender is Etsy itself, never the buyer, so there is no
+ * suppression/self-send check, and a "You made a sale" notice for a receipt
+ * we've never seen can create the order header itself.
+ */
+async function attachEtsyNotification(businessId: string, gmailMessageId: string, msg: GmailMessage): Promise<boolean> {
+  const subject = header(msg, "Subject") ?? "";
+  const body = extractPlainText(msg);
+  const parsed = parseEtsyEmail({ subject, body });
+  if (!parsed) {
+    // Etsy also sends marketing/weekly-stats mail with no actionable content —
+    // recognised as "from Etsy" but not one of our three kinds. Nothing to
+    // store.
+    return false;
+  }
+
+  const result = await withSystemContext(async (tx) => {
+    const [existing] = await tx
+      .select({ id: messages.id })
+      .from(messages)
+      .where(eq(messages.gmailMessageId, gmailMessageId))
+      .limit(1);
+    if (existing) return null;
+
+    let match = await matchEtsyOrder(tx, businessId, parsed);
+    let createdOrder = false;
+    if (!match && parsed.kind === "sale") {
+      const stub = await createEtsySaleStub(tx, businessId, parsed);
+      if (stub.createdOrder) {
+        match = { orderId: stub.orderId, customerId: null };
+        createdOrder = true;
+      }
+    }
+
+    const [inserted] = await tx
+      .insert(messages)
+      .values({
+        businessId,
+        orderId: match?.orderId ?? null,
+        customerId: match?.customerId ?? null,
+        direction: "inbound",
+        channel: "etsy",
+        status: "received",
+        subject,
+        address: parsed.buyerName,
+        body: parsed.body,
+        gmailMessageId,
+        gmailThreadId: msg.threadId,
+        metadata: {
+          etsyLink: parsed.link,
+          kind: parsed.kind,
+          receiptId: parsed.receiptId,
+          buyerName: parsed.buyerName,
+          shopName: parsed.shopName,
+          itemTitle: parsed.itemTitle,
+          createdOrder,
+        },
+      })
+      .returning({ id: messages.id });
+
+    if (match?.orderId) {
+      await tx.insert(activityLog).values({
+        businessId,
+        orderId: match.orderId,
+        actorId: null,
+        action: "message.received",
+        metadata: { channel: "etsy", kind: parsed.kind, etsyLink: parsed.link },
+      });
+    }
+
+    const staff = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(and(inArray(users.role, ["admin", "va"]), eq(users.active, true)));
+    if (staff.length) {
+      const title = ETSY_NOTIFICATION_TITLES[parsed.kind];
+      const preview = parsed.body.slice(0, 180);
+      const bodyText = match?.orderId
+        ? preview
+        : `${preview}${preview ? " — " : ""}Could not match this to an order automatically. Open Emails to link it.`;
+      await tx.insert(notifications).values(
+        staff.map((s) => ({
+          businessId,
+          userId: s.id,
+          type: "message.received",
+          orderId: match?.orderId ?? null,
+          title,
+          body: bodyText,
+          href: match?.orderId ? `/orders/${match.orderId}` : "/emails",
+        })),
+      );
+    }
+
+    logInbound(businessId, {
+      event: "etsy_notification_attached",
+      gmailMessageId,
+      kind: parsed.kind,
+      matched: !!match?.orderId,
+      createdOrder,
+    });
+    return inserted.id;
+  });
+  return !!result;
 }
 
 async function classifyAndStoreReply(attached: AttachedMessage): Promise<void> {
