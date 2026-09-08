@@ -18,9 +18,15 @@ import { issueLabels } from "@/lib/proofs/issues";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import type { OrderStatus } from "./transitions";
+import type { ProofAnnotation } from "@/lib/db/schema";
 
 /** A revision the designer must act on — from QC, or from the customer. */
-export type QcFailInfo = { reason: string | null; failedItems: string[] };
+export type QcFailInfo = {
+  reason: string | null;
+  failedItems: string[];
+  /** Pins the customer dropped on the proof preview (normalised 0..1 coords) — customer revisions only. */
+  annotations?: ProofAnnotation[];
+};
 
 export type BoardCard = {
   orderId: string;
@@ -150,6 +156,7 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
         orderId: proofs.orderId,
         revisionNotes: proofs.revisionNotes,
         failedItems: proofs.failedItems,
+        annotations: proofs.annotations,
         decidedAt: proofs.decidedAt,
       })
       .from(proofs)
@@ -160,6 +167,7 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
       customerRevision.set(r.orderId, {
         reason: r.revisionNotes,
         failedItems: issueLabels(r.failedItems ?? []),
+        annotations: r.annotations ?? [],
       });
       if (r.decidedAt) customerRevisionAt.set(r.orderId, r.decidedAt);
       // Keep only the newer of the two: if a QC fail is more recent, drop the

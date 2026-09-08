@@ -26,7 +26,8 @@
     "test:gmail-poll": "tsx scripts/test-gmail-poll-resilience.ts",
     "test:backfill-archive": "tsx scripts/test-backfill-archive.ts",
     "test:reconcile": "tsx scripts/test-reconcile.ts",
-    "test:etsy-review": "tsx scripts/test-etsy-review.ts"
+    "test:etsy-review": "tsx scripts/test-etsy-review.ts",
+    "test:designer-lane": "tsx scripts/test-designer-lane.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1102.0",

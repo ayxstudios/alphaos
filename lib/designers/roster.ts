@@ -4,6 +4,7 @@ import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { assignments, designerProfiles, orders, users } from "@/lib/db/schema";
 import { liveOrderWhere } from "@/lib/orders/archive";
+import { asChannel, type PreferredChannel } from "@/lib/designers/profile";
 
 export type RailDesigner = {
   id: string;
@@ -77,6 +78,14 @@ export type DesignerRow = {
   assignedToday: number;
   /** Active work in flight (in_design / awaiting_qc). */
   wipCount: number;
+  /** Contact + working-hours — what Alpha needs to message this designer. */
+  phone: string | null;
+  preferredChannel: PreferredChannel;
+  timezone: string | null;
+  quietStart: string | null;
+  quietEnd: string | null;
+  /** 0 = no cap on work in flight. */
+  maxActiveOrders: number;
 };
 
 /**
@@ -94,6 +103,12 @@ export async function getDesignerRoster(user: RequestUser): Promise<DesignerRow[
         rank: designerProfiles.rank,
         dailyCapacity: designerProfiles.dailyCapacity,
         styles: designerProfiles.styles,
+        phone: designerProfiles.phone,
+        preferredChannel: designerProfiles.preferredChannel,
+        timezone: designerProfiles.timezone,
+        quietStart: designerProfiles.quietStart,
+        quietEnd: designerProfiles.quietEnd,
+        maxActiveOrders: designerProfiles.maxActiveOrders,
       })
       .from(designerProfiles)
       .innerJoin(
@@ -144,6 +159,12 @@ export async function getDesignerRoster(user: RequestUser): Promise<DesignerRow[
       styles: r.styles ?? [],
       assignedToday: assignedToday.get(r.userId) ?? 0,
       wipCount: wip.get(r.userId) ?? 0,
+      phone: r.phone,
+      preferredChannel: asChannel(r.preferredChannel),
+      timezone: r.timezone,
+      quietStart: r.quietStart,
+      quietEnd: r.quietEnd,
+      maxActiveOrders: r.maxActiveOrders,
     }));
   });
 }

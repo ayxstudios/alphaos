@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 import { auth } from "@/lib/auth";
 import { getDesignerBoard } from "@/lib/orders/board-data";
@@ -7,7 +8,9 @@ import { DesignerBoard } from "@/components/board/designer-board";
 import { DesignerPicker } from "@/components/board/designer-picker";
 import { DesignerRail } from "@/components/board/designer-rail";
 import { Badge, DataPanel, EmptyState, Page, PageHeader, StatCard } from "@/components/ui";
-import { Columns } from "@/components/ui/icons";
+import { focusRing } from "@/components/ui/styles";
+import { Calendar, Columns } from "@/components/ui/icons";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +59,18 @@ export default async function BoardPage({
         description="Move work across queue, design, and QC for each designer."
         actions={
           <>
+            {!isStaff && (
+              <Link
+                href="/me"
+                className={cn(
+                  "inline-flex h-9 items-center gap-1.5 rounded-input border border-line bg-surface px-3 text-sm font-medium text-ink hover:bg-canvas",
+                  focusRing,
+                )}
+              >
+                <Calendar size={15} />
+                My week
+              </Link>
+            )}
             {isStaff && (
               // Mobile / narrow screens: the right rail is hidden, so keep a dropdown.
               <div className="lg:hidden">

@@ -199,6 +199,10 @@ export function CardModal({
                 kind={card.qcFail ? "qc" : "customer"}
                 reason={revision.reason}
                 failedItems={revision.failedItems}
+                annotations={revision.annotations ?? []}
+                pinImageUrl={
+                  [...(detail?.images ?? [])].reverse().find((img) => img.type === "submission")?.url ?? null
+                }
               />
             )}
 
@@ -595,10 +599,14 @@ function RevisionBlock({
   kind,
   reason,
   failedItems,
+  annotations,
+  pinImageUrl,
 }: {
   kind: "qc" | "customer";
   reason: string | null;
   failedItems: string[];
+  annotations: { x: number; y: number }[];
+  pinImageUrl: string | null;
 }) {
   const qc = kind === "qc";
   return (
@@ -625,6 +633,30 @@ function RevisionBlock({
         </ul>
       )}
       {reason && <p className="text-sm italic text-slate">&ldquo;{reason}&rdquo;</p>}
+      {annotations.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-ink">
+            The customer marked {annotations.length} spot{annotations.length === 1 ? "" : "s"} on the proof:
+          </p>
+          {pinImageUrl ? (
+            <div className="relative overflow-hidden rounded-input border border-line">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={pinImageUrl} alt="Latest submission with revision pins" className="block w-full" />
+              {annotations.map((p, i) => (
+                <span
+                  key={i}
+                  className="pointer-events-none absolute flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-pigment text-xs font-semibold text-surface shadow-md ring-2 ring-surface"
+                  style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
+                >
+                  {i + 1}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-slate">Pin positions were saved but no portrait image is available to show them on.</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

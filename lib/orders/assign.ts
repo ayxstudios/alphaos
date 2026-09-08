@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, ne, sql } from "drizzle-orm";
 
 import type { Tx } from "@/lib/db";
 import {
@@ -11,8 +11,56 @@ import {
   earnings,
 } from "@/lib/db/schema";
 import { liveOrderWhere } from "@/lib/orders/archive";
+import { sendDesignerBrief } from "@/lib/notifications/designer-events";
 
-const DESIGNER_SLA_HOURS = 24;
+export const DESIGNER_SLA_HOURS = 24;
+
+/**
+ * The one place an assignment row is created. Deactivates any prior active
+ * assignment, inserts the new one, and sends the designer their brief
+ * (Alpha event `designer.brief`) — this is what makes "every assignment, auto
+ * or manual, gets a brief" true without duplicating the send at every call
+ * site. `reason` is shown in the brief text (e.g. "Reassigned from another
+ * designer." on an SLA-sweep reassignment).
+ */
+export async function createAssignment(
+  tx: Tx,
+  input: {
+    orderId: string;
+    businessId: string;
+    designerId: string;
+    assignedBy: string | null;
+    dueAtHours?: number;
+    reason?: string | null;
+  },
+): Promise<{ assignmentId: string; dueAt: Date }> {
+  const dueAt = new Date(Date.now() + (input.dueAtHours ?? DESIGNER_SLA_HOURS) * 60 * 60 * 1000);
+
+  await tx
+    .update(assignments)
+    .set({ active: false })
+    .where(and(eq(assignments.orderId, input.orderId), eq(assignments.active, true)));
+  const [row] = await tx
+    .insert(assignments)
+    .values({
+      businessId: input.businessId,
+      orderId: input.orderId,
+      designerId: input.designerId,
+      assignedBy: input.assignedBy,
+      dueAt,
+      active: true,
+    })
+    .returning({ id: assignments.id });
+
+  await sendDesignerBrief(tx, {
+    orderId: input.orderId,
+    designerId: input.designerId,
+    dueAt,
+    reason: input.reason ?? null,
+  });
+
+  return { assignmentId: row.id, dueAt };
+}
 
 export type Candidate = {
   designerId: string;
@@ -23,6 +71,8 @@ export type Candidate = {
   ordersAssignedToday: number;
   wipCount: number;
   onTimeRate30d: number; // 0..1
+  /** 0 = no cap on work in flight (designer_profiles.max_active_orders). */
+  maxActiveOrders: number;
 };
 
 export type RankedCandidate = Candidate & {
@@ -33,9 +83,12 @@ export type RankedCandidate = Candidate & {
 /**
  * PURE ranker (no DB) — testable in isolation.
  *
- * Hard filters (both must pass to be eligible):
+ * Hard filters (all must pass to be eligible):
  *  1. Under the daily capacity (a limit of 15 = at most 15 assigned today).
- *  2. STRICT style match — when the order has a style, only designers who list
+ *  2. Under their max active orders (0 = no cap) — work currently in flight
+ *     (in_design / awaiting_qc), so a designer with a lot on their plate isn't
+ *     handed more even if today's count is still low.
+ *  3. STRICT style match — when the order has a style, only designers who list
  *     that style are eligible. An order with no style is open to everyone.
  *     (If no eligible designer exists the order stays unassigned — the caller
  *     surfaces it in the VA "Unassigned" tab.)
@@ -58,6 +111,7 @@ export function rankCandidates(
     .filter(
       (c) =>
         c.ordersAssignedToday < c.dailyCapacity &&
+        (c.maxActiveOrders === 0 || c.wipCount < c.maxActiveOrders) &&
         // Strict: a styled order goes only to a matching designer.
         (style === null || c.styleMatch),
     );
@@ -74,28 +128,22 @@ export function rankCandidates(
 }
 
 /**
- * Runs when an order enters ready_to_assign. Builds candidates from the DB,
- * ranks them, and assigns the top one (deactivating any prior active
- * assignment). If nobody is eligible the order stays ready_to_assign with no
- * active assignment — it surfaces in the VA "Unassigned" tab.
+ * Ranked, eligible candidates for a business + style, straight from the DB.
+ * Shared by auto-assign (entry into ready_to_assign) and the SLA-sweep
+ * reassign step (48 h, no submission) — `excludeDesignerId` drops the
+ * currently-assigned designer so a reassignment never picks the same person.
  */
-export async function runAutoAssign(
+async function loadRankedCandidates(
   tx: Tx,
-  order: { orderId: string; businessId: string; assignedBy: string | null },
-): Promise<{ assigned: string | null }> {
-  const [item] = await tx
-    .select({ style: orderItems.style })
-    .from(orderItems)
-    .where(eq(orderItems.orderId, order.orderId))
-    .limit(1);
-  const style = item?.style ?? null;
-
+  input: { businessId: string; style: string | null; excludeDesignerId?: string | null },
+): Promise<RankedCandidate[]> {
   const roster = await tx
     .select({
       designerId: designerProfiles.userId,
       dailyCapacity: designerProfiles.dailyCapacity,
       styles: designerProfiles.styles,
       rank: designerProfiles.rank,
+      maxActiveOrders: designerProfiles.maxActiveOrders,
     })
     .from(designerBusinesses)
     .innerJoin(
@@ -103,9 +151,14 @@ export async function runAutoAssign(
       and(eq(users.id, designerBusinesses.userId), eq(users.active, true), eq(users.role, "designer")),
     )
     .innerJoin(designerProfiles, eq(designerProfiles.userId, designerBusinesses.userId))
-    .where(eq(designerBusinesses.businessId, order.businessId));
+    .where(
+      and(
+        eq(designerBusinesses.businessId, input.businessId),
+        ...(input.excludeDesignerId ? [ne(designerProfiles.userId, input.excludeDesignerId)] : []),
+      ),
+    );
 
-  if (!roster.length) return { assigned: null };
+  if (!roster.length) return [];
   const ids = roster.map((r) => r.designerId);
 
   // assigned today
@@ -159,25 +212,53 @@ export async function runAutoAssign(
     ordersAssignedToday: assignedToday.get(r.designerId) ?? 0,
     wipCount: wip.get(r.designerId) ?? 0,
     onTimeRate30d: onTime.get(r.designerId) ?? 1,
+    maxActiveOrders: r.maxActiveOrders,
   }));
 
-  const ranked = rankCandidates(candidates, { style });
+  return rankCandidates(candidates, { style: input.style });
+}
+
+/**
+ * Runs when an order enters ready_to_assign. Builds candidates from the DB,
+ * ranks them, and assigns the top one (deactivating any prior active
+ * assignment). If nobody is eligible the order stays ready_to_assign with no
+ * active assignment — it surfaces in the VA "Unassigned" tab.
+ */
+export async function runAutoAssign(
+  tx: Tx,
+  order: { orderId: string; businessId: string; assignedBy: string | null },
+): Promise<{ assigned: string | null }> {
+  const [item] = await tx
+    .select({ style: orderItems.style })
+    .from(orderItems)
+    .where(eq(orderItems.orderId, order.orderId))
+    .limit(1);
+  const style = item?.style ?? null;
+
+  const ranked = await loadRankedCandidates(tx, { businessId: order.businessId, style });
   if (!ranked.length) return { assigned: null };
   const chosen = ranked[0].designerId;
 
-  // Exactly one active assignment per order.
-  await tx
-    .update(assignments)
-    .set({ active: false })
-    .where(and(eq(assignments.orderId, order.orderId), eq(assignments.active, true)));
-  await tx.insert(assignments).values({
-    businessId: order.businessId,
+  await createAssignment(tx, {
     orderId: order.orderId,
+    businessId: order.businessId,
     designerId: chosen,
     assignedBy: order.assignedBy,
-    dueAt: new Date(Date.now() + DESIGNER_SLA_HOURS * 60 * 60 * 1000),
-    active: true,
   });
 
   return { assigned: chosen };
+}
+
+/**
+ * The next eligible designer for an order, excluding whoever currently holds
+ * it — used by the 48 h SLA-sweep reassignment. Same ranking as auto-assign.
+ * Returns null when nobody else is eligible (the sweep then leaves the order
+ * with its current designer and only pings the VA).
+ */
+export async function findNextEligibleDesigner(
+  tx: Tx,
+  input: { businessId: string; style: string | null; excludeDesignerId: string },
+): Promise<string | null> {
+  const ranked = await loadRankedCandidates(tx, input);
+  return ranked[0]?.designerId ?? null;
 }

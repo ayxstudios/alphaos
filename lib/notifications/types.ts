@@ -7,6 +7,12 @@ export const ALERT_TYPES = {
   shopSyncStale: "shop.sync_stale",
   mailUnmatchedReplyStale: "mail.unmatched_reply_stale",
   notificationPresenceGap: "notification.presence_gap",
+  // Designer lane (SLA sweep, behind ALPHA_ACTIONS_ENABLED): these gate Alpha
+  // events (designer.nudge / designer.reassigned / va.attention) via
+  // notification_fires, not the in-app notifications bell.
+  designerNudge24h: "designer.nudge_24h",
+  designerReassigned48h: "designer.reassigned_48h",
+  designerReassignBlocked: "designer.reassign_blocked",
 } as const;
 
 export type AlertType = (typeof ALERT_TYPES)[keyof typeof ALERT_TYPES];

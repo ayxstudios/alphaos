@@ -16,6 +16,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import { ALERT_TYPES, type AlertType } from "./types";
+import { runDesignerLaneSweep, type DesignerLaneResult } from "./designer-sweep";
 
 const HOUR = 60 * 60 * 1000;
 const CLOSED_STATUSES = ["delivered", "complete", "cancelled"] as const;
@@ -52,6 +53,8 @@ export type NotificationSweepResult = {
   byType: SweepBucket[];
   byBusiness: SweepBusinessBucket[];
   topRecipients: SweepRecipientBucket[];
+  /** Designer nudge/reassign lane — see lib/notifications/designer-sweep.ts. Behind ALPHA_ACTIONS_ENABLED. */
+  designerLane: DesignerLaneResult;
 };
 
 export type NotificationSweepOptions = {
@@ -212,6 +215,12 @@ async function executeNotificationSweep(
     }
   }
 
+  // Designer nudge/reassign lane — independent of NOTIFICATIONS_ENABLED, gated
+  // on its own ALPHA_ACTIONS_ENABLED flag; a preview (dryRun) never mutates.
+  result.designerLane = await runDesignerLaneSweep(tx, now, {
+    enabled: !opts.dryRun && process.env.ALPHA_ACTIONS_ENABLED === "true",
+  });
+
   console.log(
     JSON.stringify({
       ts: new Date().toISOString(),
@@ -248,6 +257,15 @@ async function buildSweepResult(
     byType: [],
     byBusiness: [],
     topRecipients: [],
+    designerLane: {
+      enabled: false,
+      nudgeCandidates: 0,
+      nudgeFired: 0,
+      reassignCandidates: 0,
+      reassigned: 0,
+      reassignBlockedNoEligible: 0,
+      skippedDuplicate: 0,
+    },
   };
 
   for (const alert of alerts) {

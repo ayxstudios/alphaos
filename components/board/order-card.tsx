@@ -91,7 +91,9 @@ export function OrderCard({
           </ul>
         )}
 
-        {/* Compact revision cue — the full reason + failed items live in the modal. */}
+        {/* Compact revision cue — the full detail lives in the modal, but the
+            failed items + pin count show right here so a designer doesn't
+            have to open the card just to see what to fix. */}
         {revision && (
           <div
             className={cn(
@@ -106,9 +108,26 @@ export function OrderCard({
               <span className="font-semibold">
                 {card.qcFail ? "QC failed" : "Revision requested"}
               </span>
+              {revision.failedItems.length > 0 && (
+                <ul className="ml-3 list-outside list-disc font-normal text-ink">
+                  {revision.failedItems.slice(0, 2).map((f, i) => (
+                    <li key={i} className="line-clamp-1">
+                      {f}
+                    </li>
+                  ))}
+                  {revision.failedItems.length > 2 && (
+                    <li className="text-slate">+{revision.failedItems.length - 2} more</li>
+                  )}
+                </ul>
+              )}
               {revision.reason && (
                 <span className="line-clamp-2 font-normal italic text-slate">
                   &ldquo;{revision.reason}&rdquo;
+                </span>
+              )}
+              {!!revision.annotations?.length && (
+                <span className="mt-0.5 block font-normal text-slate">
+                  {revision.annotations.length} pin{revision.annotations.length === 1 ? "" : "s"} on the image
                 </span>
               )}
             </span>
