@@ -10,6 +10,9 @@ import {
   setShopCredentials,
   getBusinessGmailCredentials,
   setBusinessGmailCredentials,
+  getBusinessPrintCredentials,
+  setBusinessPrintCredentials,
+  type ShopCredentials,
 } from "@/lib/db/credentials";
 import { shops, businesses, emailTemplates, printProductMappings, users } from "@/lib/db/schema";
 import { reresolveShop, type ReresolveSummary } from "@/lib/orders/resolution";
@@ -683,5 +686,55 @@ export async function resetEmailTemplate(businessId: string, key: string): Promi
       .delete(emailTemplates)
       .where(and(eq(emailTemplates.businessId, businessId), eq(emailTemplates.key, templateKey))),
   );
+  revalidatePath("/settings");
+}
+
+/* --- Print provider credentials (per business) --------------------------- */
+// Gelato + Luma Prints API keys, encrypted the same way as Gmail's OAuth
+// client (lib/db/credentials.ts). Read by lib/print/reconcile.ts and the
+// Gelato webhook route; nothing here ever returns the plaintext to the client.
+
+export async function savePrintProviderCredentials(formData: FormData): Promise<void> {
+  const user = await requireAdmin();
+  const businessId = String(formData.get("businessId") ?? "");
+  const provider = String(formData.get("provider") ?? "");
+  if (!businessId || (provider !== "gelato" && provider !== "lumaprints")) {
+    throw new Error("Missing business or provider");
+  }
+
+  await withUserContext(user, async (tx) => {
+    const current = ((await getBusinessPrintCredentials(tx, businessId)) as ShopCredentials | null) ?? {};
+    if (provider === "gelato") {
+      const existing = (current.gelato ?? {}) as { apiKey?: string; webhookSecret?: string | null };
+      const apiKey = String(formData.get("apiKey") ?? "").trim() || existing.apiKey;
+      const webhookSecret = String(formData.get("webhookSecret") ?? "").trim() || existing.webhookSecret || null;
+      if (!apiKey) throw new Error("Gelato API key is required");
+      await setBusinessPrintCredentials(tx, businessId, { ...current, gelato: { apiKey, webhookSecret } });
+    } else {
+      const existing = (current.lumaprints ?? {}) as { username?: string; password?: string; storeId?: string; sandbox?: boolean };
+      const username = String(formData.get("username") ?? "").trim() || existing.username;
+      const password = String(formData.get("password") ?? "").trim() || existing.password;
+      const storeId = String(formData.get("storeId") ?? "").trim() || existing.storeId;
+      const sandbox = formData.get("sandbox") === "on";
+      if (!username || !password || !storeId) {
+        throw new Error("Luma Prints username, password, and store id are all required");
+      }
+      await setBusinessPrintCredentials(tx, businessId, {
+        ...current,
+        lumaprints: { username, password, storeId, sandbox },
+      });
+    }
+  });
+  revalidatePath("/settings");
+}
+
+export async function clearPrintProviderCredentials(businessId: string, provider: "gelato" | "lumaprints"): Promise<void> {
+  const user = await requireAdmin();
+  await withUserContext(user, async (tx) => {
+    const current = ((await getBusinessPrintCredentials(tx, businessId)) as ShopCredentials | null) ?? {};
+    const next = { ...current };
+    delete next[provider];
+    await setBusinessPrintCredentials(tx, businessId, next);
+  });
   revalidatePath("/settings");
 }

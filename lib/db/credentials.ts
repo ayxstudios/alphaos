@@ -143,3 +143,34 @@ export async function setBusinessGmailCredentials(
     .set({ gmailCredentials: encryptCredentials(credentials) })
     .where(eq(businesses.id, businessId));
 }
+
+/**
+ * Decrypt and return a business's print provider credentials (Gelato API key +
+ * webhook secret, Luma Prints key/secret/store id). Same envelope as Gmail,
+ * keyed on `businesses.print_credentials`. Returns `null` when never set. The
+ * ONLY sanctioned way to read the plaintext; never log or persist the result.
+ */
+export async function getBusinessPrintCredentials(
+  tx: Tx,
+  businessId: string,
+): Promise<ShopCredentials | null> {
+  const [row] = await tx
+    .select({ printCredentials: businesses.printCredentials })
+    .from(businesses)
+    .where(eq(businesses.id, businessId))
+    .limit(1);
+  if (!row?.printCredentials) return null;
+  return decrypt(row.printCredentials as Envelope);
+}
+
+/** Encrypt and persist a business's print provider credentials. Admin/system tx. */
+export async function setBusinessPrintCredentials(
+  tx: Tx,
+  businessId: string,
+  credentials: ShopCredentials,
+): Promise<void> {
+  await tx
+    .update(businesses)
+    .set({ printCredentials: encryptCredentials(credentials) })
+    .where(eq(businesses.id, businessId));
+}

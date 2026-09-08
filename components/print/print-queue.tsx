@@ -7,8 +7,20 @@ import { useRouter } from "next/navigation";
 import { createManualPrintJob } from "@/app/(app)/queue/print/actions";
 import { TrackingCompleteForm } from "@/components/orders/tracking-complete-form";
 import { Badge, Button, DataPanel, Select, useToast } from "@/components/ui";
-import { ArrowRight, Printer, Truck } from "@/components/ui/icons";
+import { AlertTriangle, ArrowRight, Printer, Truck } from "@/components/ui/icons";
 import type { PrintProvider } from "@/lib/print/mapping";
+
+export type ReconcileState =
+  | "unchecked"
+  | "pending"
+  | "matched"
+  | "shipped"
+  | "delivered"
+  | "missing"
+  | "problem"
+  | "not_configured"
+  | string
+  | null;
 
 export type PrintQueueItemVM = {
   id: string;
@@ -24,9 +36,27 @@ export type PrintQueueItemVM = {
     provider: PrintProvider;
     status: string | null;
     trackingNumber: string | null;
+    trackingCompany?: string | null;
+    trackingUrl?: string | null;
     platformSyncError: string | null;
+    submittedAt?: string | null;
+    providerStatus?: string | null;
+    providerStatusReason?: string | null;
+    providerCheckedAt?: string | null;
+    reconcileState?: ReconcileState;
+    reconcileNote?: string | null;
+    missingFlaggedAt?: string | null;
   } | null;
 };
+
+const PROVIDER_DASHBOARD: Record<PrintProvider, string> = {
+  gelato: "https://dashboard.gelato.com/orders",
+  lumaprints: "https://dashboard.lumaprints.com/orders",
+};
+
+function providerLabel(provider: PrintProvider): string {
+  return provider === "lumaprints" ? "Luma Prints" : "Gelato";
+}
 
 function fmtDate(value: string | null): string {
   if (!value) return "Unknown";
@@ -36,6 +66,30 @@ function fmtDate(value: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function fmtAge(value: string | null): string | null {
+  if (!value) return null;
+  const ms = Date.now() - new Date(value).getTime();
+  if (ms < 0) return null;
+  const hours = Math.floor(ms / (60 * 60 * 1000));
+  if (hours < 1) return "under an hour";
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ${hours % 24}h`;
+}
+
+type ChipInfo = { label: string; variant: "neutral" | "info" | "success" | "warning" | "danger" };
+
+function deriveChip(order: PrintQueueItemVM): ChipInfo {
+  const job = order.latestPrintJob;
+  const state = job?.reconcileState ?? null;
+  if (order.status === "approved" && !job) return { label: "Needs sending", variant: "neutral" };
+  if (state === "missing") return { label: "Missing at provider", variant: "danger" };
+  if (state === "problem") return { label: "Problem at provider", variant: "danger" };
+  if (state === "shipped" || state === "delivered") return { label: "Shipped", variant: "success" };
+  if (order.status === "approved") return { label: "Needs sending", variant: "neutral" };
+  return { label: "Sent, waiting", variant: "info" };
 }
 
 export function PrintQueue({ orders }: { orders: PrintQueueItemVM[] }) {
@@ -67,6 +121,10 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
   const toast = useToast();
   const canStart = order.status === "approved";
   const inPrint = order.status === "printing";
+  const job = order.latestPrintJob;
+  const chip = deriveChip(order);
+  const isTrouble = chip.variant === "danger";
+  const age = fmtAge(job?.submittedAt ?? order.placedAt ?? null);
 
   function runStart() {
     const formData = new FormData();
@@ -84,16 +142,17 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
   }
 
   return (
-    <DataPanel className="overflow-hidden">
+    <DataPanel className={isTrouble ? "overflow-hidden border-rose/40" : "overflow-hidden"}>
       <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-lg font-semibold text-ink">Order {order.orderNumber}</h3>
-                <Badge variant={order.status === "printing" ? "info" : "success"}>
-                  {order.status === "printing" ? "In print" : "Ready"}
+                <Badge variant={chip.variant} dot>
+                  {chip.label}
                 </Badge>
+                {age && <span className="text-xs text-slate">{age} old</span>}
               </div>
               <p className="text-sm text-slate">
                 {order.shopName} · {order.source} · {order.customerName} · ordered {fmtDate(order.placedAt)}
@@ -110,6 +169,26 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
             <Info label="Customer" value={order.customerName} />
           </div>
 
+          {job && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Info label="Provider" value={providerLabel(job.provider)} />
+              <Info label="Provider status" value={job.providerStatus ?? "Not checked yet"} />
+            </div>
+          )}
+
+          {job?.trackingNumber && (
+            <div className="flex items-center gap-2 rounded-input border border-line bg-canvas px-3 py-2 text-sm">
+              <Truck size={14} className="text-slate" />
+              <span className="font-medium text-ink">{job.trackingNumber}</span>
+              {job.trackingCompany && <span className="text-slate">via {job.trackingCompany}</span>}
+              {job.trackingUrl && (
+                <a href={job.trackingUrl} target="_blank" rel="noreferrer" className="ml-auto text-pigment hover:text-ink">
+                  Track
+                </a>
+              )}
+            </div>
+          )}
+
           {order.artworkUrl && (
             <a
               href={order.artworkUrl}
@@ -120,9 +199,35 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
               Open latest portrait <ArrowRight size={14} />
             </a>
           )}
-          {order.latestPrintJob?.platformSyncError && (
+          {job?.platformSyncError && (
             <div className="rounded-input border border-rose/25 bg-rose/10 p-3 text-sm text-rose">
-              Platform writeback failed: {order.latestPrintJob.platformSyncError}
+              Platform writeback failed: {job.platformSyncError}
+            </div>
+          )}
+
+          {isTrouble && (
+            <div className="flex flex-col gap-2 rounded-input border border-rose/30 bg-rose/5 p-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle size={16} className="mt-0.5 shrink-0 text-rose" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-rose">
+                    {chip.label === "Missing at provider"
+                      ? "No matching order was found at the provider."
+                      : "The provider reported a problem with this order."}
+                  </p>
+                  <p className="mt-0.5 text-sm text-rose/90">
+                    {job?.reconcileNote ?? job?.providerStatusReason ?? "Check the provider dashboard directly."}
+                  </p>
+                </div>
+              </div>
+              <a
+                href={PROVIDER_DASHBOARD[job?.provider ?? order.defaultProvider]}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex w-fit items-center gap-1 rounded-input border border-rose/40 bg-surface px-3 py-1.5 text-sm font-medium text-rose hover:bg-rose/10"
+              >
+                Open {providerLabel(job?.provider ?? order.defaultProvider)} dashboard <ArrowRight size={14} />
+              </a>
             </div>
           )}
         </div>
