@@ -50,7 +50,7 @@ async function main() {
       activity_log, notifications, notification_channels, earnings,
       print_jobs, messages, proofs, qc_checks, assignments, assets,
       order_items, orders, customers, designer_businesses, designer_profiles,
-      shops, businesses, "user"
+      shops, styles, businesses, "user"
     restart identity cascade
   `);
 
@@ -121,6 +121,16 @@ async function main() {
     { id: d3, name: "Dex Designer", email: "d3@aystudios.io", role: "designer", passwordHash },
   ]);
 
+  // Portrait styles per business (Settings > Portrait Styles): what a
+  // designer can be matched on, with the title/SKU matches the mock orders use.
+  await db.insert(schema.styles).values(
+    [pixart, lumina].flatMap((businessId) => [
+      { businessId, name: "cartoon", titleMatches: ["Cartoon"], skuMatches: ["PET-CARTOON"], perFigureRate: "4.00", isDefault: true },
+      { businessId, name: "watercolor", titleMatches: ["Watercolor"], skuMatches: ["PET-WATER"], perFigureRate: "4.50", isDefault: false },
+      { businessId, name: "renaissance", titleMatches: ["Renaissance"], skuMatches: [], perFigureRate: "6.00", isDefault: false },
+      { businessId, name: "line-art", titleMatches: ["Line Art"], skuMatches: [], perFigureRate: "3.00", isDefault: false },
+    ]),
+  );
   // The daily health briefing goes to the admin for both businesses.
   await db.update(schema.businesses).set({ dailyHealthEmailRecipientIds: [admin] });
   await db.insert(schema.designerProfiles).values([
@@ -179,6 +189,7 @@ async function main() {
     photoRequestEnabled: false,
     syncCursor: sixHoursAgo.toISOString(),
     lastSyncAt: sixHoursAgo.toISOString(),
+    backfillCutoffAt: new Date(Date.now() - 7 * 24 * HOUR).toISOString(),
   };
   const etsyConfig = {
     figureRules: [
@@ -193,6 +204,7 @@ async function main() {
     photoRequestEnabled: true,
     syncCursor: String(Math.floor(sixHoursAgo.getTime() / 1000)),
     lastSyncAt: sixHoursAgo.toISOString(),
+    backfillCutoffAt: new Date(Date.now() - 7 * 24 * HOUR).toISOString(),
   };
   await db.insert(schema.shops).values([
     { id: s1, businessId: pixart, platform: "etsy", name: "PixArt Etsy", externalShopId: "31415926", credentials: etsyCreds("31415926"), integrationConfig: etsyConfig },
