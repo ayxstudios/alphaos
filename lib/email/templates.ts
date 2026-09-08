@@ -10,7 +10,18 @@ export type TemplateKey =
   | "proof_ready_digital_single"
   | "proof_ready_digital_multi"
   | "proof_ready_physical_single"
-  | "proof_ready_physical_multi";
+  | "proof_ready_physical_multi"
+  // Stage emails (the customer window). Drafted on transitions; auto-sent only
+  // when the business opted in (businesses.stage_email_auto_send).
+  | "order_received"
+  | "in_design"
+  | "printing"
+  | "shipped"
+  // Reminders sweep (lib/reminders). photo_reminder is the second auto-send
+  // exception (always queued); proof_reminder follows stage_email_auto_send
+  // like the other stage emails (draft unless the business opted in).
+  | "photo_reminder"
+  | "proof_reminder";
 
 /** The variables a template body/subject may reference, as `{{snake_case}}`. */
 export type TemplateVars = {
@@ -19,6 +30,8 @@ export type TemplateVars = {
   business_name: string;
   proof_link?: string;
   upload_link?: string;
+  tracking_number?: string;
+  tracking_url?: string;
 };
 
 export type EmailTemplate = { subject: string; body: string };
@@ -64,6 +77,36 @@ export const TEMPLATE_META: Record<
     description: "Auto-selected when a revised portrait is ready after a revision round.",
     variables: ["first_name", "order_number", "business_name", "proof_link"],
   },
+  order_received: {
+    label: "Order received",
+    description: "Drafted the moment an order is placed — a warm acknowledgement, not a status update.",
+    variables: ["first_name", "order_number", "business_name"],
+  },
+  in_design: {
+    label: "In the artist's hands",
+    description: "Drafted when an order is first assigned to a designer.",
+    variables: ["first_name", "order_number", "business_name"],
+  },
+  printing: {
+    label: "Now printing",
+    description: "Drafted when an approved physical order moves to printing.",
+    variables: ["first_name", "order_number", "business_name"],
+  },
+  shipped: {
+    label: "Shipped",
+    description: "Drafted when tracking is added and the order moves to shipped.",
+    variables: ["first_name", "order_number", "business_name", "tracking_number", "tracking_url"],
+  },
+  photo_reminder: {
+    label: "Photo reminder",
+    description: "The 48-hour nudge when photos still haven't arrived. Auto-sent like the initial photo request.",
+    variables: ["first_name", "order_number", "business_name", "upload_link"],
+  },
+  proof_reminder: {
+    label: "Proof reminder",
+    description: "The 3-day nudge when a sent proof hasn't been reviewed yet.",
+    variables: ["first_name", "order_number", "business_name", "proof_link"],
+  },
 };
 
 export const EDITABLE_TEMPLATE_KEYS: TemplateKey[] = [
@@ -73,6 +116,12 @@ export const EDITABLE_TEMPLATE_KEYS: TemplateKey[] = [
   "proof_ready_physical_single",
   "proof_ready_physical_multi",
   "revision_received",
+  "order_received",
+  "in_design",
+  "printing",
+  "shipped",
+  "photo_reminder",
+  "proof_reminder",
 ];
 
 /**
@@ -174,6 +223,78 @@ You can approve or request changes here: {{proof_link}}. You can also simply rep
 Have a great day ahead!
 
 Warm regards,
+The {{business_name}} team`,
+  },
+  order_received: {
+    subject: "We've got your order, {{first_name}}!",
+    body: `Hi {{first_name}},
+
+Thank you for your order ({{order_number}}) with {{business_name}}! We're excited to get started.
+
+We'll keep you posted as your portrait moves along, and you'll get a link to review the finished piece before anything is finalized.
+
+Reply to this email any time if you have a question.
+
+Warmly,
+The {{business_name}} team`,
+  },
+  in_design: {
+    subject: "Your {{business_name}} portrait is now with the artist",
+    body: `Hi {{first_name}},
+
+Good news — order {{order_number}} is now in the hands of one of our artists! We'll send you a proof to review as soon as it's ready.
+
+Warmly,
+The {{business_name}} team`,
+  },
+  printing: {
+    subject: "Your {{business_name}} portrait is being printed",
+    body: `Hi {{first_name}},
+
+You approved your portrait for order {{order_number}} — thank you! It's now on its way to our print team, and we'll email you tracking details the moment it ships.
+
+Warmly,
+The {{business_name}} team`,
+  },
+  shipped: {
+    subject: "Your {{business_name}} order has shipped!",
+    body: `Hi {{first_name}},
+
+Your order {{order_number}} has shipped!
+
+Tracking number: {{tracking_number}}
+Track your package: {{tracking_url}}
+
+Thanks so much for choosing {{business_name}} — we hope you love it.
+
+Warmly,
+The {{business_name}} team`,
+  },
+  photo_reminder: {
+    subject: "Still waiting on your photos for order {{order_number}}",
+    body: `Hi {{first_name}},
+
+We're ready to start on your {{business_name}} portrait but still need your photos for order {{order_number}}.
+
+Please upload them here — it only takes a minute:
+{{upload_link}}
+
+Reply to this email if you have any questions.
+
+Warmly,
+The {{business_name}} team`,
+  },
+  proof_reminder: {
+    subject: "Your {{business_name}} proof is waiting for you",
+    body: `Hi {{first_name}},
+
+Just a friendly reminder that your portrait proof for order {{order_number}} is ready and waiting for your review:
+
+{{proof_link}}
+
+If we don't hear from you after a little while, we'll go ahead and finalize it as-is so your order isn't delayed — but we'd love your feedback first!
+
+Warmly,
 The {{business_name}} team`,
   },
 };

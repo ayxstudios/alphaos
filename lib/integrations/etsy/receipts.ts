@@ -5,6 +5,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { withSystemContext } from "@/lib/db";
 import { getShopCredentials, setShopCredentials } from "@/lib/db/credentials";
 import { shops, orders, customers, activityLog } from "@/lib/db/schema";
+import { queueStageEmail } from "@/lib/email/dispatch";
 import { reconcileManualOrder } from "@/lib/orders/reconcile";
 import { isBeforeBackfillCutoff } from "@/lib/orders/archive";
 import { normalizeEtsyReceiptAddress, upsertOrderShippingAddress } from "@/lib/shipping/address";
@@ -358,6 +359,20 @@ async function importReceipt(args: {
         backfillCutoffAt: config.backfillCutoffAt ?? null,
       },
     });
+
+    // Order-received acknowledgement (stage email, lib/email/dispatch.ts).
+    // Etsy otherwise sends NO automated email at import (a VA completes
+    // figure/style/photos first — this is unrelated to that, just a warm "we
+    // got it"), and it's a no-op whenever Etsy didn't give us a buyer email
+    // (email_r scope), which is most receipts today. Never on a backfill or
+    // an archived (pre-cutoff) import.
+    if (email && !archived && via !== "backfill") {
+      await queueStageEmail(
+        tx,
+        { id: orderId, businessId, customerId, platformOrderId: String(receipt.receipt_id), platformOrderName: String(receipt.receipt_id) },
+        "order_received",
+      );
+    }
 
     return archived ? "archived" : "imported";
   });

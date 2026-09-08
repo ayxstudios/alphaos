@@ -10,6 +10,7 @@ export const JOB_NAMES = {
   cronNotifications: "cron.notifications",
   cronRetention: "cron.retention",
   cronDailyHealth: "cron.daily_health",
+  cronReminders: "cron.reminders",
   dailyHealthBusiness: "daily_health.business",
   shopifyWebhookImport: "shopify.webhook_import",
   cronPrintReconcile: "cron.print_reconcile",
