@@ -57,9 +57,51 @@ async function main() {
   // ---- businesses --------------------------------------------------------
   const pixart = randomUUID();
   const lumina = randomUUID();
+  // Mock credentials (lib/mock): they look like the real thing (a Gmail
+  // refresh token, a Gelato key, Luma basic auth) but carry the "mock_" marker
+  // the transport answers from fixtures. Both mailboxes start "connected" at
+  // history id 1000 so the first poll pulls the recent Etsy notifications.
+  const gmailCreds = (address: string) =>
+    encryptCredentials({
+      clientId: "mock_" + randomUUID().slice(0, 8) + ".apps.googleusercontent.com",
+      clientSecret: "GOCSPX-mock_" + randomUUID().slice(0, 12),
+      refreshToken: "mock_rt_" + Buffer.from(address).toString("base64url"),
+      accessToken: "mock_gat_" + Buffer.from(address).toString("base64url"),
+      accessTokenExpiresAt: new Date(Date.now() - 60_000).toISOString(),
+      address,
+      status: "connected",
+      connectedAt: new Date(Date.now() - 6 * 24 * HOUR).toISOString(),
+    });
+  const printCreds = () =>
+    encryptCredentials({
+      gelato: { apiKey: "mock_" + randomUUID().replace(/-/g, "") + "-gelato", webhookSecret: "mock_whsec_" + randomUUID().slice(0, 8) },
+      lumaprints: { username: "mock_luma_" + randomUUID().slice(0, 6), password: "mock_" + randomUUID().slice(0, 10), storeId: "818", sandbox: true },
+    });
   await db.insert(schema.businesses).values([
-    { id: pixart, name: "PixArt", slug: "pixart" },
-    { id: lumina, name: "Lumina", slug: "lumina" },
+    {
+      id: pixart,
+      name: "PixArt",
+      slug: "pixart",
+      gmailCredentials: gmailCreds("orders@pixartcreatives.com"),
+      gmailAddress: "orders@pixartcreatives.com",
+      gmailHistoryId: "1000",
+      emailSendingEnabled: true,
+      stageEmailAutoSend: true,
+      dailyHealthEmailEnabled: true,
+      printCredentials: printCreds(),
+    },
+    {
+      id: lumina,
+      name: "Lumina",
+      slug: "lumina",
+      gmailCredentials: gmailCreds("hello@luminaportraits.com"),
+      gmailAddress: "hello@luminaportraits.com",
+      gmailHistoryId: "1000",
+      emailSendingEnabled: true,
+      stageEmailAutoSend: true,
+      dailyHealthEmailEnabled: true,
+      printCredentials: printCreds(),
+    },
   ]);
 
   // ---- users -------------------------------------------------------------
@@ -79,6 +121,8 @@ async function main() {
     { id: d3, name: "Dex Designer", email: "d3@aystudios.io", role: "designer", passwordHash },
   ]);
 
+  // The daily health briefing goes to the admin for both businesses.
+  await db.update(schema.businesses).set({ dailyHealthEmailRecipientIds: [admin] });
   await db.insert(schema.designerProfiles).values([
     { userId: d1, dailyCapacity: 5, perFigureRate: "4.00", styles: ["classic"] },
     { userId: d2, dailyCapacity: 8, perFigureRate: "3.50", styles: ["modern"] },
@@ -98,22 +142,61 @@ async function main() {
   const s2 = randomUUID(); // PixArt Shopify
   const s3 = randomUUID(); // Lumina Etsy
   const s4 = randomUUID(); // Lumina Shopify
-  const etsyCreds = () =>
+  // Shop credentials carry the "mock_" marker (lib/mock/transport.ts): a
+  // sync, a webhook check or a token refresh against them is answered by the
+  // mock, a real key on the same deployment goes to the real API.
+  const etsyCreds = (etsyShopId: string) =>
     encryptCredentials({
-      keystring: "etsy_keystring_" + randomUUID().slice(0, 8),
-      sharedSecret: "etsy_secret_" + randomUUID().slice(0, 8),
-      accessToken: "etsy_at_" + randomUUID().slice(0, 8),
-      refreshToken: "etsy_rt_" + randomUUID().slice(0, 8),
+      keystring: "mock_" + randomUUID().replace(/-/g, "").slice(0, 24),
+      sharedSecret: "mock_" + randomUUID().replace(/-/g, "").slice(0, 12),
+      etsyShopId,
+      etsyUserId: etsyShopId,
+      accessToken: `${etsyShopId}.mock_at_seed`,
+      accessTokenExpiresAt: new Date(Date.now() - 60_000).toISOString(),
+      refreshToken: "mock_rt_" + randomUUID().replace(/-/g, "").slice(0, 32),
+      refreshTokenExpiresAt: new Date(Date.now() + 90 * 24 * HOUR).toISOString(),
+      status: "connected",
     });
-  const shopifyCreds = () =>
+  const shopifyCreds = (shopDomain: string) =>
     encryptCredentials({
-      accessToken: "shpat_" + randomUUID().slice(0, 12),
+      authType: "legacy",
+      shopDomain,
+      accessToken: "shpat_mock_" + randomUUID().replace(/-/g, "").slice(0, 26),
+      webhookSecret: "mock_shpss_" + randomUUID().replace(/-/g, "").slice(0, 20),
+      status: "connected",
     });
+  // Onboarded (a sync cursor exists, so cron picks the shop up) with the
+  // resolution rules the mock orders are built to satisfy. The cursor sits
+  // six hours back so the first tick imports a handful, then one per tick.
+  const sixHoursAgo = new Date(Date.now() - 6 * HOUR);
+  const shopifyConfig = {
+    figureRules: [{ match: "Number of Figures", type: "integer" as const }],
+    styleRules: [{ match: "Style", map: { cartoon: "cartoon", watercolor: "watercolor", renaissance: "renaissance", "line art": "line-art" } }],
+    defaultStyle: "cartoon",
+    nonPortraitTitles: ["Rush My Order"],
+    photoRequestEnabled: false,
+    syncCursor: sixHoursAgo.toISOString(),
+    lastSyncAt: sixHoursAgo.toISOString(),
+  };
+  const etsyConfig = {
+    figureRules: [
+      { match: "Number of Pets", type: "integer" as const },
+      { match: "Number of People", type: "integer" as const },
+    ],
+    titleStyleRules: [
+      { match: "Watercolor", style: "watercolor" },
+      { match: "Cartoon", style: "cartoon" },
+    ],
+    defaultStyle: "cartoon",
+    photoRequestEnabled: true,
+    syncCursor: String(Math.floor(sixHoursAgo.getTime() / 1000)),
+    lastSyncAt: sixHoursAgo.toISOString(),
+  };
   await db.insert(schema.shops).values([
-    { id: s1, businessId: pixart, platform: "etsy", name: "PixArt Etsy", externalShopId: "etsy-pixart-1", credentials: etsyCreds() },
-    { id: s2, businessId: pixart, platform: "shopify", name: "PixArt Shopify", externalShopId: "pixart.myshopify.com", credentials: shopifyCreds() },
-    { id: s3, businessId: lumina, platform: "etsy", name: "Lumina Etsy", externalShopId: "etsy-lumina-1", credentials: etsyCreds() },
-    { id: s4, businessId: lumina, platform: "shopify", name: "Lumina Shopify", externalShopId: "lumina.myshopify.com", credentials: shopifyCreds() },
+    { id: s1, businessId: pixart, platform: "etsy", name: "PixArt Etsy", externalShopId: "31415926", credentials: etsyCreds("31415926"), integrationConfig: etsyConfig },
+    { id: s2, businessId: pixart, platform: "shopify", name: "PixArt Shopify", externalShopId: "pixart-creatives.myshopify.com", credentials: shopifyCreds("pixart-creatives.myshopify.com"), integrationConfig: shopifyConfig },
+    { id: s3, businessId: lumina, platform: "etsy", name: "Lumina Etsy", externalShopId: "27182818", credentials: etsyCreds("27182818"), integrationConfig: etsyConfig },
+    { id: s4, businessId: lumina, platform: "shopify", name: "Lumina Shopify", externalShopId: "lumina-portraits.myshopify.com", credentials: shopifyCreds("lumina-portraits.myshopify.com"), integrationConfig: shopifyConfig },
   ]);
 
   // ---- customers ---------------------------------------------------------

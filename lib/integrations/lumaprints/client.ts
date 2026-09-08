@@ -1,5 +1,5 @@
 import { LumaPrintsApiError, LumaPrintsAuthError } from "./errors";
-import { findLumaFixtureByExternalId, findLumaFixtureByOrderNumber, LUMAPRINTS_SHIPMENT_FIXTURES } from "./fixtures";
+import { findLumaFixtureByExternalId, findLumaFixtureByOrderNumber, lumaShipmentsFor } from "./fixtures";
 import {
   LUMAPRINTS_BASE,
   type LumaOrder,
@@ -27,8 +27,10 @@ function log(event: string, fields: Record<string, unknown>) {
   console.log(JSON.stringify({ ts: new Date().toISOString(), integration: "lumaprints", event, ...fields }));
 }
 
-function isMockMode(): boolean {
-  return process.env.PRINT_PROVIDER_MOCK === "1";
+function isMockMode(credentials?: LumaPrintsCredentials): boolean {
+  // Global switch, or a mock credential (lib/mock: a "mock_" username is
+  // answered from fixtures; real credentials never are).
+  return process.env.PRINT_PROVIDER_MOCK === "1" || String(credentials?.username ?? "").startsWith("mock_");
 }
 
 function statusToNormalized(status: string): NormalizedProviderOrder["status"] {
@@ -78,7 +80,7 @@ export class LumaPrintsClient implements PrintProviderClient {
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    if (isMockMode()) throw new Error("request() must not be called in mock mode");
+    if (isMockMode(this.credentials)) throw new Error("request() must not be called in mock mode");
     let attempt = 0;
     let lastError: unknown = null;
     while (attempt < MAX_ATTEMPTS) {
@@ -115,7 +117,7 @@ export class LumaPrintsClient implements PrintProviderClient {
   }
 
   private async getShipments(orderNumber: string): Promise<LumaShipmentsResponse | null> {
-    if (isMockMode()) return LUMAPRINTS_SHIPMENT_FIXTURES[orderNumber] ?? null;
+    if (isMockMode(this.credentials)) return lumaShipmentsFor(orderNumber);
     try {
       return await this.request<LumaShipmentsResponse>(`/api/v1/shipments/${encodeURIComponent(orderNumber)}`);
     } catch (error) {
@@ -125,7 +127,7 @@ export class LumaPrintsClient implements PrintProviderClient {
   }
 
   async getOrder(providerOrderId: string): Promise<NormalizedProviderOrder | null> {
-    if (isMockMode()) {
+    if (isMockMode(this.credentials)) {
       const order = findLumaFixtureByOrderNumber(providerOrderId);
       if (!order) return null;
       const shipments = await this.getShipments(providerOrderId);
@@ -152,7 +154,7 @@ export class LumaPrintsClient implements PrintProviderClient {
    * that window will surface as "missing" until the window is widened.
    */
   async findByReference(referenceId: string, window: { since: Date }): Promise<NormalizedProviderOrder | null> {
-    if (isMockMode()) {
+    if (isMockMode(this.credentials)) {
       const order = findLumaFixtureByExternalId(referenceId);
       if (!order) return null;
       const shipments = await this.getShipments(order.orderNumber);

@@ -53,8 +53,10 @@ function gelatoStatusToNormalized(order: GelatoOrder): NormalizedProviderOrder {
   };
 }
 
-function isMockMode(): boolean {
-  return process.env.PRINT_PROVIDER_MOCK === "1";
+function isMockMode(credentials?: GelatoCredentials): boolean {
+  // Global switch, or a mock credential (lib/mock: keys that look real but
+  // start with "mock_" are answered from fixtures, real keys never are).
+  return process.env.PRINT_PROVIDER_MOCK === "1" || String(credentials?.apiKey ?? "").startsWith("mock_");
 }
 
 export class GelatoClient implements PrintProviderClient {
@@ -66,7 +68,7 @@ export class GelatoClient implements PrintProviderClient {
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    if (isMockMode()) throw new Error("request() must not be called in mock mode");
+    if (isMockMode(this.credentials)) throw new Error("request() must not be called in mock mode");
     let attempt = 0;
     let lastError: unknown = null;
     while (attempt < MAX_ATTEMPTS) {
@@ -105,7 +107,7 @@ export class GelatoClient implements PrintProviderClient {
   }
 
   async getOrder(providerOrderId: string): Promise<NormalizedProviderOrder | null> {
-    if (isMockMode()) {
+    if (isMockMode(this.credentials)) {
       const fixture = findGelatoFixtureById(providerOrderId);
       return fixture ? gelatoStatusToNormalized(fixture) : null;
     }
@@ -127,7 +129,7 @@ export class GelatoClient implements PrintProviderClient {
    * a client-side scan of the returned page when the filter is ignored.
    */
   async findByReference(referenceId: string, window: { since: Date }): Promise<NormalizedProviderOrder | null> {
-    if (isMockMode()) {
+    if (isMockMode(this.credentials)) {
       const fixture = findGelatoFixtureByReference(referenceId);
       return fixture ? gelatoStatusToNormalized(fixture) : null;
     }

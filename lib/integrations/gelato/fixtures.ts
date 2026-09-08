@@ -61,10 +61,59 @@ export const GELATO_FIXTURES: Record<string, GelatoOrder> = {
   },
 };
 
+/**
+ * Mock shops (lib/mock) send orders like PC32041 / LM32007 to print. Any
+ * reference outside the static fixtures above is synthesised so the
+ * reconcile sweep always finds it: the last digit decides the stage
+ * (0-6 shipped with tracking, 7-8 printed, 9 still created), so a demo
+ * queue shows a realistic mix and the same order always answers the same.
+ */
+export function synthesizeGelatoOrder(referenceId: string): GelatoOrder | null {
+  const m = referenceId.match(/^([A-Z]{2})-?(\d{4,})$/);
+  if (!m) return null;
+  const n = Number(m[2]);
+  const last = n % 10;
+  const status: GelatoOrder["fulfillmentStatus"] = last <= 6 ? "shipped" : last <= 8 ? "printed" : "created";
+  const created = new Date(Date.now() - (6 + (n % 5)) * 60 * 60 * 1000).toISOString();
+  const tracking = `7${String(n).padStart(11, "0")}`;
+  return {
+    id: `mock-gelato-${referenceId.toLowerCase()}`,
+    orderReferenceId: referenceId,
+    fulfillmentStatus: status,
+    createdAt: created,
+    updatedAt: new Date().toISOString(),
+    items: [
+      {
+        id: "item-1",
+        itemReferenceId: "1",
+        fulfillmentStatus: status,
+        ...(status === "shipped"
+          ? {
+              fulfillments: [
+                {
+                  trackingCode: tracking,
+                  trackingUrl: `https://www.fedex.com/fedextrack/?trknbr=${tracking}`,
+                  shipmentMethodName: "FedEx Ground",
+                  shipmentMethodUid: "fedex_ground",
+                  fulfillmentCountry: "US",
+                  fulfillmentStateProvince: null,
+                  fulfillmentFacilityId: null,
+                },
+              ],
+            }
+          : {}),
+      },
+    ],
+  };
+}
+
 export function findGelatoFixtureByReference(referenceId: string): GelatoOrder | null {
-  return GELATO_FIXTURES[referenceId] ?? null;
+  return GELATO_FIXTURES[referenceId] ?? synthesizeGelatoOrder(referenceId);
 }
 
 export function findGelatoFixtureById(id: string): GelatoOrder | null {
-  return Object.values(GELATO_FIXTURES).find((order) => order.id === id) ?? null;
+  const fixed = Object.values(GELATO_FIXTURES).find((order) => order.id === id);
+  if (fixed) return fixed;
+  const m = id.match(/^mock-gelato-(.+)$/);
+  return m ? synthesizeGelatoOrder(m[1].toUpperCase()) : null;
 }
