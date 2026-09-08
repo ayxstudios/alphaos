@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 import { auth } from "@/lib/auth";
 import { getDesignerBoard } from "@/lib/orders/board-data";
@@ -7,7 +8,9 @@ import { DesignerBoard } from "@/components/board/designer-board";
 import { DesignerPicker } from "@/components/board/designer-picker";
 import { DesignerRail } from "@/components/board/designer-rail";
 import { Badge, DataPanel, EmptyState, Page, PageHeader, StatCard } from "@/components/ui";
-import { Columns } from "@/components/ui/icons";
+import { focusRing } from "@/components/ui/styles";
+import { Calendar, Columns } from "@/components/ui/icons";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +58,24 @@ export default async function BoardPage({
         title={isStaff ? "Designer boards" : "My board"}
         description="Move work across queue, design, and QC for each designer."
         actions={
-          <>
+          // A column below `sm` (align-items:stretch gives each row a real,
+          // definite width — PageHeader's actions slot is flex-shrink-0, so
+          // without that a wide row like the two StatCards below just
+          // overflows a 390px phone instead of shrinking). Row + wrap once
+          // there's room.
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+            {!isStaff && (
+              <Link
+                href="/me"
+                className={cn(
+                  "inline-flex h-9 w-fit items-center gap-1.5 rounded-input border border-line bg-surface px-3 text-sm font-medium text-ink hover:bg-canvas",
+                  focusRing,
+                )}
+              >
+                <Calendar size={15} />
+                My week
+              </Link>
+            )}
             {isStaff && (
               // Mobile / narrow screens: the right rail is hidden, so keep a dropdown.
               <div className="lg:hidden">
@@ -63,7 +83,7 @@ export default async function BoardPage({
               </div>
             )}
             {board && (
-              <div className="grid w-80 grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2 sm:w-80">
                 <StatCard
                   label="Earned today"
                   value={`$${board.dailyEarnings.toFixed(2)}`}
@@ -76,7 +96,7 @@ export default async function BoardPage({
                 />
               </div>
             )}
-          </>
+          </div>
         }
       />
 

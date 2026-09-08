@@ -343,6 +343,18 @@ export const designerProfiles = pgTable("designer_profiles", {
   // reorder designers on the Designers page; the ranker uses this as the primary
   // ordering among eligible, style-matched candidates.
   rank: integer("rank").notNull().default(1000),
+  // Contact + working-hours fields used by Alpha's designer messages (the
+  // brief on assignment, the 24 h nudge, QC feedback) and by auto-assign.
+  // phone is E.164 (+62…); preferredChannel is whatsapp | telegram; timezone is
+  // an IANA name (Asia/Jakarta); quiet hours are local "HH:MM" strings, a
+  // message that lands inside the window is held until quietEnd (escalations
+  // ignore it); maxActiveOrders 0 = no cap on work in flight.
+  phone: text("phone"),
+  preferredChannel: text("preferred_channel").notNull().default("whatsapp"),
+  timezone: text("timezone"),
+  quietStart: text("quiet_start"),
+  quietEnd: text("quiet_end"),
+  maxActiveOrders: integer("max_active_orders").notNull().default(0),
   createdAt: createdAt(),
 });
 

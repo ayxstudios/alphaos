@@ -6,10 +6,18 @@ import { and, asc, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { designerProfiles, users } from "@/lib/db/schema";
+import {
+  isValidE164,
+  isValidHHMM,
+  isValidTimezone,
+  normalizePhone,
+} from "@/lib/designers/quiet-hours";
+import type { PreferredChannel } from "@/lib/designers/profile";
 
 export type ActionResult = { ok: true } | { ok: false; message: string };
 
 const MAX_DAILY_LIMIT = 500;
+const MAX_ACTIVE_ORDERS_LIMIT = 100;
 
 async function requireStaff(): Promise<RequestUser | null> {
   const session = await auth();
@@ -114,5 +122,75 @@ export async function setStyles(userId: string, raw: string[]): Promise<ActionRe
   // force-dynamic, so it reloads fresh on the next visit anyway. "/board" is a
   // different route (safe — just marks it stale for its next load).
   revalidatePath("/board");
+  return { ok: true };
+}
+
+/** Set a designer's max active orders (0 = no cap on work in flight). */
+export async function setMaxActiveOrders(userId: string, limit: number): Promise<ActionResult> {
+  const user = await requireStaff();
+  if (!user) return { ok: false, message: "Not permitted" };
+  if (!Number.isFinite(limit)) return { ok: false, message: "Invalid limit" };
+  const clamped = Math.max(0, Math.min(MAX_ACTIVE_ORDERS_LIMIT, Math.round(limit)));
+
+  await withUserContext(user, (tx) =>
+    tx
+      .update(designerProfiles)
+      .set({ maxActiveOrders: clamped })
+      .where(eq(designerProfiles.userId, userId)),
+  );
+  revalidatePath("/board");
+  return { ok: true };
+}
+
+export type ContactPatch = {
+  phone: string;
+  preferredChannel: PreferredChannel;
+  timezone: string;
+  quietStart: string;
+  quietEnd: string;
+};
+
+/**
+ * Admin/VA-editable contact + working-hours block: what Alpha needs to reach
+ * this designer (the brief on assignment, the 24 h nudge, QC feedback) and
+ * when to hold a message for quiet hours. Every field is optional (a blank
+ * clears it); anything present is validated so a typo never silently breaks
+ * delivery.
+ */
+export async function setContact(userId: string, patch: ContactPatch): Promise<ActionResult> {
+  const user = await requireStaff();
+  if (!user) return { ok: false, message: "Not permitted" };
+
+  const phone = patch.phone.trim();
+  if (phone && !isValidE164(normalizePhone(phone))) {
+    return { ok: false, message: "Phone must be a valid international number, e.g. +6281234567890" };
+  }
+  const timezone = patch.timezone.trim();
+  if (timezone && !isValidTimezone(timezone)) {
+    return { ok: false, message: "Not a recognised timezone" };
+  }
+  const quietStart = patch.quietStart.trim();
+  const quietEnd = patch.quietEnd.trim();
+  if ((quietStart && !isValidHHMM(quietStart)) || (quietEnd && !isValidHHMM(quietEnd))) {
+    return { ok: false, message: "Quiet hours must be HH:MM" };
+  }
+  if ((quietStart && !quietEnd) || (!quietStart && quietEnd)) {
+    return { ok: false, message: "Set both a quiet-hours start and end, or leave both blank" };
+  }
+
+  await withUserContext(user, (tx) =>
+    tx
+      .update(designerProfiles)
+      .set({
+        phone: phone ? normalizePhone(phone) : null,
+        preferredChannel: patch.preferredChannel === "telegram" ? "telegram" : "whatsapp",
+        timezone: timezone || null,
+        quietStart: quietStart || null,
+        quietEnd: quietEnd || null,
+      })
+      .where(eq(designerProfiles.userId, userId)),
+  );
+  revalidatePath("/board");
+  revalidatePath("/me");
   return { ok: true };
 }

@@ -26,6 +26,7 @@ import {
 import { runAutoAssign } from "./assign";
 import { prepareProofForApproval, queueStageEmail } from "@/lib/email/dispatch";
 import { createEarningForCompletion } from "@/lib/orders/earnings";
+import { sendQcFeedback } from "@/lib/notifications/designer-events";
 
 export type OrderStatus = (typeof orderStatus.enumValues)[number];
 export type TransitionRole = "admin" | "va" | "designer" | "system";
@@ -254,6 +255,9 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
     await runAutoAssign(tx, { orderId, businessId: order.businessId, assignedBy: actor.role === "system" ? null : actor.id });
   }
   if (qc) await insertQc(tx, order, actor, qc);
+  // QC fail -> tell the assigned designer exactly what to fix (Alpha event
+  // designer.qc_feedback), reading the qc_checks row just inserted above.
+  if (qc && qc.result === "fail") await sendQcFeedback(tx, { orderId: order.id });
   // Earnings only for design completions. Non-portrait completes never pay
   // (and have no assignment anyway — createEarnings is a double safeguard).
   if (to === "complete" && !nonPortraitComplete) await createEarningForCompletion(tx, order.id, order.businessId);
