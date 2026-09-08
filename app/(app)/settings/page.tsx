@@ -55,6 +55,11 @@ import {
   type ShopifyIntegrationConfig,
 } from "@/lib/integrations/shopify";
 import type { GmailCredentials } from "@/lib/integrations/gmail";
+import { getBusinessPrintCredentials } from "@/lib/db/credentials";
+import {
+  PrintProviderCredentialsPanel,
+  type PrintProviderCredentialsVM,
+} from "@/components/settings/print-provider-credentials-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +68,7 @@ const SETTINGS_SECTIONS = [
   { key: "shopify", label: "Shopify" },
   { key: "portrait-styles", label: "Portrait Styles" },
   { key: "email", label: "Customer Email" },
+  { key: "print", label: "Print Providers" },
   { key: "notifications", label: "Notifications" },
 ] as const;
 
@@ -233,6 +239,25 @@ export default async function SettingsPage({
     address: creds?.address ?? biz?.address ?? null,
     redirectUri: appUrl("/api/gmail/callback"),
     sendingEnabled: !!biz?.sendingEnabled,
+  };
+
+  // --- Print provider credentials (Gelato / Luma Prints), per business ----
+  const printCreds = (await withUserContext(user, (tx) =>
+    getBusinessPrintCredentials(tx, selected.id),
+  )) as { gelato?: { apiKey?: string; webhookSecret?: string | null }; lumaprints?: { username?: string; password?: string; storeId?: string; sandbox?: boolean } } | null;
+  const printCredsVM: PrintProviderCredentialsVM = {
+    businessId: selected.id,
+    gelato: {
+      hasApiKey: !!printCreds?.gelato?.apiKey,
+      hasWebhookSecret: !!printCreds?.gelato?.webhookSecret,
+    },
+    lumaprints: {
+      hasUsername: !!printCreds?.lumaprints?.username,
+      hasPassword: !!printCreds?.lumaprints?.password,
+      storeId: printCreds?.lumaprints?.storeId ?? null,
+      sandbox: !!printCreds?.lumaprints?.sandbox,
+    },
+    gelatoWebhookUrl: appUrl(`/api/webhooks/gelato?business=${selected.id}`),
   };
 
   const overrides = await withUserContext(user, (tx) =>
@@ -484,6 +509,18 @@ export default async function SettingsPage({
                 />
               </DataPanel>
             )}
+          </section>
+        )}
+
+        {activeSection === "print" && (
+          <section className="flex flex-col gap-4">
+            <SectionHeader title="Print Providers" />
+            <p className="text-sm text-slate">
+              API keys used to reconcile print fulfilment (Ready to Print queue and the print-reconcile cron). The VA
+              still triggers printing from each provider&apos;s own dashboard - these keys are for checking status and
+              tracking automatically, not for submitting orders.
+            </p>
+            <PrintProviderCredentialsPanel creds={printCredsVM} />
           </section>
         )}
 
