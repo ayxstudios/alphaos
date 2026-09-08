@@ -277,3 +277,25 @@ export const Palette = (p: IconProps) => (
     <circle cx="16.5" cy="10.5" r="1" fill="currentColor" stroke="none" />
   </Icon>
 );
+
+/* --- Reply drafts / Ask Alpha -------------------------------------------- */
+export const Copy = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="9" y="9" width="12" height="12" rx="2" />
+    <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
+  </Icon>
+);
+
+export const Sparkles = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" />
+    <circle cx="12" cy="12" r="2.5" />
+  </Icon>
+);
+
+export const Clock = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3.5 2" />
+  </Icon>
+);

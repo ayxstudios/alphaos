@@ -13,6 +13,7 @@ import {
   orderItems,
   orders,
   printJobs,
+  proofs,
   qcChecks,
   shops,
   users,
@@ -33,6 +34,7 @@ import {
   Calendar,
   Camera,
   ChevronDown,
+  Clock,
   Inbox,
   Mail,
   Palette,
@@ -52,12 +54,16 @@ import {
   type ShopifyProductMedia,
 } from "@/lib/integrations/shopify";
 import { getCardDetail } from "@/lib/orders/card-detail";
+import { formatAge } from "@/lib/orders/today-queue";
+import { defaultReplyTemplate } from "@/lib/orders/reply-draft";
 import { OrderCommentForm } from "@/components/orders/order-comment-form";
 import { OrderRevisionForm } from "@/components/orders/order-revision-form";
 import { OrderReassignForm } from "@/components/orders/order-reassign-form";
 import { OrderStyleSetter } from "@/components/orders/order-style-setter";
 import { TrackingCompleteForm } from "@/components/orders/tracking-complete-form";
 import { ReplyClassificationSuggestion } from "@/components/orders/reply-classification-suggestion";
+import { ReplyDraft } from "@/components/orders/reply-draft";
+import { AskAlpha } from "@/components/alpha/ask-alpha";
 import { ComposeButton } from "@/components/emails/compose-button";
 import { styles as stylesTable } from "@/lib/db/schema";
 import { currentMatchForProduct, countOrdersForProduct } from "@/lib/orders/style-learning";
@@ -258,7 +264,7 @@ export default async function OrderDetailPage({
 
   if (!order) notFound();
 
-  const [items, assignment, qcRows, printRows, timeline, detail, designers] = await Promise.all([
+  const [items, assignment, qcRows, printRows, timeline, detail, designers, proofRows] = await Promise.all([
     withUserContext(user, (tx) =>
       tx
         .select({
@@ -278,7 +284,7 @@ export default async function OrderDetailPage({
     ),
     withUserContext(user, (tx) =>
       tx
-        .select({ name: users.name, email: users.email })
+        .select({ name: users.name, email: users.email, dueAt: assignments.dueAt, assignedAt: assignments.assignedAt })
         .from(assignments)
         .innerJoin(users, eq(users.id, assignments.designerId))
         .where(and(eq(assignments.orderId, id), eq(assignments.active, true)))
@@ -346,6 +352,22 @@ export default async function OrderDetailPage({
         ))
         .orderBy(asc(users.name), asc(users.email)),
     ),
+    withUserContext(user, (tx) =>
+      tx
+        .select({
+          decision: proofs.decision,
+          sentAt: proofs.sentAt,
+          firstViewedAt: proofs.firstViewedAt,
+          viewedAt: proofs.viewedAt,
+          decidedAt: proofs.decidedAt,
+          revisionNotes: proofs.revisionNotes,
+          createdAt: proofs.createdAt,
+        })
+        .from(proofs)
+        .where(eq(proofs.orderId, id))
+        .orderBy(desc(proofs.createdAt))
+        .limit(1),
+    ),
   ]);
 
   const shopifyMedia =
@@ -400,6 +422,39 @@ export default async function OrderDetailPage({
   const revisionStarter =
     timeline.find((m) => m.direction === "inbound" && m.body)?.body ??
     "Customer requested a revision.";
+
+  // The receipt's personalization text, in plain readable form (Etsy orders
+  // only — Shopify/manual carry it in item options instead, shown above).
+  const personalization =
+    order.source === "etsy" ? parseEtsyReceiptReview(order.rawImport).combinedPersonalization : null;
+
+  // Designer status + countdown: the assignment's own deadline (never the
+  // customer SLA), in plain English.
+  const now = new Date();
+  const designerDeadline = assignment[0]?.dueAt ?? null;
+  const designerCountdown = !hasDesigner
+    ? null
+    : designerDeadline
+      ? designerDeadline.getTime() < now.getTime()
+        ? `${formatAge(now.getTime() - designerDeadline.getTime())} overdue`
+        : `${formatAge(designerDeadline.getTime() - now.getTime())} left`
+      : assignment[0]?.assignedAt
+        ? `Started ${formatAge(now.getTime() - assignment[0].assignedAt.getTime())} ago`
+        : null;
+
+  // Proof status, in plain English — sent, viewed, or a decision made.
+  const latestProof = proofRows[0] ?? null;
+  const proofStatusLine = !latestProof
+    ? "No proof sent yet"
+    : latestProof.decision === "approved"
+      ? `Approved ${latestProof.decidedAt ? formatAge(now.getTime() - latestProof.decidedAt.getTime()) + " ago" : ""}`
+      : latestProof.decision === "revision"
+        ? `Customer asked for changes ${latestProof.decidedAt ? formatAge(now.getTime() - latestProof.decidedAt.getTime()) + " ago" : ""}`
+        : latestProof.viewedAt
+          ? `Viewed, no answer yet (${formatAge(now.getTime() - latestProof.viewedAt.getTime())})`
+          : latestProof.sentAt
+            ? `Sent, not opened yet (${formatAge(now.getTime() - latestProof.sentAt.getTime())})`
+            : "Waiting to send";
 
   // Style setter data — the order's first product, its current rule match, and
   // how many orders a rule change would touch. Powers the inline "Set style".
@@ -521,12 +576,22 @@ export default async function OrderDetailPage({
       )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_22rem]">
+        {/* Left: the whole story a VA reads top to bottom — what was bought,
+            what the customer wrote at checkout, the photos, and the thread. */}
         <div className="flex flex-col gap-4">
 
           <DataPanel className="overflow-hidden">
             <div className="border-b border-line px-4 py-3">
               <SectionHeader title="Purchased items" />
             </div>
+            {personalization && (
+              <div className="border-b border-line bg-pigment-soft/30 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-pigment">
+                  What the customer wrote at checkout
+                </p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-ink">{personalization}</p>
+              </div>
+            )}
             {items.length === 0 ? (
               <EmptyState icon={Inbox} headline="No item details yet" body="Use Edit to add product, figure count, style and fulfilment." />
             ) : (
@@ -595,76 +660,6 @@ export default async function OrderDetailPage({
             )}
           </DataPanel>
 
-          <DataPanel id="notes" className="overflow-hidden">
-            <div className="border-b border-line px-4 py-3">
-              <SectionHeader title="Notes & activity" />
-            </div>
-            <div className="p-4">
-              {editable && <OrderCommentForm orderId={order.id} />}
-              <ul className="mt-4 divide-y divide-line">
-                {detail.events.length === 0 ? (
-                  <li className="py-3 text-sm text-slate">No activity yet.</li>
-                ) : (
-                  detail.events
-                    .slice()
-                    .reverse()
-                    .map((event) => (
-                      <li key={event.id} className="py-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant={event.action === "comment" ? "info" : "neutral"} dot>
-                            {event.action === "comment" ? "Note" : titleCase(event.action.replace(/^order\./, ""))}
-                          </Badge>
-                          <span className="text-xs text-slate">
-                            {event.actorName ?? "System"} · {fmtDateTime(event.createdAt)}
-                          </span>
-                        </div>
-                        {event.body && <p className="mt-2 whitespace-pre-wrap text-sm text-ink">{event.body}</p>}
-                        {!event.body && event.fromState !== event.toState && (
-                          <p className="mt-1 text-sm text-slate">
-                            {event.fromState ? titleCase(event.fromState) : "Created"} → {event.toState ? titleCase(event.toState) : "Updated"}
-                          </p>
-                        )}
-                      </li>
-                    ))
-                )}
-              </ul>
-            </div>
-          </DataPanel>
-        </div>
-
-        <aside className="flex flex-col gap-4">
-          {editable && (
-            <DataPanel className="p-4">
-              <SectionHeader
-                title="Quick actions"
-                description={`${hasDesigner ? "Reassign" : "Assign a designer"}, or send this order back for changes.`}
-              />
-              <div className="mt-4 flex flex-col gap-4">
-                <OrderReassignForm
-                  orderId={order.id}
-                  assigned={hasDesigner}
-                  designers={designers.map((designer) => ({
-                    id: designer.id,
-                    name: designer.name ?? designer.email,
-                  }))}
-                />
-                <div className="border-t border-line pt-4">
-                  <OrderRevisionForm
-                    orderId={order.id}
-                    initialNote={revisionStarter}
-                    buttonLabel="Request revision"
-                    disabled={!canCreateRevision}
-                  />
-                  {!canCreateRevision && (
-                    <p className="mt-2 text-xs text-slate">
-                      Revisions can start once an order is awaiting customer, approved, printing, shipped, delivered or complete.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </DataPanel>
-          )}
-
           <DataPanel className="p-4">
             <SectionHeader
               title="Reference photos"
@@ -701,6 +696,136 @@ export default async function OrderDetailPage({
                 ))}
               </div>
             )}
+          </DataPanel>
+
+          {editable && order.customerEmail && (
+            <DataPanel id="reply" className="p-4">
+              <SectionHeader
+                title="Draft reply"
+                description="Etsy has no send API — copy this and paste it into the shop's own message thread, then mark it sent."
+              />
+              <div className="mt-3">
+                <ReplyDraft orderId={order.id} defaultTemplate={defaultReplyTemplate(order.status as OrderStatus)} />
+              </div>
+            </DataPanel>
+          )}
+
+          <DataPanel className="overflow-hidden">
+            <div className="border-b border-line px-4 py-3">
+              <SectionHeader title="Messages" />
+            </div>
+            {timeline.length === 0 ? (
+              <EmptyState
+                icon={Inbox}
+                headline="No messages yet"
+                body="Customer email history for this order will appear here."
+              />
+            ) : (
+              <ul className="divide-y divide-line">
+                {timeline.map((m) => {
+                  const inbound = m.direction === "inbound";
+                  const when = m.sentAt ?? m.createdAt;
+                  const suggestion = showAiFeatures && inbound ? replySuggestion(m) : null;
+                  return (
+                    <li key={m.id} className="px-4 py-3">
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <Badge variant={inbound ? "info" : "neutral"} dot>
+                          {inbound ? "Customer reply" : "Sent"}
+                        </Badge>
+                        {!inbound && m.status !== "sent" && (
+                          <Badge variant={m.status === "failed" ? "danger" : "warning"} dot>
+                            {m.status}
+                          </Badge>
+                        )}
+                        <span className="text-xs text-slate">{fmtDateTime(when)}</span>
+                      </div>
+                      {m.subject && <p className="text-sm font-medium text-ink">{m.subject}</p>}
+                      {m.body && <p className="mt-1 whitespace-pre-wrap text-sm text-slate line-clamp-5">{m.body}</p>}
+                      {editable && suggestion && <ReplyClassificationSuggestion suggestion={suggestion} />}
+                      {editable && inbound && m.body && (
+                        <details className="mt-3 rounded-input bg-canvas p-2">
+                          <summary className="cursor-pointer text-xs font-medium text-pigment">
+                            Create revision from this email
+                          </summary>
+                          <div className="mt-2">
+                            <OrderRevisionForm
+                              orderId={order.id}
+                              initialNote={m.body}
+                              buttonLabel="Create revision"
+                              disabled={!canCreateRevision}
+                            />
+                          </div>
+                        </details>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </DataPanel>
+        </div>
+
+        {/* Right: everything else is waiting on — who has it, when it's due,
+            what print and proof are doing, and the full history underneath. */}
+        <aside className="flex flex-col gap-4">
+          {editable && (
+            <DataPanel className="p-4">
+              <SectionHeader
+                title="Quick actions"
+                description={`${hasDesigner ? "Reassign" : "Assign a designer"}, or send this order back for changes.`}
+              />
+              <div className="mt-4 flex flex-col gap-4">
+                <OrderReassignForm
+                  orderId={order.id}
+                  assigned={hasDesigner}
+                  designers={designers.map((designer) => ({
+                    id: designer.id,
+                    name: designer.name ?? designer.email,
+                  }))}
+                />
+                <div className="border-t border-line pt-4">
+                  <OrderRevisionForm
+                    orderId={order.id}
+                    initialNote={revisionStarter}
+                    buttonLabel="Request revision"
+                    disabled={!canCreateRevision}
+                  />
+                  {!canCreateRevision && (
+                    <p className="mt-2 text-xs text-slate">
+                      Revisions can start once an order is awaiting customer, approved, printing, shipped, delivered or complete.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </DataPanel>
+          )}
+
+          <DataPanel className="p-4">
+            <SectionHeader title="Ask Alpha" />
+            <div className="mt-3">
+              <AskAlpha orderId={order.id} compact />
+            </div>
+          </DataPanel>
+
+          <DataPanel className="p-4">
+            <SectionHeader title="Designer status" />
+            <dl className="mt-3 flex flex-col gap-3 text-sm">
+              <Field label="Assigned to" value={assignee} />
+              {designerCountdown && (
+                <div>
+                  <dt className="text-xs font-medium text-slate">Deadline</dt>
+                  <dd
+                    className={cn(
+                      "mt-0.5 flex items-center gap-1.5 font-medium",
+                      designerDeadline && designerDeadline.getTime() < now.getTime() ? "text-rose" : "text-ink",
+                    )}
+                  >
+                    <Clock size={14} className="shrink-0" />
+                    {designerCountdown}
+                  </dd>
+                </div>
+              )}
+            </dl>
           </DataPanel>
 
           <DataPanel className="p-4">
@@ -793,58 +918,48 @@ export default async function OrderDetailPage({
             )}
           </DataPanel>
 
-          <DataPanel className="overflow-hidden">
-            <div className="border-b border-line px-4 py-3">
-              <SectionHeader title="Messages" />
-            </div>
-            {timeline.length === 0 ? (
-              <EmptyState
-                icon={Inbox}
-                headline="No messages yet"
-                body="Customer email history for this order will appear here."
-              />
-            ) : (
-              <ul className="divide-y divide-line">
-                {timeline.map((m) => {
-                  const inbound = m.direction === "inbound";
-                  const when = m.sentAt ?? m.createdAt;
-                  const suggestion = showAiFeatures && inbound ? replySuggestion(m) : null;
-                  return (
-                    <li key={m.id} className="px-4 py-3">
-                      <div className="mb-1 flex flex-wrap items-center gap-2">
-                        <Badge variant={inbound ? "info" : "neutral"} dot>
-                          {inbound ? "Customer reply" : "Sent"}
-                        </Badge>
-                        {!inbound && m.status !== "sent" && (
-                          <Badge variant={m.status === "failed" ? "danger" : "warning"} dot>
-                            {m.status}
-                          </Badge>
-                        )}
-                        <span className="text-xs text-slate">{fmtDateTime(when)}</span>
-                      </div>
-                      {m.subject && <p className="text-sm font-medium text-ink">{m.subject}</p>}
-                      {m.body && <p className="mt-1 whitespace-pre-wrap text-sm text-slate line-clamp-5">{m.body}</p>}
-                      {editable && suggestion && <ReplyClassificationSuggestion suggestion={suggestion} />}
-                      {editable && inbound && m.body && (
-                        <details className="mt-3 rounded-input bg-canvas p-2">
-                          <summary className="cursor-pointer text-xs font-medium text-pigment">
-                            Create revision from this email
-                          </summary>
-                          <div className="mt-2">
-                            <OrderRevisionForm
-                              orderId={order.id}
-                              initialNote={m.body}
-                              buttonLabel="Create revision"
-                              disabled={!canCreateRevision}
-                            />
-                          </div>
-                        </details>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
+          <DataPanel className="p-4">
+            <SectionHeader title="Proof status" />
+            <p className="mt-2 text-sm font-medium text-ink">{proofStatusLine}</p>
+            {latestProof?.revisionNotes && (
+              <p className="mt-1 text-sm text-slate">&ldquo;{latestProof.revisionNotes}&rdquo;</p>
             )}
+          </DataPanel>
+
+          <DataPanel id="notes" className="overflow-hidden">
+            <div className="border-b border-line px-4 py-3">
+              <SectionHeader title="Activity timeline" />
+            </div>
+            <div className="p-4">
+              {editable && <OrderCommentForm orderId={order.id} />}
+              <ul className="mt-4 divide-y divide-line">
+                {detail.events.length === 0 ? (
+                  <li className="py-3 text-sm text-slate">No activity yet.</li>
+                ) : (
+                  detail.events
+                    .slice()
+                    .reverse()
+                    .map((event) => (
+                      <li key={event.id} className="py-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant={event.action === "comment" ? "info" : "neutral"} dot>
+                            {event.action === "comment" ? "Note" : titleCase(event.action.replace(/^order\./, ""))}
+                          </Badge>
+                          <span className="text-xs text-slate">
+                            {event.actorName ?? "System"} · {fmtDateTime(event.createdAt)}
+                          </span>
+                        </div>
+                        {event.body && <p className="mt-2 whitespace-pre-wrap text-sm text-ink">{event.body}</p>}
+                        {!event.body && event.fromState !== event.toState && (
+                          <p className="mt-1 text-sm text-slate">
+                            {event.fromState ? titleCase(event.fromState) : "Created"} → {event.toState ? titleCase(event.toState) : "Updated"}
+                          </p>
+                        )}
+                      </li>
+                    ))
+                )}
+              </ul>
+            </div>
           </DataPanel>
         </aside>
       </div>

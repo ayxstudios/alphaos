@@ -1,230 +1,115 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import type { ReactElement } from "react";
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { Suspense, cache } from "react";
 
 import { auth } from "@/lib/auth";
-import { withUserContext } from "@/lib/db";
-import { messages, orders } from "@/lib/db/schema";
-import { liveOrderWhere } from "@/lib/orders/archive";
 import { loadShellData } from "@/lib/shell/context";
-import { Badge, DataPanel, Page, PageHeader } from "@/components/ui";
-import { AlertTriangle, ArrowRight, CheckCircle, Inbox, Mail, Printer, User } from "@/components/ui/icons";
-import { cn } from "@/lib/utils";
+import { getTodayQueue } from "@/lib/orders/today-queue";
+import { getEmailNeedsActionCounts } from "@/lib/email/outbox";
+import { Page, Skeleton } from "@/components/ui";
+import { ArrowRight, Mail } from "@/components/ui/icons";
+import { TodayQueueList } from "@/components/today/today-queue";
 
 export const dynamic = "force-dynamic";
 
-const ACTIVE_STATES = [
-  "awaiting_details",
-  "triage",
-  "awaiting_photos",
-  "ready_to_assign",
-  "in_design",
-  "awaiting_qc",
-  "awaiting_approval",
-  "approved",
-  "printing",
-  "shipped",
-  "fulfillment_only",
-  "on_hold",
-] as const;
+// Both the summary line and the list read the same queue; one query per request.
+const queueFor = cache((userId: string, role: U["role"], businessId: string) =>
+  getTodayQueue({ id: userId, role }, businessId),
+);
 
-type WorkItem = {
-  label: string;
-  count: number;
-  href: string;
-  detail: string;
-  tone: "danger" | "warning" | "neutral" | "success";
-  icon: (props: { size?: number; className?: string }) => ReactElement;
-};
-
-function dateOrNull(value: Date | string | null): Date | null {
-  if (!value) return null;
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isFinite(date.getTime()) ? date : null;
-}
-
-function overdueAge(now: Date, dueAt: Date | string | null): string {
-  const due = dateOrNull(dueAt);
-  if (!due) return "No due date";
-  const hours = Math.max(0, (now.getTime() - due.getTime()) / 3_600_000);
-  if (hours >= 48) {
-    const days = Math.floor(hours / 24);
-    return `Worst is ${days} day${days === 1 ? "" : "s"} overdue`;
-  }
-  const rounded = Math.round(hours * 10) / 10;
-  return `Worst is ${rounded}h overdue`;
-}
-
-export default async function DashboardPage() {
+/**
+ * Today: the one screen a VA opens in the morning. One ranked list across every
+ * shop in the workspace, sorted by what hurts most. Each section streams on its
+ * own so the header is on screen at once and nothing flashes a page skeleton.
+ */
+export default async function TodayPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
   if (user.role === "designer") redirect("/board");
 
   const { selected } = await loadShellData(user);
-  const now = new Date();
-  const counts = await withUserContext(user, async (tx) => {
-    const businessFilter = eq(orders.businessId, selected.id);
-    const liveFilter = liveOrderWhere();
-
-    const [orderCounts] = await tx
-      .select({
-        awaitingQc: sql<number>`count(*) filter (where ${eq(orders.status, "awaiting_qc")})::int`,
-        needsDetails: sql<number>`count(*) filter (where ${eq(orders.status, "awaiting_details")})::int`,
-        overdue: sql<number>`count(*) filter (where ${inArray(orders.status, [...ACTIVE_STATES])} and ${orders.dueAt} is not null and ${orders.dueAt} < now())::int`,
-        worstDueAt: sql<Date | string | null>`min(${orders.dueAt}) filter (where ${inArray(orders.status, [...ACTIVE_STATES])} and ${orders.dueAt} is not null and ${orders.dueAt} < now())`,
-        awaitingCustomer: sql<number>`count(*) filter (where ${eq(orders.status, "awaiting_approval")})::int`,
-        readyToPrint: sql<number>`count(*) filter (where ${eq(orders.status, "approved")} and exists (select 1 from order_items oi where oi.order_id = ${orders.id} and oi.product_type = 'physical'))::int`,
-        unassigned: sql<number>`count(*) filter (where ${eq(orders.status, "ready_to_assign")} and not exists (select 1 from assignments a where a.order_id = ${orders.id} and a.active))::int`,
-      })
-      .from(orders)
-      .where(and(businessFilter, liveFilter));
-
-    const [emailCounts] = await tx
-      .select({
-        unmatched: sql<number>`count(*) filter (where ${eq(messages.direction, "inbound")} and ${messages.orderId} is null and ${messages.suppressedAt} is null)::int`,
-        outboxAction: sql<number>`count(*) filter (where ${eq(messages.direction, "outbound")} and ${inArray(messages.status, ["draft", "failed"])})::int`,
-      })
-      .from(messages)
-      .where(and(eq(messages.businessId, selected.id), isNull(messages.archivedAt)));
-
-    return {
-      awaitingQc: orderCounts?.awaitingQc ?? 0,
-      needsDetails: orderCounts?.needsDetails ?? 0,
-      overdue: orderCounts?.overdue ?? 0,
-      worstDueAt: orderCounts?.worstDueAt ?? null,
-      awaitingCustomer: orderCounts?.awaitingCustomer ?? 0,
-      readyToPrint: orderCounts?.readyToPrint ?? 0,
-      unassigned: orderCounts?.unassigned ?? 0,
-      unmatched: emailCounts?.unmatched ?? 0,
-      outboxAction: emailCounts?.outboxAction ?? 0,
-    };
-  });
-
-  const emailTriage = counts.unmatched + counts.outboxAction;
-  const work: WorkItem[] = [
-    {
-      label: "Awaiting QC",
-      count: counts.awaitingQc,
-      href: "/orders?view=awaiting_qc",
-      detail: "Portraits ready for VA review",
-      tone: counts.awaitingQc ? "warning" : "success",
-      icon: CheckCircle,
-    },
-    {
-      label: "Needs details",
-      count: counts.needsDetails,
-      href: "/orders?view=needs_details",
-      detail: "Etsy orders waiting for VA completion",
-      tone: counts.needsDetails ? "warning" : "success",
-      icon: Inbox,
-    },
-    {
-      label: "Overdue orders",
-      count: counts.overdue,
-      href: "/orders?view=overdue&sort=due&dir=asc",
-      detail: counts.overdue ? overdueAge(now, counts.worstDueAt) : "No overdue work",
-      tone: counts.overdue ? "danger" : "success",
-      icon: AlertTriangle,
-    },
-    {
-      label: "Awaiting customer",
-      count: counts.awaitingCustomer,
-      href: "/orders?view=awaiting_customer",
-      detail: "Proofs waiting for customer approval or revisions",
-      tone: counts.awaitingCustomer ? "warning" : "success",
-      icon: Mail,
-    },
-    {
-      label: "Ready to print",
-      count: counts.readyToPrint,
-      href: "/queue/print",
-      detail: "Approved physical orders waiting for print",
-      tone: counts.readyToPrint ? "warning" : "success",
-      icon: Printer,
-    },
-    {
-      label: "Email triage",
-      count: emailTriage,
-      href: "/emails",
-      detail: `${counts.unmatched} unmatched replies, ${counts.outboxAction} outbox items`,
-      tone: emailTriage ? "danger" : "success",
-      icon: Mail,
-    },
-    {
-      label: "Unassigned orders",
-      count: counts.unassigned,
-      href: "/orders?view=unassigned",
-      detail: "Ready to assign with no active designer",
-      tone: counts.unassigned ? "warning" : "success",
-      icon: User,
-    },
-  ];
+  const first = (session.user.name ?? "there").split(/\s+/)[0];
+  const hour = Number(
+    new Intl.DateTimeFormat("en-AU", { hour: "numeric", hour12: false, timeZone: "Australia/Melbourne" }).format(new Date()),
+  );
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
   return (
-    <Page>
-      <PageHeader
-        title="Dashboard"
-        description="What needs doing today for the selected business."
-        eyebrow={selected.name}
-        actions={
-          <Link
-            href="/orders"
-            className="inline-flex h-10 items-center rounded-input bg-pigment px-3 text-sm font-medium text-surface transition-opacity hover:opacity-90"
-          >
-            View orders
-          </Link>
-        }
-      />
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {work.map((item, index) => (
-          <WorkCard key={item.label} item={item} priority={index + 1} />
-        ))}
+    <Page className="max-w-4xl">
+      <div className="flex flex-col gap-1">
+        <p className="text-sm font-medium text-slate">{selected.name}</p>
+        <h1 className="font-display text-2xl font-semibold text-ink">
+          {greeting}, {first}.
+        </h1>
+        <Suspense fallback={<Skeleton className="mt-1 h-5 w-64" />}>
+          <Summary user={user} businessId={selected.id} />
+        </Suspense>
       </div>
+
+      <Suspense fallback={<QueueFallback />}>
+        <Queue user={user} businessId={selected.id} />
+      </Suspense>
+
+      <Suspense fallback={null}>
+        <MailStrip user={user} businessId={selected.id} />
+      </Suspense>
     </Page>
   );
 }
 
-function WorkCard({ item, priority }: { item: WorkItem; priority: number }) {
-  const Icon = item.icon;
+type U = { id: string; role: "admin" | "va" | "designer" };
+
+async function Summary({ user, businessId }: { user: U; businessId: string }) {
+  const q = await queueFor(user.id, user.role, businessId);
+  if (q.counts.total === 0) return <p className="text-base text-slate">Nothing is waiting on you right now.</p>;
+  const bits = [
+    q.counts.now ? `${q.counts.now} need${q.counts.now === 1 ? "s" : ""} you now` : null,
+    q.counts.today ? `${q.counts.today} for today` : null,
+    q.counts.soon ? `${q.counts.soon} soon` : null,
+  ].filter(Boolean);
   return (
-    <Link href={item.href} className="group block">
-      <DataPanel className={cn(
-        "h-full p-5 transition-colors group-hover:bg-canvas",
-        item.tone === "danger" && "border-rose/25",
-        item.tone === "warning" && "border-amber/25",
-        item.tone === "success" && "border-sage/20",
-      )}>
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className={cn(
-              "flex size-10 items-center justify-center rounded-input",
-              item.tone === "danger" ? "bg-rose/10 text-rose" :
-                item.tone === "warning" ? "bg-amber/10 text-amber" :
-                  item.tone === "success" ? "bg-sage/10 text-sage" :
-                    "bg-pigment-soft text-pigment",
-            )}>
-              <Icon size={18} />
-            </span>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate">Priority {priority}</p>
-              <h2 className="mt-1 text-base font-semibold text-ink">{item.label}</h2>
-            </div>
-          </div>
-          <Badge variant={item.tone === "neutral" ? "neutral" : item.tone} dot={item.count > 0}>
-            {item.count}
-          </Badge>
-        </div>
-        <div className="mt-6 flex items-end justify-between gap-4">
-          <div>
-            <p className="text-5xl font-semibold leading-none text-ink">{item.count}</p>
-            <p className="mt-2 text-sm leading-5 text-slate">{item.detail}</p>
-          </div>
-          <ArrowRight size={20} className="mb-1 shrink-0 text-slate transition-transform group-hover:translate-x-0.5 group-hover:text-pigment" />
-        </div>
-      </DataPanel>
+    <p className="text-base text-slate">
+      {bits.join(", ")}
+      {q.shops > 1 ? ` across ${q.shops} shops.` : "."}
+    </p>
+  );
+}
+
+async function Queue({ user, businessId }: { user: U; businessId: string }) {
+  const q = await queueFor(user.id, user.role, businessId);
+  return <TodayQueueList groups={q.groups} />;
+}
+
+async function MailStrip({ user, businessId }: { user: U; businessId: string }) {
+  const counts = await getEmailNeedsActionCounts(user, { businessId }).catch(() => ({ unmatched: 0, failed: 0 }));
+  const n = counts.unmatched + counts.failed;
+  if (!n) return null;
+  return (
+    <Link
+      href="/emails"
+      className="flex min-h-14 items-center gap-3 rounded-card border border-line bg-surface px-4 py-3 shadow-sm hover:bg-canvas"
+    >
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-input bg-pigment-soft text-pigment">
+        <Mail size={18} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-base font-medium text-ink">
+          {n} message{n === 1 ? "" : "s"} not matched to an order
+        </span>
+        <span className="block text-sm text-slate">Open Messages to link {n === 1 ? "it" : "them"} to the right order.</span>
+      </span>
+      <ArrowRight size={18} className="shrink-0 text-slate" />
     </Link>
+  );
+}
+
+function QueueFallback() {
+  return (
+    <div className="flex flex-col gap-3">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <Skeleton key={i} className="h-16 rounded-card" />
+      ))}
+    </div>
   );
 }

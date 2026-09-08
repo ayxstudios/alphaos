@@ -25,27 +25,37 @@ import {
 
 type NavItem = { label: string; href: string; icon: ComponentType<IconProps> };
 
+// Plain and short: the six groups a VA actually thinks in, plus Settings.
+// Everything else (Customers, Portrait Styles, System Health) still exists —
+// it just lives in the quieter "More" group below, so the main list stays
+// calm and obvious instead of listing every page in the app.
 const ADMIN_NAV: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: Grid },
-  { label: "System Health", href: "/health", icon: AlertTriangle },
+  { label: "Today", href: "/dashboard", icon: Grid },
   { label: "Orders", href: "/orders", icon: Package },
-  { label: "Emails", href: "/emails", icon: Mail },
-  { label: "Boards", href: "/board", icon: Columns },
-  { label: "Ready to Print", href: "/queue/print", icon: Truck },
-  { label: "Designers", href: "/designers", icon: Palette },
-  { label: "Portrait Styles", href: "/styles", icon: Brush },
-  { label: "Payouts", href: "/payouts", icon: ListChecks },
-  { label: "Customers", href: "/customers", icon: Users },
+  { label: "Messages", href: "/emails", icon: Mail },
+  { label: "Designers", href: "/board", icon: Columns },
+  { label: "Print", href: "/queue/print", icon: Truck },
+  { label: "Money", href: "/payouts", icon: ListChecks },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
+const ADMIN_MORE: NavItem[] = [
+  { label: "System Health", href: "/health", icon: AlertTriangle },
+  { label: "Designer Roster", href: "/designers", icon: Palette },
+  { label: "Portrait Styles", href: "/styles", icon: Brush },
+  { label: "Customers", href: "/customers", icon: Users },
+];
+
 const VA_NAV: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: Grid },
+  { label: "Today", href: "/dashboard", icon: Grid },
   { label: "Orders", href: "/orders", icon: Package },
-  { label: "Emails", href: "/emails", icon: Mail },
-  { label: "Boards", href: "/board", icon: Columns },
-  { label: "Ready to Print", href: "/queue/print", icon: Truck },
-  { label: "Designers", href: "/designers", icon: Palette },
+  { label: "Messages", href: "/emails", icon: Mail },
+  { label: "Designers", href: "/board", icon: Columns },
+  { label: "Print", href: "/queue/print", icon: Truck },
+];
+
+const VA_MORE: NavItem[] = [
+  { label: "Designer Roster", href: "/designers", icon: Palette },
   { label: "Portrait Styles", href: "/styles", icon: Brush },
   { label: "Customers", href: "/customers", icon: Users },
 ];
@@ -53,6 +63,7 @@ const VA_NAV: NavItem[] = [
 const DESIGNER_NAV: NavItem[] = [
   { label: "My Board", href: "/board", icon: Columns },
 ];
+const DESIGNER_MORE: NavItem[] = [];
 
 type SidebarProps = {
   role: Role;
@@ -71,7 +82,44 @@ export function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const nav = role === "designer" ? DESIGNER_NAV : role === "admin" ? ADMIN_NAV : VA_NAV;
+  const more = role === "designer" ? DESIGNER_MORE : role === "admin" ? ADMIN_MORE : VA_MORE;
   const homeHref = role === "designer" ? "/board" : "/dashboard";
+
+  function renderItem(item: NavItem) {
+    const active = pathname === item.href || pathname.startsWith(item.href + "/");
+    const Glyph = item.icon;
+    const link = (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={onNavigate}
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          "group relative flex h-10 items-center gap-3 rounded-input px-3 text-sm font-medium",
+          "transition-colors duration-150 ease-standard motion-hover",
+          focusRing,
+          collapsed && !mobile && "justify-center px-0",
+          active ? "text-pigment" : "text-slate hover:bg-canvas hover:text-ink",
+        )}
+      >
+        <span
+          className={cn(
+            "absolute left-0 top-2 h-6 w-0.5 rounded-full bg-pigment opacity-0 transition-opacity",
+            active && "opacity-100",
+          )}
+        />
+        <Glyph size={18} className="shrink-0" />
+        {(!collapsed || mobile) && <span>{item.label}</span>}
+      </Link>
+    );
+    return collapsed && !mobile ? (
+      <Tooltip key={item.href} content={item.label} side="right">
+        {link}
+      </Tooltip>
+    ) : (
+      link
+    );
+  }
 
   return (
     <aside
@@ -107,45 +155,24 @@ export function Sidebar({
         )}
       </div>
 
-      <nav className="flex flex-1 flex-col gap-1 px-2 py-2">
-        {nav.map((item) => {
-          const active =
-            pathname === item.href || pathname.startsWith(item.href + "/");
-          const Glyph = item.icon;
-          const link = (
-            <Link
-              key={item.href}
-              href={item.href}
-              onClick={onNavigate}
-              aria-current={active ? "page" : undefined}
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-2">
+        {nav.map(renderItem)}
+        {more.length > 0 && (
+          <>
+            <div
               className={cn(
-                "group relative flex h-10 items-center gap-3 rounded-input px-3 text-sm font-medium",
-                "transition-colors duration-150 ease-standard motion-hover",
-                focusRing,
-                collapsed && !mobile && "justify-center px-0",
-                active
-                  ? "text-pigment"
-                  : "text-slate hover:bg-canvas hover:text-ink",
+                "mt-2 mb-1 h-px bg-line",
+                !collapsed || mobile ? "mx-3" : "mx-2",
               )}
-            >
-              <span
-                className={cn(
-                  "absolute left-0 top-2 h-6 w-0.5 rounded-full bg-pigment opacity-0 transition-opacity",
-                  active && "opacity-100",
-                )}
-              />
-              <Glyph size={18} className="shrink-0" />
-              {(!collapsed || mobile) && <span>{item.label}</span>}
-            </Link>
-          );
-          return collapsed && !mobile ? (
-            <Tooltip key={item.href} content={item.label} side="right">
-              {link}
-            </Tooltip>
-          ) : (
-            link
-          );
-        })}
+            />
+            {(!collapsed || mobile) && (
+              <p className="px-3 pb-1 text-xs font-medium uppercase tracking-wide text-slate/70">
+                More
+              </p>
+            )}
+            {more.map(renderItem)}
+          </>
+        )}
       </nav>
 
       <div className="border-t border-line p-2">
