@@ -26,6 +26,7 @@
     "test:gmail-poll": "tsx scripts/test-gmail-poll-resilience.ts",
     "test:backfill-archive": "tsx scripts/test-backfill-archive.ts",
     "test:reconcile": "tsx scripts/test-reconcile.ts",
+    "test:print-reconcile": "tsx scripts/test-print-reconcile.ts",
     "test:etsy-review": "tsx scripts/test-etsy-review.ts"
   },
   "dependencies": {
