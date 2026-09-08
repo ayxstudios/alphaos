@@ -177,7 +177,38 @@ export async function draftRevisionReceived(
   });
 }
 
-export type StageEmailKey = "order_received" | "in_design" | "printing" | "shipped";
+/**
+ * Queue the 48h photo-reminder email (the reminders sweep's auto-send
+ * exception, same as the initial photo request — see lib/reminders). Always
+ * `queued`, never a VA draft: a business that opted into the initial photo
+ * request wants the nudge to go out the same way.
+ */
+export async function queuePhotoReminder(
+  tx: Tx,
+  order: {
+    id: string;
+    businessId: string;
+    customerId: string | null;
+    platformOrderId: string;
+    platformOrderName?: string | null;
+    uploadToken: string;
+  },
+): Promise<string | null> {
+  const ctx = await readEmailContext(tx, order.businessId, order.customerId);
+  if (!ctx) return null;
+  return insertRendered(tx, {
+    businessId: order.businessId,
+    orderId: order.id,
+    customerId: order.customerId,
+    key: "photo_reminder",
+    status: "queued",
+    orderNumber: order.platformOrderName ?? order.platformOrderId,
+    ctx,
+    vars: { upload_link: uploadUrl(order.uploadToken) },
+  });
+}
+
+export type StageEmailKey = "order_received" | "in_design" | "printing" | "shipped" | "proof_reminder";
 
 /**
  * Stage emails (the customer window): order received, in the artist's hands,

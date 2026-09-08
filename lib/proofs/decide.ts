@@ -44,13 +44,16 @@ export type RevisionInput = {
  * If the transition fails (e.g. the order was moved), the whole tx rolls back,
  * so the proof is never left half-decided.
  */
-export async function approveProof(token: string): Promise<ProofActionResult> {
+export async function approveProof(
+  token: string,
+  opts?: { via?: string; metadata?: Record<string, unknown> },
+): Promise<ProofActionResult> {
   return decide(token, "approved", async (tx, orderId, from) => {
     await runTransition(tx, SYSTEM_ACTOR, {
       orderId,
       to: "approved",
       expectedFrom: from,
-      metadata: { via: "proof_portal" },
+      metadata: { via: opts?.via ?? "proof_portal", ...opts?.metadata },
     });
     return {};
   });

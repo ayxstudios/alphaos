@@ -18,8 +18,8 @@ export type TemplateKey =
   | "printing"
   | "shipped"
   // Reminders sweep (lib/reminders). photo_reminder is the second auto-send
-  // exception; proof_reminder is always a draft (the 7-day silence rule acts on
-  // the proof directly rather than needing a reply).
+  // exception (always queued); proof_reminder follows stage_email_auto_send
+  // like the other stage emails (draft unless the business opted in).
   | "photo_reminder"
   | "proof_reminder";
 
