@@ -1083,3 +1083,26 @@ export const notifications = pgTable(
       .where(sql`${t.readAt} is null`),
   ],
 );
+
+// Alpha AI outbox. Every message AlphaOS wants Alpha (the manager on its own
+// number) to deliver, and every question a person asks Alpha, lands here first.
+// The daemon consumes rows over the bridge; when the hook is not configured the
+// rows simply wait, so nothing is ever lost and nothing is sent twice.
+export const alphaEvents = pgTable(
+  "alpha_events",
+  {
+    id: id(),
+    businessId: text("business_id").references(() => businesses.id, { onDelete: "restrict" }),
+    orderId: text("order_id").references(() => orders.id, { onDelete: "set null" }),
+    type: text("type").notNull(),
+    toUserId: text("to_user_id").references(() => users.id, { onDelete: "set null" }),
+    toRole: text("to_role"),
+    text: text("text").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>(),
+    status: text("status").notNull().default("queued"),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("alpha_events_status_idx").on(t.status, t.createdAt)],
+);

@@ -211,6 +211,13 @@
       "when": 1786683949619,
       "tag": "0029_mean_magneto",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1788843910915,
+      "tag": "0030_alpha_events",
+      "breakpoints": true
     }
   ]
 }
