@@ -177,6 +177,40 @@ export async function draftRevisionReceived(
   });
 }
 
+export type StageEmailKey = "order_received" | "in_design" | "printing" | "shipped";
+
+/**
+ * Stage emails (the customer window): order received, in the artist's hands,
+ * printing, shipped. Drafted into the VA outbox on the relevant transition —
+ * same insertRendered path as every other customer email — unless the
+ * business has opted into `stage_email_auto_send`, in which case they queue
+ * for the automatic flush like the photo-request exception. A no-op when the
+ * order has no customer email (nothing to send to, nothing to draft).
+ */
+export async function queueStageEmail(
+  tx: Tx,
+  order: { id: string; businessId: string; customerId: string | null; platformOrderId: string; platformOrderName: string | null },
+  key: StageEmailKey,
+  vars: Omit<TemplateVars, "first_name" | "business_name" | "order_number"> = {},
+): Promise<string | null> {
+  const ctx = await readEmailContext(tx, order.businessId, order.customerId);
+  if (!ctx) return null;
+  const [biz] = await tx
+    .select({ autoSend: businesses.stageEmailAutoSend })
+    .from(businesses)
+    .where(eq(businesses.id, order.businessId));
+  return insertRendered(tx, {
+    businessId: order.businessId,
+    orderId: order.id,
+    customerId: order.customerId,
+    key,
+    status: biz?.autoSend ? "queued" : "draft",
+    orderNumber: order.platformOrderName ?? order.platformOrderId,
+    ctx,
+    vars,
+  });
+}
+
 export type SendResult = { ok: true } | { ok: false; error: string; retryable: boolean };
 
 /**

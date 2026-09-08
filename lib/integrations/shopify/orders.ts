@@ -5,7 +5,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { withSystemContext } from "@/lib/db";
 import { getShopCredentials } from "@/lib/db/credentials";
 import { shops, orders, orderItems, customers, assets, activityLog } from "@/lib/db/schema";
-import { queuePhotoRequest, flushQueued } from "@/lib/email/dispatch";
+import { queuePhotoRequest, queueStageEmail, flushQueued } from "@/lib/email/dispatch";
 import type { NormalizedVariation } from "../figures";
 import { ShopifyClient } from "./client";
 import { isShopifyConnected } from "./auth";
@@ -544,6 +544,20 @@ export async function importShopifyOrder(args: {
         platformOrderName: order.orderName ?? order.platformOrderId,
         uploadToken,
       });
+    }
+
+    // Order-received acknowledgement (stage email, lib/email/dispatch.ts): a
+    // warm "we got it" the moment ANY order lands, regardless of status. Same
+    // suppression guards as the photo request (never on a backfill, never when
+    // the shop has customer email suppressed).
+    if (!shop.suppressCustomerEmail && !archived) {
+      await queueStageEmail(tx, {
+        id: orderId,
+        businessId: shop.businessId,
+        customerId,
+        platformOrderId: order.platformOrderId,
+        platformOrderName: order.orderName ?? order.platformOrderId,
+      }, "order_received");
     }
 
     return archived ? "archived" : "imported";

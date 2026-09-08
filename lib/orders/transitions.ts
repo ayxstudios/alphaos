@@ -16,6 +16,7 @@ import {
   shops,
   orderStatus,
   assets,
+  printJobs,
 } from "@/lib/db/schema";
 import {
   resolveChecklist,
@@ -23,7 +24,7 @@ import {
   type ItemResults,
 } from "@/lib/qc/checklist";
 import { runAutoAssign } from "./assign";
-import { prepareProofForApproval } from "@/lib/email/dispatch";
+import { prepareProofForApproval, queueStageEmail } from "@/lib/email/dispatch";
 import { createEarningForCompletion } from "@/lib/orders/earnings";
 
 export type OrderStatus = (typeof orderStatus.enumValues)[number];
@@ -271,6 +272,30 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
   }
   // Customer revision email is sent after the revised portrait passes QC, not
   // when the customer first requests changes.
+
+  // Stage emails (the customer window, lib/email/dispatch.ts). Only the
+  // FIRST time an order reaches the artist gets an email — QC-fail and
+  // customer-revision re-entries to in_design are internal rework, not a new
+  // customer-facing moment (revision_received already covers the customer
+  // side of a requested change).
+  if (key === "ready_to_assign->in_design") {
+    await queueStageEmail(tx, order, "in_design");
+  }
+  if (key === "approved->printing") {
+    await queueStageEmail(tx, order, "printing");
+  }
+  if (key === "printing->shipped") {
+    const [job] = await tx
+      .select({ trackingNumber: printJobs.trackingNumber, trackingUrl: printJobs.trackingUrl })
+      .from(printJobs)
+      .where(eq(printJobs.orderId, order.id))
+      .orderBy(desc(printJobs.createdAt))
+      .limit(1);
+    await queueStageEmail(tx, order, "shipped", {
+      tracking_number: job?.trackingNumber ?? undefined,
+      tracking_url: job?.trackingUrl ?? undefined,
+    });
+  }
 
   // The full checklist snapshot + per-item results live on the qc_checks row
   // (the audit source of truth); keep the heavy blobs out of activity_log, but
