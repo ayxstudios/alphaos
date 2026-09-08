@@ -248,6 +248,10 @@ export const businesses = pgTable("businesses", {
     .array()
     .notNull()
     .default(sql`'{}'::text[]`),
+  // Per-business print provider API keys (Gelato X-API-KEY + webhook secret,
+  // Luma Prints key/secret/store id). AES-256-GCM envelope; read only via
+  // getBusinessPrintCredentials (lib/db/credentials.ts). Never selected raw.
+  printCredentials: jsonb("print_credentials"),
   createdAt: createdAt(),
 });
 
@@ -837,10 +841,21 @@ export const printJobs = pgTable(
     acceptedAt: timestamp("accepted_at", { withTimezone: true }),
     rejectedAt: timestamp("rejected_at", { withTimezone: true }),
     shippedAt: timestamp("shipped_at", { withTimezone: true }),
+    // Reconciliation (lib/print/reconcile.ts). providerStatus is the provider's
+    // own status word; reconcileState is ours: unchecked | pending | matched |
+    // shipped | delivered | missing | problem | not_configured.
+    providerStatus: text("provider_status"),
+    providerStatusReason: text("provider_status_reason"),
+    providerCheckedAt: timestamp("provider_checked_at", { withTimezone: true }),
+    providerMatchedAt: timestamp("provider_matched_at", { withTimezone: true }),
+    reconcileState: text("reconcile_state").notNull().default("unchecked"),
+    reconcileNote: text("reconcile_note"),
+    missingFlaggedAt: timestamp("missing_flagged_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [
     index("print_jobs_order_idx").on(t.orderId),
+    index("print_jobs_reconcile_idx").on(t.businessId, t.reconcileState),
     index("print_jobs_business_status_idx").on(t.businessId, t.status, t.createdAt),
     index("print_jobs_provider_order_idx").on(t.provider, t.providerOrderId),
   ],
@@ -1105,4 +1120,30 @@ export const alphaEvents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("alpha_events_status_idx").on(t.status, t.createdAt)],
+);
+
+// Idempotency ledger for print reconciliation: one row per (job, outcome) the
+// cron or a provider webhook has already acted on. `event_key` is unique, so a
+// second run that tries the same outcome inserts nothing and does nothing.
+// Append-only; staff read.
+export const printReconcileLedger = pgTable(
+  "print_reconcile_ledger",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "restrict" }),
+    orderId: text("order_id").references(() => orders.id, { onDelete: "set null" }),
+    printJobId: text("print_job_id").references(() => printJobs.id, { onDelete: "set null" }),
+    provider: text("provider").notNull(),
+    eventKey: text("event_key").notNull(),
+    outcome: text("outcome").notNull(),
+    source: text("source").notNull(), // cron | webhook:gelato | webhook:lumaprints | manual
+    payload: jsonb("payload").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("print_reconcile_ledger_event_key_uq").on(t.eventKey),
+    index("print_reconcile_ledger_job_idx").on(t.printJobId, t.createdAt),
+  ],
 );
