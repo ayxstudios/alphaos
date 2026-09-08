@@ -72,6 +72,10 @@ export function synthesizeGelatoOrder(referenceId: string): GelatoOrder | null {
   const m = referenceId.match(/^([A-Z]{2})-?(\d{4,})$/);
   if (!m) return null;
   const n = Number(m[2]);
+  // Only the mock shops' own numbering (lib/mock/data.ts starts at 32000):
+  // anything else stays unknown so a real "missing at the provider" case
+  // still surfaces as missing.
+  if (n < 32000) return null;
   const last = n % 10;
   const status: GelatoOrder["fulfillmentStatus"] = last <= 6 ? "shipped" : last <= 8 ? "printed" : "created";
   const created = new Date(Date.now() - (6 + (n % 5)) * 60 * 60 * 1000).toISOString();

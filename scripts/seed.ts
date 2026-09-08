@@ -124,9 +124,11 @@ async function main() {
   // The daily health briefing goes to the admin for both businesses.
   await db.update(schema.businesses).set({ dailyHealthEmailRecipientIds: [admin] });
   await db.insert(schema.designerProfiles).values([
-    { userId: d1, dailyCapacity: 5, perFigureRate: "4.00", styles: ["classic"] },
-    { userId: d2, dailyCapacity: 8, perFigureRate: "3.50", styles: ["modern"] },
-    { userId: d3, dailyCapacity: 3, perFigureRate: "5.00", styles: ["retro"] },
+    // Capacity sized for the mock shops (about 60 orders a day each on
+    // Shopify): a demo day must not leave the board unassigned.
+    { userId: d1, dailyCapacity: 40, perFigureRate: "4.00", styles: ["cartoon", "watercolor"] },
+    { userId: d2, dailyCapacity: 40, perFigureRate: "3.50", styles: ["cartoon", "renaissance", "line-art"] },
+    { userId: d3, dailyCapacity: 25, perFigureRate: "5.00", styles: ["watercolor", "cartoon"] },
   ]);
 
   // d1 spans both businesses; d2 -> PixArt only; d3 -> Lumina only.
