@@ -398,8 +398,8 @@ export default async function SettingsPage({
   ];
 
   return (
-    <Page className="grid gap-6 lg:grid-cols-[12rem_minmax(0,1fr)]">
-      <aside>
+    <Page className="grid grid-cols-1 gap-6 lg:grid-cols-[12rem_minmax(0,1fr)]">
+      <aside className="min-w-0">
         <nav className="sticky top-20 flex gap-1 overflow-x-auto text-sm lg:flex-col lg:overflow-visible">
           {SETTINGS_SECTIONS.map((section) => (
             <Link

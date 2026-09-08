@@ -118,7 +118,7 @@ export function ComposeButton({
                   <dl className="grid gap-2 text-sm">
                     <div>
                       <dt className="text-xs font-medium text-slate">To</dt>
-                      <dd className="text-ink">{draft.to || "—"}</dd>
+                      <dd className="text-ink">{draft.to || "-"}</dd>
                     </div>
                     <div>
                       <dt className="text-xs font-medium text-slate">Subject</dt>

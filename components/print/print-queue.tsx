@@ -143,7 +143,7 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
 
   return (
     <DataPanel className={isTrouble ? "overflow-hidden border-rose/40" : "overflow-hidden"}>
-      <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+      <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -266,7 +266,7 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-input border border-line bg-canvas px-3 py-2">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate">{label}</p>
       <p className="mt-1 truncate text-sm font-medium text-ink">{value}</p>
     </div>
   );

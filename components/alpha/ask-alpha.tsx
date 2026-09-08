@@ -48,7 +48,7 @@ export function AskAlpha({ orderId = null, compact = false }: { orderId?: string
         value={question}
         onChange={(e) => setQuestion(e.currentTarget.value)}
         placeholder={
-          orderId ? "Ask about this order — e.g. \"can I ship this early?\"" : "Ask a question about how we do things"
+          orderId ? "Ask about this order, e.g. \"can I ship this early?\"" : "Ask a question about how we do things"
         }
         rows={compact ? 2 : 3}
         onKeyDown={(e) => {

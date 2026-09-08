@@ -15,7 +15,7 @@ function TimeInQc({ since }: { since: string | null }) {
     return () => clearInterval(id);
   }, []);
 
-  if (!since) return <span className="text-xs text-slate">—</span>;
+  if (!since) return <span className="text-xs text-slate">-</span>;
   const diff = Math.max(0, now - new Date(since).getTime());
   const h = Math.floor(diff / 3_600_000);
   const m = Math.floor((diff % 3_600_000) / 60_000);
@@ -30,7 +30,7 @@ function TimeInQc({ since }: { since: string | null }) {
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col">
-      <span className="text-[11px] uppercase tracking-wide text-slate">{label}</span>
+      <span className="text-xs uppercase tracking-wide text-slate">{label}</span>
       <span className="text-sm font-medium text-ink">{children}</span>
     </div>
   );
@@ -71,7 +71,7 @@ export function QcHeader({
             <Badge variant="warning">unresolved</Badge>
           )}
         </Fact>
-        <Fact label="Style">{ctx.style ?? "—"}</Fact>
+        <Fact label="Style">{ctx.style ?? "-"}</Fact>
         <Fact label="Designer">{ctx.designerName ?? "Unassigned"}</Fact>
       </div>
 
@@ -82,10 +82,10 @@ export function QcHeader({
           </span>
         )}
         <Button size="sm" variant="secondary" onClick={onPrev} disabled={!hasPrev}>
-          ← Prev <kbd className="ml-1 rounded border border-line bg-canvas px-1 text-[10px]">K</kbd>
+          ← Prev <kbd className="ml-1 rounded border border-line bg-canvas px-1 text-xs">K</kbd>
         </Button>
         <Button size="sm" variant="secondary" onClick={onNext} disabled={!hasNext}>
-          Next <kbd className="ml-1 rounded border border-line bg-canvas px-1 text-[10px]">J</kbd> →
+          Next <kbd className="ml-1 rounded border border-line bg-canvas px-1 text-xs">J</kbd> →
         </Button>
       </div>
     </header>

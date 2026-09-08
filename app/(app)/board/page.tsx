@@ -56,7 +56,11 @@ export default async function BoardPage({
     <Page className="max-w-none">
       <PageHeader
         title={isStaff ? "Designer boards" : "My board"}
-        description="Move work across queue, design, and QC for each designer."
+        description={
+          isStaff
+            ? "Each designer's queue, work in progress and QC."
+            : "Your orders, soonest deadline first."
+        }
         actions={
           // A column below `sm` (align-items:stretch gives each row a real,
           // definite width — PageHeader's actions slot is flex-shrink-0, so
@@ -117,7 +121,7 @@ export default async function BoardPage({
                 ) : (
                   <div className="divide-y divide-line">
                     {board.earningHistory.map((earning) => (
-                      <div key={earning.id} className="grid gap-2 px-4 py-3 text-sm md:grid-cols-[1fr_auto_auto_auto_auto] md:items-center">
+                      <div key={earning.id} className="grid grid-cols-1 gap-2 px-4 py-3 text-sm md:grid-cols-[1fr_auto_auto_auto_auto] md:items-center">
                         <div className="min-w-0">
                           <a href={`/orders/${earning.orderId}`} className="font-medium text-ink hover:text-pigment">
                             {earning.orderNumber}

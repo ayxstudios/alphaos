@@ -114,13 +114,13 @@ export async function getQcContext(
     }
 
     // Customer (staff-only route).
-    let customerName = "—";
+    let customerName = "-";
     if (order.customerId) {
       const [c] = await tx
         .select({ firstName: customers.firstName, lastName: customers.lastName })
         .from(customers)
         .where(eq(customers.id, order.customerId));
-      if (c) customerName = [c.firstName, c.lastName].filter(Boolean).join(" ") || "—";
+      if (c) customerName = [c.firstName, c.lastName].filter(Boolean).join(" ") || "-";
     }
 
     // Active designer.

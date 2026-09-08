@@ -95,7 +95,7 @@ export function BoardColumn({
               />
             ))}
             {cards.length === 0 && (
-              <p className="rounded-input border border-dashed border-line bg-surface px-2 py-8 text-center text-xs text-slate">Empty</p>
+              <p className="rounded-input border border-dashed border-line bg-surface px-2 py-8 text-center text-xs text-slate">Nothing here right now.</p>
             )}
           </div>
         )}

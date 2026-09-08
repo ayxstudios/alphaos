@@ -342,7 +342,7 @@ function ContactPanel({
         <Field label="Timezone" value={d.timezone ?? "Not set"} />
         <Field
           label="Quiet hours"
-          value={d.quietStart && d.quietEnd ? `${d.quietStart}–${d.quietEnd}` : "None"}
+          value={d.quietStart && d.quietEnd ? `${d.quietStart} to ${d.quietEnd}` : "None"}
         />
         <Field label="Max active orders" value={d.maxActiveOrders > 0 ? String(d.maxActiveOrders) : "No cap"} />
       </div>
@@ -397,7 +397,7 @@ function ContactPanel({
               focusRing,
             )}
           />
-          <p className="text-[11px] text-slate">0 = no cap on work in flight</p>
+          <p className="text-xs text-slate">0 = no cap on work in flight</p>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:max-w-xs">
@@ -409,7 +409,7 @@ function ContactPanel({
         />
         <Input label="Quiet hours end" type="time" value={quietEnd} onChange={(e) => setQuietEnd(e.target.value)} />
       </div>
-      <p className="text-[11px] text-slate">
+      <p className="text-xs text-slate">
         A brief, nudge or QC message that would land inside quiet hours is held until the window ends.
         Escalations (reassignment) are never held.
       </p>
@@ -425,7 +425,7 @@ function ContactPanel({
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="space-y-0.5">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate">{label}</p>
       <p className="text-ink">{value}</p>
     </div>
   );

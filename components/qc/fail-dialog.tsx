@@ -128,7 +128,7 @@ export function FailDialog({
                   >
                     <span
                       className={cn(
-                        "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-sm border text-[10px]",
+                        "mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-sm border text-xs",
                         on ? "border-rose bg-rose text-surface" : "border-slate/40",
                       )}
                     >

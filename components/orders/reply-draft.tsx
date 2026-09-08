@@ -79,7 +79,7 @@ export function ReplyDraft({ orderId, defaultTemplate }: { orderId: string; defa
         }}
         rows={8}
         disabled={loading}
-        hint="Edit freely before copying — this never sends anything by itself."
+        hint="Edit freely before copying. This never sends anything by itself."
       />
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" onClick={copy} disabled={!body.trim()}>

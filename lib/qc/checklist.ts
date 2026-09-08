@@ -25,16 +25,16 @@ export type ItemResults = Record<number, boolean>;
 
 /** The house standard — ten items, in the order a VA scans them. */
 export const DEFAULT_CHECKLIST: ChecklistItem[] = [
-  { key: 1, label: "Portrait style is correct — matches house style, not too realistic or cartoonish" },
+  { key: 1, label: "Portrait style is correct, matches house style, not too realistic or cartoonish" },
   { key: 2, label: "Rings and jewellery match the reference photo exactly" },
   { key: 3, label: "All tattoos present and accurately hand-drawn" },
   { key: 4, label: "Visible text (clothing, signs) is correct and legible" },
   { key: 5, label: "Eye colour is accurate" },
   { key: 6, label: "Pet fur colour, markings, and texture match the reference" },
   { key: 7, label: "Hair colour and hairstyle are accurate" },
-  { key: 8, label: "Hands and fingers anatomically correct — no missing or extra fingers" },
+  { key: 8, label: "Hands and fingers anatomically correct, no missing or extra fingers" },
   { key: 9, label: "Ear shape matches the reference" },
-  { key: 10, label: "Number of hands, people, and pets is correct — nothing added, removed or duplicated" },
+  { key: 10, label: "Number of hands, people, and pets is correct, nothing added, removed or duplicated" },
 ];
 
 /**

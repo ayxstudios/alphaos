@@ -209,14 +209,14 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
         .select({ id: customerPublic.id, firstName: customerPublic.firstName })
         .from(customerPublic)
         .where(inArray(customerPublic.id, custIds))) {
-        name.set(c.id!, c.firstName ?? "—");
+        name.set(c.id!, c.firstName ?? "-");
       }
     } else {
       for (const c of await tx
         .select({ id: customers.id, firstName: customers.firstName, lastName: customers.lastName })
         .from(customers)
         .where(inArray(customers.id, custIds))) {
-        name.set(c.id, [c.firstName, c.lastName].filter(Boolean).join(" ") || "—");
+        name.set(c.id, [c.firstName, c.lastName].filter(Boolean).join(" ") || "-");
       }
     }
   }
@@ -233,7 +233,7 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
     options: options.get(o.id) ?? [],
     notes: o.notes,
     source: o.source,
-    customerName: o.customerId ? (name.get(o.customerId) ?? "—") : "—",
+    customerName: o.customerId ? (name.get(o.customerId) ?? "-") : "-",
     thumbnailUrl: thumb.get(o.id) ?? null,
     qcFail: qcFail.get(o.id) ?? null,
     customerRevision: customerRevision.get(o.id) ?? null,

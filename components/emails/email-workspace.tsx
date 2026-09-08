@@ -90,7 +90,7 @@ export function EmailWorkspace({
       </section>
 
       <section className="rounded-card border border-line bg-surface shadow-sm">
-        <SectionTitle icon={Mail} title="Outbox" count={pendingOutbox.length} />
+        <SectionTitle icon={Mail} title="Waiting to send" count={pendingOutbox.length} />
         <div className="divide-y divide-line">
           {pendingOutbox.length === 0 ? (
             <p className="px-4 py-3 text-sm text-slate">Nothing waiting to send.</p>
@@ -202,14 +202,14 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
         {item.status === "failed" && <Badge variant="danger" dot>Failed</Badge>}
         <span className="min-w-0 truncate text-sm font-medium text-ink">{item.subject || "(no subject)"}</span>
         <span className="ml-auto text-xs text-slate">
-          {item.customerName ?? item.toAddress ?? "—"}
+          {item.customerName ?? item.toAddress ?? "-"}
           {item.orderNumber ? ` · ${item.orderNumber}` : ""} · {fmtDateTime(item.createdAt)}
         </span>
       </button>
       {open && (
         <div className="mt-3">
           <div className="rounded-input border border-line bg-canvas p-3 text-sm">
-            <p className="text-xs text-slate">To: <span className="text-ink">{item.toAddress ?? "—"}</span></p>
+            <p className="text-xs text-slate">To: <span className="text-ink">{item.toAddress ?? "-"}</span></p>
             <p className="text-xs text-slate">Subject: <span className="font-medium text-ink">{item.subject}</span></p>
           </div>
           {item.status === "failed" && item.error && <p className="mt-2 text-xs text-rose">Last error: {item.error}</p>}

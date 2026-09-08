@@ -23,13 +23,13 @@ export function NotificationDryRunPanel() {
     startTransition(async () => {
       const result = await runNotificationDryRun();
       if (!result.ok) {
-        toast({ variant: "danger", title: "Dry-run failed", description: result.message });
+        toast({ variant: "danger", title: "Test failed", description: result.message });
         return;
       }
       setReport(result.report);
       toast({
         variant: result.report.wouldFire > 0 ? "warning" : "success",
-        title: "Dry-run complete",
+        title: "Test complete",
         description: `${n(result.report.wouldFire)} fires would create ${n(result.report.wouldCreateNotifications)} notifications.`,
       });
     });
@@ -40,17 +40,17 @@ export function NotificationDryRunPanel() {
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle>SLA sweep dry-run</CardTitle>
+            <CardTitle>Test reminder alerts</CardTitle>
           </div>
           <Badge variant="warning" dot>
-            Dry-run
+            Test only, nothing is sent
           </Badge>
         </div>
       </CardHeader>
       <CardContent>
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={run} loading={pending}>
-            Run dry-run
+            Run test
           </Button>
         </div>
 

@@ -242,7 +242,7 @@ export function CardModal({
                 Send
               </Button>
             </div>
-            <p className="mt-1 px-1 text-[11px] text-slate">⌘/Ctrl + Enter to send</p>
+            <p className="mt-1 px-1 text-xs text-slate">⌘/Ctrl + Enter to send</p>
           </div>
         </div>
 
@@ -268,7 +268,7 @@ export function CardModal({
                   <span
                     key={i}
                     className={cn(
-                      "inline-flex max-w-full truncate rounded px-1.5 py-0.5 text-[11px] font-medium",
+                      "inline-flex max-w-full truncate rounded px-1.5 py-0.5 text-xs font-medium",
                       LABEL_CLASS[l.tone],
                     )}
                   >
@@ -512,7 +512,7 @@ function CardUploadPanel({
               <div key={image.id} className="w-20 shrink-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={image.url} alt="" className="size-20 rounded-input border border-line object-cover" />
-                <p className="mt-1 truncate text-[11px] text-slate">
+                <p className="mt-1 truncate text-xs text-slate">
                   {index === submissions.length - 1 ? "Latest" : `v${index + 1}`}
                 </p>
               </div>
@@ -552,7 +552,7 @@ function uploadToR2(
 function Meta({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate">{label}</p>
       {children}
     </div>
   );

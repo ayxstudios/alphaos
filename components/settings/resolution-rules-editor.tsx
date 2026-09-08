@@ -352,7 +352,7 @@ export function ResolutionRulesEditor({
             </InfoBubble>
           </span>
           <span className="ml-1 rounded bg-canvas px-1 text-xs text-slate">
-            {photoReq ? "ON" : "OFF — default"}
+            {photoReq ? "ON" : "OFF (default)"}
           </span>
         </span>
       </label>

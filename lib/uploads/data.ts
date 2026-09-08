@@ -126,7 +126,7 @@ export function describeAsk(items: ItemLite[]): { ask: string; detail: string; f
     .flatMap((i) => i.options ?? [])
     .filter((o) => o.name && o.value && !/^(quantity|qty)$/i.test(o.name))
     .map((o) => `${o.name}: ${o.value}`);
-  const detail = [names.join(" + "), [...new Set(opts)].slice(0, 4).join(" · ")].filter(Boolean).join(" — ");
+  const detail = [names.join(" + "), [...new Set(opts)].slice(0, 4).join(" · ")].filter(Boolean).join(" · ");
   return { ask, detail, figureCount };
 }
 

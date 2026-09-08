@@ -346,13 +346,13 @@ function buildHealthEmail(
   recipients: Recipient[],
 ) {
   const subjectStatus = metrics.healthy ? "Healthy" : "Needs attention";
-  const subject = `AlphaOS morning briefing: ${business.name} — ${subjectStatus}`;
+  const subject = `AlphaOS morning briefing: ${business.name}, ${subjectStatus}`;
   const narrativeText = narrative && narrative.status !== "fallback" && narrative.status !== "disabled" ? narrative.text : null;
   const pipelineRows = metrics.links.pipeline;
   const operationRows = metrics.links.operations;
 
   const text = [
-    `AlphaOS morning briefing — ${business.name}`,
+    `AlphaOS morning briefing, ${business.name}`,
     `${metrics.reportDate} · ${subjectStatus}`,
     "",
     "Pipeline integrity",

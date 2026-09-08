@@ -614,15 +614,15 @@ function isJobUnhealthy(status: JobRunHealth["status"], stale: boolean) {
 function jobLabel(jobName: string) {
   switch (jobName) {
     case JOB_NAMES.cronSync:
-      return "Shop sync cron";
+      return "Shop sync";
     case JOB_NAMES.cronGmailPoll:
-      return "Gmail poll cron";
+      return "Email check";
     case JOB_NAMES.cronNotifications:
-      return "SLA sweep cron";
+      return "Reminder check";
     case JOB_NAMES.cronRetention:
-      return "Retention cron";
+      return "Cleanup job";
     case JOB_NAMES.cronDailyHealth:
-      return "Daily briefing cron";
+      return "Daily summary";
     case JOB_NAMES.shopSync:
       return "Shop sync";
     case JOB_NAMES.dailyHealthBusiness:
@@ -636,11 +636,11 @@ function jobLabel(jobName: string) {
 
 async function loadJobRunHealth(tx: Tx, scope: HealthScope, now: Date): Promise<JobRunHealth[]> {
   const aggregateSpecs: JobSpec[] = [
-    { jobName: JOB_NAMES.cronSync, label: "Shop sync cron", expectedIntervalMs: 15 * MINUTE },
-    { jobName: JOB_NAMES.cronGmailPoll, label: "Gmail poll cron", expectedIntervalMs: 15 * MINUTE },
-    { jobName: JOB_NAMES.cronNotifications, label: "SLA sweep cron", expectedIntervalMs: 15 * MINUTE },
-    { jobName: JOB_NAMES.cronRetention, label: "Retention cron", expectedIntervalMs: DAY },
-    { jobName: JOB_NAMES.cronDailyHealth, label: "Daily briefing cron", expectedIntervalMs: DAY },
+    { jobName: JOB_NAMES.cronSync, label: "Shop sync", expectedIntervalMs: 15 * MINUTE },
+    { jobName: JOB_NAMES.cronGmailPoll, label: "Email check", expectedIntervalMs: 15 * MINUTE },
+    { jobName: JOB_NAMES.cronNotifications, label: "Reminder check", expectedIntervalMs: 15 * MINUTE },
+    { jobName: JOB_NAMES.cronRetention, label: "Cleanup job", expectedIntervalMs: DAY },
+    { jobName: JOB_NAMES.cronDailyHealth, label: "Daily summary", expectedIntervalMs: DAY },
   ];
 
   const [shopSpecs, briefingSpecs, recentRuns] = await Promise.all([

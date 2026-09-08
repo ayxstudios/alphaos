@@ -231,7 +231,7 @@ function JobRunRow({ job }: { job: JobRunHealth }) {
   const badge = jobBadge(job);
   const failedIds = failureDetail(job);
   return (
-    <div className="grid gap-2 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+    <div className="grid grid-cols-1 gap-2 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold text-ink">{job.label}</p>
         <p className="text-xs text-slate">
@@ -251,7 +251,7 @@ function JobRunRow({ job }: { job: JobRunHealth }) {
 
 function ShopSyncRow({ shop }: { shop: ShopSyncHealth }) {
   return (
-    <Link href="/settings" className="grid gap-2 px-4 py-3 transition-colors hover:bg-canvas sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+    <Link href="/settings" className="grid grid-cols-1 gap-2 px-4 py-3 transition-colors hover:bg-canvas sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold text-ink">{shop.name}</p>
         <p className="text-xs text-slate">

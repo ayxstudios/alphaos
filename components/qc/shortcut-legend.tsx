@@ -5,7 +5,7 @@ import { focusRing } from "@/components/ui/styles";
 import { X } from "@/components/ui/icons";
 
 const SHORTCUTS: { keys: string; action: string }[] = [
-  { keys: "1–9, 0", action: "Toggle checklist item" },
+  { keys: "1-9, 0", action: "Toggle checklist item" },
   { keys: "A", action: "Tick all items" },
   { keys: "Enter", action: "Pass (when all ticked)" },
   { keys: "F", action: "Fail" },
@@ -38,7 +38,7 @@ export function ShortcutLegend({ open, onClose }: { open: boolean; onClose: () =
           <div key={s.keys} className="flex items-center justify-between gap-2">
             <dt className="text-xs text-slate">{s.action}</dt>
             <dd>
-              <kbd className="rounded border border-line bg-canvas px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-ink">
+              <kbd className="rounded border border-line bg-canvas px-1.5 py-0.5 text-xs font-medium tabular-nums text-ink">
                 {s.keys}
               </kbd>
             </dd>

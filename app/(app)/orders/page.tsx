@@ -107,7 +107,7 @@ const STATUS_FILTERS = [
 
 const VIEWS: { key: ViewKey; label: string; description: string }[] = [
   { key: "active", label: "Active", description: "Everything still needing attention" },
-  { key: "overdue", label: "Overdue", description: "Past the customer SLA" },
+  { key: "overdue", label: "Overdue", description: "Past the due date" },
   { key: "needs_details", label: "Needs Details", description: "VA must complete imported order details" },
   { key: "needs_photos", label: "Needs Photos", description: "Waiting on reference photos" },
   { key: "unassigned", label: "Unassigned", description: "Ready but no active designer" },
@@ -696,7 +696,7 @@ export default async function OrdersPage({
     <Page className="max-w-none">
       <PageHeader
         title="Orders"
-        description="The VA operations dashboard for every order that needs attention."
+        description="Every order, in one place."
         actions={
           <Link
             href="/orders/new"
@@ -709,11 +709,11 @@ export default async function OrdersPage({
       />
       <OrdersViewPreference view={selectedView} />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Active work" value={countRow.active} detail="Open operational orders" tone="info" />
-        <StatCard label="Overdue" value={countRow.overdue} detail="Past SLA" tone={countRow.overdue ? "danger" : "neutral"} />
-        <StatCard label="Needs details" value={countRow.needs_details} detail="VA completion required" tone={countRow.needs_details ? "warning" : "neutral"} />
-        <StatCard label="Awaiting QC" value={countRow.awaiting_qc} detail="Ready for review" tone={countRow.awaiting_qc ? "warning" : "neutral"} />
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <StatCard label="Active work" value={countRow.active} detail="Open orders being worked on" tone="info" />
+        <StatCard label="Overdue" value={countRow.overdue} detail="Past the due date" tone={countRow.overdue ? "danger" : "neutral"} />
+        <StatCard label="Needs details" value={countRow.needs_details} detail="A VA needs to fill these in" tone={countRow.needs_details ? "warning" : "neutral"} />
+        <StatCard label="Awaiting QC" value={countRow.awaiting_qc} detail="Ready for a quality check" tone={countRow.awaiting_qc ? "warning" : "neutral"} />
       </div>
 
       <FilterBar className="items-end gap-2">

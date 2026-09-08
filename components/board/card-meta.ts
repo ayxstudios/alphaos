@@ -48,7 +48,7 @@ const STATE_LABEL: Record<OrderStatus, string> = {
 };
 
 export function stateLabel(s: OrderStatus | null): string {
-  return s ? (STATE_LABEL[s] ?? s) : "—";
+  return s ? (STATE_LABEL[s] ?? s) : "-";
 }
 
 /**
@@ -71,7 +71,7 @@ export function describeEvent(e: CardEvent): string | null {
     case "order.awaiting_qc":
       return "submitted this for QC";
     case "order.awaiting_approval":
-      return "passed QC — sent to the customer for approval";
+      return "passed QC, sent to the customer for approval";
     case "order.approved":
       return "approved this proof";
     case "order.printing":

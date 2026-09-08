@@ -133,7 +133,7 @@ export function DesignerRail({
                     <span className="min-w-0 flex-1 truncate font-medium">{d.name}</span>
                     <span
                       className={cn(
-                        "shrink-0 rounded-full px-1.5 py-0.5 text-[11px] font-medium tabular-nums",
+                        "shrink-0 rounded-full px-1.5 py-0.5 text-xs font-medium tabular-nums",
                         atLimit ? "bg-rose/10 text-rose" : "bg-canvas text-slate",
                       )}
                     >

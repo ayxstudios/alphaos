@@ -81,12 +81,12 @@ export function OrderStyleSetter({ orderId, currentStyle, via, affected, locked,
         </span>
         {defaulted ? (
           <span className="font-medium text-amber">
-            Defaulted to {currentStyle} — not matched, please confirm
+            Defaulted to {currentStyle}, not matched, please confirm
           </span>
         ) : currentStyle ? (
           <span className="font-medium text-ink">{currentStyle}</span>
         ) : (
-          <span className="font-medium text-amber">Not recognised — no style set</span>
+          <span className="font-medium text-amber">Not recognised, no style set</span>
         )}
         <Button type="button" size="sm" variant="secondary" className="ml-auto" onClick={() => setOpen(true)}>
           {defaulted ? "Confirm or correct" : currentStyle ? "Change" : "Set style"}
@@ -135,7 +135,7 @@ export function OrderStyleSetter({ orderId, currentStyle, via, affected, locked,
             loading={pending}
             onClick={() => run(() => teachOrderStyle(orderId, defaultStyleId), `Confirmed as ${currentStyle}`)}
           >
-            Confirm — keep {currentStyle}
+            Confirm and keep {currentStyle}
           </Button>
         </div>
       )}
@@ -155,7 +155,7 @@ export function OrderStyleSetter({ orderId, currentStyle, via, affected, locked,
             <Button type="button" size="sm" onClick={teach} loading={pending} disabled={!ready}>
               {hasRule && differs
                 ? `Change rule for all ${affected} order${affected === 1 ? "" : "s"}`
-                : "Teach — all future orders of this product"}
+                : "Teach, all future orders of this product"}
             </Button>
             {choice !== NEW && (
               <Button type="button" size="sm" variant="secondary" onClick={once} loading={pending} disabled={!ready}>

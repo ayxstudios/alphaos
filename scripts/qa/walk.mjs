@@ -54,6 +54,10 @@ for (const [kind, vp] of Object.entries(VIEWPORTS)) {
       return { scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth, smallTapTargets: small, textUnder12px: tiny, title: document.title, h1: document.querySelector("h1")?.textContent?.trim().slice(0, 80) || "", url: location.pathname };
     });
     const file = path.join(OUT, `${ROLE}-${kind}${p.replace(/\W+/g, "_") || "_root"}.png`);
+    // The shell pins html/body to the viewport and scrolls inside <main>, so a
+    // plain fullPage shot would miss everything below the fold. Expand for the shot only.
+    await page.addStyleTag({ content: "html,body,main,[data-scroll-root]{height:auto!important;max-height:none!important;overflow:visible!important}" }).catch(() => {});
+    await page.waitForTimeout(150);
     await page.screenshot({ path: file, fullPage: true });
     const row = { role: ROLE, kind, page: p, status, ms: Date.now() - t0, landed: metrics.url, h1: metrics.h1, overflow: metrics.scrollWidth > metrics.clientWidth, smallTapTargets: metrics.smallTapTargets, textUnder12px: metrics.textUnder12px, consoleErrors: [...consoleErrors], failed: [...failed], shot: file };
     results.push(row);

@@ -480,7 +480,7 @@ export async function sendGmailTest(businessId: string, toRaw: string): Promise<
   } catch (e) {
     const msg =
       e instanceof GmailNotConnectedError
-        ? "Gmail isn't connected for this business yet — connect it first."
+        ? "Gmail isn't connected for this business yet. Connect it first."
         : e instanceof Error
           ? e.message
           : "Could not open Gmail";
@@ -510,7 +510,7 @@ export async function sendGmailTest(businessId: string, toRaw: string): Promise<
   const okAll = results.every((r) => r.ok);
   return {
     ok: okAll,
-    message: okAll ? `Sent ${results.length} test emails to ${to}` : "Some test emails failed — see below",
+    message: okAll ? `Sent ${results.length} test emails to ${to}` : "Some test emails failed, see below",
     results,
   };
 }

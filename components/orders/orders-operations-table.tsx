@@ -762,7 +762,7 @@ function OrderActions({ row, full = false }: { row: OrdersDashboardRow; full?: b
   return (
     <Link
       href={row.action.href}
-      aria-label={`${row.action.label} — order ${row.orderNumber}`}
+      aria-label={`${row.action.label}, order ${row.orderNumber}`}
       className={cn(
         "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-input px-3 text-sm font-medium transition-[opacity,background-color,border-color] duration-[120ms]",
         full ? "h-11 w-full" : "h-10",

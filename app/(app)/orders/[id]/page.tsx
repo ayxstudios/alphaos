@@ -182,7 +182,7 @@ function nextSuggestedAction(input: {
       return { kind: "link", label: "Waiting on the customer's photos", cta: "Add photos", href: `/orders/${orderId}/complete` };
     case "ready_to_assign":
       return input.hasDesigner
-        ? { kind: "info", label: "Assigned — waiting for the designer to start" }
+        ? { kind: "info", label: "Assigned, waiting for the designer to start" }
         : { kind: "assign", label: "Assign a designer" };
     case "in_design":
       return { kind: "info", label: "Waiting for the designer to finish" };
@@ -192,10 +192,10 @@ function nextSuggestedAction(input: {
       return { kind: "info", label: "Waiting for the customer to approve" };
     case "approved":
       return input.hasPhysical && !input.hasPrintJob
-        ? { kind: "info", label: "Approved — start the print & ship job" }
-        : { kind: "info", label: "Approved — move it forward" };
+        ? { kind: "info", label: "Approved, start the print & ship job" }
+        : { kind: "info", label: "Approved, move it forward" };
     case "printing":
-      return { kind: "info", label: "Printing — waiting for it to ship" };
+      return { kind: "info", label: "Printing, waiting for it to ship" };
     case "shipped":
       return input.hasTracking
         ? { kind: "info", label: "Waiting for delivery" }
@@ -203,11 +203,11 @@ function nextSuggestedAction(input: {
     case "delivered":
       return { kind: "info", label: "Close the order once everything is done" };
     case "complete":
-      return { kind: "info", label: "Done — nothing to do" };
+      return { kind: "info", label: "Done, nothing to do" };
     case "on_hold":
-      return { kind: "info", label: "On hold — resume it when ready" };
+      return { kind: "info", label: "On hold, resume it when ready" };
     case "cancelled":
-      return { kind: "info", label: "Cancelled — nothing to do" };
+      return { kind: "info", label: "Cancelled, nothing to do" };
     case "fulfillment_only":
       return { kind: "info", label: "Fulfil the order" };
     default:
@@ -495,7 +495,7 @@ export default async function OrderDetailPage({
                 subject={`Re: ${order.platformOrderName ?? order.platformOrderId}`}
                 orderId={order.id}
                 customerId={order.customerId}
-                label="Compose"
+                label="Email customer"
                 size="sm"
               />
             )}
@@ -544,12 +544,26 @@ export default async function OrderDetailPage({
         )}
       </div>
 
-      {/* At-a-glance strip — the facts a VA needs before anything else. */}
+      {/* At-a-glance strip — the facts a VA needs before anything else. Style is
+          shown here only when there's no editable style bar below (that bar
+          already carries the style + a Change control, so showing both would
+          be a duplicate). */}
       <DataPanel className="overflow-hidden p-0">
-        <div className="grid grid-cols-2 gap-px bg-line sm:grid-cols-3 lg:grid-cols-5">
+        <div
+          className={cn(
+            "grid grid-cols-2 gap-px bg-line",
+            // Exactly enough columns for the facts actually shown, at every
+            // breakpoint, so there is never a leftover blank cell. The 5-fact
+            // case (no style bar below) is odd on the 2-col phone grid, so its
+            // last cell spans both columns instead of leaving one blank.
+            styleSetter
+              ? "sm:grid-cols-4"
+              : "max-sm:[&>*:last-child:nth-child(odd)]:col-span-2 sm:grid-cols-5",
+          )}
+        >
           <Fact icon={User} label="Customer" value={customerName} />
           <Fact icon={Mail} label="Email" value={order.customerEmail ?? "No email yet"} muted={!order.customerEmail} />
-          <Fact icon={Brush} label="Style" value={styleLabel} muted={styles.length === 0} />
+          {!styleSetter && <Fact icon={Brush} label="Style" value={styleLabel} muted={styles.length === 0} />}
           <Fact icon={Palette} label="Designer" value={assignee} muted={assignee === "Unassigned"} />
           <Fact icon={Calendar} label="Due" value={fmtDateTime(order.dueAt)} />
         </div>
@@ -575,7 +589,7 @@ export default async function OrderDetailPage({
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_22rem]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.4fr)_22rem]">
         {/* Left: the whole story a VA reads top to bottom — what was bought,
             what the customer wrote at checkout, the photos, and the thread. */}
         <div className="flex flex-col gap-4">
@@ -611,7 +625,7 @@ export default async function OrderDetailPage({
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <p className="font-medium text-ink">{item.title ?? "Untitled item"}</p>
+                            <p className="font-medium text-ink">{item.title || "Portrait"}</p>
                             {media?.productUrl && (
                               <a
                                 href={media.productUrl}
@@ -702,7 +716,7 @@ export default async function OrderDetailPage({
             <DataPanel id="reply" className="p-4">
               <SectionHeader
                 title="Draft reply"
-                description="Etsy has no send API — copy this and paste it into the shop's own message thread, then mark it sent."
+                description="Copy this, paste it into the Etsy conversation, then tap Mark as sent."
               />
               <div className="mt-3">
                 <ReplyDraft orderId={order.id} defaultTemplate={defaultReplyTemplate(order.status as OrderStatus)} />

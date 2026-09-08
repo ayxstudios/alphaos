@@ -10,7 +10,7 @@ function money(n: number): string {
 }
 
 function pct(n: number | null): string {
-  return n == null ? "—" : `${Math.round(n * 100)}%`;
+  return n == null ? "-" : `${Math.round(n * 100)}%`;
 }
 
 /**
@@ -64,20 +64,20 @@ export function DesignerWeekView({ week }: { week: DesignerWeek }) {
         </div>
         <div className="grid grid-cols-2 gap-3 p-4 text-sm sm:grid-cols-4">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">Phone</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate">Phone</p>
             <p className="text-ink">{c?.phone ?? "Not set"}</p>
           </div>
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">Channel</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate">Channel</p>
             <p className="capitalize text-ink">{c?.preferredChannel ?? "whatsapp"}</p>
           </div>
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">Timezone</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate">Timezone</p>
             <p className="text-ink">{c?.timezoneRaw ?? "Not set"}</p>
           </div>
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">Quiet hours</p>
-            <p className="text-ink">{c?.quietStart && c?.quietEnd ? `${c.quietStart}–${c.quietEnd}` : "None"}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate">Quiet hours</p>
+            <p className="text-ink">{c?.quietStart && c?.quietEnd ? `${c.quietStart} to ${c.quietEnd}` : "None"}</p>
           </div>
         </div>
         <p className="border-t border-line px-4 py-2.5 text-xs text-slate">

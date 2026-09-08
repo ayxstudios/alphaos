@@ -56,13 +56,13 @@ export function VersionStrip({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={v.url} alt="" className="size-full object-cover" />
               ) : (
-                <span className="flex size-full items-center justify-center text-[10px] text-slate">
+                <span className="flex size-full items-center justify-center text-xs text-slate">
                   no image
                 </span>
               )}
               <span
                 className={cn(
-                  "absolute left-1 top-1 rounded-chip px-1.5 py-0.5 text-[10px] font-semibold",
+                  "absolute left-1 top-1 rounded-chip px-1.5 py-0.5 text-xs font-semibold",
                   isLatest ? "bg-pigment text-surface" : "bg-ink/70 text-surface",
                 )}
               >
@@ -72,7 +72,7 @@ export function VersionStrip({
             <span className="truncate text-xs font-medium text-ink">
               {v.uploadedBy ?? "Unknown"}
             </span>
-            <span className="truncate text-[11px] text-slate">{when(v.createdAt)}</span>
+            <span className="truncate text-xs text-slate">{when(v.createdAt)}</span>
           </button>
         );
       })}

@@ -85,7 +85,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="truncate text-sm font-semibold text-ink">{shop.name}</span>
-            <span className="rounded bg-canvas px-1.5 py-0.5 text-[11px] font-medium uppercase text-slate">Etsy</span>
+            <span className="rounded bg-canvas px-1.5 py-0.5 text-xs font-medium uppercase text-slate">Etsy</span>
             <StatusBadge status={shop.status} />
             {health !== "ok" && (
               <Badge variant="warning" dot>
@@ -99,7 +99,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
       </summary>
 
       <div className="border-t border-line p-4">
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
           <div className="flex flex-col gap-4">
             <form action={saveEtsyCredentials} className="grid gap-3 rounded-input border border-line bg-canvas p-3">
               <input type="hidden" name="shopId" value={shop.id} />

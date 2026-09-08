@@ -94,7 +94,7 @@ export default async function CompleteOrderPage({
   const existing: ExistingOrder = {
     orderId: order.id,
     shopId: order.shopId,
-    shopLabel: `${order.businessName} — ${order.shopName}`,
+    shopLabel: `${order.businessName} · ${order.shopName}`,
     orderNumber: order.platformOrderName ?? "",
     status: order.status,
     source: order.source,

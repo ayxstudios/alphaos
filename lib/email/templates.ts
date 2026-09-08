@@ -79,7 +79,7 @@ export const TEMPLATE_META: Record<
   },
   order_received: {
     label: "Order received",
-    description: "Drafted the moment an order is placed — a warm acknowledgement, not a status update.",
+    description: "Drafted the moment an order is placed, a warm acknowledgement, not a status update.",
     variables: ["first_name", "order_number", "business_name"],
   },
   in_design: {
@@ -130,7 +130,7 @@ export const EDITABLE_TEMPLATE_KEYS: TemplateKey[] = [
  */
 export const DEFAULT_TEMPLATES: Record<TemplateKey, EmailTemplate> = {
   photo_request: {
-    subject: "We're ready to start your {{business_name}} portrait — send your photos",
+    subject: "We're ready to start your {{business_name}} portrait: send your photos",
     body: `Hi {{first_name}},
 
 Thanks for your order ({{order_number}})! To get started on your custom portrait, we just need your photos.
@@ -138,7 +138,7 @@ Thanks for your order ({{order_number}})! To get started on your custom portrait
 Please upload them here:
 {{upload_link}}
 
-Reply to this email if you have any questions — we're happy to help.
+Reply to this email if you have any questions, we're happy to help.
 
 Warmly,
 The {{business_name}} team`,
@@ -242,7 +242,7 @@ The {{business_name}} team`,
     subject: "Your {{business_name}} portrait is now with the artist",
     body: `Hi {{first_name}},
 
-Good news — order {{order_number}} is now in the hands of one of our artists! We'll send you a proof to review as soon as it's ready.
+Good news, order {{order_number}} is now in the hands of one of our artists! We'll send you a proof to review as soon as it's ready.
 
 Warmly,
 The {{business_name}} team`,
@@ -251,7 +251,7 @@ The {{business_name}} team`,
     subject: "Your {{business_name}} portrait is being printed",
     body: `Hi {{first_name}},
 
-You approved your portrait for order {{order_number}} — thank you! It's now on its way to our print team, and we'll email you tracking details the moment it ships.
+You approved your portrait for order {{order_number}}, thank you! It's now on its way to our print team, and we'll email you tracking details the moment it ships.
 
 Warmly,
 The {{business_name}} team`,
@@ -265,7 +265,7 @@ Your order {{order_number}} has shipped!
 Tracking number: {{tracking_number}}
 Track your package: {{tracking_url}}
 
-Thanks so much for choosing {{business_name}} — we hope you love it.
+Thanks so much for choosing {{business_name}}, we hope you love it.
 
 Warmly,
 The {{business_name}} team`,
@@ -276,7 +276,7 @@ The {{business_name}} team`,
 
 We're ready to start on your {{business_name}} portrait but still need your photos for order {{order_number}}.
 
-Please upload them here — it only takes a minute:
+Please upload them here, it only takes a minute:
 {{upload_link}}
 
 Reply to this email if you have any questions.
@@ -292,7 +292,7 @@ Just a friendly reminder that your portrait proof for order {{order_number}} is 
 
 {{proof_link}}
 
-If we don't hear from you after a little while, we'll go ahead and finalize it as-is so your order isn't delayed — but we'd love your feedback first!
+If we don't hear from you after a little while, we'll go ahead and finalize it as-is so your order isn't delayed, but we'd love your feedback first!
 
 Warmly,
 The {{business_name}} team`,

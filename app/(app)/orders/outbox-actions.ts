@@ -216,7 +216,7 @@ export async function searchOrdersForLink(
       .limit(10);
     return rows.map((r) => ({
       orderId: r.id,
-      orderNumber: r.number ?? r.fallback ?? "—",
+      orderNumber: r.number ?? r.fallback ?? "-",
       customerName: [r.firstName, r.lastName].filter(Boolean).join(" ") || null,
     }));
   });

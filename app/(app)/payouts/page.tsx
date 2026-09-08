@@ -203,7 +203,7 @@ export default async function PayoutsPage({
           </div>
           <div className="divide-y divide-line">
             {blocked.map((row) => (
-              <div key={row.id} className="grid gap-2 px-4 py-3 text-sm lg:grid-cols-[1fr_1fr_auto_auto] lg:items-center">
+              <div key={row.id} className="grid grid-cols-1 gap-2 px-4 py-3 text-sm lg:grid-cols-[1fr_1fr_auto_auto] lg:items-center">
                 <div>
                   <Link href={`/orders/${row.orderId}`} className="font-medium text-ink hover:text-pigment">
                     {row.orderNumber}
@@ -268,7 +268,7 @@ export default async function PayoutsPage({
           </div>
           <div className="divide-y divide-line">
             {detailRows.map((row) => (
-              <div key={row.id} className="grid gap-2 px-4 py-3 text-sm lg:grid-cols-[1fr_1.5fr_auto_auto_auto] lg:items-center">
+              <div key={row.id} className="grid grid-cols-1 gap-2 px-4 py-3 text-sm lg:grid-cols-[1fr_1.5fr_auto_auto_auto] lg:items-center">
                 <div>
                   <Link href={`/orders/${row.orderId}`} className="font-medium text-ink hover:text-pigment">
                     {row.orderNumber}
@@ -294,7 +294,7 @@ export default async function PayoutsPage({
           </div>
           <div className="divide-y divide-line">
             {voided.map((row) => (
-              <div key={row.id} className="grid gap-2 px-4 py-3 text-sm md:grid-cols-[1fr_1fr_auto] md:items-center">
+              <div key={row.id} className="grid grid-cols-1 gap-2 px-4 py-3 text-sm md:grid-cols-[1fr_1fr_auto] md:items-center">
                 <div>
                   <Link href={`/orders/${row.orderId}`} className="font-medium text-ink hover:text-pigment">
                     {row.orderNumber}

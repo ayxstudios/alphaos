@@ -47,7 +47,7 @@ export function ChecklistPanel({
           )}
         >
           Tick all{" "}
-          <kbd className="rounded border border-line bg-canvas px-1 text-[10px] text-slate">A</kbd>
+          <kbd className="rounded border border-line bg-canvas px-1 text-xs text-slate">A</kbd>
         </button>
       </div>
 

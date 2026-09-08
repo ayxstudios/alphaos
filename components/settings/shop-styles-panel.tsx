@@ -76,7 +76,7 @@ function ShopRow({ shop }: { shop: ShopStylesVM }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-semibold text-ink">{shop.name}</span>
-            <span className="rounded bg-canvas px-1.5 py-0.5 text-[11px] font-medium capitalize text-slate">
+            <span className="rounded bg-canvas px-1.5 py-0.5 text-xs font-medium capitalize text-slate">
               {shop.platform}
             </span>
             <span className="text-xs text-slate">

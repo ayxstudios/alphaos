@@ -13,7 +13,7 @@ type ColKey = keyof Cols;
 const SECTIONS: { key: ColKey; title: string; empty: string }[] = [
   { key: "myQueue", title: "My Queue", empty: "Nothing waiting on you." },
   { key: "inDesign", title: "In Design", empty: "Nothing in progress." },
-  { key: "failedQc", title: "Failed QC — fix these first", empty: "Nothing failed." },
+  { key: "failedQc", title: "Failed QC, fix these first", empty: "Nothing failed." },
   { key: "revisions", title: "Revisions", empty: "No revisions." },
   { key: "awaitingQc", title: "Awaiting QC", empty: "Nothing sent for QC yet." },
   { key: "complete", title: "Complete", empty: "Nothing finished yet." },

@@ -90,13 +90,13 @@ export function StatCard({
   }[tone];
   return (
     <div
-      className={cn("rounded-card border bg-surface p-4 shadow-sm", toneClass)}
+      className={cn("rounded-card border bg-surface p-3 shadow-sm sm:p-4", toneClass)}
     >
       <div className="text-xs font-medium uppercase tracking-wide text-slate">
         {label}
       </div>
-      <div className="mt-2 text-2xl font-semibold text-ink">{value}</div>
-      {detail && <div className="mt-1 text-xs text-slate">{detail}</div>}
+      <div className="mt-1.5 text-xl font-semibold text-ink sm:mt-2 sm:text-2xl">{value}</div>
+      {detail && <div className="mt-1 hidden text-xs text-slate sm:block">{detail}</div>}
     </div>
   );
 }

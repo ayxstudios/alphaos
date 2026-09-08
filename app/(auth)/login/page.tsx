@@ -22,7 +22,7 @@ export default function LoginPage() {
         <h1 className="font-display text-2xl font-semibold text-ink">
           Sign in to AlphaOS
         </h1>
-        <p className="text-sm text-slate">Internal tool — accounts are issued by an admin.</p>
+        <p className="text-sm text-slate">Internal tool. Accounts are issued by an admin.</p>
       </div>
 
       <Card className="p-6">

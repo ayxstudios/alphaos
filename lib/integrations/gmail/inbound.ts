@@ -744,7 +744,7 @@ async function attachEtsyNotification(businessId: string, gmailMessageId: string
       const preview = parsed.body.slice(0, 180);
       const bodyText = match?.orderId
         ? preview
-        : `${preview}${preview ? " — " : ""}Could not match this to an order automatically. Open Emails to link it.`;
+        : `${preview}${preview ? ". " : ""}Could not match this to an order automatically. Open Emails to link it.`;
       await tx.insert(notifications).values(
         staff.map((s) => ({
           businessId,

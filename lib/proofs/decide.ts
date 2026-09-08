@@ -80,7 +80,7 @@ export async function requestRevision(
     return {
       ok: false,
       code: "invalid",
-      message: "Tell us what to change — pick an issue or add a note.",
+      message: "Tell us what to change: pick an issue or add a note.",
     };
   }
 
@@ -111,7 +111,7 @@ function buildRevisionNote(issueKeys: string[], note: string): string {
   const parts: string[] = [];
   if (labels.length) parts.push(labels.join(", "));
   if (note) parts.push(note);
-  return parts.join(" — ");
+  return parts.join(". ");
 }
 
 function sanitizeAnnotations(raw: unknown): ProofAnnotation[] {

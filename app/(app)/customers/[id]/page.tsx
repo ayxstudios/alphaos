@@ -426,7 +426,7 @@ export default async function CustomerDetailPage({
             subject={latestOrder ? `Re: ${latestOrder.number ?? latestOrder.fallbackNumber}` : ""}
             customerId={customer.id}
             orderId={latestOrder?.id ?? null}
-            label="Compose"
+            label="Email customer"
           />
         }
       />
@@ -460,7 +460,7 @@ export default async function CustomerDetailPage({
         />
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-5">
           <DataPanel className="overflow-hidden">
             <div className="border-b border-line px-4 py-3">
@@ -524,7 +524,7 @@ export default async function CustomerDetailPage({
                         </div>
                       </div>
 
-                      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+                      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
                         <div className="space-y-3">
                           {orderItemsForOrder.length === 0 ? (
                             <p className="text-sm text-slate">No item details saved.</p>

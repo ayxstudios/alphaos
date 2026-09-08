@@ -76,7 +76,7 @@ function isOverdue(iso: string | null | undefined) {
   return due < today;
 }
 function dueSourceLabel(source: ExistingOrder["dueDateSource"]) {
-  if (source === "internal_sla") return "Internal SLA";
+  if (source === "internal_sla") return "Our own deadline";
   if (source === "etsy_expected_ship_date") return "Etsy expected ship date";
   if (source === "manual") return "Manual";
   return "Unknown";
@@ -468,7 +468,7 @@ export function NewOrderForm({
               <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => e.target.files && void uploadFiles(Array.from(e.target.files))} />
             </div>
           ) : (
-            <p className="text-xs text-amber">File upload unavailable (storage not configured) — paste URLs below.</p>
+            <p className="text-xs text-amber">File upload unavailable (storage not configured). Paste URLs below.</p>
           )}
           {!showUrlInput ? (
             <Button type="button" variant="secondary" size="sm" className="w-fit" onClick={() => setShowUrlInput(true)}>

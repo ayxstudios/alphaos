@@ -74,12 +74,12 @@ const PALETTE = [
 ] as const;
 
 const TYPE_SCALE = [
-  ["text-4xl", "40px — Display"],
-  ["text-2xl", "28px — Display"],
-  ["text-lg", "20px — Heading"],
-  ["text-base", "16px — Body"],
-  ["text-sm", "14px — Small"],
-  ["text-xs", "12px — Caption"],
+  ["text-4xl", "40px, Display"],
+  ["text-2xl", "28px, Display"],
+  ["text-lg", "20px, Heading"],
+  ["text-base", "16px, Body"],
+  ["text-sm", "14px, Small"],
+  ["text-xs", "12px, Caption"],
 ] as const;
 
 /* --- Toast demo (needs to be inside the provider) ------------------------ */
@@ -114,7 +114,7 @@ function ToastDemo() {
       <Button
         variant="secondary"
         onClick={() =>
-          toast({ variant: "danger", title: "Import failed", description: "Etsy returned 429 — backing off." })
+          toast({ variant: "danger", title: "Import failed", description: "Etsy returned 429, backing off." })
         }
       >
         Danger toast
@@ -214,7 +214,7 @@ function Styleguide() {
         </div>
       </Section>
 
-      <Section title="Status chips" description="All 12 order states — colour + text + icon, never colour alone.">
+      <Section title="Status chips" description="All 12 order states, colour + text + icon, never colour alone.">
         <Row>
           {ORDER_STATUSES.map((status) => (
             <StatusChip key={status} status={status} />

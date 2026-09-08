@@ -40,7 +40,7 @@ export default async function ProofPage({
           <p className="text-sm text-slate">Order {proof.orderNumber}</p>
         </div>
         <p className="max-w-sm text-sm text-slate">
-          Take a look below. If everything looks perfect, approve it — or let us
+          Take a look below. If everything looks perfect, approve it, or let us
           know what to change.
         </p>
       </header>

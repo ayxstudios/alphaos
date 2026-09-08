@@ -208,7 +208,7 @@ export function UploadClient({ token, ask, detail, receivedCount, open, devStore
     <div className="flex flex-col gap-5">
       {devStore && (
         <p className="rounded-input border border-amber/30 bg-amber/10 p-2.5 text-center text-xs font-medium text-amber">
-          Dev store — local test mode, not real storage
+          Dev store, local test mode, not real storage
         </p>
       )}
 
@@ -244,7 +244,7 @@ export function UploadClient({ token, ask, detail, receivedCount, open, devStore
           <UploadIcon />
         </span>
         <p className="text-base font-medium text-ink">Tap to choose photos</p>
-        <p className="text-xs text-slate">or drag them here — JPG, PNG or HEIC, up to 25 MB each</p>
+        <p className="text-xs text-slate">or drag them here, JPG, PNG or HEIC, up to 25 MB each</p>
         <input
           ref={inputRef}
           type="file"
@@ -270,7 +270,7 @@ export function UploadClient({ token, ask, detail, receivedCount, open, devStore
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={f.previewUrl} alt="" className="size-full object-cover" />
                 ) : (
-                  <span className="text-[10px] font-medium uppercase text-slate">
+                  <span className="text-xs font-medium uppercase text-slate">
                     {f.file.name.split(".").pop()?.slice(0, 4) ?? "img"}
                   </span>
                 )}

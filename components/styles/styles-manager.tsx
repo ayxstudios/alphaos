@@ -251,7 +251,7 @@ function StyleCard({
             </span>
           ))}
           {style.titleMatches.length === 0 && !style.isDefault && (
-            <span className="text-xs text-slate">No rules yet — this style won&apos;t auto-assign until you add one or make it the default.</span>
+            <span className="text-xs text-slate">No rules yet. This style won&apos;t auto-assign until you add one or make it the default.</span>
           )}
         </div>
         <div className="mt-2 flex items-center gap-2">

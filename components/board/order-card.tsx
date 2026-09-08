@@ -57,7 +57,7 @@ export function OrderCard({
               <span
                 key={i}
                 className={cn(
-                  "inline-flex max-w-full truncate rounded px-1.5 py-0.5 text-[11px] font-medium",
+                  "inline-flex max-w-full truncate rounded px-1.5 py-0.5 text-xs font-medium",
                   LABEL_CLASS[l.tone],
                 )}
               >
@@ -83,7 +83,7 @@ export function OrderCard({
             {card.options.slice(0, 3).map((o, i) => (
               <li
                 key={i}
-                className="max-w-full truncate rounded bg-canvas px-1.5 py-0.5 text-[11px] text-slate"
+                className="max-w-full truncate rounded bg-canvas px-1.5 py-0.5 text-xs text-slate"
               >
                 <span className="text-ink">{o.name}:</span> {o.value}
               </li>

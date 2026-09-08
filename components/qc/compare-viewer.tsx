@@ -168,7 +168,7 @@ export function CompareViewer({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={r.url} alt="" className="size-full object-cover" />
               ) : (
-                <span className="flex size-full items-center justify-center text-[10px] text-slate">
+                <span className="flex size-full items-center justify-center text-xs text-slate">
                   ?
                 </span>
               )}

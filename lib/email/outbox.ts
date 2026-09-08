@@ -79,7 +79,7 @@ export async function getOutbox(
         .select({ id: customers.id, firstName: customers.firstName, lastName: customers.lastName })
         .from(customers)
         .where(inArray(customers.id, custIds))) {
-        nameById.set(c.id, [c.firstName, c.lastName].filter(Boolean).join(" ") || "—");
+        nameById.set(c.id, [c.firstName, c.lastName].filter(Boolean).join(" ") || "-");
       }
     }
 
@@ -234,7 +234,7 @@ export async function getUnmatchedReplies(
         const latestByCust = new Map<string, { orderId: string; orderNumber: string }>();
         for (const o of recent) {
           if (o.customerId && !latestByCust.has(o.customerId)) {
-            latestByCust.set(o.customerId, { orderId: o.orderId, orderNumber: o.number ?? o.fallback ?? "—" });
+            latestByCust.set(o.customerId, { orderId: o.orderId, orderNumber: o.number ?? o.fallback ?? "-" });
           }
         }
         for (const [email, c] of custByEmail) {

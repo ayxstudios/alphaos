@@ -145,7 +145,7 @@ export function ProofClient({
             <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-4">
               <p className="text-base text-ink">
                 Happy with your portrait? Once you approve, we&rsquo;ll get it
-                ready for you — no further changes after this.
+                ready for you. No further changes after this.
               </p>
               <div className="flex flex-col gap-2 sm:flex-row-reverse">
                 <Button
@@ -272,7 +272,7 @@ function Confirmation({ decision }: { decision: ProofDecision }) {
       </span>
       <h2 className="text-lg font-semibold text-ink">Changes requested</h2>
       <p className="text-sm text-slate">
-        Thanks — your notes are with our design team. We&rsquo;ll send an updated
+        Thanks. Your notes are with our design team. We&rsquo;ll send an updated
         proof soon.
       </p>
     </div>

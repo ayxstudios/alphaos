@@ -160,7 +160,7 @@ export function QcScreen({
         body: emailBody,
       });
       if (res.ok) setEmailPreview(null);
-      handleResult(res, "Email sent — sent to approval");
+      handleResult(res, "Email sent, sent to approval");
     });
   }, [checked, ctx, emailBody, emailPreview, handleResult, pending]);
 
@@ -175,7 +175,7 @@ export function QcScreen({
           reason,
         });
         if (res.ok) setFailOpen(false);
-        handleResult(res, "Failed — returned to designer");
+        handleResult(res, "Failed, returned to designer");
       });
     },
     [ctx, handleResult],
@@ -278,7 +278,7 @@ export function QcScreen({
         </div>
       )}
 
-      <div className="grid min-h-[38rem] flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid grid-cols-1 min-h-[38rem] flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_380px]">
         <CompareViewer
           key={ctx.orderId}
           references={ctx.references}
@@ -317,7 +317,7 @@ export function QcScreen({
                 disabled={!ctx.isReviewable || pending}
               >
                 <XCircle size={16} /> Fail{" "}
-                <kbd className="rounded border border-surface/30 px-1 text-[10px]">F</kbd>
+                <kbd className="rounded border border-surface/30 px-1 text-xs">F</kbd>
               </Button>
               <Button
                 variant="primary"
@@ -327,7 +327,7 @@ export function QcScreen({
                 disabled={!ctx.isReviewable || !allChecked}
               >
                 <Check size={16} /> Pass{" "}
-                <kbd className="rounded border border-surface/30 px-1 text-[10px]">↵</kbd>
+                <kbd className="rounded border border-surface/30 px-1 text-xs">↵</kbd>
               </Button>
             </div>
           </div>
@@ -400,7 +400,7 @@ function EmailPreviewDialog({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-4">
-      <div className="grid max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-modal bg-surface shadow-lg xl:grid-cols-[minmax(0,1fr)_28rem]">
+      <div className="grid grid-cols-1 max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-modal bg-surface shadow-lg xl:grid-cols-[minmax(0,1fr)_28rem]">
         <div className="min-h-0 overflow-y-auto p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
