@@ -1,12 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["syd1"],
+  "regions": [
+    "syd1"
+  ],
   "crons": [
-    { "path": "/api/cron/sync", "schedule": "*/15 * * * *" },
-    { "path": "/api/cron/gmail-poll", "schedule": "*/15 * * * *" },
-    { "path": "/api/cron/notifications", "schedule": "*/15 * * * *" },
-    { "path": "/api/cron/daily-health", "schedule": "0 20 * * *" },
-    { "path": "/api/cron/daily-health", "schedule": "0 21 * * *" },
-    { "path": "/api/cron/retention", "schedule": "0 3 * * *" }
+    {
+      "path": "/api/cron/retention",
+      "schedule": "0 3 * * *"
+    }
   ]
 }
