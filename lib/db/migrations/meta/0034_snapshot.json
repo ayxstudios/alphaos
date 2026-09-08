@@ -1,6 +1,6 @@
 {
-  "id": "5ea66fc6-71e1-4d58-8347-1b823bf32cdc",
-  "prevId": "c65d990d-cd51-4f33-8b7f-8ad0ccfef864",
+  "id": "6e45e122-e2c2-422a-8111-d7668ce93fb3",
+  "prevId": "5ea66fc6-71e1-4d58-8347-1b823bf32cdc",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -830,6 +830,13 @@
           "primaryKey": false,
           "notNull": false
         },
+        "stage_email_auto_send": {
+          "name": "stage_email_auto_send",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1227,6 +1234,44 @@
           "primaryKey": false,
           "notNull": true,
           "default": 1000
+        },
+        "phone": {
+          "name": "phone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "preferred_channel": {
+          "name": "preferred_channel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'whatsapp'"
+        },
+        "timezone": {
+          "name": "timezone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quiet_start": {
+          "name": "quiet_start",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "quiet_end": {
+          "name": "quiet_end",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "max_active_orders": {
+          "name": "max_active_orders",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "created_at": {
           "name": "created_at",
@@ -4353,6 +4398,131 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.reminder_fires": {
+      "name": "reminder_fires",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "business_id": {
+          "name": "business_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "order_id": {
+          "name": "order_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject_id": {
+          "name": "subject_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dedupe_key": {
+          "name": "dedupe_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fired_at": {
+          "name": "fired_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "reminder_fires_business_kind_idx": {
+          "name": "reminder_fires_business_kind_idx",
+          "columns": [
+            {
+              "expression": "business_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "kind",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "fired_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "reminder_fires_business_id_businesses_id_fk": {
+          "name": "reminder_fires_business_id_businesses_id_fk",
+          "tableFrom": "reminder_fires",
+          "tableTo": "businesses",
+          "columnsFrom": [
+            "business_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "reminder_fires_order_id_orders_id_fk": {
+          "name": "reminder_fires_order_id_orders_id_fk",
+          "tableFrom": "reminder_fires",
+          "tableTo": "orders",
+          "columnsFrom": [
+            "order_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "reminder_fires_dedupe_key_unique": {
+          "name": "reminder_fires_dedupe_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "dedupe_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.session": {
       "name": "session",
       "schema": "",
@@ -4798,7 +4968,8 @@
         "telegram",
         "discord",
         "webpush",
-        "email"
+        "email",
+        "etsy"
       ]
     },
     "public.earnings_status": {
@@ -4821,7 +4992,13 @@
         "proof_ready_digital_single",
         "proof_ready_digital_multi",
         "proof_ready_physical_single",
-        "proof_ready_physical_multi"
+        "proof_ready_physical_multi",
+        "order_received",
+        "in_design",
+        "printing",
+        "shipped",
+        "photo_reminder",
+        "proof_reminder"
       ]
     },
     "public.figure_count_source": {
