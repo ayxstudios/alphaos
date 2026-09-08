@@ -86,6 +86,9 @@ export const channelType = pgEnum("channel_type", [
   "discord",
   "webpush",
   "email",
+  // Etsy conversation messages ingested from Etsy's notification emails (there
+  // is no Etsy messaging API). The VA replies on Etsy via metadata.etsyLink.
+  "etsy",
 ]);
 export const proofDecision = pgEnum("proof_decision", ["approved", "revision"]);
 export const messageDirection = pgEnum("message_direction", [
@@ -111,6 +114,15 @@ export const emailTemplateKey = pgEnum("email_template_key", [
   "proof_ready_digital_multi",
   "proof_ready_physical_single",
   "proof_ready_physical_multi",
+  // Stage emails (customer window). Drafted on transitions; auto-sent only when
+  // the business opted in (businesses.stage_email_auto_send).
+  "order_received",
+  "in_design",
+  "printing",
+  "shipped",
+  // Reminders sweep. photo_reminder is the second auto-send exception.
+  "photo_reminder",
+  "proof_reminder",
 ]);
 export const printProvider = pgEnum("print_provider", ["lumaprints", "gelato"]);
 export const printMethod = pgEnum("print_method", ["api", "manual"]);
@@ -248,6 +260,10 @@ export const businesses = pgTable("businesses", {
     .array()
     .notNull()
     .default(sql`'{}'::text[]`),
+  // Stage emails (order received / in design / printing / shipped) and the
+  // proof reminder are DRAFTS for the VA outbox unless this is on, in which case
+  // they queue for the automatic flush (still gated by email_sending_enabled).
+  stageEmailAutoSend: boolean("stage_email_auto_send").notNull().default(false),
   createdAt: createdAt(),
 });
 
@@ -1051,6 +1067,26 @@ export const notificationFires = pgTable(
   (t) => [
     index("notification_fires_business_type_idx").on(t.businessId, t.alertType, t.triggeredAt),
   ],
+);
+
+// Reminders sweep ledger (lib/reminders). One row per (kind, subject) so a
+// reminder, a silence alert or an auto-approval fires exactly once, however
+// many times the 15-minute cron overlaps or re-runs.
+export const reminderFires = pgTable(
+  "reminder_fires",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "restrict" }),
+    orderId: text("order_id").references(() => orders.id, { onDelete: "set null" }),
+    kind: text("kind").notNull(),
+    subjectId: text("subject_id").notNull(),
+    dedupeKey: text("dedupe_key").notNull().unique(),
+    metadata: jsonb("metadata"),
+    firedAt: timestamp("fired_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("reminder_fires_business_kind_idx").on(t.businessId, t.kind, t.firedAt)],
 );
 
 export const notifications = pgTable(
