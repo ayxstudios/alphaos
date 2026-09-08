@@ -519,7 +519,7 @@ export function NewOrderForm({
         {mode === "complete" && existing && (
           <details className="border-t border-line pt-3">
             <summary className="cursor-pointer text-xs font-medium text-slate">Developer data</summary>
-            <pre className="mt-2 max-h-64 overflow-auto rounded-input bg-canvas p-2 text-[11px] text-ink">
+            <pre className="mt-2 max-h-64 overflow-auto rounded-input bg-canvas p-2 text-xs text-ink">
               {JSON.stringify(existing.rawImport, null, 2)}
             </pre>
           </details>

@@ -121,6 +121,10 @@ const VIEWS: { key: ViewKey; label: string; description: string }[] = [
   { key: "completed", label: "Completed", description: "Completed, delivered, or cancelled orders" },
 ];
 
+// The four chips that matter most, day to day — everything else (11 more
+// saved views) is one tap away in the "Show" select, never removed.
+const PRIMARY_VIEW_KEYS: ViewKey[] = ["overdue", "needs_details", "awaiting_qc", "awaiting_customer"];
+
 function intParam(value: string | undefined, fallback: number) {
   if (!value) return fallback;
   const parsed = Number.parseInt(value, 10);
@@ -712,8 +716,8 @@ export default async function OrdersPage({
         <StatCard label="Awaiting QC" value={countRow.awaiting_qc} detail="Ready for review" tone={countRow.awaiting_qc ? "warning" : "neutral"} />
       </div>
 
-      <FilterBar className="gap-1">
-        {VIEWS.map((view) => {
+      <FilterBar className="items-end gap-2">
+        {VIEWS.filter((view) => PRIMARY_VIEW_KEYS.includes(view.key)).map((view) => {
           const active = view.key === selectedView;
           return (
             <Link
@@ -722,19 +726,26 @@ export default async function OrdersPage({
               title={view.description}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "inline-flex h-9 items-center gap-2 rounded-input px-3 text-sm font-medium transition-colors",
+                "inline-flex h-10 items-center gap-2 rounded-chip px-3 text-sm font-medium transition-colors",
                 active
                   ? "bg-pigment text-surface"
-                  : "text-slate hover:bg-canvas hover:text-ink",
+                  : "bg-canvas text-slate hover:bg-pigment-soft hover:text-ink",
               )}
             >
               {view.label}
-              <span className={cn("rounded-full px-1.5 text-xs", active ? "bg-surface/20" : "bg-canvas text-slate")}>
+              <span className={cn("rounded-full px-1.5 text-xs", active ? "bg-surface/20" : "bg-surface text-slate")}>
                 {countRow[view.key]}
               </span>
             </Link>
           );
         })}
+        <OrdersFilterSelect label="Show" value={selectedView} paramName="view" currentParams={currentParams.toString()}>
+          {VIEWS.map((view) => (
+            <option key={view.key} value={view.key}>
+              {view.label} ({countRow[view.key]})
+            </option>
+          ))}
+        </OrdersFilterSelect>
       </FilterBar>
 
       <FilterBar className="items-end">
@@ -792,7 +803,7 @@ export default async function OrdersPage({
               href={filterHref(currentParams, "pageSize", String(size))}
               aria-current={pageSize === size ? "true" : undefined}
               className={cn(
-                "inline-flex h-9 min-w-10 items-center justify-center rounded-input px-2 text-sm font-medium transition-colors",
+                "inline-flex h-10 min-w-10 items-center justify-center rounded-input px-2 text-sm font-medium transition-colors",
                 pageSize === size
                   ? "bg-ink text-surface"
                   : "text-slate hover:bg-canvas hover:text-ink",
@@ -813,7 +824,7 @@ export default async function OrdersPage({
               {emailNeedsAction.unmatched} unmatched replies, {emailNeedsAction.failed} failed sends
             </p>
           </div>
-          <Link href="/emails" className="ml-auto inline-flex h-9 items-center rounded-input bg-pigment px-3 text-sm font-medium text-surface hover:opacity-90">
+          <Link href="/emails" className="ml-auto inline-flex h-10 items-center rounded-input bg-pigment px-3 text-sm font-medium text-surface hover:opacity-90">
             Open Emails
           </Link>
         </DataPanel>

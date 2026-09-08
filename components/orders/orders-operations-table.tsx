@@ -337,11 +337,11 @@ function StatusHelp({ status, reason }: { status: string; reason: string | null 
     <div className="flex flex-col gap-2">
       <p className="text-sm font-semibold text-ink">{status}</p>
       <div className="flex flex-col gap-0.5">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">What it means</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate">What it means</p>
         <p className="text-sm leading-snug text-ink">{help.means}</p>
       </div>
       <div className="flex flex-col gap-0.5">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">What to do</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate">What to do</p>
         <p className="text-sm leading-snug text-ink">{reason ?? help.todo}</p>
       </div>
     </div>
@@ -568,7 +568,8 @@ export function OrdersOperationsTable({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      {/* Desktop: the full operations table, one row per order. */}
+      <div className="hidden overflow-x-auto md:block">
         <div className="md:min-w-[76rem]">
           <div
             className="hidden gap-3 border-b border-line bg-surface px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate md:grid md:[grid-template-columns:var(--orders-grid)]"
@@ -647,6 +648,79 @@ export function OrdersOperationsTable({
         </div>
       </div>
 
+      {/* Phone: one card per order — the table's columns read as labelled rows
+          instead of squeezed into a horizontal scroll. */}
+      <ul className="flex flex-col gap-3 p-3 md:hidden">
+        {rows.map((row) => {
+          const urgent = row.stageTimer.isOverdue || row.isOverdue;
+          const dueSoon = !urgent && row.stageTimer.followUpDue;
+          return (
+            <li
+              key={row.id}
+              className={cn(
+                "rounded-card border border-line bg-surface p-3.5 shadow-sm",
+                urgent && "border-rose/50 bg-rose/[0.04]",
+                dueSoon && "border-amber/50",
+              )}
+            >
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={selected.has(row.id)}
+                  onChange={() => toggleOne(row.id)}
+                  aria-label={`Select order ${row.orderNumber}`}
+                  className="mt-1 size-5 shrink-0 rounded border-line text-pigment focus:ring-pigment"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <Link href={`/orders/${row.id}`} className="text-base font-semibold text-ink hover:text-pigment">
+                        {row.orderNumber}
+                      </Link>
+                      <p className="truncate text-sm text-slate">{row.customer}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant={statusTone(row)} dot>{row.derivedStatus}</Badge>
+                    </div>
+                  </div>
+                  {row.reviewReason && <p className="mt-1.5 text-sm leading-snug text-amber">{row.reviewReason}</p>}
+                  <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
+                    <div>
+                      <dt className="text-xs text-slate">Source</dt>
+                      <dd className="text-ink">{row.source}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-slate">Designer</dt>
+                      <dd className="truncate text-ink">{row.assignee}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-slate">Due</dt>
+                      <dd className="text-ink">
+                        {row.isOverdue && (
+                          <Badge variant="danger" dot className="mb-1">
+                            Overdue
+                          </Badge>
+                        )}
+                        <span className="block">{fmtDate(row.dueAt)}</span>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-xs text-slate">Stage time</dt>
+                      <dd className={cn("font-medium", row.stageTimer.isOverdue ? "text-rose" : "text-ink")}>
+                        {formatStageRemaining(row.stageTimer)}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="mt-3">
+                    <OrderActions row={row} full />
+                  </div>
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2 text-sm text-slate">
         <span>
           Showing {firstResult}-{lastResult} of {total}
@@ -681,7 +755,7 @@ function SortableHeader({
   );
 }
 
-function OrderActions({ row }: { row: OrdersDashboardRow }) {
+function OrderActions({ row, full = false }: { row: OrdersDashboardRow; full?: boolean }) {
   // A row is "actionable" when there's a specific task to do; the generic
   // "Open" fallback stays quiet so the eye is drawn only to real work.
   const isTask = row.action.label !== "Open";
@@ -690,7 +764,8 @@ function OrderActions({ row }: { row: OrdersDashboardRow }) {
       href={row.action.href}
       aria-label={`${row.action.label} — order ${row.orderNumber}`}
       className={cn(
-        "inline-flex h-8 w-full min-w-0 items-center justify-center gap-1.5 rounded-input px-3 text-sm font-medium transition-[opacity,background-color,border-color] duration-[120ms]",
+        "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-input px-3 text-sm font-medium transition-[opacity,background-color,border-color] duration-[120ms]",
+        full ? "h-11 w-full" : "h-10",
         isTask
           ? "bg-pigment text-surface shadow-sm hover:opacity-90"
           : "border border-line bg-surface text-slate hover:border-slate/40 hover:text-ink",

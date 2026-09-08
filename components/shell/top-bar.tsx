@@ -13,6 +13,7 @@ import {
   Check,
   LogOut,
   Search,
+  Sparkles,
 } from "@/components/ui/icons";
 import type { Role } from "@/lib/auth/config";
 import type { BusinessOption } from "@/lib/shell/context";
@@ -20,6 +21,7 @@ import { Popover } from "./popover";
 import { setBusiness, signOutAction } from "@/app/(app)/actions";
 import { markAllNotificationsRead } from "@/app/(app)/notifications/actions";
 import type { NotificationVM } from "@/lib/notifications/types";
+import { AskAlpha } from "@/components/alpha/ask-alpha";
 
 type TopBarProps = {
   user: { name: string; email: string; role: Role };
@@ -154,6 +156,20 @@ export function TopBar({
         >
           <Search size={18} />
         </button>
+        <Popover
+          ariaLabel="Ask Alpha"
+          triggerClassName={cn(
+            "inline-flex size-9 items-center justify-center rounded-input text-slate",
+            "transition-colors motion-hover hover:bg-canvas hover:text-ink",
+          )}
+          trigger={<Sparkles size={18} />}
+        >
+          {() => (
+            <div className="w-80 max-w-[calc(100vw-2rem)] p-3">
+              <AskAlpha compact />
+            </div>
+          )}
+        </Popover>
         <Popover
           ariaLabel={`Notifications${unread ? `, ${unread} unread` : ""}`}
           triggerClassName={cn(
