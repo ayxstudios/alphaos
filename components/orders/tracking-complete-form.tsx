@@ -72,7 +72,7 @@ export function TrackingCompleteForm({
       <div className="mt-3 flex flex-col gap-3">
         {providerLocked ? (
           <div className="rounded-input border border-line bg-canvas px-3 py-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate">Print provider</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate">Print provider</p>
             <p className="mt-1 text-sm font-medium text-ink">{providerLabel(activeProvider)}</p>
           </div>
         ) : (

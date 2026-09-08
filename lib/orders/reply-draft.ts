@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { businesses, customers, orders, proofs } from "@/lib/db/schema";

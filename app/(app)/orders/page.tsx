@@ -726,7 +726,7 @@ export default async function OrdersPage({
               title={view.description}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "inline-flex h-9 items-center gap-2 rounded-chip px-3 text-sm font-medium transition-colors",
+                "inline-flex h-10 items-center gap-2 rounded-chip px-3 text-sm font-medium transition-colors",
                 active
                   ? "bg-pigment text-surface"
                   : "bg-canvas text-slate hover:bg-pigment-soft hover:text-ink",
@@ -803,7 +803,7 @@ export default async function OrdersPage({
               href={filterHref(currentParams, "pageSize", String(size))}
               aria-current={pageSize === size ? "true" : undefined}
               className={cn(
-                "inline-flex h-9 min-w-10 items-center justify-center rounded-input px-2 text-sm font-medium transition-colors",
+                "inline-flex h-10 min-w-10 items-center justify-center rounded-input px-2 text-sm font-medium transition-colors",
                 pageSize === size
                   ? "bg-ink text-surface"
                   : "text-slate hover:bg-canvas hover:text-ink",
@@ -824,7 +824,7 @@ export default async function OrdersPage({
               {emailNeedsAction.unmatched} unmatched replies, {emailNeedsAction.failed} failed sends
             </p>
           </div>
-          <Link href="/emails" className="ml-auto inline-flex h-9 items-center rounded-input bg-pigment px-3 text-sm font-medium text-surface hover:opacity-90">
+          <Link href="/emails" className="ml-auto inline-flex h-10 items-center rounded-input bg-pigment px-3 text-sm font-medium text-surface hover:opacity-90">
             Open Emails
           </Link>
         </DataPanel>
