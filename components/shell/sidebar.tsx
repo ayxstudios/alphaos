@@ -23,6 +23,7 @@ import {
   Calendar,
   Eye,
   type IconProps,
+  Bot,
 } from "@/components/ui/icons";
 
 type NavItem = { label: string; href: string; icon: ComponentType<IconProps> };
@@ -93,6 +94,37 @@ export function Sidebar({
   const more = role === "designer" ? DESIGNER_MORE : role === "admin" ? ADMIN_MORE : VA_MORE;
   const homeHref = "/dashboard";
 
+  // Alpha AI lives in the main menu: same brain as the WhatsApp number,
+  // opens the chat panel (mounted once in AppShell) instead of routing.
+  function renderAlpha() {
+    const link = (
+      <button
+        key="alpha-ai"
+        type="button"
+        onClick={() => {
+          onNavigate?.();
+          window.dispatchEvent(new CustomEvent("alphaos:chat-open"));
+        }}
+        className={cn(
+          "group relative flex h-10 w-full items-center gap-3 rounded-input px-3 text-sm font-medium text-pigment",
+          "transition-colors duration-150 ease-standard motion-hover hover:bg-pigment-soft",
+          focusRing,
+          collapsed && !mobile && "justify-center px-0",
+        )}
+      >
+        <Bot size={19} className="shrink-0" />
+        {(!collapsed || mobile) && <span>Alpha AI</span>}
+      </button>
+    );
+    return collapsed && !mobile ? (
+      <Tooltip key="alpha-ai" content="Alpha AI" side="right">
+        {link}
+      </Tooltip>
+    ) : (
+      link
+    );
+  }
+
   function renderItem(item: NavItem) {
     const active = pathname === item.href || pathname.startsWith(item.href + "/");
     const Glyph = item.icon;
@@ -159,21 +191,13 @@ export function Sidebar({
         </Link>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-2">
-        {nav.map(renderItem)}
+      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-2">
+        {nav.slice(0, 1).map(renderItem)}
+        {renderAlpha()}
+        {nav.slice(1).map(renderItem)}
         {more.length > 0 && (
           <>
-            <div
-              className={cn(
-                "mt-2 mb-1 h-px bg-line",
-                !collapsed || mobile ? "mx-3" : "mx-2",
-              )}
-            />
-            {(!collapsed || mobile) && (
-              <p className="px-3 pb-1 text-xs font-medium uppercase tracking-wide text-slate/70">
-                More
-              </p>
-            )}
+            <div className="my-3 h-px bg-line/70" />
             {more.map(renderItem)}
           </>
         )}

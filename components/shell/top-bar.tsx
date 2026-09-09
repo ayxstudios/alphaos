@@ -13,7 +13,7 @@ import {
   Check,
   LogOut,
   Search,
-  Sparkles,
+  Bot,
 } from "@/components/ui/icons";
 import type { Role } from "@/lib/auth/config";
 import type { BusinessOption } from "@/lib/shell/context";
@@ -158,7 +158,7 @@ export function TopBar({
         {/* Alpha as a proper tab at the top (owner 2026-09-09), not just an icon. */}
         <button
           type="button"
-          aria-label="Open Alpha chat"
+          aria-label="Open Alpha AI"
           onClick={() => window.dispatchEvent(new CustomEvent("alphaos:chat-open"))}
           className={cn(
             "inline-flex h-9 items-center gap-2 rounded-input border border-pigment/20 bg-pigment-soft px-2.5 text-sm font-semibold text-pigment sm:px-3",
@@ -166,8 +166,8 @@ export function TopBar({
             focusRing,
           )}
         >
-          <Sparkles size={16} />
-          <span className="hidden sm:inline">Alpha</span>
+          <Bot size={18} />
+          <span className="hidden sm:inline">Alpha AI</span>
         </button>
         <Popover
           ariaLabel={`Notifications${unread ? `, ${unread} unread` : ""}`}

@@ -4,7 +4,7 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
 import { withUserContext, type RequestUser } from "@/lib/db";
-import { businesses as businessesTable, notifications } from "@/lib/db/schema";
+import { businesses as businessesTable, notifications, users as usersTable } from "@/lib/db/schema";
 import { BUSINESS_COOKIE } from "@/lib/shell/constants";
 import { fallbackNotificationTitle, type NotificationVM } from "@/lib/notifications/types";
 
@@ -17,6 +17,12 @@ export type ShellData = {
   selected: BusinessOption;
   /** Unread notification count for the current user. */
   unread: number;
+  /**
+   * The user's CURRENT display name from the database. The session cookie
+   * carries the name from sign-in time, so a rename (Ada -> Admin) would
+   * otherwise stick until the next login.
+   */
+  displayName: string | null;
   recentNotifications: NotificationVM[];
 };
 
@@ -41,7 +47,12 @@ const loadShellCached = cache(
       isNull(notifications.readAt),
       ...(!anthropicFeaturesEnabled() ? [sql`${notifications.type} <> 'message.reply_suggestion'`] : []),
     ];
-    const { businesses, unread, recentNotifications } = await withUserContext(user, async (tx) => {
+    const { businesses, unread, recentNotifications, displayName } = await withUserContext(user, async (tx) => {
+      const [me] = await tx
+        .select({ name: usersTable.name, email: usersTable.email })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId))
+        .limit(1);
       const businesses = await tx
         .select({ id: businessesTable.id, name: businessesTable.name })
         .from(businessesTable)
@@ -65,6 +76,7 @@ const loadShellCached = cache(
         .limit(8);
       return {
         businesses,
+        displayName: me?.name ?? me?.email ?? null,
         unread: unreadRow?.n ?? 0,
         recentNotifications: recentRows.map((n) => ({
           id: n.id,
@@ -84,6 +96,6 @@ const loadShellCached = cache(
       options.find((o) => o.id === cookieVal) ??
       options[0] ?? { id: "", name: "No workspace" };
 
-    return { options, selected, unread, recentNotifications };
+    return { options, selected, unread, recentNotifications, displayName };
   },
 );

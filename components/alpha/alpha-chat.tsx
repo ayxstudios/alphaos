@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 import { focusRing } from "@/components/ui/styles";
-import { Sparkles, X } from "@/components/ui/icons";
+import { Bot, X } from "@/components/ui/icons";
 import type { Role } from "@/lib/auth/config";
 
 type ChatRole = "user" | "assistant";
@@ -158,12 +158,12 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
           }),
         });
         const data = (await res.json().catch(() => null)) as ChatResponse | null;
-        const answer = data?.answer?.trim() || "Alpha will answer in full shortly.";
+        const answer = data?.answer?.trim() || "Alpha AI will answer in full shortly.";
         setMessages((cur) => [...cur, { id: makeId(), role: "assistant", content: answer, at: Date.now() }]);
       } catch {
         setMessages((cur) => [
           ...cur,
-          { id: makeId(), role: "assistant", content: "Alpha could not be reached just now. Try again in a moment.", at: Date.now() },
+          { id: makeId(), role: "assistant", content: "Alpha AI could not be reached just now. Try again in a moment.", at: Date.now() },
         ]);
       } finally {
         if (slowTimer.current) clearTimeout(slowTimer.current);
@@ -195,7 +195,7 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
       {!open && (
         <button
           type="button"
-          aria-label="Open Alpha chat"
+          aria-label="Open Alpha AI"
           onClick={() => setOpen(true)}
           className={cn(
             "fixed z-40 flex items-center gap-2 rounded-full bg-pigment px-4 py-3 text-surface shadow-lg",
@@ -204,8 +204,8 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
             focusRing,
           )}
         >
-          <Sparkles size={18} />
-          <span className="hidden text-sm font-medium sm:inline">Alpha</span>
+          <Bot size={20} />
+          <span className="hidden text-sm font-medium sm:inline">Alpha AI</span>
         </button>
       )}
 
@@ -213,7 +213,7 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Alpha chat"
+          aria-label="Alpha AI"
           className={cn(
             "fixed inset-0 z-50 flex flex-col bg-surface",
             "sm:inset-auto sm:bottom-6 sm:right-6 sm:h-[600px] sm:w-[400px] sm:max-h-[calc(100vh-3rem)]",
@@ -223,10 +223,10 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
           <div className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
             <div className="flex items-center gap-2">
               <span className="inline-flex size-8 items-center justify-center rounded-full bg-pigment-soft text-pigment">
-                <Sparkles size={16} />
+                <Bot size={18} />
               </span>
               <div className="flex flex-col leading-tight">
-                <span className="text-sm font-semibold text-ink">Alpha</span>
+                <span className="text-sm font-semibold text-ink">Alpha AI</span>
                 <span className="text-xs text-slate">Your AI manager</span>
               </div>
             </div>
@@ -267,7 +267,7 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
               </div>
               <button
                 type="button"
-                aria-label="Close Alpha chat"
+                aria-label="Close Alpha AI"
                 onClick={() => setOpen(false)}
                 className={cn(
                   "inline-flex size-8 items-center justify-center rounded-input text-slate",
@@ -284,9 +284,9 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
             {messages.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
                 <span className="inline-flex size-10 items-center justify-center rounded-full bg-pigment-soft text-pigment">
-                  <Sparkles size={20} />
+                  <Bot size={22} />
                 </span>
-                <p className="text-sm text-slate">Ask Alpha anything about your day.</p>
+                <p className="text-sm text-slate">Ask Alpha AI anything about your day.</p>
                 <div className="flex flex-col gap-2">
                   {(SUGGESTIONS[user.role] ?? SUGGESTIONS.va).map((s) => (
                     <button
@@ -322,7 +322,7 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
                 {pending && (
                   <div className="flex flex-col gap-1 items-start">
                     <div className="flex items-center gap-1 rounded-input border border-line bg-surface px-3 py-2 text-sm text-slate">
-                      <span>Alpha is thinking</span>
+                      <span>Alpha AI is thinking</span>
                       <span className="flex gap-0.5" aria-hidden="true">
                         <span className="motion-safe:animate-bounce">.</span>
                         <span className="motion-safe:animate-bounce [animation-delay:150ms]">.</span>
@@ -345,7 +345,7 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
                 autoGrow();
               }}
               onKeyDown={onInputKeyDown}
-              placeholder="Ask Alpha..."
+              placeholder="Ask Alpha AI..."
               rows={1}
               disabled={pending}
               className={cn(

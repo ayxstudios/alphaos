@@ -32,7 +32,8 @@
     "test:etsy-review": "tsx scripts/test-etsy-review.ts",
     "test:etsy-mail": "tsx scripts/test-etsy-mail.ts",
     "test:reminders": "tsx scripts/test-reminders.ts",
-    "test:designer-lane": "tsx scripts/test-designer-lane.ts"
+    "test:designer-lane": "tsx scripts/test-designer-lane.ts",
+    "seed:qc": "tsx scripts/seed-qc.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1102.0",

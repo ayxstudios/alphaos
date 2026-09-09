@@ -19,7 +19,7 @@ export default async function QcPage({
   if (user.role === "designer") redirect("/board");
 
   const { orderId } = await params;
-  const { selected } = await loadShellData(user);
+  const { selected, displayName } = await loadShellData(user);
 
   const [ctx, queueIds] = await Promise.all([
     getQcContext(user, orderId),
@@ -32,7 +32,7 @@ export default async function QcPage({
     <QcScreen
       ctx={ctx}
       queueIds={queueIds}
-      reviewerName={session.user.name ?? session.user.email ?? "Current user"}
+      reviewerName={displayName ?? session.user.name ?? session.user.email ?? "Current user"}
     />
   );
 }

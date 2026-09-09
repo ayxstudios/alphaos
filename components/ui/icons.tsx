@@ -293,6 +293,34 @@ export const Sparkles = (p: IconProps) => (
   </Icon>
 );
 
+/** Alpha AI: a friendly robot head (antenna, two eyes, a smile). */
+export const Bot = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x="4" y="8" width="16" height="12" rx="4" />
+    <path d="M12 8V5M12 5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3" />
+    <path d="M2 13v3M22 13v3" />
+    <circle cx="9" cy="13.5" r="1" fill="currentColor" stroke="none" />
+    <circle cx="15" cy="13.5" r="1" fill="currentColor" stroke="none" />
+    <path d="M9.5 17h5" />
+  </Icon>
+);
+
+/** A single sliders glyph for "Filters" toggles. */
+export const Sliders = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M4 7h10M18 7h2M4 12h3M11 12h9M4 17h12M20 17h0" />
+    <circle cx="16" cy="7" r="2" />
+    <circle cx="9" cy="12" r="2" />
+    <circle cx="18" cy="17" r="2" />
+  </Icon>
+);
+
+export const ChevronRight = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M9 6l6 6-6 6" />
+  </Icon>
+);
+
 export const Clock = (p: IconProps) => (
   <Icon {...p}>
     <circle cx="12" cy="12" r="9" />

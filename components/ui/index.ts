@@ -28,6 +28,7 @@ export {
   PageHeader,
   SectionHeader,
   StatCard,
+  Disclosure,
   DataPanel,
   FilterBar,
   TableShell,

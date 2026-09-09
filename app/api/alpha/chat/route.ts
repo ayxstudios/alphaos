@@ -58,6 +58,7 @@ export async function POST(req: NextRequest) {
   const orderId = typeof body.orderId === "string" && body.orderId.trim() ? body.orderId : null;
 
   const shell = await loadShellData(user);
+  if (shell.displayName) user.name = shell.displayName;
   const businessId = shell.selected.id || null;
 
   const snapshot = await buildAlphaSnapshot(user, businessId).catch(() => null);

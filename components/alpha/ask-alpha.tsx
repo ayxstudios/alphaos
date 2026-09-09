@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 
 import { askAlphaAboutOrder } from "@/app/(app)/alpha-actions";
 import { Button, Textarea } from "@/components/ui";
-import { Sparkles } from "@/components/ui/icons";
+import { Bot } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 
 type Answer = { text: string; escalated: boolean; connected: boolean };
@@ -40,8 +40,8 @@ export function AskAlpha({ orderId = null, compact = false }: { orderId?: string
     <div className={cn("flex flex-col gap-3", compact ? "w-full" : "")}>
       {!compact && (
         <div className="flex items-center gap-2 text-sm font-semibold text-ink">
-          <Sparkles size={16} className="text-pigment" />
-          Ask Alpha
+          <Bot size={17} className="text-pigment" />
+          Ask Alpha AI
         </div>
       )}
       <Textarea

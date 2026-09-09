@@ -20,8 +20,8 @@ export default async function HomePage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
-  const first = (session.user.name ?? "there").split(/\s+/)[0];
-  const { selected } = await loadShellData(user);
+  const { selected, displayName } = await loadShellData(user);
+  const first = (displayName ?? session.user.name ?? "there").split(/\s+/)[0];
 
   return (
     <Page className="max-w-6xl">
