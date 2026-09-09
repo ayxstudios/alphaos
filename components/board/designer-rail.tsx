@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui";
@@ -10,6 +10,22 @@ import { ChevronDown, Search } from "@/components/ui/icons";
 import type { RailDesigner } from "@/lib/designers/roster";
 
 const COLLAPSE_KEY = "board.rail.collapsed";
+
+/**
+ * Instant feedback for a rail click: `useLinkStatus` reports the nearest
+ * ancestor `<Link>`'s pending state during the transition, so the rail item
+ * dims the moment it's clicked instead of sitting there looking unclicked
+ * while the new board loads (the board itself shows its skeleton via the
+ * Suspense boundary keyed on the designer id in app/(app)/board/page.tsx).
+ */
+function RailLinkBody({ children, className }: { children: React.ReactNode; className?: string }) {
+  const { pending } = useLinkStatus();
+  return (
+    <span className={cn("flex min-w-0 flex-1 items-center gap-2.5 transition-opacity", pending && "opacity-40", className)}>
+      {children}
+    </span>
+  );
+}
 
 /**
  * Left-hand panel on the board page for switching designer boards. Lists every
@@ -69,7 +85,9 @@ export function DesignerRail({
               focusRing,
             )}
           >
-            <Avatar name={d.name} size="sm" />
+            <RailLinkBody className="justify-center">
+              <Avatar name={d.name} size="sm" />
+            </RailLinkBody>
           </Link>
         ))}
       </aside>
@@ -124,21 +142,23 @@ export function DesignerRail({
                     href={`/board?designer=${d.id}`}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "flex items-center gap-2.5 rounded-input px-2 py-1.5 text-sm transition-colors motion-hover",
+                      "flex items-center rounded-input px-2 py-1.5 text-sm transition-colors motion-hover",
                       active ? "bg-pigment-soft text-pigment" : "text-ink hover:bg-canvas",
                       focusRing,
                     )}
                   >
-                    <Avatar name={d.name} size="sm" />
-                    <span className="min-w-0 flex-1 truncate font-medium">{d.name}</span>
-                    <span
-                      className={cn(
-                        "shrink-0 rounded-full px-1.5 py-0.5 text-xs font-medium tabular-nums",
-                        atLimit ? "bg-rose/10 text-rose" : "bg-canvas text-slate",
-                      )}
-                    >
-                      {d.assignedToday}/{d.dailyCapacity}
-                    </span>
+                    <RailLinkBody>
+                      <Avatar name={d.name} size="sm" />
+                      <span className="min-w-0 flex-1 truncate font-medium">{d.name}</span>
+                      <span
+                        className={cn(
+                          "shrink-0 rounded-full px-1.5 py-0.5 text-xs font-medium tabular-nums",
+                          atLimit ? "bg-rose/10 text-rose" : "bg-canvas text-slate",
+                        )}
+                      >
+                        {d.assignedToday}/{d.dailyCapacity}
+                      </span>
+                    </RailLinkBody>
                   </Link>
                 </li>
               );

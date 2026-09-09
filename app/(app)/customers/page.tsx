@@ -114,7 +114,11 @@ export default async function CustomersPage({
       />
 
       <FilterBar>
-        <form className="relative min-w-0 flex-1 sm:max-w-sm">
+        {/* basis-full: full width of its own row below sm, so it never has to
+            share a cramped line with the Rows selector on a phone (matches
+            the same fix on /orders — a search box should never compete for
+            space with unrelated controls at that width). */}
+        <form className="relative min-w-0 basis-full flex-1 sm:basis-auto sm:max-w-sm">
           <Search
             size={16}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate"

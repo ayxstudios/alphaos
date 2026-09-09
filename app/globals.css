@@ -17,6 +17,18 @@
   --color-amber: #8f5b08;
   --color-rose: #c6335b;
 
+  /* Chart palette (validated with the dataviz six checks, light surface).
+     Charts ONLY. Text never wears these; marks do. Fixed order, never cycled:
+     1 violet (design), 2 teal (done), 3 amber (waiting on customer),
+     4 rose (late / held), 5 blue (print and ship). */
+  --color-chart-1: #5b4bc4;
+  --color-chart-2: #1a9c7b;
+  --color-chart-3: #d0871a;
+  --color-chart-4: #d94a6e;
+  --color-chart-5: #2f7de1;
+  --color-chart-muted: #c9cfd6;
+  --color-chart-track: #edeae4;
+
   /* Fonts (wired via next/font in app/layout.tsx) */
   --font-sans:
     var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;

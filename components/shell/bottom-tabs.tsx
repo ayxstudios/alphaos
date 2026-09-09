@@ -5,30 +5,41 @@ import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 import { focusRing } from "@/components/ui/styles";
-import { Grid, Package, Mail, Menu, type IconProps } from "@/components/ui/icons";
+import { Grid, ListChecks, Package, Mail, Columns, Calendar, Menu, type IconProps } from "@/components/ui/icons";
 import type { ComponentType } from "react";
+import type { Role } from "@/lib/auth/config";
 
 type Tab = { label: string; href: string; icon: ComponentType<IconProps> };
 
-const TABS: Tab[] = [
-  { label: "Today", href: "/dashboard", icon: Grid },
+const ADMIN_VA_TABS: Tab[] = [
+  { label: "Home", href: "/dashboard", icon: Grid },
+  { label: "Today", href: "/today", icon: ListChecks },
   { label: "Orders", href: "/orders", icon: Package },
   { label: "Messages", href: "/emails", icon: Mail },
 ];
 
+const DESIGNER_TABS: Tab[] = [
+  { label: "Home", href: "/dashboard", icon: Grid },
+  { label: "My Board", href: "/board", icon: Columns },
+  { label: "My Week", href: "/me", icon: Calendar },
+];
+
 /**
- * Phone-only sticky bottom navigation for admin/va: the three places a VA
- * actually lives, plus More for everything else. Designers have a single
- * page (My Board) so they keep the plain top bar instead of this.
+ * Phone-only sticky bottom navigation, for every role: admin/va get the
+ * four places they live day to day (Home is the charts overview, the full
+ * queue moved to /today); designers get their own three pages. "More" opens
+ * the same mobile sidebar drawer for everything else. The floating Alpha
+ * launcher sits above this bar (see components/alpha/alpha-chat.tsx).
  */
-export function BottomTabs({ onMore }: { onMore: () => void }) {
+export function BottomTabs({ role, onMore }: { role: Role; onMore: () => void }) {
   const pathname = usePathname();
+  const tabs = role === "designer" ? DESIGNER_TABS : ADMIN_VA_TABS;
   return (
     <nav
       aria-label="Primary"
       className="fixed inset-x-0 bottom-0 z-30 flex h-16 items-stretch border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const active = pathname === tab.href || pathname.startsWith(tab.href + "/");
         const Glyph = tab.icon;
         return (

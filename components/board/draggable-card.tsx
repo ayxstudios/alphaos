@@ -11,11 +11,14 @@ export function DraggableCard({
   from,
   disabled = false,
   onOpen,
+  eager = false,
 }: {
   card: BoardCard;
   from: string;
   disabled?: boolean;
   onOpen?: (card: BoardCard) => void;
+  /** First few cards in a column: load the cover photo eagerly instead of lazily. */
+  eager?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: card.orderId,
@@ -56,7 +59,7 @@ export function DraggableCard({
           : "cursor-grab touch-none active:cursor-grabbing"
       }
     >
-      <OrderCard card={card} dragging={isDragging} />
+      <OrderCard card={card} dragging={isDragging} eager={eager} />
     </div>
   );
 }

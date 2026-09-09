@@ -14,11 +14,14 @@ export function OrderCard({
   dragging = false,
   overlay = false,
   onOpen,
+  eager = false,
 }: {
   card: BoardCard;
   dragging?: boolean;
   overlay?: boolean;
   onOpen?: () => void;
+  /** First few cards above the fold: skip lazy-loading so they paint immediately. */
+  eager?: boolean;
 }) {
   const labels = cardLabels(card);
   const revision = card.qcFail ?? card.customerRevision;
@@ -40,8 +43,11 @@ export function OrderCard({
         <img
           src={card.thumbnailUrl}
           alt=""
-          className="h-32 w-full object-cover"
+          className="h-32 w-full bg-canvas object-cover"
           draggable={false}
+          loading={eager ? "eager" : "lazy"}
+          decoding="async"
+          fetchPriority={eager ? "high" : "auto"}
         />
       ) : (
         <div className="flex h-16 w-full items-center justify-center gap-1.5 border-b border-dashed border-line bg-canvas text-slate">

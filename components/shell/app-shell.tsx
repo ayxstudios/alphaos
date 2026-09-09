@@ -11,6 +11,7 @@ import { focusRing } from "@/components/ui/styles";
 import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
 import { BottomTabs } from "./bottom-tabs";
+import { AlphaChat } from "@/components/alpha/alpha-chat";
 
 /** Cookie the sidebar collapse preference persists in (read by the layout). */
 export const SIDEBAR_COOKIE = "sidebar_collapsed";
@@ -106,16 +107,12 @@ export function AppShell({
             </button>
           }
         />
-        <main
-          className={cn(
-            "min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 lg:px-8",
-            user.role !== "designer" && "pb-20 lg:pb-5",
-          )}
-        >
+        <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 pb-20 sm:px-6 lg:px-8 lg:pb-5">
           <ToastProvider>{children}</ToastProvider>
         </main>
-        {user.role !== "designer" && <BottomTabs onMore={() => setMobileOpen(true)} />}
+        <BottomTabs role={user.role} onMore={() => setMobileOpen(true)} />
       </div>
+      <AlphaChat user={user} />
     </div>
   );
 }

@@ -126,21 +126,29 @@ export function TodayQueueList({ groups }: { groups: Record<TodayBand, TodayItem
                     >
                       {selected && <span aria-hidden className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-pigment" />}
                       <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate">
-                          <ShopBadge platform={item.platform} name={item.shop} />
-                          <Link href={`/orders/${item.orderId}`} className={cn("font-semibold text-ink hover:text-pigment", focusRing)}>
-                            {item.orderNumber}
-                          </Link>
-                          <span>{item.customerFirst}</span>
-                          <span aria-hidden>·</span>
-                          <span>{item.age}</span>
+                        {/* Line 1: shop + order left, age right — nowrap so this
+                            never wraps mid-line on a phone (the age is the one
+                            piece that must stay readable at a glance). Line 2:
+                            the todo sentence, which already names the customer
+                            where relevant, so it isn't repeated here. */}
+                        <div className="flex items-center justify-between gap-2 text-sm text-slate">
+                          <span className="flex min-w-0 items-center gap-2 overflow-hidden">
+                            <ShopBadge platform={item.platform} name={item.shop} />
+                            <Link
+                              href={`/orders/${item.orderId}`}
+                              className={cn("truncate font-semibold text-ink hover:text-pigment", focusRing)}
+                            >
+                              {item.orderNumber}
+                            </Link>
+                          </span>
+                          <span className="shrink-0 whitespace-nowrap tabular-nums">{item.age}</span>
                         </div>
                         <p className="mt-1 text-base text-ink">{item.todo}</p>
                       </div>
                       <Link
                         href={item.action.href}
                         className={cn(
-                          "inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-input px-4 text-base font-medium sm:h-10 sm:text-sm",
+                          "inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-input px-4 text-base font-medium sm:h-10 sm:w-auto sm:text-sm",
                           band === "now" ? "bg-pigment text-surface hover:opacity-90" : "border border-line bg-surface text-ink hover:bg-canvas",
                           focusRing,
                         )}

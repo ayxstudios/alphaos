@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import {
   bulkChangeOrderStatus,
@@ -46,15 +46,37 @@ export type OrdersDashboardRow = {
 type DesignerOption = { id: string; name: string };
 type SortKey = "created" | "order" | "customer" | "source" | "status" | "owner" | "ordered" | "due";
 type SortDir = "asc" | "desc";
-type ColumnKey = "order" | "customer" | "source" | "status" | "owner" | "ordered" | "due" | "stage";
+type ColumnKey = "order" | "customer" | "source" | "status" | "owner" | "ordered" | "due";
 
 type ColumnDef = {
   key: ColumnKey;
   label: string;
   sort?: SortKey;
   width: string;
+  /**
+   * "core" columns are always on screen (even in the narrowest content width
+   * this table has to fit, ~960px, with the sidebar open); "wide" columns
+   * only show once there's real room (xl, 1280px+) — otherwise they're the
+   * reason a laptop-width screen scrolled sideways to see them.
+   */
+  priority: "core" | "wide";
   render: (row: OrdersDashboardRow) => React.ReactNode;
 };
+
+/** True once the viewport is xl (1280px) or wider. Starts false (matches the
+ * server-rendered guess) and updates after mount — the "wide" columns pop in
+ * rather than risk a hydration mismatch guessing the real width up front. */
+function useIsWide() {
+  const [wide, setWide] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1280px)");
+    const update = () => setWide(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return wide;
+}
 
 const BULK_STATUSES: { value: OrderStatus; label: string }[] = [
   { value: "awaiting_photos", label: "Awaiting photos" },
@@ -78,14 +100,15 @@ const ORDER_COLUMNS: ColumnDef[] = [
     key: "order",
     label: "Order",
     sort: "order",
-    width: "minmax(13rem,1.15fr)",
+    width: "minmax(6rem,1fr)",
+    priority: "core",
     render: (row) => (
       <div className="min-w-0">
         <Link href={`/orders/${row.id}`} className="truncate text-sm font-semibold text-ink hover:text-pigment">
           {row.orderNumber}
         </Link>
-        <p className="truncate text-xs text-slate">{row.itemTitle}</p>
-        {row.itemSummary && <p className="truncate text-xs text-slate">{row.itemSummary}</p>}
+        <p className="truncate text-xs text-slate" title={row.itemTitle}>{row.itemTitle}</p>
+        {row.itemSummary && <p className="truncate text-xs text-slate" title={row.itemSummary}>{row.itemSummary}</p>}
       </div>
     ),
   },
@@ -93,11 +116,12 @@ const ORDER_COLUMNS: ColumnDef[] = [
     key: "customer",
     label: "Customer",
     sort: "customer",
-    width: "minmax(12rem,0.95fr)",
+    width: "minmax(5rem,0.8fr)",
+    priority: "core",
     render: (row) => (
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-ink">{row.customer}</p>
-        <p className="truncate text-xs text-slate">{row.customerEmail ?? "No email"}</p>
+        <p className="truncate text-sm font-medium text-ink" title={row.customer}>{row.customer}</p>
+        <p className="truncate text-xs text-slate" title={row.customerEmail ?? "No email"}>{row.customerEmail ?? "No email"}</p>
       </div>
     ),
   },
@@ -105,11 +129,12 @@ const ORDER_COLUMNS: ColumnDef[] = [
     key: "source",
     label: "Source",
     sort: "source",
-    width: "minmax(9rem,0.75fr)",
+    width: "7rem",
+    priority: "wide",
     render: (row) => (
       <div className="min-w-0">
-        <p className="truncate text-sm text-ink">{row.source}</p>
-        <p className="text-xs text-slate">{row.platform}</p>
+        <p className="truncate text-sm text-ink" title={row.source}>{row.source}</p>
+        <p className="truncate text-xs text-slate" title={row.platform}>{row.platform}</p>
       </div>
     ),
   },
@@ -117,7 +142,8 @@ const ORDER_COLUMNS: ColumnDef[] = [
     key: "status",
     label: "Status",
     sort: "status",
-    width: "minmax(11rem,0.9fr)",
+    width: "minmax(7rem,0.9fr)",
+    priority: "core",
     render: (row) => (
       <div className="flex min-w-0 flex-col gap-1">
         <div className="flex items-center gap-1.5">
@@ -127,7 +153,7 @@ const ORDER_COLUMNS: ColumnDef[] = [
           </InfoBubble>
         </div>
         {row.reviewReason && (
-          <p className="text-xs leading-snug text-amber">{row.reviewReason}</p>
+          <p className="truncate text-xs leading-snug text-amber" title={row.reviewReason}>{row.reviewReason}</p>
         )}
       </div>
     ),
@@ -136,43 +162,44 @@ const ORDER_COLUMNS: ColumnDef[] = [
     key: "owner",
     label: "Designer",
     sort: "owner",
-    width: "9rem",
-    render: (row) => <p className="truncate text-sm text-slate">{row.assignee}</p>,
+    width: "7rem",
+    priority: "wide",
+    render: (row) => <p className="truncate text-sm text-slate" title={row.assignee}>{row.assignee}</p>,
   },
   {
     key: "ordered",
     label: "Ordered",
     sort: "ordered",
-    width: "8rem",
+    width: "5rem",
+    priority: "core",
     render: (row) => (
       <div className="min-w-0">
-        <p className="text-sm text-slate">{fmtDateTime(row.placedAt ?? row.createdAt)}</p>
+        <p className="truncate text-sm text-slate" title={fmtDateTime(row.placedAt ?? row.createdAt)}>
+          {fmtDateTime(row.placedAt ?? row.createdAt)}
+        </p>
       </div>
     ),
   },
   {
+    // Due date + the stage countdown share one column (two lines) — they're
+    // both "when does this need attention" and splitting them was two of the
+    // columns pushing this table into a horizontal scroll.
     key: "due",
     label: "Due",
     sort: "due",
-    width: "8.5rem",
-    render: (row) => (
-      <div className="flex flex-wrap items-center gap-2">
-        {row.isOverdue && <Badge variant="danger" dot>Overdue</Badge>}
-        <span className="text-sm text-slate">{fmtDate(row.dueAt)}</span>
-      </div>
-    ),
-  },
-  {
-    key: "stage",
-    label: "Stage time",
-    width: "9rem",
+    width: "minmax(5.5rem,0.65fr)",
+    priority: "core",
     render: (row) => (
       <div className="min-w-0">
-        <p className={cn("text-sm font-medium", row.stageTimer.isOverdue ? "text-rose" : "text-ink")}>
-          {formatStageRemaining(row.stageTimer)}
-        </p>
-        <p className="truncate text-xs text-slate">
-          {row.stageTimer.followUpLabel ?? row.stageTimer.label}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {row.isOverdue && <Badge variant="danger" dot>Overdue</Badge>}
+          <span className="text-sm text-slate">{fmtDate(row.dueAt)}</span>
+        </div>
+        <p
+          className={cn("truncate text-xs", row.stageTimer.isOverdue ? "font-medium text-rose" : "text-slate")}
+          title={row.stageTimer.followUpLabel ?? row.stageTimer.label}
+        >
+          {formatStageRemaining(row.stageTimer)} · {row.stageTimer.followUpLabel ?? row.stageTimer.label}
         </p>
       </div>
     ),
@@ -373,12 +400,15 @@ export function OrdersOperationsTable({
 }) {
   const router = useRouter();
   const toast = useToast();
+  const isWide = useIsWide();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [designerId, setDesignerId] = useState("");
   const [targetStatus, setTargetStatus] = useState<OrderStatus | "">("");
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
   const [columnPrefsLoaded, setColumnPrefsLoaded] = useState(false);
   const [visibleColumnKeys, setVisibleColumnKeys] = useState<ColumnKey[]>(DEFAULT_COLUMN_KEYS);
+  const [scrolls, setScrolls] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [pending, start] = useTransition();
   const selectedIds = useMemo(() => [...selected], [selected]);
   const allSelected = rows.length > 0 && rows.every((row) => selected.has(row.id));
@@ -387,10 +417,30 @@ export function OrdersOperationsTable({
     const columns = ORDER_COLUMNS.filter((column) => selectedKeys.has(column.key));
     return columns.length ? columns : ORDER_COLUMNS;
   }, [visibleColumnKeys]);
-  const gridTemplateColumns = useMemo(
-    () => ["2.25rem", ...visibleColumns.map((column) => column.width), "8.5rem"].join(" "),
-    [visibleColumns],
+  // Source and Designer only earn a track once there's real room (xl+); below
+  // that they're exactly the columns that used to force this table to scroll
+  // sideways on a laptop with the sidebar open.
+  const effectiveColumns = useMemo(
+    () => (isWide ? visibleColumns : visibleColumns.filter((column) => column.priority === "core")),
+    [visibleColumns, isWide],
   );
+  const gridTemplateColumns = useMemo(
+    () => ["1.75rem", ...effectiveColumns.map((column) => column.width), "6.5rem"].join(" "),
+    [effectiveColumns],
+  );
+
+  // The Next action column is only sticky/tinted while the table is actually
+  // scrolling sideways — at the widths this table is designed for (960px+
+  // content) it fits, so it should read as a normal cell, not a pinned rail.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const check = () => setScrolls(el.scrollWidth > el.clientWidth + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [effectiveColumns]);
 
   useEffect(() => {
     try {
@@ -568,83 +618,91 @@ export function OrdersOperationsTable({
         </div>
       </div>
 
-      {/* Desktop: the full operations table, one row per order. */}
-      <div className="hidden overflow-x-auto md:block">
-        <div className="md:min-w-[76rem]">
-          <div
-            className="hidden gap-3 border-b border-line bg-surface px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate md:grid md:[grid-template-columns:var(--orders-grid)]"
-            style={{ "--orders-grid": gridTemplateColumns } as React.CSSProperties}
-          >
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                onChange={toggleAll}
-                aria-label="Select all visible orders"
-                className="size-4 rounded border-line text-pigment focus:ring-pigment"
-              />
-            </label>
-            {visibleColumns.map((column) =>
-              column.sort ? (
-                <SortableHeader
-                  key={column.key}
-                  currentParams={currentParams}
-                  sort={column.sort}
-                  activeSort={sort}
-                  dir={dir}
-                >
-                  {column.label}
-                </SortableHeader>
-              ) : (
-                <span key={column.key}>{column.label}</span>
-              ),
+      {/* Desktop: the full operations table, one row per order. Column widths
+          are tuned to fit with no horizontal scroll from ~960px of content
+          width; overflow-x-auto stays only as a safety net (see `scrolls`) —
+          the Next action rail only pins itself if that net is ever needed. */}
+      <div ref={scrollRef} className="hidden overflow-x-auto md:block">
+        <div
+          className="hidden gap-2 border-b border-line bg-surface px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate md:grid md:[grid-template-columns:var(--orders-grid)]"
+          style={{ "--orders-grid": gridTemplateColumns } as React.CSSProperties}
+        >
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleAll}
+              aria-label="Select all visible orders"
+              className="size-4 rounded border-line text-pigment focus:ring-pigment"
+            />
+          </label>
+          {effectiveColumns.map((column) =>
+            column.sort ? (
+              <SortableHeader
+                key={column.key}
+                currentParams={currentParams}
+                sort={column.sort}
+                activeSort={sort}
+                dir={dir}
+              >
+                {column.label}
+              </SortableHeader>
+            ) : (
+              <span key={column.key}>{column.label}</span>
+            ),
+          )}
+          <span
+            className={cn(
+              "flex items-center justify-end pl-3 text-right",
+              scrolls
+                ? "z-20 text-pigment md:sticky md:right-0 md:-my-2.5 md:-mr-4 md:self-stretch md:border-l md:border-pigment/20 md:bg-pigment-soft md:py-2.5 md:pr-4"
+                : "text-slate",
             )}
-            <span className="z-20 flex items-center justify-end pl-3 text-right text-pigment md:sticky md:right-0 md:-my-2.5 md:-mr-4 md:self-stretch md:border-l md:border-pigment/20 md:bg-pigment-soft md:py-2.5 md:pr-4">
-              Next action
-            </span>
-          </div>
+          >
+            Next action
+          </span>
+        </div>
 
-          <div className="divide-y divide-line">
-            {rows.map((row) => {
-              const urgent = row.stageTimer.isOverdue || row.isOverdue;
-              const dueSoon = !urgent && row.stageTimer.followUpDue;
-              return (
-                <div
-                  key={row.id}
-                  className={cn(
-                    "group grid gap-3 border-l-2 border-transparent px-4 py-3.5 transition-colors hover:bg-canvas/70 md:items-center md:[grid-template-columns:var(--orders-grid)]",
-                    urgent && "border-rose/60 bg-rose/[0.04] hover:bg-rose/[0.07]",
-                    dueSoon && "border-amber/50",
-                  )}
-                  style={{ "--orders-grid": gridTemplateColumns } as React.CSSProperties}
-                >
-                  <label className="flex items-center">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(row.id)}
-                      onChange={() => toggleOne(row.id)}
-                      aria-label={`Select order ${row.orderNumber}`}
-                      className="size-4 rounded border-line text-pigment focus:ring-pigment"
-                    />
-                  </label>
-                  {visibleColumns.map((column) => (
-                    <div key={column.key} className="min-w-0">
-                      {column.render(row)}
-                    </div>
-                  ))}
-                  <div
-                    className={cn(
-                      "flex items-center justify-end gap-1.5 pl-3",
-                      "md:sticky md:right-0 md:z-10 md:-my-3.5 md:-mr-4 md:self-stretch md:py-3.5 md:pr-4",
-                      "md:border-l md:border-pigment/20 md:bg-pigment-soft",
-                    )}
-                  >
-                    <OrderActions row={row} />
+        <div className="divide-y divide-line">
+          {rows.map((row) => {
+            const urgent = row.stageTimer.isOverdue || row.isOverdue;
+            const dueSoon = !urgent && row.stageTimer.followUpDue;
+            return (
+              <div
+                key={row.id}
+                className={cn(
+                  "group grid gap-2 border-l-2 border-transparent px-4 py-3 transition-colors hover:bg-canvas/70 md:items-center md:[grid-template-columns:var(--orders-grid)]",
+                  urgent && "border-rose/60 bg-rose/[0.04] hover:bg-rose/[0.07]",
+                  dueSoon && "border-amber/50",
+                )}
+                style={{ "--orders-grid": gridTemplateColumns } as React.CSSProperties}
+              >
+                <label className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(row.id)}
+                    onChange={() => toggleOne(row.id)}
+                    aria-label={`Select order ${row.orderNumber}`}
+                    className="size-4 rounded border-line text-pigment focus:ring-pigment"
+                  />
+                </label>
+                {effectiveColumns.map((column) => (
+                  <div key={column.key} className="min-w-0">
+                    {column.render(row)}
                   </div>
+                ))}
+                <div
+                  className={cn(
+                    "flex items-center justify-end gap-1.5 pl-3",
+                    scrolls &&
+                      "md:sticky md:right-0 md:z-10 md:-my-3 md:-mr-4 md:self-stretch md:border-l md:border-pigment/20 md:bg-pigment-soft md:py-3 md:pr-4",
+                  )}
+                >
+                  <OrderActions row={row} />
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

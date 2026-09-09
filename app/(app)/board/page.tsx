@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import Link from "next/link";
 
 import { auth } from "@/lib/auth";
+import type { RequestUser } from "@/lib/db";
 import { getDesignerBoard } from "@/lib/orders/board-data";
 import { getRailDesigners } from "@/lib/designers/roster";
 import { DesignerBoard } from "@/components/board/designer-board";
@@ -11,6 +13,7 @@ import { Badge, DataPanel, EmptyState, Page, PageHeader, StatCard } from "@/comp
 import { focusRing } from "@/components/ui/styles";
 import { Calendar, Columns } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
+import BoardLoading from "./loading";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +46,28 @@ export default async function BoardPage({
   // right-hand rail (app shell) or the mobile dropdown below.
   const targetId = isStaff ? designerParam : user.id;
 
+  // `force-dynamic` + a Suspense boundary keyed on the designer id: Next only
+  // re-streams loading.tsx when the SEGMENT changes, not when just the
+  // `?designer=` search param changes on this same route — so without this,
+  // clicking a different designer in the rail leaves the old board sitting
+  // there for however long the query takes, looking frozen. Keying the
+  // boundary on targetId forces a fresh Suspense fallback on every switch.
+  return (
+    <Suspense key={targetId ?? "none"} fallback={<BoardLoading />}>
+      <BoardContent user={user} isStaff={isStaff} targetId={targetId} />
+    </Suspense>
+  );
+}
+
+async function BoardContent({
+  user,
+  isStaff,
+  targetId,
+}: {
+  user: RequestUser;
+  isStaff: boolean;
+  targetId?: string;
+}) {
   const [board, designers] = await Promise.all([
     targetId ? getDesignerBoard(user, targetId) : Promise.resolve(null),
     // Only needed for the mobile picker (the rail lives in the shell); cached,

@@ -43,3 +43,6 @@ yarn-error.log*
 next-env.d.ts
 var/
 .env.local
+
+# per-lane dev build folders (NEXT_DIST_DIR)
+.next-*

@@ -32,6 +32,10 @@ export function BoardColumn({
   const virtualizer = useVirtualizer({
     count: cards.length,
     getScrollElement: () => scrollRef.current,
+    // 320 is only a first guess before a card has ever been measured — every
+    // rendered item is re-measured for its REAL height (see measureElement
+    // below), so a taller card (long revision notes, extra labels) never
+    // gets covered by the next one.
     estimateSize: () => 320,
     overscan: 6,
   });
@@ -64,6 +68,8 @@ export function BoardColumn({
               {virtualizer.getVirtualItems().map((vi) => (
                 <div
                   key={cards[vi.index].orderId}
+                  data-index={vi.index}
+                  ref={virtualizer.measureElement}
                   style={{
                     position: "absolute",
                     top: 0,
@@ -78,6 +84,7 @@ export function BoardColumn({
                     from={id}
                     disabled={!draggable}
                     onOpen={onOpen}
+                    eager={vi.index < 4}
                   />
                 </div>
               ))}
@@ -85,13 +92,14 @@ export function BoardColumn({
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {cards.map((c) => (
+            {cards.map((c, i) => (
               <DraggableCard
                 key={c.orderId}
                 card={c}
                 from={id}
                 disabled={!draggable}
                 onOpen={onOpen}
+                eager={i < 4}
               />
             ))}
             {cards.length === 0 && (

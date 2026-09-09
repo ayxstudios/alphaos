@@ -20,6 +20,7 @@ import { CardModal } from "./card-modal";
 import { MobileDesignerBoard } from "./mobile-board";
 import { moveOrder } from "@/app/(app)/board/actions";
 import type { BoardCard, DesignerBoard as BoardData } from "@/lib/orders/board-data";
+import { COMPLETE_COLUMN_WINDOW_DAYS } from "@/lib/orders/board-constants";
 import type { OrderStatus } from "@/lib/orders/transitions";
 
 type Cols = BoardData["columns"];
@@ -43,7 +44,7 @@ const COLUMNS: { key: ColKey; title: string }[] = [
   { key: "failedQc", title: "Failed QC" },
   { key: "awaitingQc", title: "Awaiting QC" },
   { key: "revisions", title: "Revisions" },
-  { key: "complete", title: "Complete" },
+  { key: "complete", title: `Complete (last ${COMPLETE_COLUMN_WINDOW_DAYS} days)` },
 ];
 
 export function DesignerBoard({ initial, viewerRole }: { initial: Cols; viewerRole: "admin" | "va" | "designer" }) {

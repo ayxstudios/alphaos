@@ -17,6 +17,7 @@ import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
 import { issueLabels } from "@/lib/proofs/issues";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { liveOrderWhere } from "@/lib/orders/archive";
+import { COMPLETE_COLUMN_MAX, COMPLETE_COLUMN_WINDOW_DAYS } from "@/lib/orders/board-constants";
 import type { OrderStatus } from "./transitions";
 import type { ProofAnnotation } from "@/lib/db/schema";
 
@@ -70,20 +71,92 @@ type OrderRow = {
 
 type Tx = Parameters<Parameters<typeof withUserContext>[1]>[0];
 
+/**
+ * Small board-card variant of a reference photo. Only the mock seed's picsum
+ * URLs get downsized (900x900 -> 400x400 in the path, still a real picsum
+ * size so the image exists); a real R2 presigned URL or CDN URL is returned
+ * untouched — the full-size original is what the card modal/detail view
+ * needs, only the board thumbnail wants the small one.
+ */
+function boardThumbnailUrl(url: string): string {
+  return url.includes("picsum.photos") ? url.replace(/\/900\/900$/, "/400/400") : url;
+}
+
 async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<BoardCard[]> {
   if (!rows.length) return [];
   const ids = rows.map((o) => o.id);
+  const revisionIds = rows.filter((o) => o.status === "in_design").map((o) => o.id);
+  const custIds = rows.map((o) => o.customerId).filter((x): x is string => !!x);
 
-  const items = await tx
-    .select({
-      orderId: orderItems.orderId,
-      figureCount: orderItems.figureCount,
-      style: orderItems.style,
-      title: orderItems.title,
-      options: orderItems.options,
-    })
-    .from(orderItems)
-    .where(inArray(orderItems.orderId, ids));
+  // Every query below only reads from `ids`/`revisionIds`/`custIds` (already
+  // known from `rows`), so none of them depends on another's result — run
+  // them together instead of one round trip after another. Still the same
+  // tx/withUserContext, so the RLS GUCs set on it apply to every one of these.
+  const [items, refs, failRows, revRows, vaRevisionRows, customerRows] = await Promise.all([
+    tx
+      .select({
+        orderId: orderItems.orderId,
+        figureCount: orderItems.figureCount,
+        style: orderItems.style,
+        title: orderItems.title,
+        options: orderItems.options,
+      })
+      .from(orderItems)
+      .where(inArray(orderItems.orderId, ids)),
+    tx
+      .select({ orderId: assets.orderId, url: assets.url, storage: assets.storage, r2Key: assets.r2Key })
+      .from(assets)
+      .where(and(inArray(assets.orderId, ids), eq(assets.type, "reference"), isNull(assets.deletedAt))),
+    revisionIds.length
+      ? tx
+          .select({
+            orderId: qcChecks.orderId,
+            reason: qcChecks.reason,
+            checklistSnapshot: qcChecks.checklistSnapshot,
+            itemResults: qcChecks.itemResults,
+            createdAt: qcChecks.createdAt,
+          })
+          .from(qcChecks)
+          .where(and(inArray(qcChecks.orderId, revisionIds), eq(qcChecks.result, "fail")))
+          .orderBy(desc(qcChecks.createdAt))
+      : Promise.resolve([]),
+    revisionIds.length
+      ? tx
+          .select({
+            orderId: proofs.orderId,
+            revisionNotes: proofs.revisionNotes,
+            failedItems: proofs.failedItems,
+            annotations: proofs.annotations,
+            decidedAt: proofs.decidedAt,
+          })
+          .from(proofs)
+          .where(and(inArray(proofs.orderId, revisionIds), eq(proofs.decision, "revision")))
+          .orderBy(desc(proofs.decidedAt))
+      : Promise.resolve([]),
+    revisionIds.length
+      ? tx
+          .select({
+            orderId: activityLog.orderId,
+            metadata: activityLog.metadata,
+            createdAt: activityLog.createdAt,
+          })
+          .from(activityLog)
+          .where(and(inArray(activityLog.orderId, revisionIds), eq(activityLog.action, "order.in_design")))
+          .orderBy(desc(activityLog.createdAt))
+      : Promise.resolve([]),
+    custIds.length
+      ? viewerRole === "designer"
+        ? tx
+            .select({ id: customerPublic.id, firstName: customerPublic.firstName })
+            .from(customerPublic)
+            .where(inArray(customerPublic.id, custIds))
+        : tx
+            .select({ id: customers.id, firstName: customers.firstName, lastName: customers.lastName })
+            .from(customers)
+            .where(inArray(customers.id, custIds))
+      : Promise.resolve([]),
+  ]);
+
   const fig = new Map<string, number>();
   const hasNull = new Map<string, boolean>();
   const style = new Map<string, string>();
@@ -99,19 +172,15 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
     }
   }
 
-  const refs = await tx
-    .select({ orderId: assets.orderId, url: assets.url, storage: assets.storage, r2Key: assets.r2Key })
-    .from(assets)
-    .where(and(inArray(assets.orderId, ids), eq(assets.type, "reference"), isNull(assets.deletedAt)));
-  // First reference photo per order; CDN urls resolve directly, R2 via a
-  // short-lived presigned GET (private bucket).
+  // First reference photo per order; CDN urls resolve directly (downsized for
+  // the board thumbnail), R2 via a short-lived presigned GET (private bucket).
   const firstRef = new Map<string, { url: string | null; storage: string; r2Key: string | null }>();
   for (const a of refs) if (!firstRef.has(a.orderId)) firstRef.set(a.orderId, a);
   const r2Ok = isR2Configured();
   const thumb = new Map<string, string>();
   await Promise.all(
     [...firstRef.entries()].map(async ([orderId, a]) => {
-      if (a.url) thumb.set(orderId, a.url);
+      if (a.url) thumb.set(orderId, boardThumbnailUrl(a.url));
       else if (a.storage === "r2" && a.r2Key && r2Ok) {
         try {
           thumb.set(orderId, await presignGet(a.r2Key));
@@ -125,22 +194,10 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
   // Revision detail per in-design order — the reason a card is back in design.
   // A card can be here from a failed QC (qc_checks) OR a customer change request
   // (proofs); we surface whichever happened most recently.
-  const revisionIds = rows.filter((o) => o.status === "in_design").map((o) => o.id);
   const qcFail = new Map<string, QcFailInfo>();
   const customerRevision = new Map<string, QcFailInfo>();
   const customerRevisionAt = new Map<string, Date>();
   if (revisionIds.length) {
-    const failRows = await tx
-      .select({
-        orderId: qcChecks.orderId,
-        reason: qcChecks.reason,
-        checklistSnapshot: qcChecks.checklistSnapshot,
-        itemResults: qcChecks.itemResults,
-        createdAt: qcChecks.createdAt,
-      })
-      .from(qcChecks)
-      .where(and(inArray(qcChecks.orderId, revisionIds), eq(qcChecks.result, "fail")))
-      .orderBy(desc(qcChecks.createdAt));
     const qcAt = new Map<string, Date>();
     for (const f of failRows) {
       if (qcFail.has(f.orderId)) continue; // keep only the most recent fail
@@ -151,17 +208,6 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
       qcAt.set(f.orderId, f.createdAt);
     }
 
-    const revRows = await tx
-      .select({
-        orderId: proofs.orderId,
-        revisionNotes: proofs.revisionNotes,
-        failedItems: proofs.failedItems,
-        annotations: proofs.annotations,
-        decidedAt: proofs.decidedAt,
-      })
-      .from(proofs)
-      .where(and(inArray(proofs.orderId, revisionIds), eq(proofs.decision, "revision")))
-      .orderBy(desc(proofs.decidedAt));
     for (const r of revRows) {
       if (customerRevision.has(r.orderId)) continue; // most recent request only
       customerRevision.set(r.orderId, {
@@ -177,15 +223,6 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
       else qcFail.delete(r.orderId);
     }
 
-    const vaRevisionRows = await tx
-      .select({
-        orderId: activityLog.orderId,
-        metadata: activityLog.metadata,
-        createdAt: activityLog.createdAt,
-      })
-      .from(activityLog)
-      .where(and(inArray(activityLog.orderId, revisionIds), eq(activityLog.action, "order.in_design")))
-      .orderBy(desc(activityLog.createdAt));
     for (const r of vaRevisionRows) {
       if (!r.orderId) continue;
       const meta = (r.metadata ?? {}) as Record<string, unknown>;
@@ -201,23 +238,14 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
     }
   }
 
-  const custIds = rows.map((o) => o.customerId).filter((x): x is string => !!x);
   const name = new Map<string, string>();
-  if (custIds.length) {
-    if (viewerRole === "designer") {
-      for (const c of await tx
-        .select({ id: customerPublic.id, firstName: customerPublic.firstName })
-        .from(customerPublic)
-        .where(inArray(customerPublic.id, custIds))) {
-        name.set(c.id!, c.firstName ?? "-");
-      }
-    } else {
-      for (const c of await tx
-        .select({ id: customers.id, firstName: customers.firstName, lastName: customers.lastName })
-        .from(customers)
-        .where(inArray(customers.id, custIds))) {
-        name.set(c.id, [c.firstName, c.lastName].filter(Boolean).join(" ") || "-");
-      }
+  if (viewerRole === "designer") {
+    for (const c of customerRows as { id: string | null; firstName: string | null }[]) {
+      if (c.id) name.set(c.id, c.firstName ?? "-");
+    }
+  } else {
+    for (const c of customerRows as { id: string; firstName: string | null; lastName: string | null }[]) {
+      name.set(c.id, [c.firstName, c.lastName].filter(Boolean).join(" ") || "-");
     }
   }
 
@@ -286,62 +314,88 @@ function styleSummary(breakdown: unknown): string {
   return styles.length ? styles.join(", ") : "Unspecified";
 }
 
+const BOARD_ROW_SELECT = {
+  id: orders.id,
+  platformOrderId: orders.platformOrderId,
+  platformOrderName: orders.platformOrderName,
+  status: orders.status,
+  dueAt: orders.dueAt,
+  businessId: orders.businessId,
+  customerId: orders.customerId,
+  revisionCount: orders.revisionCount,
+  source: orders.source,
+  notes: orders.notes,
+} as const;
+
 /** Designer board for `designerId` (self, or a VA viewing ?designer=X). */
 export async function getDesignerBoard(user: RequestUser, designerId?: string): Promise<DesignerBoard> {
   const target = designerId ?? user.id;
   return withUserContext(user, async (tx) => {
-    const rows = (await tx
-      .select({
-        id: orders.id,
-        platformOrderId: orders.platformOrderId,
-        platformOrderName: orders.platformOrderName,
-        status: orders.status,
-        dueAt: orders.dueAt,
-        businessId: orders.businessId,
-        customerId: orders.customerId,
-        revisionCount: orders.revisionCount,
-        source: orders.source,
-        notes: orders.notes,
-      })
-      .from(orders)
-      .innerJoin(
-        assignments,
-        and(eq(assignments.orderId, orders.id), eq(assignments.active, true), eq(assignments.designerId, target)),
-      )
-      .where(and(inArray(orders.status, ["ready_to_assign", "in_design", "awaiting_qc", "complete"]), liveOrderWhere()))) as OrderRow[];
+    const assignedToTarget = (status: OrderRow["status"] | OrderRow["status"][]) =>
+      and(
+        Array.isArray(status) ? inArray(orders.status, status) : eq(orders.status, status),
+        liveOrderWhere(),
+      );
 
+    // The live columns (queue/in-design/QC) and the capped Complete column are
+    // independent queries — same with the earnings figures below — so they all
+    // go over the wire together instead of one round trip after another.
+    const [activeRows, completeRows, [daily], [period], earningRows] = await Promise.all([
+      tx
+        .select(BOARD_ROW_SELECT)
+        .from(orders)
+        .innerJoin(
+          assignments,
+          and(eq(assignments.orderId, orders.id), eq(assignments.active, true), eq(assignments.designerId, target)),
+        )
+        .where(assignedToTarget(["ready_to_assign", "in_design", "awaiting_qc"])) as Promise<OrderRow[]>,
+      tx
+        .select(BOARD_ROW_SELECT)
+        .from(orders)
+        .innerJoin(
+          assignments,
+          and(eq(assignments.orderId, orders.id), eq(assignments.active, true), eq(assignments.designerId, target)),
+        )
+        .where(
+          and(
+            assignedToTarget("complete"),
+            gte(orders.updatedAt, sql`now() - interval '1 day' * ${COMPLETE_COLUMN_WINDOW_DAYS}`),
+          ),
+        )
+        .orderBy(desc(orders.updatedAt))
+        .limit(COMPLETE_COLUMN_MAX) as Promise<OrderRow[]>,
+      tx
+        .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
+        .from(earnings)
+        .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), gte(earnings.createdAt, sql`date_trunc('day', now())`))),
+      tx
+        .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
+        .from(earnings)
+        .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), gte(earnings.createdAt, sql`date_trunc('month', now())`))),
+      tx
+        .select({
+          id: earnings.id,
+          orderId: earnings.orderId,
+          orderNumber: orders.platformOrderName,
+          fallbackOrderNumber: orders.platformOrderId,
+          figureCount: earnings.figureCount,
+          rate: earnings.rate,
+          amount: earnings.amount,
+          status: earnings.status,
+          breakdown: earnings.breakdown,
+          createdAt: earnings.createdAt,
+        })
+        .from(earnings)
+        .innerJoin(orders, eq(orders.id, earnings.orderId))
+        .where(eq(earnings.designerId, target))
+        .orderBy(desc(earnings.createdAt))
+        .limit(20),
+    ]);
+
+    const rows = [...activeRows, ...completeRows];
     const cards = await enrich(tx, rows, user.role);
     const meta = new Map(rows.map((r) => [r.id, r]));
     const pick = (pred: (r: OrderRow) => boolean) => cards.filter((c) => pred(meta.get(c.orderId)!));
-
-    const [daily] = await tx
-      .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
-      .from(earnings)
-      .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), gte(earnings.createdAt, sql`date_trunc('day', now())`)));
-
-    const [period] = await tx
-      .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
-      .from(earnings)
-      .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), gte(earnings.createdAt, sql`date_trunc('month', now())`)));
-
-    const earningRows = await tx
-      .select({
-        id: earnings.id,
-        orderId: earnings.orderId,
-        orderNumber: orders.platformOrderName,
-        fallbackOrderNumber: orders.platformOrderId,
-        figureCount: earnings.figureCount,
-        rate: earnings.rate,
-        amount: earnings.amount,
-        status: earnings.status,
-        breakdown: earnings.breakdown,
-        createdAt: earnings.createdAt,
-      })
-      .from(earnings)
-      .innerJoin(orders, eq(orders.id, earnings.orderId))
-      .where(eq(earnings.designerId, target))
-      .orderBy(desc(earnings.createdAt))
-      .limit(20);
 
     return {
       columns: {

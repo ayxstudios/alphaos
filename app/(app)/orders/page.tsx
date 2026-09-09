@@ -749,7 +749,12 @@ export default async function OrdersPage({
       </FilterBar>
 
       <FilterBar className="items-end">
-        <form className="relative min-w-0 flex-1 sm:max-w-sm">
+        {/* basis-full: below sm this always starts its own flex-wrap row (a
+            flex-basis of 100% forces a line break), so it never has to fight
+            the filter selects' min-w-32 floor for space on a phone — without
+            it, the search box was squeezed down to ~30px, invisible next to
+            "Status". At sm+ it drops back to the normal flex-1 sizing. */}
+        <form className="relative min-w-0 basis-full flex-1 sm:basis-auto sm:max-w-sm">
           <Search
             size={16}
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate"

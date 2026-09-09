@@ -18,7 +18,7 @@ const PROTECTED = [
 
 // The only areas a designer may reach. Per-order ownership on /orders/[id] is
 // enforced by RLS in the page (a designer only sees their assigned orders).
-const DESIGNER_ALLOWED = [/^\/board(\/|$)/, /^\/orders\/[^/]+/];
+const DESIGNER_ALLOWED = [/^\/dashboard(\/|$)/, /^\/board(\/|$)/, /^\/me(\/|$)/, /^\/orders\/[^/]+/];
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;

@@ -20,6 +20,7 @@ import {
   Settings,
   AlertTriangle,
   Mail,
+  Calendar,
   type IconProps,
 } from "@/components/ui/icons";
 
@@ -30,7 +31,8 @@ type NavItem = { label: string; href: string; icon: ComponentType<IconProps> };
 // it just lives in the quieter "More" group below, so the main list stays
 // calm and obvious instead of listing every page in the app.
 const ADMIN_NAV: NavItem[] = [
-  { label: "Today", href: "/dashboard", icon: Grid },
+  { label: "Home", href: "/dashboard", icon: Grid },
+  { label: "Today", href: "/today", icon: ListChecks },
   { label: "Orders", href: "/orders", icon: Package },
   { label: "Messages", href: "/emails", icon: Mail },
   { label: "Designers", href: "/board", icon: Columns },
@@ -47,7 +49,8 @@ const ADMIN_MORE: NavItem[] = [
 ];
 
 const VA_NAV: NavItem[] = [
-  { label: "Today", href: "/dashboard", icon: Grid },
+  { label: "Home", href: "/dashboard", icon: Grid },
+  { label: "Today", href: "/today", icon: ListChecks },
   { label: "Orders", href: "/orders", icon: Package },
   { label: "Messages", href: "/emails", icon: Mail },
   { label: "Designers", href: "/board", icon: Columns },
@@ -61,7 +64,9 @@ const VA_MORE: NavItem[] = [
 ];
 
 const DESIGNER_NAV: NavItem[] = [
+  { label: "Home", href: "/dashboard", icon: Grid },
   { label: "My Board", href: "/board", icon: Columns },
+  { label: "My Week", href: "/me", icon: Calendar },
 ];
 const DESIGNER_MORE: NavItem[] = [];
 
@@ -83,7 +88,7 @@ export function Sidebar({
   const pathname = usePathname();
   const nav = role === "designer" ? DESIGNER_NAV : role === "admin" ? ADMIN_NAV : VA_NAV;
   const more = role === "designer" ? DESIGNER_MORE : role === "admin" ? ADMIN_MORE : VA_MORE;
-  const homeHref = role === "designer" ? "/board" : "/dashboard";
+  const homeHref = "/dashboard";
 
   function renderItem(item: NavItem) {
     const active = pathname === item.href || pathname.startsWith(item.href + "/");
