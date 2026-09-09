@@ -161,13 +161,13 @@ export function TopBar({
           aria-label="Open Alpha chat"
           onClick={() => window.dispatchEvent(new CustomEvent("alphaos:chat-open"))}
           className={cn(
-            "inline-flex h-9 items-center gap-2 rounded-input border border-pigment/20 bg-pigment-soft px-3 text-sm font-semibold text-pigment",
+            "inline-flex h-9 items-center gap-2 rounded-input border border-pigment/20 bg-pigment-soft px-2.5 text-sm font-semibold text-pigment sm:px-3",
             "transition-colors motion-hover hover:bg-pigment hover:text-surface",
             focusRing,
           )}
         >
           <Sparkles size={16} />
-          <span>Alpha</span>
+          <span className="hidden sm:inline">Alpha</span>
         </button>
         <Popover
           ariaLabel={`Notifications${unread ? `, ${unread} unread` : ""}`}

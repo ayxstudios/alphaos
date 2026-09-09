@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   Mail,
   Calendar,
+  Eye,
   type IconProps,
 } from "@/components/ui/icons";
 
@@ -34,6 +35,7 @@ const ADMIN_NAV: NavItem[] = [
   { label: "Home", href: "/dashboard", icon: Grid },
   { label: "Today", href: "/today", icon: ListChecks },
   { label: "Orders", href: "/orders", icon: Package },
+  { label: "QC", href: "/qc", icon: Eye },
   { label: "Messages", href: "/emails", icon: Mail },
   { label: "Designers", href: "/board", icon: Columns },
   { label: "Print", href: "/queue/print", icon: Truck },
@@ -52,6 +54,7 @@ const VA_NAV: NavItem[] = [
   { label: "Home", href: "/dashboard", icon: Grid },
   { label: "Today", href: "/today", icon: ListChecks },
   { label: "Orders", href: "/orders", icon: Package },
+  { label: "QC", href: "/qc", icon: Eye },
   { label: "Messages", href: "/emails", icon: Mail },
   { label: "Designers", href: "/board", icon: Columns },
   { label: "Print", href: "/queue/print", icon: Truck },

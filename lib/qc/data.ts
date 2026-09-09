@@ -223,3 +223,55 @@ export async function getQcQueueIds(
     return rows.map((r) => r.id);
   });
 }
+
+export type QcQueueRow = {
+  id: string;
+  orderNumber: string;
+  shopName: string;
+  platform: string;
+  designerName: string | null;
+  figureCount: number;
+  style: string | null;
+  dueAt: string | null;
+  waitingSince: string;
+};
+
+/**
+ * The QC queue as a list (the /qc page): every order awaiting QC in the
+ * business, soonest due first, with who designed it and what it is.
+ */
+export async function getQcQueue(user: RequestUser, businessId: string | null): Promise<QcQueueRow[]> {
+  return withUserContext(user, async (tx) => {
+    const bizFilter = businessId && businessId !== "all" ? eq(orders.businessId, businessId) : undefined;
+    const rows = await tx
+      .select({
+        id: orders.id,
+        number: orders.platformOrderName,
+        fallback: orders.platformOrderId,
+        dueAt: orders.dueAt,
+        updatedAt: orders.updatedAt,
+        shopName: shops.name,
+        platform: shops.platform,
+        designerName: users.name,
+        figures: sql<number>`coalesce((select sum(${orderItems.figureCount}) from ${orderItems} where ${orderItems.orderId} = ${orders.id}), 0)::int`,
+        style: sql<string | null>`(select ${orderItems.style} from ${orderItems} where ${orderItems.orderId} = ${orders.id} order by ${orderItems.id} limit 1)`,
+      })
+      .from(orders)
+      .innerJoin(shops, eq(shops.id, orders.shopId))
+      .leftJoin(assignments, and(eq(assignments.orderId, orders.id), eq(assignments.active, true)))
+      .leftJoin(users, eq(users.id, assignments.designerId))
+      .where(bizFilter ? and(eq(orders.status, "awaiting_qc"), liveOrderWhere(), bizFilter) : and(eq(orders.status, "awaiting_qc"), liveOrderWhere()))
+      .orderBy(sql`${orders.dueAt} asc nulls last`, asc(orders.createdAt));
+    return rows.map((r) => ({
+      id: r.id,
+      orderNumber: r.number ?? r.fallback ?? r.id.slice(0, 8),
+      shopName: r.shopName,
+      platform: r.platform,
+      designerName: r.designerName ?? null,
+      figureCount: Number(r.figures ?? 0),
+      style: r.style ?? null,
+      dueAt: r.dueAt ? r.dueAt.toISOString() : null,
+      waitingSince: r.updatedAt.toISOString(),
+    }));
+  });
+}
