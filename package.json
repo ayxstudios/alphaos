@@ -13,6 +13,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
+    "seed:history": "tsx scripts/seed-history.ts",
     "mock:pipeline": "tsx scripts/mock-pipeline.ts",
     "create-user": "tsx scripts/create-user.ts",
     "test:db": "tsx scripts/test-db.ts",
