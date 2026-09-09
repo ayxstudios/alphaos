@@ -27,7 +27,7 @@ export function VersionStrip({
 }) {
   if (versions.length === 0) {
     return (
-      <div className="flex h-20 items-center justify-center rounded-card border border-dashed border-line text-sm text-slate">
+      <div className="flex h-20 items-center justify-center rounded-card border border-dashed border-line/80 text-sm text-slate">
         No submissions yet
       </div>
     );
@@ -48,7 +48,7 @@ export function VersionStrip({
               "group flex w-32 shrink-0 flex-col gap-1 rounded-card border p-1.5 text-left transition-colors motion-hover",
               selected
                 ? "border-pigment bg-pigment-soft"
-                : "border-line bg-surface hover:border-slate/40",
+                : "border-transparent bg-surface shadow-card hover:border-slate/30",
             )}
           >
             <div className="relative h-16 overflow-hidden rounded-input border border-line bg-canvas">

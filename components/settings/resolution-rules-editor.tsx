@@ -60,7 +60,7 @@ function StringList({
     <div className="flex flex-col gap-2">
       <span className="text-xs font-medium text-ink">{label}</span>
       {values.length > 0 && (
-        <div className="overflow-hidden rounded-input border border-line bg-canvas">
+        <div className="overflow-hidden rounded-input bg-canvas/70">
           {visibleValues.map((v) => (
             <div key={v} className="flex items-center gap-2 border-b border-line px-2.5 py-1.5 last:border-b-0">
               <span className="min-w-0 flex-1 truncate text-xs text-ink">{v}</span>
@@ -227,7 +227,7 @@ export function ResolutionRulesEditor({
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-input border border-line p-3">
+    <div className="flex flex-col gap-4 rounded-input bg-canvas/70 p-3">
       <h4 className="text-sm font-semibold text-ink">Import rules</h4>
 
       {optionNames.length > 0 && (
@@ -267,7 +267,7 @@ export function ResolutionRulesEditor({
         <span className="text-xs font-medium text-ink">Figure count rules</span>
         {figure.length === 0 && <p className="text-xs text-slate">No figure rules yet.</p>}
         {figure.map((r, i) => (
-          <div key={i} className="flex flex-col gap-2 rounded-input border border-line p-2">
+          <div key={i} className="flex flex-col gap-2 rounded-input bg-canvas/70 p-2">
             <div className="flex items-end gap-2">
               <Input
                 label="Option name contains"

@@ -463,11 +463,8 @@ export default async function CustomerDetailPage({
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-5">
           <DataPanel className="overflow-hidden">
-            <div className="border-b border-line px-4 py-3">
-              <SectionHeader
-                title="Orders and work cards"
-                description="Linked orders, purchased items, designers, VAs, QC, messages, and assets."
-              />
+            <div className="border-b border-line/60 px-4 py-3">
+              <SectionHeader title="Orders" />
             </div>
 
             {orderRows.length === 0 ? (
@@ -477,7 +474,7 @@ export default async function CustomerDetailPage({
                 body="Orders appear here after a VA enters or confirms the customer's email."
               />
             ) : (
-              <div className="divide-y divide-line">
+              <div className="divide-y divide-line/60">
                 {orderRows.map((order) => {
                   const orderItemsForOrder = itemsByOrder.get(order.id) ?? [];
                   const assignmentsForOrder = assignmentsByOrder.get(order.id) ?? [];
@@ -647,19 +644,19 @@ export default async function CustomerDetailPage({
             <SectionHeader title="Customer" />
             <dl className="mt-4 grid gap-3 text-sm">
               <div>
-                <dt className="text-xs font-medium uppercase text-slate">Name</dt>
+                <dt className="text-xs font-medium text-slate">Name</dt>
                 <dd className="mt-1 text-ink">{customerName(customer)}</dd>
               </div>
               <div>
-                <dt className="text-xs font-medium uppercase text-slate">Email</dt>
+                <dt className="text-xs font-medium text-slate">Email</dt>
                 <dd className="mt-1 break-all text-ink">{customer.email}</dd>
               </div>
               <div>
-                <dt className="text-xs font-medium uppercase text-slate">Created</dt>
+                <dt className="text-xs font-medium text-slate">Created</dt>
                 <dd className="mt-1 text-ink">{fmtDate(customer.createdAt)}</dd>
               </div>
               <div>
-                <dt className="text-xs font-medium uppercase text-slate">Latest order</dt>
+                <dt className="text-xs font-medium text-slate">Latest order</dt>
                 <dd className="mt-1 text-ink">
                   {latestOrder
                     ? fmtDate(latestOrder.placedAt ?? latestOrder.createdAt)
@@ -670,7 +667,7 @@ export default async function CustomerDetailPage({
           </DataPanel>
 
           <DataPanel className="overflow-hidden">
-            <div className="border-b border-line px-4 py-3">
+            <div className="border-b border-line/60 px-4 py-3">
               <SectionHeader title="Communication" />
             </div>
             {messageRows.length === 0 ? (
@@ -680,7 +677,7 @@ export default async function CustomerDetailPage({
                 body="Customer messages linked to this customer or their orders will appear here."
               />
             ) : (
-              <ul className="divide-y divide-line">
+              <ul className="divide-y divide-line/60">
                 {messageRows.slice(0, 8).map((message) => (
                   <li key={message.id} className="px-4 py-3">
                     <div className="flex flex-wrap items-center gap-2">
@@ -709,7 +706,7 @@ export default async function CustomerDetailPage({
           </DataPanel>
 
           <DataPanel className="overflow-hidden">
-            <div className="border-b border-line px-4 py-3">
+            <div className="border-b border-line/60 px-4 py-3">
               <SectionHeader title="Recent activity" />
             </div>
             {activityRows.length === 0 ? (
@@ -719,7 +716,7 @@ export default async function CustomerDetailPage({
                 body="Workflow movement and team comments appear here after work starts."
               />
             ) : (
-              <ul className="divide-y divide-line">
+              <ul className="divide-y divide-line/60">
                 {activityRows.slice(0, 10).map((event) => (
                   <li key={event.id} className="px-4 py-3 text-sm">
                     <div className="flex items-start gap-2">

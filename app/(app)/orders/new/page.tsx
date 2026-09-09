@@ -44,12 +44,15 @@ export default async function NewOrderPage() {
   }));
 
   return (
-    <Page className="max-w-2xl">
-      <PageHeader
-        title="New order"
-        description={`Create a manual order for ${selected.name}.`}
-      />
-      <NewOrderForm shops={options} r2Enabled={isR2Configured()} />
+    <Page>
+      {/* Page's own max-width is the wide app width; a form reads best narrow. */}
+      <div className="flex w-full max-w-2xl flex-col gap-6">
+        <PageHeader
+          title="New order"
+          description={`A manual order for ${selected.name}. Enter it once, then it flows like any other order.`}
+        />
+        <NewOrderForm shops={options} r2Enabled={isR2Configured()} />
+      </div>
     </Page>
   );
 }

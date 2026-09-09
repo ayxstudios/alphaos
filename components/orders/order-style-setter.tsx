@@ -69,13 +69,13 @@ export function OrderStyleSetter({ orderId, currentStyle, via, affected, locked,
     : null;
 
   const bar =
-    "flex flex-wrap items-center gap-x-3 gap-y-2 rounded-card border px-4 py-3 text-sm shadow-sm";
+    "flex flex-wrap items-center gap-x-3 gap-y-2 rounded-card px-4 py-3 text-sm shadow-card";
 
   if (!open) {
     const flagged = defaulted || !currentStyle;
     return (
-      <div className={flagged ? `${bar} border-amber/30 bg-amber/5` : `${bar} border-line bg-surface`}>
-        <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate">
+      <div className={flagged ? `${bar} bg-amber/5` : `${bar} bg-surface`}>
+        <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-slate">
           <Brush size={14} />
           Style
         </span>
@@ -96,9 +96,9 @@ export function OrderStyleSetter({ orderId, currentStyle, via, affected, locked,
   }
 
   return (
-    <div className={`${bar} border-line bg-surface`}>
+    <div className={`${bar} bg-surface`}>
       <div className="flex w-full flex-wrap items-center gap-2">
-        <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate">
+        <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-slate">
           <Brush size={14} />
           Style
         </span>
@@ -124,7 +124,7 @@ export function OrderStyleSetter({ orderId, currentStyle, via, affected, locked,
       </div>
 
       {defaulted && defaultStyleId && (
-        <div className="flex w-full flex-wrap items-center gap-2 rounded-input border border-line bg-canvas px-3 py-2">
+        <div className="flex w-full flex-wrap items-center gap-2 rounded-input bg-canvas px-3 py-2">
           <span className="text-xs text-slate">
             Defaulted to <strong className="text-ink">{currentStyle}</strong>. Keep it as the rule for this product, or change it above.
           </span>

@@ -58,7 +58,7 @@ export function DailyHealthEmailSettingsPanel({
   }
 
   return (
-    <details className="group rounded-card border border-line bg-surface shadow-sm">
+    <details className="group rounded-card bg-surface shadow-card">
       <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -75,7 +75,7 @@ export function DailyHealthEmailSettingsPanel({
       </summary>
 
       <div className="border-t border-line p-4">
-        <label className="flex items-center gap-3 rounded-input border border-line bg-canvas p-3">
+        <label className="flex items-center gap-3 rounded-input bg-canvas/70 p-3">
           <input
             type="checkbox"
             className="h-4 w-4 accent-pigment"
@@ -94,7 +94,7 @@ export function DailyHealthEmailSettingsPanel({
           ) : (
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {admins.map((admin) => (
-                <label key={admin.id} className="flex items-start gap-3 rounded-input border border-line p-3">
+                <label key={admin.id} className="flex items-start gap-3 rounded-input bg-canvas/70 p-3">
                   <input
                     type="checkbox"
                     className="mt-1 h-4 w-4 accent-pigment"

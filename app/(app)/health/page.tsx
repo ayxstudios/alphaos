@@ -6,7 +6,7 @@ import { auth } from "@/lib/auth";
 import { loadHealthMetrics, type CountLink, type GmailMailboxHealth, type JobRunHealth, type ShopSyncHealth } from "@/lib/health/daily-report";
 import { loadDailyNarrative } from "@/lib/health/narrative";
 import { loadShellData } from "@/lib/shell/context";
-import { Badge, DataPanel, EmptyState, Page, PageHeader, SectionHeader } from "@/components/ui";
+import { Badge, DataPanel, Disclosure, EmptyState, Page, PageHeader, SectionHeader } from "@/components/ui";
 import { Grid } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 
@@ -29,18 +29,18 @@ function formatGenerated(value: string | null) {
   return `Narrative cached ${formatDateTime(value)}`;
 }
 
-function metricClass(tone: CountLink["tone"]) {
-  return {
-    neutral: "border-line hover:border-slate/40",
-    success: "border-sage/20 hover:border-sage/35",
-    warning: "border-amber/25 hover:border-amber/40",
-    danger: "border-rose/20 hover:border-rose/40",
-  }[tone];
+const TONE_DOT: Record<CountLink["tone"], string> = {
+  neutral: "bg-slate/40",
+  success: "bg-sage",
+  warning: "bg-amber",
+  danger: "bg-rose",
+};
+
+/** A signal is "clear" when it is green or a neutral zero. */
+function isClear(metric: CountLink) {
+  return metric.tone === "success" || (metric.tone === "neutral" && metric.count === 0);
 }
 
-function badgeVariant(tone: CountLink["tone"]) {
-  return tone === "neutral" ? "neutral" : tone;
-}
 
 export default async function HealthPage({
   searchParams,
@@ -67,10 +67,10 @@ export default async function HealthPage({
     <Page>
       <PageHeader
         title="System Health"
-        description="Pipeline integrity, sync health, and the daily operations briefing."
+        description="What needs a look, then everything that is fine."
         eyebrow={metrics.scopeLabel}
         actions={
-          <div className="inline-flex rounded-input border border-line bg-surface p-1 text-sm shadow-sm">
+          <div className="inline-flex rounded-input bg-surface p-1 text-sm shadow-card">
             <Link
               href="/health"
               className={cn(
@@ -108,97 +108,162 @@ export default async function HealthPage({
         </DataPanel>
       )}
 
-      <DataPanel className="p-4">
-        <SectionHeader
-          title="Pipeline integrity"
-          description="Signals that the system itself is capturing, sending, and syncing correctly."
-        />
-        <MetricGrid metrics={metrics.links.pipeline} />
-      </DataPanel>
+      <PipelineSignals metrics={metrics.links.pipeline} />
 
-      <DataPanel id="background-jobs" className="overflow-hidden">
-        <div className="border-b border-line px-4 py-3">
-          <SectionHeader
-            title="Background jobs"
-            description="Each scheduled job should keep producing successful ledger rows."
-          />
-        </div>
-        <div className="divide-y divide-line">
-          {metrics.pipeline.jobs.map((job) => (
-            <JobRunRow key={job.key} job={job} />
-          ))}
-        </div>
-      </DataPanel>
+      <RowSection
+        id="background-jobs"
+        title="Background jobs"
+        noun="job"
+        items={metrics.pipeline.jobs.map((job) => ({ key: job.key, ok: jobBadge(job).variant === "success", node: <JobRunRow job={job} /> }))}
+        empty={null}
+      />
 
-      <DataPanel className="overflow-hidden">
-        <div className="border-b border-line px-4 py-3">
-          <SectionHeader
-            title="Shop syncs"
-            description="Each connected shop should sync successfully at least once per hour."
-          />
-        </div>
-        {metrics.pipeline.shops.length === 0 ? (
+      <RowSection
+        title="Shop syncs"
+        noun="shop"
+        items={metrics.pipeline.shops.map((shop) => ({ key: shop.id, ok: !shop.stale, node: <ShopSyncRow shop={shop} /> }))}
+        empty={
           <EmptyState
             icon={Grid}
             headline="No connected shops"
             body="Connected Etsy and Shopify shops will appear here with their last successful sync time."
           />
-        ) : (
-          <div className="divide-y divide-line">
-            {metrics.pipeline.shops.map((shop) => (
-              <ShopSyncRow key={shop.id} shop={shop} />
-            ))}
-          </div>
-        )}
-      </DataPanel>
+        }
+      />
 
-      <DataPanel className="overflow-hidden">
-        <div className="border-b border-line px-4 py-3">
-          <SectionHeader
-            title="Mailbox polls"
-            description="Each connected mailbox should advance whenever Gmail has newer history."
-          />
-        </div>
-        {metrics.pipeline.gmailMailboxes.length === 0 ? (
+      <RowSection
+        title="Mailbox polls"
+        noun="mailbox"
+        items={metrics.pipeline.gmailMailboxes.map((mailbox) => ({ key: mailbox.businessId, ok: !mailbox.stalled, node: <MailboxPollRow mailbox={mailbox} /> }))}
+        empty={
           <EmptyState
             icon={Grid}
             headline="No connected mailboxes"
             body="Connected Gmail mailboxes will appear here with their last successful poll time."
           />
-        ) : (
-          <div className="divide-y divide-line">
-            {metrics.pipeline.gmailMailboxes.map((mailbox) => (
-              <MailboxPollRow key={mailbox.businessId} mailbox={mailbox} />
-            ))}
-          </div>
-        )}
-      </DataPanel>
+        }
+      />
     </Page>
   );
 }
 
-function MetricGrid({ metrics }: { metrics: CountLink[] }) {
+/**
+ * Pipeline signals: the ones that need a look sit up top as cards; every
+ * clear signal folds into one line so green never shouts.
+ */
+function PipelineSignals({ metrics }: { metrics: CountLink[] }) {
+  const attention = metrics.filter((m) => !isClear(m));
+  const clear = metrics.filter(isClear);
   return (
-    <div className="mt-4 grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
-      {metrics.map((metric) => (
-        <Link
-          key={metric.label}
-          href={metric.href}
-          className={cn(
-            "block rounded-card border bg-surface p-3 transition-colors hover:bg-canvas",
-            metricClass(metric.tone),
-          )}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate">{metric.label}</p>
-            <Badge variant={badgeVariant(metric.tone)} dot={metric.tone !== "neutral"}>
-              {metric.count}
-            </Badge>
+    <div className="flex flex-col gap-3">
+      {attention.length > 0 && (
+        <DataPanel className="p-4">
+          <SectionHeader title="Needs a look" description={`${attention.length} signal${attention.length === 1 ? "" : "s"} outside the normal range`} />
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {attention.map((metric) => (
+              <MetricCard key={metric.label} metric={metric} />
+            ))}
           </div>
-          {metric.detail && <p className="mt-3 text-xs leading-5 text-slate">{metric.detail}</p>}
-        </Link>
-      ))}
+        </DataPanel>
+      )}
+      {clear.length > 0 && (
+        <Disclosure
+          summary={
+            <span className="flex items-center gap-2">
+              <span className="size-1.5 rounded-full bg-sage" />
+              {attention.length === 0 ? "Everything is clear" : `${clear.length} check${clear.length === 1 ? "" : "s"} clear`}
+            </span>
+          }
+          hint={attention.length === 0 ? `${clear.length} pipeline signals in range` : undefined}
+        >
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {clear.map((metric) => (
+              <MetricCard key={metric.label} metric={metric} />
+            ))}
+          </div>
+        </Disclosure>
+      )}
     </div>
+  );
+}
+
+function MetricCard({ metric }: { metric: CountLink }) {
+  return (
+    <Link
+      href={metric.href}
+      className="block rounded-input bg-canvas/70 p-3 transition-colors hover:bg-pigment-soft"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <p className="flex items-center gap-1.5 text-sm font-medium text-ink">
+          <span className={cn("size-1.5 shrink-0 rounded-full", TONE_DOT[metric.tone])} />
+          {metric.label}
+        </p>
+        <span className="font-display text-lg font-semibold tabular-nums text-ink">{metric.count}</span>
+      </div>
+      {metric.detail && <p className="mt-1 text-xs leading-5 text-slate">{metric.detail}</p>}
+    </Link>
+  );
+}
+
+/**
+ * A list of health rows: anything unhealthy is shown open, the healthy rest
+ * folds into one calm line.
+ */
+function RowSection({
+  id,
+  title,
+  noun,
+  items,
+  empty,
+}: {
+  id?: string;
+  title: string;
+  noun: string;
+  items: { key: string; ok: boolean; node: React.ReactNode }[];
+  empty: React.ReactNode;
+}) {
+  const bad = items.filter((i) => !i.ok);
+  const good = items.filter((i) => i.ok);
+  return (
+    <DataPanel id={id} className="overflow-hidden">
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <h2 className="text-base font-semibold text-ink">{title}</h2>
+        {items.length > 0 && (
+          <Badge variant={bad.length ? "danger" : "success"} dot>
+            {bad.length ? `${bad.length} need${bad.length === 1 ? "s" : ""} a look` : "All healthy"}
+          </Badge>
+        )}
+      </div>
+      {items.length === 0 ? (
+        empty
+      ) : (
+        <>
+          {bad.length > 0 && (
+            <div className="divide-y divide-line/70 border-t border-line/70">
+              {bad.map((i) => (
+                <div key={i.key}>{i.node}</div>
+              ))}
+            </div>
+          )}
+          {good.length > 0 && (
+            <details className="group border-t border-line/70">
+              <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-sm text-slate hover:text-ink [&::-webkit-details-marker]:hidden">
+                <span className="size-1.5 rounded-full bg-sage" />
+                {good.length} {noun}{good.length === 1 ? "" : "s"} healthy
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="ml-auto transition-transform group-open:rotate-90">
+                  <path d="M9 6l6 6-6 6" />
+                </svg>
+              </summary>
+              <div className="divide-y divide-line/70 border-t border-line/70">
+                {good.map((i) => (
+                  <div key={i.key}>{i.node}</div>
+                ))}
+              </div>
+            </details>
+          )}
+        </>
+      )}
+    </DataPanel>
   );
 }
 

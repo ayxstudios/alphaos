@@ -78,7 +78,7 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
   }
 
   return (
-    <details className="group rounded-card border border-line bg-surface shadow-sm">
+    <details className="group rounded-card bg-surface shadow-card">
       <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -189,7 +189,7 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
               )}
             </div>
 
-            <div className="rounded-input border border-line bg-canvas p-3">
+            <div className="rounded-input bg-canvas/70 p-3">
               <p className="text-sm font-medium text-ink">Send test email</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Input

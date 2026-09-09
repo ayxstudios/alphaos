@@ -31,8 +31,8 @@ export function OrderCard({
     <div
       onClick={onOpen}
       className={cn(
-        "group flex flex-col overflow-hidden rounded-card border border-line bg-surface transition-[box-shadow,transform,border-color] duration-150",
-        overlay ? "rotate-2 shadow-lg" : "shadow-sm hover:-translate-y-0.5 hover:border-slate/40 hover:shadow-md",
+        "group flex flex-col overflow-hidden rounded-card bg-surface transition-[box-shadow,transform] duration-150",
+        overlay ? "rotate-2 shadow-lg" : "shadow-card hover:-translate-y-0.5 hover:shadow-md",
         dragging && "opacity-40",
         onOpen && "cursor-pointer",
       )}
@@ -50,7 +50,7 @@ export function OrderCard({
           fetchPriority={eager ? "high" : "auto"}
         />
       ) : (
-        <div className="flex h-16 w-full items-center justify-center gap-1.5 border-b border-dashed border-line bg-canvas text-slate">
+        <div className="flex h-16 w-full items-center justify-center gap-1.5 bg-canvas text-slate">
           <Camera size={15} />
           <span className="text-xs">No photo yet</span>
         </div>
@@ -140,7 +140,7 @@ export function OrderCard({
           </div>
         )}
 
-        <div className="flex items-center justify-between gap-2 border-t border-line pt-2 text-xs text-slate">
+        <div className="flex items-center justify-between gap-2 border-t border-line/70 pt-2 text-xs text-slate">
           <span className="truncate text-ink">{card.customerName}</span>
           <span className="shrink-0 tabular-nums">
             {card.figuresResolved

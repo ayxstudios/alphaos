@@ -31,11 +31,7 @@ export default async function TodayPage() {
 
   return (
     <Page className="max-w-4xl">
-      <PageHeader
-        eyebrow={selected.name}
-        title="Today"
-        description="Everything waiting on you, most urgent first."
-      />
+      <PageHeader eyebrow={selected.name} title="Today" />
       <Suspense fallback={<Skeleton className="h-5 w-64" />}>
         <Summary user={user} businessId={selected.id} />
       </Suspense>
@@ -58,7 +54,7 @@ async function Summary({ user, businessId }: { user: U; businessId: string }) {
     q.counts.soon ? `${q.counts.soon} soon` : null,
   ].filter(Boolean);
   return (
-    <p className="text-base text-slate">
+    <p className="-mt-3 text-base text-slate">
       {bits.join(", ")}
       {q.shops > 1 ? ` across ${q.shops} shops.` : "."}
     </p>
@@ -75,7 +71,7 @@ async function MailStrip({ user, businessId }: { user: U; businessId: string }) 
   const n = counts.unmatched + counts.failed;
   if (!n) return null;
   return (
-    <Link href="/emails" className="flex min-h-14 items-center gap-3 rounded-card border border-line bg-surface px-4 py-3 shadow-sm hover:bg-canvas">
+    <Link href="/emails" className="flex min-h-14 items-center gap-3 rounded-card bg-surface px-4 py-3 shadow-card hover:bg-canvas/70">
       <span className="flex size-10 shrink-0 items-center justify-center rounded-input bg-pigment-soft text-pigment">
         <Mail size={18} />
       </span>

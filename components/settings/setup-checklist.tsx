@@ -35,24 +35,20 @@ export function SetupChecklist({
         </Badge>
       </div>
 
-      <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
         {items.map((item) => (
           <Link
             key={item.key}
             href={item.href}
-            className="rounded-input border border-line bg-canvas px-3 py-2 transition-colors hover:border-slate/40 hover:bg-surface"
+            className="flex min-w-0 items-center gap-1.5 rounded-input py-1 text-sm transition-colors hover:text-pigment"
           >
-            <div className="flex items-start gap-2">
-              {item.ok ? (
-                <CheckCircle size={16} className="mt-0.5 shrink-0 text-sage" />
-              ) : (
-                <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber" />
-              )}
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-ink">{item.label}</p>
-                <p className="truncate text-xs text-slate">{item.ok ? item.detail : item.action}</p>
-              </div>
-            </div>
+            {item.ok ? (
+              <CheckCircle size={15} className="shrink-0 text-sage" />
+            ) : (
+              <AlertTriangle size={15} className="shrink-0 text-amber" />
+            )}
+            <span className={item.ok ? "text-ink" : "font-medium text-ink"}>{item.label}</span>
+            <span className="truncate text-xs text-slate">{item.ok ? item.detail : item.action}</span>
           </Link>
         ))}
       </div>

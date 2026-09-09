@@ -5,9 +5,17 @@ import { ArrowRight } from "@/components/ui/icons";
 import { Sparkline } from "@/components/charts";
 import type { ChartColor } from "@/components/charts";
 
+const TONE_DOT = {
+  neutral: null,
+  good: "bg-sage",
+  warn: "bg-amber",
+  bad: "bg-rose",
+} as const;
+
 /**
- * A stat tile: label, one big number, an optional delta and sparkline.
- * The tile's value carries the number; the sparkline is context only.
+ * A stat tile: label, one big number, one quiet line of context and an
+ * optional sparkline. Tone is a small dot next to the label (never a
+ * coloured border), so four tiles read as one calm row.
  */
 export function StatTile({
   label,
@@ -22,43 +30,47 @@ export function StatTile({
   label: string;
   value: string | number;
   unit?: string;
-  /** Percent change vs the previous window; `good` says which direction is good. */
-  delta?: { pct: number | null | undefined; good: "up" | "down"; window: string };
+  /**
+   * Percent change vs the previous window. `base` is the previous window's
+   * count: a tiny base makes any percentage silly, so the pill is dropped
+   * and `fallback` (or the window) is shown as plain text instead.
+   */
+  delta?: { pct: number | null | undefined; good: "up" | "down"; window: string; base?: number; fallback?: string };
   spark?: { points: number[]; labels: string[]; color?: ChartColor; format?: (n: number) => string };
-  tone?: "neutral" | "good" | "warn" | "bad";
+  tone?: keyof typeof TONE_DOT;
   href?: string;
   hint?: string;
 }) {
-  const valueClass = {
-    neutral: "text-ink",
-    good: "text-sage",
-    warn: "text-amber",
-    bad: "text-rose",
-  }[tone];
+  const showPill = !!delta && delta.pct !== undefined && (delta.pct === null || ((delta.base ?? 10) >= 10 && Math.abs(delta.pct) <= 200));
+  const context = delta ? (showPill ? delta.window : (delta.fallback ?? hint ?? delta.window)) : hint;
+  const dot = TONE_DOT[tone];
   const body = (
     <>
-      <div className="flex items-start justify-between gap-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-slate">{label}</span>
-        {href && <ArrowRight size={14} className="mt-0.5 shrink-0 text-slate opacity-0 transition-opacity group-hover:opacity-100" />}
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5 text-xs font-medium text-slate">
+          {dot && <span className={cn("size-1.5 rounded-full", dot)} />}
+          {label}
+        </span>
+        {href && <ArrowRight size={14} className="shrink-0 text-slate opacity-0 transition-opacity group-hover:opacity-100" />}
       </div>
-      <div className="mt-1 flex items-baseline gap-1.5">
-        <span className={cn("font-display text-2xl font-semibold tabular-nums leading-none sm:text-[32px]", valueClass)}>{value}</span>
+      <div className="mt-2 flex items-baseline gap-1.5">
+        <span className="font-display text-[26px] font-semibold tabular-nums leading-none text-ink sm:text-[30px]">{value}</span>
         {unit && <span className="text-sm text-slate">{unit}</span>}
       </div>
-      {(delta || hint) && (
-        <div className="mt-1.5 flex items-start gap-1.5 text-xs text-slate">
-          {delta && delta.pct !== undefined && <DeltaPill pct={delta.pct} good={delta.good} />}
-          <span className="line-clamp-2">{delta ? delta.window : hint}</span>
+      {context && (
+        <div className="mt-1.5 flex items-center gap-1.5 text-xs text-slate">
+          {showPill && delta && <DeltaPill pct={delta.pct as number | null} good={delta.good} />}
+          <span className="truncate">{context}</span>
         </div>
       )}
       {spark && (
-        <div className="mt-2">
-          <Sparkline points={spark.points} labels={spark.labels} color={spark.color} height={36} format={spark.format} ariaLabel={`${label}, last ${spark.points.length} days`} />
+        <div className="mt-3">
+          <Sparkline points={spark.points} labels={spark.labels} color={spark.color} height={32} format={spark.format} ariaLabel={`${label}, last ${spark.points.length} days`} />
         </div>
       )}
     </>
   );
-  const cls = "group flex min-w-0 flex-col rounded-card border border-line bg-surface p-4 shadow-sm";
+  const cls = "group flex min-w-0 flex-col rounded-card bg-surface p-4 shadow-card";
   return href ? (
     <Link href={href} className={cn(cls, "transition-[transform,box-shadow] duration-150 hover:-translate-y-0.5 hover:shadow-md")}>
       {body}
@@ -81,25 +93,31 @@ export function DeltaPill({ pct, good }: { pct: number | null; good: "up" | "dow
   );
 }
 
+/**
+ * A section card. `quiet` is for the second row of context charts: same
+ * card, a smaller title, so the eye lands on the hero above first.
+ */
 export function HomeSection({
   title,
   description,
   action,
   children,
   className,
+  quiet = false,
 }: {
   title: string;
   description?: string;
   action?: { label: string; href: string };
   children: React.ReactNode;
   className?: string;
+  quiet?: boolean;
 }) {
   return (
-    <section className={cn("flex min-w-0 flex-col gap-4 rounded-card border border-line bg-surface p-4 shadow-sm sm:p-5", className)}>
+    <section className={cn("flex min-w-0 flex-col gap-4 rounded-card bg-surface p-4 shadow-card sm:p-5", className)}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold text-ink">{title}</h2>
-          {description && <p className="mt-0.5 text-sm text-slate">{description}</p>}
+          <h2 className={cn("font-semibold text-ink", quiet ? "text-sm" : "text-base")}>{title}</h2>
+          {description && <p className={cn("mt-0.5 text-slate", quiet ? "text-xs" : "text-sm")}>{description}</p>}
         </div>
         {action && (
           <Link href={action.href} className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-pigment hover:underline">
@@ -113,16 +131,26 @@ export function HomeSection({
   );
 }
 
+/** One plain sentence about the day, under the greeting. */
+export function DayLine({ children }: { children: React.ReactNode }) {
+  return <p className="-mt-3 max-w-2xl text-base text-slate">{children}</p>;
+}
+
+/** The quiet label that separates the hero row from the context charts. */
+export function RowLabel({ children }: { children: React.ReactNode }) {
+  return <p className="mt-1 text-xs font-medium text-slate/80">{children}</p>;
+}
+
 export function TileSkeleton({ n = 4 }: { n?: number }) {
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {Array.from({ length: n }).map((_, i) => (
-        <div key={i} className="h-28 animate-pulse rounded-card border border-line bg-surface" />
+        <div key={i} className="h-28 animate-pulse rounded-card bg-surface shadow-card" />
       ))}
     </div>
   );
 }
 
 export function SectionSkeleton({ h = 220 }: { h?: number }) {
-  return <div className="animate-pulse rounded-card border border-line bg-surface" style={{ height: h }} />;
+  return <div className="animate-pulse rounded-card bg-surface shadow-card" style={{ height: h }} />;
 }

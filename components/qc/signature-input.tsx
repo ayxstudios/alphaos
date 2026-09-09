@@ -36,7 +36,7 @@ export function SignatureInput({
     <div className="flex flex-col gap-1.5">
       <label htmlFor="qc-signature" className="text-xs font-medium text-ink">
         Sign off
-        <span className="ml-1 font-normal text-slate">type your full name to unlock Pass and Fail</span>
+        <span className="ml-1 font-normal text-slate">type your name to unlock Pass and Fail</span>
       </label>
       <input
         id="qc-signature"
@@ -77,7 +77,7 @@ export function SignatureInput({
         )}
       />
       <p id="qc-signature-hint" className={cn("text-xs", matches ? "text-sage" : "text-slate")}>
-        {matches ? `Signed as ${expectedName.trim()}.` : `Must match the name on this account, ${expectedName.trim()}. Paste is off on purpose.`}
+        {matches ? `Signed as ${expectedName.trim()}.` : `Typed by hand, matching ${expectedName.trim()}.`}
       </p>
     </div>
   );

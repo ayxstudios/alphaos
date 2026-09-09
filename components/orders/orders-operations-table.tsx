@@ -10,7 +10,7 @@ import {
   type BulkActionResult,
 } from "@/app/(app)/orders/actions";
 import { Badge, Button, InfoBubble, useToast, type OrderStatus } from "@/components/ui";
-import { ArrowRight, Columns } from "@/components/ui/icons";
+import { ArrowRight, Columns, X } from "@/components/ui/icons";
 import { formatStageRemaining, type StageTimer } from "@/lib/orders/stage-timers";
 import { cn } from "@/lib/utils";
 
@@ -170,12 +170,12 @@ const ORDER_COLUMNS: ColumnDef[] = [
     key: "ordered",
     label: "Ordered",
     sort: "ordered",
-    width: "5rem",
+    width: "4.5rem",
     priority: "core",
     render: (row) => (
       <div className="min-w-0">
         <p className="truncate text-sm text-slate" title={fmtDateTime(row.placedAt ?? row.createdAt)}>
-          {fmtDateTime(row.placedAt ?? row.createdAt)}
+          {fmtShortDate(row.placedAt ?? row.createdAt)}
         </p>
       </div>
     ),
@@ -187,13 +187,15 @@ const ORDER_COLUMNS: ColumnDef[] = [
     key: "due",
     label: "Due",
     sort: "due",
-    width: "minmax(5.5rem,0.65fr)",
+    width: "minmax(7rem,0.8fr)",
     priority: "core",
     render: (row) => (
       <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {row.isOverdue && <Badge variant="danger" dot>Overdue</Badge>}
-          <span className="text-sm text-slate">{fmtDate(row.dueAt)}</span>
+        <div className="flex items-center gap-1.5">
+          {row.isOverdue && <span className="size-1.5 shrink-0 rounded-full bg-rose" aria-hidden="true" />}
+          <span className={cn("truncate text-sm", row.isOverdue ? "font-medium text-rose" : "text-slate")}>
+            {row.isOverdue ? `Overdue · ${fmtShortDate(row.dueAt)}` : fmtDate(row.dueAt)}
+          </span>
         </div>
         <p
           className={cn("truncate text-xs", row.stageTimer.isOverdue ? "font-medium text-rose" : "text-slate")}
@@ -215,6 +217,11 @@ function fmtDate(value: string | null) {
     month: "short",
     year: "numeric",
   }).format(new Date(value));
+}
+
+function fmtShortDate(value: string | null) {
+  if (!value) return "No due date";
+  return new Intl.DateTimeFormat("en-AU", { day: "2-digit", month: "short" }).format(new Date(value));
 }
 
 function fmtDateTime(value: string | null) {
@@ -386,6 +393,8 @@ export function OrdersOperationsTable({
   firstResult,
   lastResult,
   total,
+  pageSize,
+  pageSizes,
 }: {
   rows: OrdersDashboardRow[];
   designers: DesignerOption[];
@@ -397,6 +406,8 @@ export function OrdersOperationsTable({
   firstResult: number;
   lastResult: number;
   total: number;
+  pageSize: number;
+  pageSizes: number[];
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -526,97 +537,89 @@ export function OrdersOperationsTable({
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2 text-sm text-slate">
-        <span>
-          Showing {firstResult}-{lastResult} of {total}
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm text-slate">
+        <span className="tabular-nums">
+          {firstResult}-{lastResult} of {total}
         </span>
-        <Pagination currentParams={currentParams} page={page} totalPages={totalPages} />
-      </div>
-
-      <div className="border-b border-line bg-canvas/60 px-4 py-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-ink">{selected.size} selected</span>
-          <select
-            value={designerId}
-            onChange={(event) => setDesignerId(event.currentTarget.value)}
-            className="h-9 rounded-input border border-line bg-surface px-2 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-pigment"
-          >
-            <option value="">Choose designer</option>
-            {designers.map((designer) => (
-              <option key={designer.id} value={designer.id}>{designer.name}</option>
-            ))}
-          </select>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={!selected.size || !designerId}
-            loading={pending}
-            onClick={reassign}
-          >
-            Bulk reassign
+        <div className="relative">
+          <Button type="button" size="sm" variant="ghost" onClick={() => setColumnMenuOpen((open) => !open)}>
+            <Columns size={15} />
+            Columns
           </Button>
-          <select
-            value={targetStatus}
-            onChange={(event) => setTargetStatus(event.currentTarget.value as OrderStatus)}
-            className="h-9 rounded-input border border-line bg-surface px-2 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-pigment"
-          >
-            <option value="">Choose status</option>
-            {BULK_STATUSES.map((status) => (
-              <option key={status.value} value={status.value}>{status.label}</option>
-            ))}
-          </select>
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={!selected.size || !targetStatus}
-            loading={pending}
-            onClick={changeStatus}
-          >
-            Bulk status change
-          </Button>
-          <div className="relative ml-auto">
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => setColumnMenuOpen((open) => !open)}
-            >
-              <Columns size={15} />
-              Columns
-            </Button>
-            {columnMenuOpen && (
-              <div className="absolute right-0 top-10 z-30 w-56 rounded-card border border-line bg-surface p-2 shadow-lg">
-                <div className="flex items-center justify-between gap-2 border-b border-line px-2 pb-2">
-                  <p className="text-xs font-semibold uppercase text-slate">Visible columns</p>
-                  <button
-                    type="button"
-                    onClick={resetColumns}
-                    className="text-xs font-medium text-pigment hover:text-ink"
-                  >
-                    Reset
-                  </button>
-                </div>
-                <div className="mt-2 flex flex-col gap-1">
-                  {ORDER_COLUMNS.map((column) => (
-                    <label
-                      key={column.key}
-                      className="flex cursor-pointer items-center gap-2 rounded-input px-2 py-1.5 text-sm text-ink hover:bg-canvas"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={visibleColumnKeys.includes(column.key)}
-                        onChange={() => toggleColumn(column.key)}
-                        className="size-4 rounded border-line text-pigment focus:ring-pigment"
-                      />
-                      {column.label}
-                    </label>
-                  ))}
-                </div>
+          {columnMenuOpen && (
+            <div className="absolute right-0 top-10 z-30 w-56 rounded-card bg-surface p-2 shadow-lg">
+              <div className="flex items-center justify-between gap-2 border-b border-line/60 px-2 pb-2">
+                <p className="text-xs font-semibold uppercase text-slate">Visible columns</p>
+                <button type="button" onClick={resetColumns} className="text-xs font-medium text-pigment hover:text-ink">
+                  Reset
+                </button>
               </div>
-            )}
-          </div>
+              <div className="mt-2 flex flex-col gap-1">
+                {ORDER_COLUMNS.map((column) => (
+                  <label
+                    key={column.key}
+                    className="flex cursor-pointer items-center gap-2 rounded-input px-2 py-1.5 text-sm text-ink hover:bg-canvas"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={visibleColumnKeys.includes(column.key)}
+                      onChange={() => toggleColumn(column.key)}
+                      className="size-4 rounded border-line text-pigment focus:ring-pigment"
+                    />
+                    {column.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Bulk actions only exist once something is selected: a floating bar
+          above the phone tab bar, centred on desktop. */}
+      {selected.size > 0 && (
+        <div className="pointer-events-none fixed bottom-[5.5rem] left-3 right-[4.75rem] z-40 flex justify-center sm:inset-x-0 sm:bottom-6">
+          <div className="pointer-events-auto flex w-full max-w-2xl flex-wrap items-center gap-2 rounded-card bg-ink px-3 py-2.5 text-surface shadow-lg lg:w-auto">
+            <span className="text-sm font-medium tabular-nums">{selected.size} selected</span>
+            <select
+              value={designerId}
+              onChange={(event) => setDesignerId(event.currentTarget.value)}
+              className="h-9 rounded-input bg-surface/10 px-2 text-sm text-surface outline-none focus-visible:ring-2 focus-visible:ring-surface [&>option]:text-ink"
+              aria-label="Choose designer"
+            >
+              <option value="">Designer…</option>
+              {designers.map((designer) => (
+                <option key={designer.id} value={designer.id}>{designer.name}</option>
+              ))}
+            </select>
+            <Button size="sm" variant="secondary" disabled={!designerId} loading={pending} onClick={reassign}>
+              Reassign
+            </Button>
+            <select
+              value={targetStatus}
+              onChange={(event) => setTargetStatus(event.currentTarget.value as OrderStatus)}
+              className="h-9 rounded-input bg-surface/10 px-2 text-sm text-surface outline-none focus-visible:ring-2 focus-visible:ring-surface [&>option]:text-ink"
+              aria-label="Choose status"
+            >
+              <option value="">Status…</option>
+              {BULK_STATUSES.map((status) => (
+                <option key={status.value} value={status.value}>{status.label}</option>
+              ))}
+            </select>
+            <Button size="sm" variant="secondary" disabled={!targetStatus} loading={pending} onClick={changeStatus}>
+              Change status
+            </Button>
+            <button
+              type="button"
+              onClick={() => setSelected(new Set())}
+              aria-label="Clear selection"
+              className="ml-auto inline-flex size-8 items-center justify-center rounded-input text-surface/70 transition-colors hover:bg-surface/10 hover:text-surface"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Desktop: the full operations table, one row per order. Column widths
           are tuned to fit with no horizontal scroll from ~960px of content
@@ -624,7 +627,7 @@ export function OrdersOperationsTable({
           the Next action rail only pins itself if that net is ever needed. */}
       <div ref={scrollRef} className="hidden overflow-x-auto md:block">
         <div
-          className="hidden gap-2 border-b border-line bg-surface px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate md:grid md:[grid-template-columns:var(--orders-grid)]"
+          className="hidden gap-2 border-b border-line/60 bg-surface px-4 py-2 text-xs font-medium text-slate md:grid md:[grid-template-columns:var(--orders-grid)]"
           style={{ "--orders-grid": gridTemplateColumns } as React.CSSProperties}
         >
           <label className="flex items-center">
@@ -663,17 +666,17 @@ export function OrdersOperationsTable({
           </span>
         </div>
 
-        <div className="divide-y divide-line">
+        <div className="divide-y divide-line/60">
           {rows.map((row) => {
             const urgent = row.stageTimer.isOverdue || row.isOverdue;
-            const dueSoon = !urgent && row.stageTimer.followUpDue;
+            const isSelected = selected.has(row.id);
             return (
               <div
                 key={row.id}
                 className={cn(
-                  "group grid gap-2 border-l-2 border-transparent px-4 py-3 transition-colors hover:bg-canvas/70 md:items-center md:[grid-template-columns:var(--orders-grid)]",
-                  urgent && "border-rose/60 bg-rose/[0.04] hover:bg-rose/[0.07]",
-                  dueSoon && "border-amber/50",
+                  "group grid gap-2 px-4 py-3.5 transition-colors hover:bg-canvas/70 md:items-center md:[grid-template-columns:var(--orders-grid)]",
+                  urgent && "bg-rose/[0.025] hover:bg-rose/[0.05]",
+                  isSelected && "bg-pigment-soft/60 hover:bg-pigment-soft/80",
                 )}
                 style={{ "--orders-grid": gridTemplateColumns } as React.CSSProperties}
               >
@@ -708,18 +711,13 @@ export function OrdersOperationsTable({
 
       {/* Phone: one card per order — the table's columns read as labelled rows
           instead of squeezed into a horizontal scroll. */}
-      <ul className="flex flex-col gap-3 p-3 md:hidden">
+      <ul className="flex flex-col divide-y divide-line/60 md:hidden">
         {rows.map((row) => {
           const urgent = row.stageTimer.isOverdue || row.isOverdue;
-          const dueSoon = !urgent && row.stageTimer.followUpDue;
           return (
             <li
               key={row.id}
-              className={cn(
-                "rounded-card border border-line bg-surface p-3.5 shadow-sm",
-                urgent && "border-rose/50 bg-rose/[0.04]",
-                dueSoon && "border-amber/50",
-              )}
+              className={cn("p-4", urgent && "bg-rose/[0.025]", selected.has(row.id) && "bg-pigment-soft/60")}
             >
               <div className="flex items-start gap-3">
                 <input
@@ -779,14 +777,34 @@ export function OrdersOperationsTable({
         })}
       </ul>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2 text-sm text-slate">
-        <span>
-          Showing {firstResult}-{lastResult} of {total}
-        </span>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line/60 px-4 py-2.5 text-sm text-slate">
+        <div className="flex items-center gap-1">
+          <span className="pr-1 text-xs">Rows</span>
+          {pageSizes.map((size) => (
+            <Link
+              key={size}
+              href={pageSizeHref(currentParams, size)}
+              aria-current={pageSize === size ? "true" : undefined}
+              className={cn(
+                "inline-flex h-8 min-w-8 items-center justify-center rounded-input px-1.5 text-xs font-medium tabular-nums transition-colors",
+                pageSize === size ? "bg-ink text-surface" : "text-slate hover:bg-canvas hover:text-ink",
+              )}
+            >
+              {size}
+            </Link>
+          ))}
+        </div>
         <Pagination currentParams={currentParams} page={page} totalPages={totalPages} />
       </div>
     </>
   );
+}
+
+function pageSizeHref(currentParams: string, size: number) {
+  const params = new URLSearchParams(currentParams);
+  params.set("pageSize", String(size));
+  params.delete("page");
+  return `/orders?${params.toString()}`;
 }
 
 function SortableHeader({
@@ -826,7 +844,7 @@ function OrderActions({ row, full = false }: { row: OrdersDashboardRow; full?: b
         full ? "h-11 w-full" : "h-10",
         isTask
           ? "bg-pigment text-surface shadow-sm hover:opacity-90"
-          : "border border-line bg-surface text-slate hover:border-slate/40 hover:text-ink",
+          : "bg-canvas text-slate hover:bg-line/60 hover:text-ink",
       )}
     >
       <span className="truncate">{row.action.label}</span>

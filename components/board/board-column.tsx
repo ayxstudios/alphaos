@@ -41,18 +41,17 @@ export function BoardColumn({
   });
 
   return (
-    <div className="flex w-[min(86vw,24rem)] shrink-0 flex-col overflow-hidden rounded-card border border-line bg-canvas shadow-sm">
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-surface px-4 py-3">
+    <div className="flex w-[min(86vw,22rem)] shrink-0 flex-col overflow-hidden rounded-card bg-line/40">
+      <div className="sticky top-0 z-10 flex items-center justify-between px-3 py-2.5">
         <span className="text-sm font-semibold text-ink">{title}</span>
-        <span className="rounded-full bg-canvas px-2 py-0.5 text-xs font-medium text-slate">
+        <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium tabular-nums text-slate">
           {cards.length}
         </span>
       </div>
       <div
         ref={setNodeRef}
         className={cn(
-          "min-h-32 flex-1 border border-transparent bg-canvas/80 p-2 transition-colors duration-150 motion-hover",
-          droppable && "border-dashed border-line",
+          "min-h-32 flex-1 rounded-b-card border border-transparent p-2 transition-colors duration-150 motion-hover",
           droppable && isOver && "border-pigment bg-pigment-soft/70",
         )}
       >
@@ -103,7 +102,7 @@ export function BoardColumn({
               />
             ))}
             {cards.length === 0 && (
-              <p className="rounded-input border border-dashed border-line bg-surface px-2 py-8 text-center text-xs text-slate">Nothing here right now.</p>
+              <p className="px-2 py-8 text-center text-xs text-slate">Nothing here</p>
             )}
           </div>
         )}

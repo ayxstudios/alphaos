@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Badge, Button, Input, Textarea, useToast } from "@/components/ui";
-import { AlertTriangle, Inbox, Mail, Search } from "@/components/ui/icons";
+import { Badge, Button, Disclosure, Input, Textarea, useToast } from "@/components/ui";
+import { AlertTriangle, ChevronRight, Mail, Search } from "@/components/ui/icons";
+import { cn } from "@/lib/utils";
 import type { IgnoredSender, MailHistoryItem, OutboxItem, UnmatchedReply } from "@/lib/email/outbox";
 import {
   approveAndSend,
@@ -66,20 +67,24 @@ export function EmailWorkspace({
   const totalPages = Math.max(1, Math.ceil(history.total / pageSize));
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-4">
       {!sendingEnabled && (
-        <div className="flex flex-wrap items-center gap-2 rounded-card border border-amber/30 bg-amber/5 px-4 py-3 text-sm">
+        <div className="flex flex-wrap items-center gap-2 rounded-card bg-amber/5 px-4 py-3 text-sm shadow-card">
           <AlertTriangle size={16} className="text-amber" />
           <span className="font-medium text-ink">Email sending is off.</span>
           <Link href="/settings?section=email" className="ml-auto font-medium text-pigment hover:text-ink">Open Settings</Link>
         </div>
       )}
 
-      <section className="rounded-card border border-rose/20 bg-surface shadow-sm">
-        <SectionTitle icon={Inbox} title="Needs action" count={unmatched.length + failed.length} />
-        <div className="divide-y divide-line">
+      {/* The hero: what a person has to deal with. */}
+      <section className="rounded-card bg-surface shadow-card">
+        <div className="flex items-center gap-2 px-4 py-3">
+          <h2 className="text-base font-semibold text-ink">Needs you</h2>
+          {unmatched.length + failed.length > 0 && <Badge variant="warning">{unmatched.length + failed.length}</Badge>}
+        </div>
+        <div className="divide-y divide-line/70 border-t border-line/70">
           {unmatched.length === 0 && failed.length === 0 ? (
-            <p className="px-4 py-3 text-sm text-slate">No replies or failed sends need action.</p>
+            <p className="px-4 py-6 text-center text-sm text-slate">All caught up. Nothing needs a reply.</p>
           ) : (
             <>
               {unmatched.map((reply) => <ReplyCard key={reply.messageId} reply={reply} businessId={businessId} />)}
@@ -89,87 +94,85 @@ export function EmailWorkspace({
         </div>
       </section>
 
-      <section className="rounded-card border border-line bg-surface shadow-sm">
-        <SectionTitle icon={Mail} title="Waiting to send" count={pendingOutbox.length} />
-        <div className="divide-y divide-line">
-          {pendingOutbox.length === 0 ? (
-            <p className="px-4 py-3 text-sm text-slate">Nothing waiting to send.</p>
-          ) : (
-            pendingOutbox.map((item) => <DraftCard key={item.messageId} item={item} sendingEnabled={sendingEnabled} />)
-          )}
-        </div>
-      </section>
+      <Disclosure
+        summary={<span className="flex items-center gap-2"><Mail size={15} className="text-slate" /> Waiting to send</span>}
+        hint={pendingOutbox.length ? `${pendingOutbox.length} draft${pendingOutbox.length === 1 ? "" : "s"}` : "nothing queued"}
+        defaultOpen={pendingOutbox.some((m) => m.status !== "queued")}
+      >
+        {pendingOutbox.length === 0 ? (
+          <p className="py-1 text-sm text-slate">Nothing waiting to send.</p>
+        ) : (
+          <div className="-mx-4 divide-y divide-line/70">
+            {pendingOutbox.map((item) => <DraftCard key={item.messageId} item={item} sendingEnabled={sendingEnabled} />)}
+          </div>
+        )}
+      </Disclosure>
 
-      <section className="rounded-card border border-line bg-surface shadow-sm">
-        <div className="border-b border-line px-4 py-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Mail size={16} className="text-slate" />
-            <h2 className="text-base font-semibold text-ink">All mail</h2>
-            <Badge>{history.total}</Badge>
+      <Disclosure
+        summary={<span className="flex items-center gap-2"><Search size={15} className="text-slate" /> All mail</span>}
+        hint={`${history.total} message${history.total === 1 ? "" : "s"}`}
+        defaultOpen={Boolean(q) || includeSuppressed || page > 1}
+      >
+        <div className="-mx-4">
+          <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
+            <form className="relative min-w-0 flex-1 sm:max-w-md">
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate" />
+              <input type="hidden" name="showSuppressed" value={includeSuppressed ? "1" : "0"} />
+              <input
+                name="q"
+                defaultValue={q}
+                placeholder="Search sender, subject, order or customer"
+                className="h-10 w-full rounded-input border border-line bg-canvas pl-9 pr-3 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-pigment"
+              />
+            </form>
             {history.suppressedCount > 0 && (
               <Link
                 href={`/emails?showSuppressed=${includeSuppressed ? "0" : "1"}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
-                className="ml-auto inline-flex h-8 items-center rounded-input border border-line px-3 text-sm font-medium text-ink hover:bg-canvas"
+                className="inline-flex h-8 items-center rounded-input px-2 text-xs font-medium text-slate hover:bg-canvas hover:text-ink"
               >
                 {includeSuppressed ? "Hide" : "Show"} {history.suppressedCount} suppressed
               </Link>
             )}
           </div>
-          <form className="relative mt-3 max-w-xl">
-            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate" />
-            <input type="hidden" name="showSuppressed" value={includeSuppressed ? "1" : "0"} />
-            <input
-              name="q"
-              defaultValue={q}
-              placeholder="Search sender, subject, order, or customer"
-              className="h-10 w-full rounded-input border border-line bg-canvas pl-9 pr-3 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-pigment"
-            />
-          </form>
-        </div>
-        <div className="divide-y divide-line">
-          {history.rows.length === 0 ? (
-            <p className="px-4 py-3 text-sm text-slate">No mail found.</p>
-          ) : (
-            history.rows.map((item) => <MailRow key={item.messageId} item={item} businessId={businessId} />)
+          <div className="divide-y divide-line/70 border-t border-line/70">
+            {history.rows.length === 0 ? (
+              <p className="px-4 py-4 text-sm text-slate">No mail found.</p>
+            ) : (
+              history.rows.map((item) => <MailRow key={item.messageId} item={item} businessId={businessId} />)
+            )}
+          </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between border-t border-line/70 px-4 pt-3 text-sm">
+              <Link
+                href={`/emails?q=${encodeURIComponent(q)}&showSuppressed=${includeSuppressed ? "1" : "0"}&page=${Math.max(1, page - 1)}&pageSize=${pageSize}`}
+                className={page <= 1 ? "pointer-events-none text-slate/50" : "font-medium text-pigment hover:text-ink"}
+              >
+                Previous
+              </Link>
+              <span className="text-slate">Page {page} of {totalPages}</span>
+              <Link
+                href={`/emails?q=${encodeURIComponent(q)}&showSuppressed=${includeSuppressed ? "1" : "0"}&page=${Math.min(totalPages, page + 1)}&pageSize=${pageSize}`}
+                className={page >= totalPages ? "pointer-events-none text-slate/50" : "font-medium text-pigment hover:text-ink"}
+              >
+                Next
+              </Link>
+            </div>
           )}
         </div>
-        <div className="flex items-center justify-between border-t border-line px-4 py-3 text-sm">
-          <Link
-            href={`/emails?q=${encodeURIComponent(q)}&showSuppressed=${includeSuppressed ? "1" : "0"}&page=${Math.max(1, page - 1)}&pageSize=${pageSize}`}
-            className={page <= 1 ? "pointer-events-none text-slate/50" : "font-medium text-pigment hover:text-ink"}
-          >
-            Previous
-          </Link>
-          <span className="text-slate">Page {page} of {totalPages}</span>
-          <Link
-            href={`/emails?q=${encodeURIComponent(q)}&showSuppressed=${includeSuppressed ? "1" : "0"}&page=${Math.min(totalPages, page + 1)}&pageSize=${pageSize}`}
-            className={page >= totalPages ? "pointer-events-none text-slate/50" : "font-medium text-pigment hover:text-ink"}
-          >
-            Next
-          </Link>
-        </div>
-      </section>
+      </Disclosure>
 
       {ignoredSenders.length > 0 && (
-        <section className="rounded-card border border-line bg-surface shadow-sm">
-          <SectionTitle icon={AlertTriangle} title="Ignored senders" count={ignoredSenders.filter((s) => s.active).length} />
-          <div className="divide-y divide-line">
+        <Disclosure
+          summary={<span className="flex items-center gap-2"><AlertTriangle size={15} className="text-slate" /> Ignored senders</span>}
+          hint={`${ignoredSenders.filter((s) => s.active).length} active`}
+        >
+          <div className="-mx-4 divide-y divide-line/70">
             {ignoredSenders.map((sender) => (
               <IgnoredSenderRow key={sender.id} sender={sender} />
             ))}
           </div>
-        </section>
+        </Disclosure>
       )}
-    </div>
-  );
-}
-
-function SectionTitle({ icon: Icon, title, count }: { icon: typeof Mail; title: string; count: number }) {
-  return (
-    <div className="flex items-center gap-2 border-b border-line px-4 py-3">
-      <Icon size={16} className="text-slate" />
-      <h2 className="text-base font-semibold text-ink">{title}</h2>
-      <Badge variant={count ? "warning" : "neutral"}>{count}</Badge>
     </div>
   );
 }
@@ -266,12 +269,15 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
 
   return (
     <div className="px-4 py-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={stale ? "danger" : "warning"} dot>Waiting {formatAge(reply.ageMs)}{stale ? " · over 24h" : ""}</Badge>
-        <span className="min-w-0 truncate text-sm font-medium text-ink">{reply.subject || "(no subject)"}</span>
-        <span className="text-xs text-slate">{reply.fromAddress ?? "unknown sender"}</span>
-        <button type="button" onClick={() => setOpen((o) => !o)} className="ml-auto text-sm font-medium text-pigment hover:text-ink">{open ? "Hide" : "View"}</button>
-      </div>
+      <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-3 text-left" aria-expanded={open}>
+        <span className={cn("size-2 shrink-0 rounded-full", stale ? "bg-rose" : "bg-transparent")} aria-hidden="true" title={stale ? "Waiting over 24h" : undefined} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-ink">{reply.subject || "(no subject)"}</span>
+          <span className="block truncate text-xs text-slate">{reply.fromAddress ?? "unknown sender"}</span>
+        </span>
+        <span className="shrink-0 text-xs tabular-nums text-slate">{formatAge(reply.ageMs)}</span>
+        <ChevronRight size={16} className={cn("shrink-0 text-slate transition-transform", open && "rotate-90")} />
+      </button>
       {open && (
         <div className="mt-3">
           <p className="whitespace-pre-wrap rounded-input border border-line bg-canvas p-3 text-sm text-ink">{reply.body || "(empty)"}</p>

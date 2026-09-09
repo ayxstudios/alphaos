@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Badge, Button, Input, Select, useToast } from "@/components/ui";
-import { AlertTriangle } from "@/components/ui/icons";
+import { AlertTriangle, ChevronDown } from "@/components/ui/icons";
 import {
   assignProductToStyle,
   createStyleFromProduct,
@@ -68,20 +68,20 @@ export function UnrecognisedPanel({
   }));
 
   return (
-    <div className="rounded-card border border-amber/30 bg-amber/5 p-4 shadow-sm">
-      <div className="flex items-center gap-2">
-        <AlertTriangle size={16} className="text-amber" />
-        <h2 className="text-base font-semibold text-ink">Products to confirm</h2>
-        {products.length > 0 && <Badge variant="warning">{products.length}</Badge>}
-      </div>
-      <p className="mt-0.5 text-sm text-slate">
-        These products aren&apos;t matched by a rule yet. Confirm or correct them once and every future sale is recognised automatically.
-      </p>
+    <details className="group rounded-card bg-surface shadow-card" open={products.length > 0 || undefined}>
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 [&::-webkit-details-marker]:hidden">
+        <AlertTriangle size={16} className={products.length ? "text-amber" : "text-slate"} />
+        <span className="text-sm font-semibold text-ink">Products to confirm</span>
+        {products.length > 0 ? <Badge variant="warning">{products.length}</Badge> : <span className="text-xs text-slate">All recognised</span>}
+        <span className="ml-auto hidden text-xs text-slate sm:inline">Confirm once, recognised forever</span>
+        <ChevronDown size={16} className="shrink-0 text-slate transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="border-t border-line/70 px-4 pb-4">
 
       {/* Defaulted — moving on the default style, but unconfirmed. */}
       {defaulted.length > 0 && (
         <div className="mt-3">
-          <div className="flex flex-wrap items-center gap-2 rounded-t-input border border-amber/20 bg-surface px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2 rounded-t-input bg-amber/5 px-3 py-2">
             <label className="flex items-center gap-2 text-xs font-medium text-slate">
               <input
                 type="checkbox"
@@ -104,7 +104,7 @@ export function UnrecognisedPanel({
               Confirm {selected.size ? selected.size : defaulted.length} as {defaultStyleName ?? "default"}
             </Button>
           </div>
-          <div className="flex flex-col divide-y divide-amber/20 overflow-hidden rounded-b-input border-x border-b border-amber/20 bg-surface">
+          <div className="flex flex-col divide-y divide-line/70 overflow-hidden rounded-b-input bg-canvas/40">
             {defaulted.map((p) => (
               <ProductRow
                 key={keyOf(p)}
@@ -131,7 +131,7 @@ export function UnrecognisedPanel({
       {noStyle.length > 0 && (
         <div className="mt-3">
           <p className="px-1 pb-1 text-xs font-medium text-slate">No style · {noStyle.length}</p>
-          <div className="flex flex-col divide-y divide-amber/20 overflow-hidden rounded-input border border-amber/20 bg-surface">
+          <div className="flex flex-col divide-y divide-line/70 overflow-hidden rounded-input bg-canvas/40">
             {noStyle.map((p) => (
               <ProductRow key={keyOf(p)} product={p} styles={styles} run={run} pending={pending} />
             ))}
@@ -140,11 +140,11 @@ export function UnrecognisedPanel({
       )}
 
       {ignored.length > 0 && (
-        <details className="mt-3 rounded-input border border-line bg-surface">
+        <details className="mt-3 rounded-input bg-canvas/40">
           <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-slate">
             Ignored products ({ignored.length})
           </summary>
-          <div className="flex flex-col divide-y divide-line border-t border-line">
+          <div className="flex flex-col divide-y divide-line/70 border-t border-line/70">
             {ignored.map((p) => (
               <div key={p.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5 text-sm">
                 <span className="min-w-0 truncate text-ink">{p.title ?? "Untitled product"}</span>
@@ -164,7 +164,8 @@ export function UnrecognisedPanel({
           </div>
         </details>
       )}
-    </div>
+      </div>
+    </details>
   );
 }
 
@@ -252,16 +253,17 @@ function ProductRow({
             />
           </>
         )}
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={apply}
-          loading={pending}
-          disabled={!choice || (choice === NEW && (!newName.trim() || !newRate.trim()))}
-        >
-          {choice === NEW ? "Create" : correcting ? "Correct" : "Assign"}
-        </Button>
+        {choice && (
+          <Button
+            type="button"
+            size="sm"
+            onClick={apply}
+            loading={pending}
+            disabled={choice === NEW && (!newName.trim() || !newRate.trim())}
+          >
+            {choice === NEW ? "Create" : correcting ? "Correct" : "Assign"}
+          </Button>
+        )}
         <Button
           type="button"
           size="sm"

@@ -515,11 +515,7 @@ export default async function SettingsPage({
         {activeSection === "print" && (
           <section className="flex flex-col gap-4">
             <SectionHeader title="Print Providers" />
-            <p className="text-sm text-slate">
-              API keys used to reconcile print fulfilment (Ready to Print queue and the print-reconcile cron). The VA
-              still triggers printing from each provider&apos;s own dashboard - these keys are for checking status and
-              tracking automatically, not for submitting orders.
-            </p>
+            <p className="text-sm text-slate">Keys for checking print status and tracking; printing is still triggered in the provider&apos;s dashboard.</p>
             <PrintProviderCredentialsPanel creds={printCredsVM} />
           </section>
         )}

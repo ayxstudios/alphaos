@@ -54,7 +54,7 @@ export function MobileDesignerBoard({
   const total = Object.values(cols).reduce((n, c) => n + c.length, 0);
   if (total === 0) {
     return (
-      <div className="rounded-card border border-dashed border-line bg-surface px-4 py-10 text-center text-sm text-slate">
+      <div className="rounded-card bg-surface px-4 py-10 text-center text-sm text-slate shadow-card">
         No orders on your board right now.
       </div>
     );

@@ -6,7 +6,7 @@ import type { RequestUser } from "@/lib/db";
 import { getStaffHome, type StaffHome } from "@/lib/home/staff";
 import { pctDelta } from "@/lib/home/shared";
 import { AttentionList } from "./attention-list";
-import { HomeSection, StatTile } from "./primitives";
+import { DayLine, HomeSection, RowLabel, StatTile } from "./primitives";
 
 /**
  * Admin and VA home. Same skeleton, different tiles: the owner leads with
@@ -18,6 +18,7 @@ export async function StaffHome({ user, businessId, role }: { user: RequestUser;
   const h = await getStaffHome(user, businessId);
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
+      <DayLine>{daySentence(h)}</DayLine>
       {role === "admin" ? <AdminTiles h={h} /> : <VaTiles h={h} />}
 
       <div className="grid gap-4 sm:gap-5 lg:grid-cols-5">
@@ -34,8 +35,9 @@ export async function StaffHome({ user, businessId, role }: { user: RequestUser;
         </HomeSection>
       </div>
 
+      <RowLabel>The bigger picture</RowLabel>
       <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
-        <HomeSection title="Orders in and shipped" description="Last 14 days" action={{ label: "Orders", href: "/orders" }}>
+        <HomeSection quiet title="Orders in and shipped" description="Last 14 days" action={{ label: "Orders", href: "/orders" }}>
           <Bars
             series={[
               { name: "Orders in", color: "c1", values: h.ordersIn.values },
@@ -46,14 +48,14 @@ export async function StaffHome({ user, businessId, role }: { user: RequestUser;
             ariaLabel="Orders placed and shipped per day, last 14 days"
           />
         </HomeSection>
-        <HomeSection title="Where every open order is" description={`${fmtInt(h.openOrders)} open orders by stage`} action={{ label: "Orders", href: "/orders" }}>
+        <HomeSection quiet title="Where every open order is" description={`${fmtInt(h.openOrders)} open orders by stage`} action={{ label: "Orders", href: "/orders" }}>
           <StackedBar segments={h.stages.map((s) => ({ key: s.key, label: s.label, value: s.n, color: s.color }))} height={22} ariaLabel="Open orders by stage" />
           <ShopRows shops={h.shops} />
         </HomeSection>
       </div>
 
       <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
-        <HomeSection title="Designer load" description="Work in flight against each limit" action={{ label: "Boards", href: "/board" }}>
+        <HomeSection quiet title="Designer load" description="Work in flight against each limit" action={{ label: "Boards", href: "/board" }}>
           {h.designers.length === 0 ? (
             <p className="text-sm text-slate">No designers on the roster yet.</p>
           ) : (
@@ -70,7 +72,7 @@ export async function StaffHome({ user, businessId, role }: { user: RequestUser;
             </div>
           )}
         </HomeSection>
-        <HomeSection title="Print" description="Print jobs, last 30 days" action={{ label: "Print queue", href: "/queue/print" }}>
+        <HomeSection quiet title="Print" description="Print jobs, last 30 days" action={{ label: "Print queue", href: "/queue/print" }}>
           <StackedBar segments={h.print.map((p) => ({ key: p.label, label: p.label, value: p.n, color: p.color }))} height={22} emptyLabel="No print jobs yet" ariaLabel="Print jobs by state" />
           <div className="flex items-center gap-2 text-sm text-slate">
             <Truck size={16} />
@@ -82,13 +84,25 @@ export async function StaffHome({ user, businessId, role }: { user: RequestUser;
   );
 }
 
+/** One plain sentence about the day: what needs a person, what is late, how shipping is going. */
+function daySentence(h: StaffHome): string {
+  const bits: string[] = [];
+  const now = h.attention.counts.now;
+  bits.push(now === 0 ? "Nothing is waiting on you right now" : `${fmtInt(now)} thing${now === 1 ? "" : "s"} need${now === 1 ? "s" : ""} a person today`);
+  if (h.overdue > 0) bits.push(`${fmtInt(h.overdue)} order${h.overdue === 1 ? " is" : "s are"} overdue`);
+  else if (h.dueToday > 0) bits.push(`${fmtInt(h.dueToday)} due today, none late`);
+  else bits.push("nothing is late");
+  if (h.onTimeRate30d !== null) bits.push(`${h.onTimeRate30d}% shipped on time this month`);
+  return bits.join(", ") + ".";
+}
+
 function AdminTiles({ h }: { h: StaffHome }) {
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <StatTile
         label="Orders in"
         value={fmtInt(h.ordersIn7d)}
-        delta={{ pct: pctDelta(h.ordersIn7d, h.ordersInPrev7d), good: "up", window: "vs previous 7 days" }}
+        delta={{ pct: pctDelta(h.ordersIn7d, h.ordersInPrev7d), good: "up", window: "vs previous 7 days", base: h.ordersInPrev7d, fallback: "Last 7 days" }}
         spark={{ points: h.ordersIn.values, labels: h.ordersIn.labels, color: "c1" }}
         href="/orders"
       />
@@ -148,7 +162,7 @@ function ShopRows({ shops }: { shops: StaffHome["shops"] }) {
   if (shops.length < 2) return null;
   const max = Math.max(1, ...shops.map((s) => s.open));
   return (
-    <ul className="flex flex-col gap-2 border-t border-line pt-3">
+    <ul className="flex flex-col gap-2 border-t border-line/70 pt-3">
       {shops.map((s) => (
         <li key={s.id} className="flex items-center gap-3 text-sm">
           <span className="w-24 shrink-0 truncate text-ink sm:w-36" title={s.name}>

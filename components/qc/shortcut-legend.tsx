@@ -17,7 +17,7 @@ const SHORTCUTS: { keys: string; action: string }[] = [
 export function ShortcutLegend({ open, onClose }: { open: boolean; onClose: () => void }) {
   if (!open) return null;
   return (
-    <div className="fixed bottom-4 left-4 z-40 w-64 rounded-card border border-line bg-surface p-3 shadow-lg [animation:alpha-toast-in_220ms_var(--ease-standard)]">
+    <div className="fixed bottom-4 left-4 z-40 w-64 rounded-card bg-surface p-3 shadow-lg [animation:alpha-toast-in_220ms_var(--ease-standard)]">
       <div className="flex items-center justify-between pb-2">
         <span className="font-display text-sm font-semibold text-ink">Keyboard shortcuts</span>
         <button

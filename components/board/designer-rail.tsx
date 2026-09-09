@@ -61,7 +61,7 @@ export function DesignerRail({
 
   if (collapsed) {
     return (
-      <aside className="sticky top-0 hidden h-fit max-h-[calc(100vh-7rem)] w-14 shrink-0 flex-col items-center gap-1 self-start overflow-y-auto rounded-card border border-line bg-surface p-2 lg:flex">
+      <aside className="sticky top-0 hidden h-fit max-h-[calc(100vh-7rem)] w-14 shrink-0 flex-col items-center gap-1 self-start overflow-y-auto rounded-card bg-surface p-2 shadow-card lg:flex">
         <button
           type="button"
           onClick={toggle}
@@ -95,8 +95,8 @@ export function DesignerRail({
   }
 
   return (
-    <aside className="sticky top-0 hidden h-fit max-h-[calc(100vh-7rem)] w-60 shrink-0 flex-col self-start overflow-hidden rounded-card border border-line bg-surface lg:flex">
-      <div className="flex items-center justify-between border-b border-line px-3 py-2.5">
+    <aside className="sticky top-0 hidden h-fit max-h-[calc(100vh-7rem)] w-60 shrink-0 flex-col self-start overflow-hidden rounded-card bg-surface shadow-card lg:flex">
+      <div className="flex items-center justify-between border-b border-line/70 px-3 py-2.5">
         <span className="text-sm font-semibold text-ink">Designers</span>
         <button
           type="button"
@@ -111,7 +111,7 @@ export function DesignerRail({
         </button>
       </div>
 
-      <div className="border-b border-line p-2">
+      <div className="border-b border-line/70 p-2">
         <div className="relative">
           <Search size={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate" />
           <input
@@ -119,7 +119,7 @@ export function DesignerRail({
             onChange={(e) => setQ(e.target.value)}
             placeholder="Find designer…"
             className={cn(
-              "h-9 w-full rounded-input border border-line bg-surface pl-8 pr-2.5 text-sm text-ink placeholder:text-slate",
+              "h-9 w-full rounded-input border border-line bg-canvas pl-8 pr-2.5 text-sm text-ink placeholder:text-slate",
               focusRing,
             )}
           />

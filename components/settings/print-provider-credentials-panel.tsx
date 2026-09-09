@@ -76,12 +76,10 @@ function GelatoCard({ creds }: { creds: PrintProviderCredentialsVM }) {
           placeholder={creds.gelato.hasWebhookSecret ? "Set - leave blank to keep" : "A secret you choose"}
           autoComplete="off"
         />
-        <p className="text-xs text-slate">
-          Register this URL as the Gelato webhook, with your webhook secret appended as{" "}
-          <code className="rounded bg-canvas px-1">?secret=...</code>:
-          <br />
-          <code className="break-all rounded bg-canvas px-1">{creds.gelatoWebhookUrl}</code>
-        </p>
+        <div className="rounded-input bg-canvas/70 px-3 py-2 text-xs text-slate">
+          <p>Webhook URL for the Gelato dashboard, with <code>?secret=</code> and your secret on the end.</p>
+          <code className="mt-1 block break-all text-ink">{creds.gelatoWebhookUrl}</code>
+        </div>
         <div className="flex items-center gap-2">
           <Button type="submit" size="sm" loading={pending} disabled={pending}>
             Save

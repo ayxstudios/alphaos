@@ -25,9 +25,9 @@ export default async function HomePage() {
 
   return (
     <Page className="max-w-6xl">
-      <div className="flex flex-col gap-0.5">
-        <p className="text-sm font-medium text-slate">{selected.name}</p>
-        <h1 className="font-display text-2xl font-semibold text-ink">
+      <div className="flex flex-col gap-1">
+        <p className="text-xs font-medium text-slate/80">{selected.name}</p>
+        <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">
           {greetingFor()}, {first}.
         </h1>
       </div>

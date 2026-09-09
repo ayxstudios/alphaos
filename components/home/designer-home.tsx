@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import type { RequestUser } from "@/lib/db";
 import { getDesignerHome } from "@/lib/home/designer";
 import { pctDelta } from "@/lib/home/shared";
-import { HomeSection, StatTile } from "./primitives";
+import { DayLine, HomeSection, RowLabel, StatTile } from "./primitives";
 
 /**
  * A designer's home: their own numbers only. What is due first, how the
@@ -20,15 +20,21 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
   const tz = h.week.contact?.timezone || "Australia/Melbourne";
   const fmtDue = (iso: string | null) =>
     iso ? new Intl.DateTimeFormat("en-AU", { timeZone: tz, weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(new Date(iso)).replace(",", "") : "No date";
+  const sentence = [
+    h.overdue ? `${h.overdue} order${h.overdue === 1 ? " is" : "s are"} late` : h.dueToday ? `${h.dueToday} due today` : "Nothing due today",
+    `${active} on your board`,
+    `${fmtMoney(h.week.earningsThisWeek)} earned this week`,
+  ].join(", ") + ".";
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
+      <DayLine>{sentence}</DayLine>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="Due today" value={fmtInt(h.dueToday)} hint={h.overdue ? `${h.overdue} already late` : "Nothing late"} tone={h.overdue ? "bad" : h.dueToday ? "warn" : "good"} href="/board" />
         <StatTile label="In my queue" value={fmtInt(h.board.queue)} hint={`${h.board.inDesign + h.board.revisions} in design`} href="/board" />
         <StatTile
           label="Figures this week"
           value={fmtInt(h.figures7d)}
-          delta={{ pct: pctDelta(h.figures7d, h.figuresPrev7d), good: "up", window: "vs last week" }}
+          delta={{ pct: pctDelta(h.figures7d, h.figuresPrev7d), good: "up", window: "vs last week", base: h.figuresPrev7d, fallback: "Last 7 days" }}
           spark={{ points: h.figures.values, labels: h.figures.labels, color: "c2" }}
         />
         <StatTile label="Earned this week" value={fmtMoney(h.week.earningsThisWeek)} hint={`${fmtMoney(h.week.earningsThisMonth)} this month`} tone="good" href="/me" />
@@ -49,7 +55,7 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
                     <Link href={`/orders/${d.orderId}`} className={cn("min-w-0 flex-1 truncate font-semibold text-ink hover:text-pigment", focusRing)}>
                       {d.orderNumber}
                     </Link>
-                    <span className="shrink-0 whitespace-nowrap tabular-nums text-slate">{fmtDue(d.dueAt)}</span>
+                    <span className={cn("shrink-0 whitespace-nowrap tabular-nums", late ? "text-rose" : "text-slate")}>{fmtDue(d.dueAt)}</span>
                   </li>
                 );
               })}
@@ -59,7 +65,7 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
             <Link href="/board" className={cn("inline-flex h-10 items-center gap-2 rounded-input bg-pigment px-4 text-sm font-medium text-surface hover:opacity-90", focusRing)}>
               <Columns size={16} /> Open my board
             </Link>
-            <Link href="/me" className={cn("inline-flex h-10 items-center gap-2 rounded-input border border-line bg-surface px-4 text-sm font-medium text-ink hover:bg-canvas", focusRing)}>
+            <Link href="/me" className={cn("inline-flex h-10 items-center gap-2 rounded-input bg-canvas px-4 text-sm font-medium text-ink hover:bg-pigment-soft/60", focusRing)}>
               <Calendar size={16} /> My week <ArrowRight size={14} />
             </Link>
           </div>
@@ -80,7 +86,8 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
         </HomeSection>
       </div>
 
-      <HomeSection title="Figures delivered" description="Last 14 days" action={{ label: "My week", href: "/me" }}>
+      <RowLabel>The bigger picture</RowLabel>
+      <HomeSection quiet title="Figures delivered" description="Last 14 days" action={{ label: "My week", href: "/me" }}>
         <Bars series={[{ name: "Figures", color: "c2", values: h.figures.values }]} labels={h.figures.labels} height={180} ariaLabel="Figures delivered per day" />
         <p className="text-sm text-slate">
           {h.week.ordersDoneThisWeek} order{h.week.ordersDoneThisWeek === 1 ? "" : "s"} done this week

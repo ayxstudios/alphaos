@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/utils";
-import { Avatar, Button, StatusChip, useToast } from "@/components/ui";
+import { Avatar, Button, Disclosure, StatusChip, useToast } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
 import { AlertTriangle, Camera, X } from "@/components/ui/icons";
 import { Countdown } from "./countdown";
@@ -153,7 +153,12 @@ export function CardModal({
         {/* Main column */}
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex-1 space-y-5 overflow-y-auto p-5 md:max-h-[85vh]">
-            <Gallery images={detail?.images ?? null} cover={card.thumbnailUrl} />
+            <div className="space-y-1 pr-8">
+              <p className="text-xs font-medium text-slate">Order {card.orderNumber}</p>
+              <h2 className="font-display text-xl font-semibold text-ink">
+                {card.title ?? "Custom portrait"}
+              </h2>
+            </div>
             <CardUploadPanel
               card={card}
               viewerRole={viewerRole}
@@ -163,15 +168,7 @@ export function CardModal({
                 setEvents(next.events);
               }}
             />
-
-            <div className="space-y-1">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate">
-                Order {card.orderNumber}
-              </p>
-              <h2 className="font-display text-xl font-semibold text-ink">
-                {card.title ?? "Custom portrait"}
-              </h2>
-            </div>
+            <Gallery images={detail?.images ?? null} cover={card.thumbnailUrl} />
 
             {card.options.length > 0 && (
               <ul className="flex flex-wrap gap-1.5">
@@ -187,11 +184,9 @@ export function CardModal({
             )}
 
             {card.notes && (
-              <Section title="Notes / special requests">
-                <p className="whitespace-pre-wrap rounded-input bg-amber/5 p-3 text-sm text-ink">
-                  {card.notes}
-                </p>
-              </Section>
+              <Disclosure summary="Notes and special requests" defaultOpen className="bg-amber/5 shadow-none">
+                <p className="whitespace-pre-wrap text-sm text-ink">{card.notes}</p>
+              </Disclosure>
             )}
 
             {revision && (
@@ -206,7 +201,12 @@ export function CardModal({
               />
             )}
 
-            <Section title="Activity">
+            <Disclosure
+              summary="Activity"
+              hint={detail === null ? "loading" : `${events.length} event${events.length === 1 ? "" : "s"}`}
+              defaultOpen={events.length <= 6}
+              className="bg-canvas/60 shadow-none"
+            >
               <div className="flex flex-col gap-3">
                 {detail === null ? (
                   <FeedSkeleton />
@@ -216,7 +216,7 @@ export function CardModal({
                   events.map((e) => <FeedItem key={e.id} event={e} />)
                 )}
               </div>
-            </Section>
+            </Disclosure>
           </div>
 
           {/* Composer — pinned under the feed. */}
@@ -297,15 +297,6 @@ export function CardModal({
       </div>
     </div>,
     document.body,
-  );
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="space-y-2">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate">{title}</h3>
-      {children}
-    </section>
   );
 }
 
@@ -406,7 +397,7 @@ function CardUploadPanel({
   }
 
   return (
-    <section className="rounded-card border border-line bg-canvas/60 p-3">
+    <section className="rounded-card bg-canvas/60 p-3">
       <div className="flex flex-wrap items-end gap-2">
         {designer ? (
           <div className="min-w-40 flex-1">

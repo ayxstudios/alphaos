@@ -137,7 +137,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
     .filter((uri): uri is string => !!uri);
 
   return (
-    <details className="group rounded-card border border-line bg-surface shadow-sm">
+    <details className="group rounded-card bg-surface shadow-card">
       <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -165,7 +165,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
       <div className="border-t border-line p-4">
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
           <div className="flex flex-col gap-4">
-            <form action={saveShopifyCredentials} className="grid gap-3 rounded-input border border-line bg-canvas p-3">
+            <form action={saveShopifyCredentials} className="grid gap-3 rounded-input bg-canvas/70 p-3">
               <input type="hidden" name="shopId" value={shop.id} />
               <input type="hidden" name="authType" value={mode} />
 
@@ -253,7 +253,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
               )}
             </form>
 
-            <form action={saveShopBackfillCutoff} className="rounded-input border border-line bg-canvas p-3">
+            <form action={saveShopBackfillCutoff} className="rounded-input bg-canvas/70 p-3">
               <input type="hidden" name="shopId" value={shop.id} />
               <div className="flex flex-wrap items-end gap-3">
                 <Input
@@ -269,7 +269,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
               </div>
             </form>
 
-            <div className="rounded-input border border-line bg-canvas p-3">
+            <div className="rounded-input bg-canvas/70 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-ink">Webhook</p>

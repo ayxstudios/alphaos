@@ -9,7 +9,7 @@ import { getRailDesigners } from "@/lib/designers/roster";
 import { DesignerBoard } from "@/components/board/designer-board";
 import { DesignerPicker } from "@/components/board/designer-picker";
 import { DesignerRail } from "@/components/board/designer-rail";
-import { Badge, DataPanel, EmptyState, Page, PageHeader, StatCard } from "@/components/ui";
+import { Badge, DataPanel, Disclosure, EmptyState, Page, PageHeader } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
 import { Calendar, Columns } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
@@ -68,24 +68,20 @@ async function BoardContent({
   isStaff: boolean;
   targetId?: string;
 }) {
-  const [board, designers] = await Promise.all([
-    targetId ? getDesignerBoard(user, targetId) : Promise.resolve(null),
-    // Only needed for the mobile picker (the rail lives in the shell); cached,
-    // so this shares the layout's query.
-    isStaff ? getRailDesigners(user) : Promise.resolve([]),
-  ]);
+  // Staff land on a board, never on a picker: with no ?designer= the first
+  // designer in the rail (rank order) is opened. The rail switches.
+  const designers = isStaff ? await getRailDesigners(user) : [];
+  const resolvedId = targetId ?? (isStaff ? designers[0]?.id : undefined);
+  const board = resolvedId ? await getDesignerBoard(user, resolvedId) : null;
+  targetId = resolvedId;
 
   const pickerDesigners = designers.map((d) => ({ id: d.id, name: d.name }));
 
   return (
     <Page className="max-w-none">
       <PageHeader
-        title={isStaff ? "Designer boards" : "My board"}
-        description={
-          isStaff
-            ? "Each designer's queue, work in progress and QC."
-            : "Your orders, soonest deadline first."
-        }
+        title={isStaff ? "Designers" : "My board"}
+        description={isStaff ? undefined : "Soonest deadline first."}
         actions={
           // A column below `sm` (align-items:stretch gives each row a real,
           // definite width — PageHeader's actions slot is flex-shrink-0, so
@@ -112,17 +108,16 @@ async function BoardContent({
               </div>
             )}
             {board && (
-              <div className="grid grid-cols-2 gap-2 sm:w-80">
-                <StatCard
-                  label="Earned today"
-                  value={`$${board.dailyEarnings.toFixed(2)}`}
-                  tone="success"
-                />
-                <StatCard
-                  label="This month"
-                  value={`$${board.periodEarnings.toFixed(2)}`}
-                  tone="info"
-                />
+              <div className="flex items-center gap-4 rounded-card bg-surface px-4 py-2 text-sm shadow-card">
+                <span className="flex items-baseline gap-1.5">
+                  <span className="text-xs text-slate">Today</span>
+                  <span className="font-semibold tabular-nums text-ink">${board.dailyEarnings.toFixed(2)}</span>
+                </span>
+                <span className="h-4 w-px bg-line" aria-hidden="true" />
+                <span className="flex items-baseline gap-1.5">
+                  <span className="text-xs text-slate">This month</span>
+                  <span className="font-semibold tabular-nums text-ink">${board.periodEarnings.toFixed(2)}</span>
+                </span>
               </div>
             )}
           </div>
@@ -137,14 +132,14 @@ async function BoardContent({
           {board ? (
             <div className="flex flex-col gap-4">
               <DesignerBoard initial={board.columns} viewerRole={user.role} />
-              <DataPanel>
-                <div className="border-b border-line px-4 py-3">
-                  <h2 className="text-sm font-semibold text-ink">Earnings history</h2>
-                </div>
+              <Disclosure
+                summary="Earnings history"
+                hint={board.earningHistory.length ? `${board.earningHistory.length} paid order${board.earningHistory.length === 1 ? "" : "s"}` : "nothing yet"}
+              >
                 {board.earningHistory.length === 0 ? (
-                  <p className="px-4 py-4 text-sm text-slate">No completed payable orders yet.</p>
+                  <p className="py-1 text-sm text-slate">No completed payable orders yet.</p>
                 ) : (
-                  <div className="divide-y divide-line">
+                  <div className="-mx-4 divide-y divide-line/70">
                     {board.earningHistory.map((earning) => (
                       <div key={earning.id} className="grid grid-cols-1 gap-2 px-4 py-3 text-sm md:grid-cols-[1fr_auto_auto_auto_auto] md:items-center">
                         <div className="min-w-0">
@@ -166,16 +161,16 @@ async function BoardContent({
                     ))}
                   </div>
                 )}
-              </DataPanel>
+              </Disclosure>
             </div>
           ) : (
-            <div className="rounded-card border border-line bg-surface shadow-sm">
+            <DataPanel>
               <EmptyState
                 icon={Columns}
-                headline="Select a designer"
-                body="Pick a designer from the list on the left to view and manage their board."
+                headline="No designers yet"
+                body="Add a designer in the roster and their board appears here."
               />
-            </div>
+            </DataPanel>
           )}
         </div>
       </div>

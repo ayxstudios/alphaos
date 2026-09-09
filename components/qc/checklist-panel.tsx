@@ -46,8 +46,7 @@ export function ChecklistPanel({
             "hover:bg-pigment-soft disabled:pointer-events-none disabled:opacity-40",
           )}
         >
-          Tick all{" "}
-          <kbd className="rounded border border-line bg-canvas px-1 text-xs text-slate">A</kbd>
+          Tick all
         </button>
       </div>
 
@@ -59,13 +58,13 @@ export function ChecklistPanel({
             <li key={it.key}>
               <div
                 className={cn(
-                  "flex w-full items-start gap-2.5 rounded-input border p-2.5 text-left transition-colors",
+                  "flex w-full items-start gap-2.5 rounded-input p-2.5 text-left transition-colors",
                   "disabled:cursor-not-allowed disabled:opacity-60",
                   isChecked
-                    ? "border-sage/30 bg-sage/10"
+                    ? "bg-sage/10"
                     : isFailed
-                      ? "border-rose/30 bg-rose/10"
-                      : "border-line bg-surface hover:border-slate/40 hover:bg-canvas",
+                      ? "bg-rose/10"
+                      : "bg-canvas/70 hover:bg-canvas",
                 )}
               >
                 <button
@@ -114,7 +113,7 @@ export function ChecklistPanel({
                   >
                     <X size={13} />
                   </button>
-                  <kbd className="rounded border border-line bg-canvas px-1.5 text-xs tabular-nums text-slate">
+                  <kbd className="hidden rounded border border-line bg-surface px-1.5 text-xs tabular-nums text-slate lg:inline">
                     {shortcutFor(it.key)}
                   </kbd>
                 </div>

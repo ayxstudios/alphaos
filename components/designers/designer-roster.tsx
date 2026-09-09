@@ -70,7 +70,7 @@ export function DesignerRoster({
   }
 
   return (
-    <div className="rounded-card border border-line bg-surface shadow-sm">
+    <div className="rounded-card bg-surface shadow-card">
       <div className="hidden grid-cols-[5rem_1fr_1.6fr_7rem_11rem] gap-3 border-b border-line px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate lg:grid">
         <span>Rank</span>
         <span>Designer</span>
@@ -78,7 +78,7 @@ export function DesignerRoster({
         <span>Daily limit</span>
         <span>Assigned today</span>
       </div>
-      <ul className="divide-y divide-line">
+      <ul className="divide-y divide-line/70">
         {list.map((d, i) => (
           <Row
             key={d.userId}
@@ -157,24 +157,24 @@ function Row({
   const contactSet = !!(d.phone || d.timezone || d.quietStart);
 
   return (
-    <li className="flex flex-col gap-3 px-4 py-3">
-    <div className="grid grid-cols-1 gap-3 lg:grid-cols-[5rem_1fr_1.6fr_7rem_11rem] lg:items-center">
+    <li className="flex flex-col gap-2 px-4 py-3">
+    <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-3 lg:grid-cols-[4rem_1fr_1.6fr_7rem_11rem] lg:items-center">
       {/* Rank + reorder */}
-      <div className="flex items-center gap-2">
-        <span className="w-6 text-sm font-semibold tabular-nums text-ink">{position}</span>
+      <div className="flex items-center gap-1">
+        <span className="w-5 text-sm font-semibold tabular-nums text-ink">{position}</span>
         {canEdit && (
-          <div className="flex flex-col">
+          <div className="flex flex-row opacity-60 transition-opacity hover:opacity-100 lg:flex-col">
             <button
               type="button"
               aria-label="Move up"
               disabled={first}
               onClick={() => onReorder(d.userId, "up")}
               className={cn(
-                "flex size-10 items-center justify-center rounded text-slate hover:bg-canvas hover:text-ink disabled:opacity-30",
+                "flex size-7 items-center justify-center rounded text-slate hover:bg-canvas hover:text-ink disabled:opacity-30",
                 focusRing,
               )}
             >
-              <ChevronDown size={14} className="rotate-180" />
+              <ChevronDown size={13} className="rotate-180" />
             </button>
             <button
               type="button"
@@ -182,11 +182,11 @@ function Row({
               disabled={last}
               onClick={() => onReorder(d.userId, "down")}
               className={cn(
-                "flex size-10 items-center justify-center rounded text-slate hover:bg-canvas hover:text-ink disabled:opacity-30",
+                "flex size-7 items-center justify-center rounded text-slate hover:bg-canvas hover:text-ink disabled:opacity-30",
                 focusRing,
               )}
             >
-              <ChevronDown size={14} />
+              <ChevronDown size={13} />
             </button>
           </div>
         )}
@@ -202,7 +202,7 @@ function Row({
       </Link>
 
       {/* Styles */}
-      <div>
+      <div className="col-span-2 lg:col-span-1">
         {canEdit ? (
           <StyleSelect selected={d.styles} options={styleOptions} onChange={onStyles} />
         ) : d.styles.length ? (
@@ -219,7 +219,8 @@ function Row({
       </div>
 
       {/* Daily limit */}
-      <div>
+      <div className="flex items-center gap-2 lg:block">
+        <span className="text-xs text-slate lg:hidden">Daily limit</span>
         {canEdit ? (
           <input
             type="number"
@@ -242,16 +243,16 @@ function Row({
       </div>
 
       {/* Assigned today */}
-      <div className="space-y-1">
+      <div className="space-y-1 self-center">
         <div className="flex items-center justify-between text-xs">
-          <span className={cn("font-medium tabular-nums", atLimit ? "text-rose" : "text-ink")}>
+          <span className={cn("tabular-nums", atLimit ? "font-medium text-rose" : "text-ink")}>
             {d.assignedToday} / {d.dailyCapacity}
           </span>
           <span className="text-slate">{d.wipCount} in flight</span>
         </div>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-canvas">
+        <div className="h-1 w-full overflow-hidden rounded-full bg-chart-track">
           <div
-            className={cn("h-full rounded-full", atLimit ? "bg-rose" : "bg-pigment")}
+            className={cn("h-full rounded-full", atLimit ? "bg-rose/70" : "bg-pigment/60")}
             style={{ width: `${pct}%` }}
           />
         </div>
@@ -262,16 +263,14 @@ function Row({
         type="button"
         onClick={() => setExpanded((v) => !v)}
         className={cn(
-          "flex min-h-10 w-full items-center justify-between gap-2 rounded-input border border-line bg-canvas/60 px-3 py-2 text-xs font-medium text-slate hover:text-ink",
+          "flex h-8 w-fit items-center gap-1.5 rounded-input px-1 text-xs font-medium text-slate hover:text-ink",
           focusRing,
         )}
         aria-expanded={expanded}
       >
-        <span className="flex items-center gap-1.5">
-          Contact &amp; limits
-          {contactSet && <span className="size-1.5 rounded-full bg-sage" aria-hidden />}
-        </span>
-        <ChevronDown size={14} className={cn("transition-transform motion-hover", expanded && "rotate-180")} />
+        <ChevronDown size={13} className={cn("transition-transform motion-hover", expanded && "rotate-180")} />
+        Contact &amp; limits
+        {contactSet && <span className="size-1.5 rounded-full bg-sage" aria-hidden />}
       </button>
 
       {expanded && (
@@ -336,7 +335,7 @@ function ContactPanel({
 
   if (!canEdit) {
     return (
-      <div className="grid grid-cols-2 gap-3 rounded-input border border-line bg-canvas/40 p-3 text-xs sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 rounded-input bg-canvas/60 p-3 text-xs sm:grid-cols-4">
         <Field label="Phone" value={d.phone ?? "Not set"} />
         <Field label="Channel" value={d.preferredChannel === "telegram" ? "Telegram" : "WhatsApp"} />
         <Field label="Timezone" value={d.timezone ?? "Not set"} />
@@ -350,7 +349,7 @@ function ContactPanel({
   }
 
   return (
-    <div className="space-y-3 rounded-input border border-line bg-canvas/40 p-3">
+    <div className="space-y-3 rounded-input bg-canvas/60 p-3">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Input
           label="Phone"
@@ -409,10 +408,7 @@ function ContactPanel({
         />
         <Input label="Quiet hours end" type="time" value={quietEnd} onChange={(e) => setQuietEnd(e.target.value)} />
       </div>
-      <p className="text-xs text-slate">
-        A brief, nudge or QC message that would land inside quiet hours is held until the window ends.
-        Escalations (reassignment) are never held.
-      </p>
+      <p className="text-xs text-slate">Messages wait out quiet hours; reassignments never do.</p>
       <div className="flex justify-end">
         <Button type="button" size="sm" disabled={!dirty} onClick={save}>
           Save contact
@@ -425,7 +421,7 @@ function ContactPanel({
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="space-y-0.5">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate">{label}</p>
+      <p className="text-xs font-medium text-slate">{label}</p>
       <p className="text-ink">{value}</p>
     </div>
   );

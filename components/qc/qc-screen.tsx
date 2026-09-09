@@ -45,7 +45,7 @@ export function QcScreen({
   const [failOpen, setFailOpen] = useState(false);
   const [emailPreview, setEmailPreview] = useState<Extract<QcEmailPreviewResult, { ok: true }>["preview"] | null>(null);
   const [emailBody, setEmailBody] = useState("");
-  const [legendOpen, setLegendOpen] = useState(true);
+  const [legendOpen, setLegendOpen] = useState(false);
   const [signature, setSignature] = useState("");
   const signed = signature.length > 0 && normalizeSignature(signature) === normalizeSignature(reviewerName);
 
@@ -59,8 +59,10 @@ export function QcScreen({
     setSignature("");
   }, [ctx.orderId, ctx.versions]);
 
+  // The legend stays closed until asked for (the ? button, or the ? key);
+  // once opened it remembers that choice.
   useEffect(() => {
-    if (localStorage.getItem(LEGEND_KEY) === "1") setLegendOpen(false);
+    if (localStorage.getItem(LEGEND_KEY) === "0") setLegendOpen(true);
   }, []);
 
   const dismissLegend = useCallback(() => {
@@ -69,7 +71,7 @@ export function QcScreen({
   }, []);
   const openLegend = useCallback(() => {
     setLegendOpen(true);
-    localStorage.removeItem(LEGEND_KEY);
+    localStorage.setItem(LEGEND_KEY, "0");
   }, []);
 
   const allChecked = items.length > 0 && items.every((it) => checked[it.key] === true);
@@ -274,7 +276,7 @@ export function QcScreen({
       />
 
       {!ctx.isReviewable && (
-        <div className="flex items-center justify-between gap-2 rounded-card border border-amber/25 bg-amber/10 px-4 py-2">
+        <div className="flex items-center justify-between gap-2 rounded-card bg-amber/10 px-4 py-2">
           <span className="text-sm text-amber">
             This order is no longer awaiting QC (now {ctx.status.replace(/_/g, " ")}). Nothing to
             review.
@@ -293,7 +295,7 @@ export function QcScreen({
           portraitLabel={portraitLabel}
         />
 
-        <aside className="flex min-h-[28rem] flex-col rounded-card border border-line bg-surface p-3 shadow-sm">
+        <aside className="flex min-h-[28rem] flex-col rounded-card bg-surface p-4 shadow-card">
           <div className="min-h-0 flex-1">
               <ChecklistPanel
                 items={items}
@@ -305,12 +307,11 @@ export function QcScreen({
               />
           </div>
 
-          <div className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
+          <div className="mt-4 flex flex-col gap-3 border-t border-line/70 pt-4">
             {ctx.isReviewable && !allChecked && (
               <p className="text-xs text-slate">
-                Mark every item Pass to enable Pass. Use X for anything the designer missed.{" "}
-                <Badge variant="neutral">{doneCount}/{items.length}</Badge>
-                {failedCount > 0 && <Badge variant="danger">{failedCount} X</Badge>}
+                Tick every item to unlock Pass. {doneCount}/{items.length} done
+                {failedCount > 0 && <>, <Badge variant="danger">{failedCount} marked X</Badge></>}
               </p>
             )}
             <SignatureInput value={signature} onChange={setSignature} expectedName={reviewerName} disabled={!ctx.isReviewable || pending} />
@@ -322,7 +323,7 @@ export function QcScreen({
                 disabled={!ctx.isReviewable || !signed || pending}
               >
                 <XCircle size={16} /> Fail{" "}
-                <kbd className="rounded border border-surface/30 px-1 text-xs">F</kbd>
+                <kbd className="hidden rounded border border-surface/30 px-1 text-xs lg:inline">F</kbd>
               </Button>
               <Button
                 variant="primary"
@@ -332,7 +333,7 @@ export function QcScreen({
                 disabled={!ctx.isReviewable || !allChecked || !signed}
               >
                 <Check size={16} /> Pass{" "}
-                <kbd className="rounded border border-surface/30 px-1 text-xs">↵</kbd>
+                <kbd className="hidden rounded border border-surface/30 px-1 text-xs lg:inline">↵</kbd>
               </Button>
             </div>
           </div>
@@ -340,12 +341,11 @@ export function QcScreen({
       </div>
 
       <div className="shrink-0">
-        <div className="flex items-center justify-between pb-1">
-          <span className="text-xs font-medium text-slate">Version history</span>
-          {selectedVersion && (
+        <div className="flex items-center justify-between pb-1.5">
+          <span className="text-xs font-medium text-slate">Versions</span>
+          {selectedVersion && ctx.versions.length > 1 && (
             <span className="text-xs text-slate">
-              Showing {isLatest ? "latest" : `v${selectedIndex + 1}`} · click to compare a prior
-              submission
+              Showing {isLatest ? "latest" : `v${selectedIndex + 1}`}, tap another to compare
             </span>
           )}
         </div>

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 
-import { Button, Card, CardContent, Input, Textarea, Select, Badge } from "@/components/ui";
+import { Button, Input, Textarea, Select, Badge } from "@/components/ui";
 import { XCircle, Camera, AlertTriangle, CheckCircle, Plus } from "@/components/ui/icons";
 import {
   createManualOrder,
@@ -293,11 +293,11 @@ export function NewOrderForm({
     (etsyReview.receiptNumber || etsyReview.buyerName || etsyReview.transactions.length > 0);
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-3 py-4" onKeyDown={onKeyDown}>
+    <div className="rounded-card bg-surface shadow-card">
+      <div className="flex flex-col gap-6 p-5" onKeyDown={onKeyDown}>
         {mode === "complete" && existing && hasImportedEtsySummary ? (
           <>
-            <section className="flex flex-col gap-3 rounded-input border border-line bg-canvas p-3">
+            <section className="flex flex-col gap-3 rounded-card bg-canvas p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="text-sm font-semibold text-ink">Imported from Etsy</h2>
@@ -330,7 +330,7 @@ export function NewOrderForm({
                   <p className="text-sm text-amber">No Etsy line items were found in the imported payload.</p>
                 ) : (
                   etsyReview.transactions.map((tx, i) => (
-                    <div key={tx.id ?? i} className="rounded-input border border-line bg-surface p-3">
+                    <div key={tx.id ?? i} className="rounded-input bg-surface p-3 shadow-card">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="truncate text-sm font-medium text-ink">{tx.title ?? "Untitled listing"}</div>
@@ -363,14 +363,14 @@ export function NewOrderForm({
               </div>
 
               {etsyReview.buyerNote && (
-                <div className="rounded-input border border-line bg-surface p-3">
+                <div className="rounded-input bg-surface p-3 shadow-card">
                   <div className="text-xs font-medium text-slate">Buyer note</div>
                   <p className="whitespace-pre-wrap text-sm text-ink">{etsyReview.buyerNote}</p>
                 </div>
               )}
             </section>
 
-            <section className="rounded-input border border-line bg-surface p-3">
+            <section className="rounded-card bg-canvas p-4">
               <div className="mb-2 flex items-center gap-2">
                 {missing.length ? <AlertTriangle size={16} className="text-amber" /> : <CheckCircle size={16} className="text-sage" />}
                 <h2 className="text-sm font-semibold text-ink">Still needed</h2>
@@ -385,7 +385,7 @@ export function NewOrderForm({
             </section>
           </>
         ) : mode === "complete" && existing ? (
-          <section className="flex flex-col gap-2 rounded-input border border-line bg-canvas p-3">
+          <section className="flex flex-col gap-2 rounded-card bg-canvas p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="text-sm font-semibold text-ink">Order details</h2>
@@ -397,8 +397,8 @@ export function NewOrderForm({
             </div>
           </section>
         ) : (
-          <>
-            <Select label="Business & shop" value={shopId} onChange={(e) => onShopChange(e.target.value)}>
+          <Step n={1} title="Where it came from">
+            <Select label="Shop" value={shopId} onChange={(e) => onShopChange(e.target.value)}>
               {shops.map((s) => (
                 <option key={s.id} value={s.id}>{s.label}</option>
               ))}
@@ -423,36 +423,39 @@ export function NewOrderForm({
                 </Link>
               </p>
             )}
-          </>
+          </Step>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <Input label="Customer name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} autoComplete="off" />
-          <Input label="Customer email" type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} autoComplete="off" />
-        </div>
+        <Step n={mode === "create" ? 2 : 1} title="Customer">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input label="Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} autoComplete="off" />
+            <Input label="Email" type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} autoComplete="off" />
+          </div>
+        </Step>
 
-        <div className="grid gap-3 sm:grid-cols-5">
-          <Input label="Figures" type="number" min={1} value={figureCount} onChange={(e) => setFigureCount(e.target.value)} />
-          <Select label="Style" value={style} onChange={(e) => setStyle(e.target.value)} disabled={styleOptions.length === 0}>
-            <option value="">{styleOptions.length ? "Select style" : "No styles configured"}</option>
-            {styleOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </Select>
-          <Input label="Product/category" value={productTitle} onChange={(e) => setProductTitle(e.target.value)} autoComplete="off" />
-          <Select label="Fulfilment" value={productType} onChange={(e) => setProductType(e.target.value as "physical" | "digital")}>
-            <option value="physical">Physical</option>
-            <option value="digital">Digital</option>
-          </Select>
-          <Input label="Due date" type="date" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
-        </div>
+        <Step n={mode === "create" ? 3 : 2} title="What to draw">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input label="Figures" type="number" min={1} value={figureCount} onChange={(e) => setFigureCount(e.target.value)} />
+            <Select label="Style" value={style} onChange={(e) => setStyle(e.target.value)} disabled={styleOptions.length === 0}>
+              <option value="">{styleOptions.length ? "Select style" : "No styles configured"}</option>
+              {styleOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </Select>
+            <Input label="Product / category" value={productTitle} onChange={(e) => setProductTitle(e.target.value)} autoComplete="off" />
+            <Select label="Fulfilment" value={productType} onChange={(e) => setProductType(e.target.value as "physical" | "digital")}>
+              <option value="physical">Physical</option>
+              <option value="digital">Digital</option>
+            </Select>
+            <Input label="Due date" type="date" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
+          </div>
+          <Textarea label="Notes for the designer" hint="Special requests, shown on the designer's card" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
+        </Step>
 
-        <Textarea label="Notes / special requests (shown to the designer)" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
-
+        <Step n={mode === "create" ? 4 : 3} title="Reference photos">
         <div className="flex flex-col gap-2">
-          <span className="text-xs font-medium text-ink">Reference photos</span>
           {r2Enabled ? (
             <div
               onDragOver={(e) => e.preventDefault()}
@@ -461,7 +464,7 @@ export function NewOrderForm({
                 void uploadFiles(Array.from(e.dataTransfer.files));
               }}
               onClick={() => fileRef.current?.click()}
-              className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-card border border-dashed border-line bg-canvas py-5 text-sm text-slate hover:border-pigment/40"
+              className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-card bg-canvas py-6 text-sm text-slate transition-colors hover:bg-pigment-soft"
             >
               <Camera size={18} />
               {uploading ? "Uploading…" : "Drag & drop images here, or click to choose"}
@@ -492,7 +495,7 @@ export function NewOrderForm({
               {photos.map((p, i) => (
                 <span key={i} className="relative inline-block">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.kind === "r2" ? p.previewUrl : p.url} alt="" className="size-14 rounded-input border border-line object-cover" />
+                  <img src={p.kind === "r2" ? p.previewUrl : p.url} alt="" className="size-14 rounded-input object-cover shadow-card" />
                   <button type="button" onClick={() => setPhotos((ps) => ps.filter((_, j) => j !== i))} className="absolute -right-1.5 -top-1.5 rounded-full bg-surface text-slate hover:text-rose" aria-label="Remove photo">
                     <XCircle size={16} />
                   </button>
@@ -501,8 +504,9 @@ export function NewOrderForm({
             </div>
           )}
         </div>
+        </Step>
 
-        <div className="flex flex-wrap items-center gap-3 border-t border-line pt-3">
+        <div className="flex flex-wrap items-center gap-3 border-t border-line/60 pt-4">
           <Button onClick={submit} loading={submitting} disabled={uploading || !shopId || !!done}>
             {mode === "complete" ? completeAction : "Create order"}
           </Button>
@@ -517,14 +521,27 @@ export function NewOrderForm({
         </div>
 
         {mode === "complete" && existing && (
-          <details className="border-t border-line pt-3">
+          <details className="border-t border-line/60 pt-3">
             <summary className="cursor-pointer text-xs font-medium text-slate">Developer data</summary>
             <pre className="mt-2 max-h-64 overflow-auto rounded-input bg-canvas p-2 text-xs text-ink">
               {JSON.stringify(existing.rawImport, null, 2)}
             </pre>
           </details>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
+  );
+}
+
+/** One numbered step of the form: a small label, then its fields. */
+function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">
+        <span className="inline-flex size-6 items-center justify-center rounded-full bg-pigment-soft text-xs font-semibold text-pigment">{n}</span>
+        {title}
+      </h2>
+      {children}
+    </section>
   );
 }

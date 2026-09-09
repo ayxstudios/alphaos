@@ -7,6 +7,7 @@ import { withUserContext } from "@/lib/db";
 import { loadShellData } from "@/lib/shell/context";
 import { earnings, orders, users, type EarningBreakdown } from "@/lib/db/schema";
 import { Badge, Button, DataPanel, EmptyState, Input, Page, PageHeader, Select, TableShell } from "@/components/ui";
+import { cn } from "@/lib/utils";
 import { AlertTriangle } from "@/components/ui/icons";
 import {
   MarkPeriodPaidButton,
@@ -167,41 +168,35 @@ export default async function PayoutsPage({
     <Page>
       <PageHeader
         title="Payouts"
-        description="Designer earnings are captured when orders complete. Rate changes only affect future or manually resolved blocked earnings."
+        description="What each designer has earned, captured as orders complete."
         actions={
           <a
             href={`/payouts/export?${qs.toString()}`}
-            className="inline-flex h-10 items-center justify-center rounded-input border border-line bg-surface px-4 text-sm font-medium text-ink transition-colors hover:bg-canvas"
+            className="inline-flex h-10 items-center justify-center rounded-input bg-surface px-4 text-sm font-medium text-ink shadow-card transition-colors hover:bg-canvas"
           >
             Export CSV
           </a>
         }
       />
 
-      <form className="flex flex-wrap items-end gap-2 rounded-card border border-line bg-surface p-3 shadow-sm">
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate">
-          Business
-          <Select name="business" defaultValue={businessId} className="h-10 min-w-52">
-            {shell.options.map((business) => (
-              <option key={business.id} value={business.id}>{business.name}</option>
-            ))}
-          </Select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate">
-          Period
-          <Input name="period" type="month" defaultValue={period} className="h-10 w-44" />
-        </label>
-        <Button type="submit">Apply</Button>
+      <form className="flex flex-wrap items-center gap-2">
+        <Select name="business" defaultValue={businessId} aria-label="Business" className="h-11 min-w-44 rounded-full border-0 bg-surface shadow-card">
+          {shell.options.map((business) => (
+            <option key={business.id} value={business.id}>{business.name}</option>
+          ))}
+        </Select>
+        <Input name="period" type="month" defaultValue={period} aria-label="Period" className="h-11 w-44 rounded-full border-0 bg-surface shadow-card" />
+        <Button type="submit" variant="ghost" className="h-11 rounded-full">Show</Button>
       </form>
 
       {blocked.length > 0 && (
-        <DataPanel className="border-amber/30">
-          <div className="flex items-center gap-2 border-b border-amber/20 px-4 py-3">
+        <DataPanel>
+          <div className="flex items-center gap-2 border-b border-line/60 px-4 py-3">
             <AlertTriangle size={16} className="text-amber" />
-            <h2 className="text-sm font-semibold text-ink">Blocked earnings need a rate before they can be paid</h2>
+            <h2 className="text-sm font-semibold text-ink">Needs a rate before it can be paid</h2>
             <Badge variant="warning">{blocked.length}</Badge>
           </div>
-          <div className="divide-y divide-line">
+          <div className="divide-y divide-line/60">
             {blocked.map((row) => (
               <div key={row.id} className="grid grid-cols-1 gap-2 px-4 py-3 text-sm lg:grid-cols-[1fr_1fr_auto_auto] lg:items-center">
                 <div>
@@ -221,52 +216,70 @@ export default async function PayoutsPage({
 
       <TableShell>
         {summaries.length === 0 ? (
-          <EmptyState icon={AlertTriangle} headline="No earnings for this period" body="Completed design work will appear here once orders are marked complete." />
+          <EmptyState icon={AlertTriangle} headline="No earnings this period" body="Completed design work lands here once orders are marked complete." />
         ) : (
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="border-b border-line bg-canvas text-xs font-medium uppercase tracking-wide text-slate">
-              <tr>
-                <th className="px-4 py-3">Designer</th>
-                <th className="px-4 py-3">Pending</th>
-                <th className="px-4 py-3">Paid</th>
-                <th className="px-4 py-3">Blocked</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
+          <>
+            <div className="hidden grid-cols-[minmax(0,1.4fr)_1fr_1fr_5rem_auto] gap-4 border-b border-line/60 px-4 py-2.5 text-xs font-medium text-slate md:grid">
+              <span>Designer</span>
+              <span>Pending</span>
+              <span>Paid</span>
+              <span>Blocked</span>
+              <span className="text-right">Actions</span>
+            </div>
+            <div className="divide-y divide-line/60">
               {summaries.map((summary) => (
-                <tr key={summary.designerId}>
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-ink">{summary.name}</p>
-                    <p className="text-xs text-slate">{summary.email}</p>
-                  </td>
-                  <td className="px-4 py-3">{money(summary.pendingTotal)} · {summary.pendingCount} order{summary.pendingCount === 1 ? "" : "s"}</td>
-                  <td className="px-4 py-3">{money(summary.paidTotal)} · {summary.paidCount} order{summary.paidCount === 1 ? "" : "s"}</td>
-                  <td className="px-4 py-3">{summary.blockedCount}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-2">
-                      <Link
-                        href={`/payouts?business=${businessId}&period=${period}&designer=${summary.designerId}`}
-                        className="inline-flex h-8 items-center justify-center rounded-input px-3 text-sm font-medium text-ink transition-colors hover:bg-pigment-soft"
-                      >
-                        View orders
-                      </Link>
-                      <MarkPeriodPaidButton businessId={businessId} designerId={summary.designerId} period={period} />
-                    </div>
-                  </td>
-                </tr>
+                <div
+                  key={summary.designerId}
+                  className="grid grid-cols-2 gap-x-4 gap-y-2 px-4 py-3.5 text-sm md:grid-cols-[minmax(0,1.4fr)_1fr_1fr_5rem_auto] md:items-center"
+                >
+                  <div className="col-span-2 min-w-0 md:col-span-1">
+                    <p className="truncate font-medium text-ink">{summary.name}</p>
+                    <p className="truncate text-xs text-slate">{summary.email}</p>
+                  </div>
+                  <p>
+                    <span className="block text-xs text-slate md:hidden">Pending</span>
+                    <span className="font-medium tabular-nums text-ink">{money(summary.pendingTotal)}</span>
+                    <span className="text-slate"> · {summary.pendingCount} order{summary.pendingCount === 1 ? "" : "s"}</span>
+                  </p>
+                  <p>
+                    <span className="block text-xs text-slate md:hidden">Paid</span>
+                    <span className="tabular-nums text-ink">{money(summary.paidTotal)}</span>
+                    <span className="text-slate"> · {summary.paidCount} order{summary.paidCount === 1 ? "" : "s"}</span>
+                  </p>
+                  <p className={cn("tabular-nums", summary.blockedCount ? "font-medium text-amber" : "text-slate")}>
+                    <span className="block text-xs font-normal text-slate md:hidden">Blocked</span>
+                    {summary.blockedCount}
+                  </p>
+                  <div className="col-span-2 flex justify-end gap-2 md:col-span-1">
+                    <Link
+                      href={`/payouts?business=${businessId}&period=${period}&designer=${summary.designerId}`}
+                      className={cn(
+                        "inline-flex h-8 items-center justify-center rounded-input px-3 text-sm font-medium transition-colors hover:bg-pigment-soft",
+                        selectedDesigner === summary.designerId ? "bg-pigment-soft text-pigment" : "text-ink",
+                      )}
+                    >
+                      View orders
+                    </Link>
+                    <MarkPeriodPaidButton businessId={businessId} designerId={summary.designerId} period={period} />
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+            <p className="border-t border-line/60 px-4 py-2.5 text-xs text-slate">
+              Rate changes only affect future earnings, or blocked ones you resolve by hand.
+            </p>
+          </>
         )}
       </TableShell>
 
       {selectedDesigner && (
         <DataPanel>
-          <div className="border-b border-line px-4 py-3">
-            <h2 className="text-sm font-semibold text-ink">Earning orders</h2>
+          <div className="border-b border-line/60 px-4 py-3">
+            <h2 className="text-sm font-semibold text-ink">
+              Orders for {summaries.find((s) => s.designerId === selectedDesigner)?.name ?? "this designer"}
+            </h2>
           </div>
-          <div className="divide-y divide-line">
+          <div className="divide-y divide-line/60">
             {detailRows.map((row) => (
               <div key={row.id} className="grid grid-cols-1 gap-2 px-4 py-3 text-sm lg:grid-cols-[1fr_1.5fr_auto_auto_auto] lg:items-center">
                 <div>
@@ -289,10 +302,10 @@ export default async function PayoutsPage({
 
       {voided.length > 0 && (
         <DataPanel>
-          <div className="border-b border-line px-4 py-3">
+          <div className="border-b border-line/60 px-4 py-3">
             <h2 className="text-sm font-semibold text-ink">Voided earnings</h2>
           </div>
-          <div className="divide-y divide-line">
+          <div className="divide-y divide-line/60">
             {voided.map((row) => (
               <div key={row.id} className="grid grid-cols-1 gap-2 px-4 py-3 text-sm md:grid-cols-[1fr_1fr_auto] md:items-center">
                 <div>

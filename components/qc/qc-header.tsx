@@ -30,7 +30,7 @@ function TimeInQc({ since }: { since: string | null }) {
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col">
-      <span className="text-xs uppercase tracking-wide text-slate">{label}</span>
+      <span className="text-xs text-slate">{label}</span>
       <span className="text-sm font-medium text-ink">{children}</span>
     </div>
   );
@@ -54,7 +54,7 @@ export function QcHeader({
   onNext: () => void;
 }) {
   return (
-    <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-card border border-line bg-surface px-4 py-3 shadow-sm">
+    <header className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 rounded-card bg-surface px-4 py-3 shadow-card">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <div className="flex items-center gap-3">
           <h1 className="font-display text-xl font-semibold text-ink">
@@ -82,10 +82,10 @@ export function QcHeader({
           </span>
         )}
         <Button size="sm" variant="secondary" onClick={onPrev} disabled={!hasPrev}>
-          ← Prev <kbd className="ml-1 rounded border border-line bg-canvas px-1 text-xs">K</kbd>
+          ← Prev
         </Button>
         <Button size="sm" variant="secondary" onClick={onNext} disabled={!hasNext}>
-          Next <kbd className="ml-1 rounded border border-line bg-canvas px-1 text-xs">J</kbd> →
+          Next →
         </Button>
       </div>
     </header>

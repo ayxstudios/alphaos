@@ -48,7 +48,7 @@ export function AttentionList({ items, total, allHref = "/today" }: { items: Tod
   }
   return (
     <div className="flex flex-col">
-      <ul className="divide-y divide-line">
+      <ul className="divide-y divide-line/70">
         {items.map((it) => (
           <li key={it.id} className="flex items-center gap-3 py-2.5">
             <span className={cn("hidden w-20 shrink-0 rounded-chip px-2 py-0.5 text-center text-xs font-medium sm:block", KIND_TONE[it.kind])}>{KIND_SHORT[it.kind]}</span>
@@ -62,7 +62,7 @@ export function AttentionList({ items, total, allHref = "/today" }: { items: Tod
             </div>
             <Link
               href={it.action.href}
-              className={cn("hidden h-8 shrink-0 items-center rounded-input border border-line bg-surface px-3 text-xs font-medium text-ink hover:bg-canvas sm:inline-flex", focusRing)}
+              className={cn("hidden h-8 shrink-0 items-center rounded-input bg-canvas px-3 text-xs font-medium text-ink hover:bg-pigment-soft sm:inline-flex", focusRing)}
             >
               {it.action.label}
             </Link>

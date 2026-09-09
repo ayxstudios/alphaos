@@ -226,7 +226,10 @@ export async function getQcQueueIds(
 
 export type QcQueueRow = {
   id: string;
+  businessId: string;
   orderNumber: string;
+  /** Latest submitted portrait (CDN url only; R2 keys are not presigned for a list). */
+  thumbUrl: string | null;
   shopName: string;
   platform: string;
   designerName: string | null;
@@ -246,10 +249,12 @@ export async function getQcQueue(user: RequestUser, businessId: string | null): 
     const rows = await tx
       .select({
         id: orders.id,
+        businessId: orders.businessId,
         number: orders.platformOrderName,
         fallback: orders.platformOrderId,
         dueAt: orders.dueAt,
         updatedAt: orders.updatedAt,
+        thumbUrl: sql<string | null>`(select ${assets.url} from ${assets} where ${assets.orderId} = ${orders.id} and ${assets.type} in ('submission', 'final') and ${assets.deletedAt} is null and ${assets.url} is not null order by ${assets.createdAt} desc limit 1)`,
         shopName: shops.name,
         platform: shops.platform,
         designerName: users.name,
@@ -264,6 +269,8 @@ export async function getQcQueue(user: RequestUser, businessId: string | null): 
       .orderBy(sql`${orders.dueAt} asc nulls last`, asc(orders.createdAt));
     return rows.map((r) => ({
       id: r.id,
+      businessId: r.businessId,
+      thumbUrl: r.thumbUrl ?? null,
       orderNumber: r.number ?? r.fallback ?? r.id.slice(0, 8),
       shopName: r.shopName,
       platform: r.platform,

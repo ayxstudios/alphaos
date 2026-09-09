@@ -93,7 +93,7 @@ export function CompareViewer({
         <div className="flex items-center gap-1.5 text-xs text-slate">
           <Search size={14} />
           <span className="tabular-nums">{Math.round(t.scale * 100)}%</span>
-          <span className="hidden sm:inline">· scroll to zoom, drag to pan (synced)</span>
+          <span className="hidden sm:inline">· scroll to zoom, drag to pan, both sides move together</span>
         </div>
         <div className="flex items-center gap-1.5">
           <Button
@@ -217,8 +217,8 @@ function Pane({
   }, [onZoom]);
 
   return (
-    <div className="flex min-h-[20rem] flex-col overflow-hidden rounded-card border border-line bg-surface shadow-sm">
-      <div className="flex items-center justify-between border-b border-line px-3 py-1.5">
+    <div className="flex min-h-[20rem] flex-col overflow-hidden rounded-card bg-surface shadow-card">
+      <div className="flex items-center justify-between border-b border-line/70 px-3 py-1.5">
         <span className="text-xs font-medium text-slate">{label}</span>
       </div>
       <div

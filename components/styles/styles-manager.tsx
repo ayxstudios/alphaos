@@ -70,10 +70,8 @@ export function StylesManager({
     <div className="flex flex-col gap-4">
       {/* Add a new style */}
       <div className="rounded-card border border-line bg-surface p-4 shadow-sm">
-        <p className="text-sm font-semibold text-ink">Add a new portrait style</p>
-        <p className="mt-0.5 text-sm text-slate">
-          Give it a name (e.g. Cartoon Disney, Watercolor). Then set its title rules and designers below.
-        </p>
+        <p className="text-sm font-semibold text-ink">Add a style</p>
+        <p className="mt-0.5 text-sm text-slate">A name and a rate per figure, e.g. Watercolor at 5.00.</p>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
           <Input
             value={name}
@@ -109,7 +107,7 @@ export function StylesManager({
       </div>
 
       {styles.length === 0 ? (
-        <div className="rounded-card border border-dashed border-line bg-surface p-8 text-center">
+        <div className="rounded-card bg-surface p-8 shadow-card text-center">
           <Brush className="mx-auto text-slate" size={22} />
           <p className="mt-2 text-sm font-medium text-ink">No styles yet</p>
           <p className="text-sm text-slate">Add your first portrait style above.</p>
@@ -240,7 +238,6 @@ function StyleCard({
       {/* Title rules */}
       <div className="mt-4">
         <p className="text-xs font-medium text-ink">Auto-assign when the product title contains</p>
-        <p className="text-xs text-slate">Case-insensitive. Any one match tags the order with this style.</p>
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {style.titleMatches.map((m) => (
             <span key={m} className="inline-flex items-center gap-1 rounded-input bg-pigment-soft px-2 py-0.5 text-xs font-medium text-pigment">
@@ -251,7 +248,7 @@ function StyleCard({
             </span>
           ))}
           {style.titleMatches.length === 0 && !style.isDefault && (
-            <span className="text-xs text-slate">No rules yet. This style won&apos;t auto-assign until you add one or make it the default.</span>
+            <span className="text-xs text-slate">No rules yet, so nothing auto-assigns here.</span>
           )}
         </div>
         <div className="mt-2 flex items-center gap-2">
@@ -275,7 +272,7 @@ function StyleCard({
       </div>
 
       {/* Default toggle + assigned summary */}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line/70 pt-3">
         <label className="inline-flex items-center gap-2 text-sm text-ink">
           <input
             type="checkbox"
@@ -284,7 +281,7 @@ function StyleCard({
             onChange={(e) => onRun(() => setStyleDefault(style.id, e.target.checked))}
             className="size-4 rounded border-line text-pigment focus:ring-pigment"
           />
-          Use as the default style (when no rule matches)
+          Default style when no rule matches
         </label>
         <p className="text-xs text-slate">
           {assignedNames.length ? `Designers: ${assignedNames.join(", ")}` : "No designers assigned yet"}

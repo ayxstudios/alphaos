@@ -7,14 +7,20 @@ import { cn } from "@/lib/utils";
  * single button or appear on selection. Nothing is removed, it is just not
  * shouting.
  */
+/**
+ * Page width: a caller's `max-w-*` class wins (cn is a plain join, so the
+ * default max width is only applied when the caller sets none).
+ */
 export function Page({
   className,
   ...props
 }: React.HTMLAttributes<HTMLDivElement>) {
+  const hasWidth = /(^|\s)max-w-/.test(className ?? "");
   return (
     <div
       className={cn(
-        "mx-auto flex w-full max-w-[1280px] flex-col gap-6",
+        "mx-auto flex w-full flex-col gap-6",
+        !hasWidth && "max-w-[1280px]",
         className,
       )}
       {...props}

@@ -207,8 +207,8 @@ export default async function PrintQueuePage() {
   return (
     <Page>
       <PageHeader
-        title="Ready to Print"
-        description="Approved physical orders that need a VA to trigger printing in the provider dashboard."
+        title="Print"
+        description="Approved physical orders, oldest first."
       />
       <PrintQueue orders={vm} />
     </Page>

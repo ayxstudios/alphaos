@@ -80,7 +80,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
   const cutoffDate = shop.backfillCutoffAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
 
   return (
-    <details className="group rounded-card border border-line bg-surface shadow-sm">
+    <details className="group rounded-card bg-surface shadow-card">
       <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -101,7 +101,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
       <div className="border-t border-line p-4">
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
           <div className="flex flex-col gap-4">
-            <form action={saveEtsyCredentials} className="grid gap-3 rounded-input border border-line bg-canvas p-3">
+            <form action={saveEtsyCredentials} className="grid gap-3 rounded-input bg-canvas/70 p-3">
               <input type="hidden" name="shopId" value={shop.id} />
               <Input
                 label="Keystring"
@@ -136,7 +136,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
               </div>
             </form>
 
-            <form action={saveShopBackfillCutoff} className="rounded-input border border-line bg-canvas p-3">
+            <form action={saveShopBackfillCutoff} className="rounded-input bg-canvas/70 p-3">
               <input type="hidden" name="shopId" value={shop.id} />
               <div className="flex flex-wrap items-end gap-3">
                 <Input

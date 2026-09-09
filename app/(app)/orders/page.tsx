@@ -17,16 +17,8 @@ import {
   shops,
   users,
 } from "@/lib/db/schema";
-import {
-  EmptyState,
-  FilterBar,
-  Page,
-  PageHeader,
-  StatCard,
-  TableShell,
-  DataPanel,
-} from "@/components/ui";
-import { Mail, Package, Plus, Search } from "@/components/ui/icons";
+import { EmptyState, Page, PageHeader, TableShell } from "@/components/ui";
+import { ArrowRight, ChevronDown, Mail, Package, Plus, Search, Sliders, X } from "@/components/ui/icons";
 import { OrdersOperationsTable, type OrdersDashboardRow } from "@/components/orders/orders-operations-table";
 import { OrdersFilterSelect } from "@/components/orders/orders-filter-select";
 import { OrdersViewPreference } from "@/components/orders/orders-view-preference";
@@ -106,7 +98,7 @@ const STATUS_FILTERS = [
 ] as const;
 
 const VIEWS: { key: ViewKey; label: string; description: string }[] = [
-  { key: "active", label: "Active", description: "Everything still needing attention" },
+  { key: "active", label: "All open", description: "Everything still needing attention" },
   { key: "overdue", label: "Overdue", description: "Past the due date" },
   { key: "needs_details", label: "Needs Details", description: "VA must complete imported order details" },
   { key: "needs_photos", label: "Needs Photos", description: "Waiting on reference photos" },
@@ -121,9 +113,9 @@ const VIEWS: { key: ViewKey; label: string; description: string }[] = [
   { key: "completed", label: "Completed", description: "Completed, delivered, or cancelled orders" },
 ];
 
-// The four chips that matter most, day to day — everything else (11 more
-// saved views) is one tap away in the "Show" select, never removed.
-const PRIMARY_VIEW_KEYS: ViewKey[] = ["overdue", "needs_details", "awaiting_qc", "awaiting_customer"];
+// The five counts that matter most, day to day. Everything else (the other
+// saved views) is one tap away under "More views", never removed.
+const PRIMARY_VIEW_KEYS: ViewKey[] = ["active", "overdue", "needs_details", "awaiting_qc", "awaiting_customer"];
 
 function intParam(value: string | undefined, fallback: number) {
   if (!value) return fallback;
@@ -692,15 +684,31 @@ export default async function OrdersPage({
   const emailNeedsAction = await getEmailNeedsActionCounts(user, { businessId: selected.id });
   const emailAttention = emailNeedsAction.unmatched + emailNeedsAction.failed;
 
+  // Filters that are set right now (the chips + the count on the button).
+  const activeFilters: { key: string; label: string }[] = [];
+  if (status) activeFilters.push({ key: "status", label: titleCase(status) });
+  if (source) activeFilters.push({ key: "source", label: titleCase(source) });
+  if (shop) activeFilters.push({ key: "shop", label: filterData.shops.find((s) => s.id === shop)?.name ?? "Shop" });
+  if (designer) {
+    activeFilters.push({
+      key: "designer",
+      label: designer === "unassigned" ? "Unassigned" : filterData.designers.find((d) => d.id === designer)?.name ?? "Designer",
+    });
+  }
+  if (due) activeFilters.push({ key: "due", label: DUE_LABELS[due] ?? "Due" });
+  const primaryViews = VIEWS.filter((view) => PRIMARY_VIEW_KEYS.includes(view.key));
+  const moreViews = VIEWS.filter((view) => !PRIMARY_VIEW_KEYS.includes(view.key));
+  const selectedIsMore = moreViews.some((view) => view.key === selectedView);
+  const selectedViewMeta = VIEWS.find((view) => view.key === selectedView)!;
+
   return (
     <Page className="max-w-none">
       <PageHeader
         title="Orders"
-        description="Every order, in one place."
         actions={
           <Link
             href="/orders/new"
-            className="inline-flex h-10 items-center gap-2 rounded-input bg-pigment px-3 text-sm font-medium text-surface transition-opacity hover:opacity-90"
+            className="inline-flex h-10 items-center gap-2 rounded-input bg-pigment px-3.5 text-sm font-medium text-surface transition-opacity hover:opacity-90"
           >
             <Plus size={16} />
             New order
@@ -709,138 +717,165 @@ export default async function OrdersPage({
       />
       <OrdersViewPreference view={selectedView} />
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <StatCard label="Active work" value={countRow.active} detail="Open orders being worked on" tone="info" />
-        <StatCard label="Overdue" value={countRow.overdue} detail="Past the due date" tone={countRow.overdue ? "danger" : "neutral"} />
-        <StatCard label="Needs details" value={countRow.needs_details} detail="A VA needs to fill these in" tone={countRow.needs_details ? "warning" : "neutral"} />
-        <StatCard label="Awaiting QC" value={countRow.awaiting_qc} detail="Ready for a quality check" tone={countRow.awaiting_qc ? "warning" : "neutral"} />
+      {/* One row of clickable counts: the views that matter day to day. The
+          other saved views live under "More views", never removed. */}
+      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
+        {primaryViews.map((view) => (
+          <ViewPill
+            key={view.key}
+            href={viewHref(currentParams, view.key)}
+            active={view.key === selectedView}
+            label={view.label}
+            count={countRow[view.key]}
+            title={view.description}
+            tone={view.key === "overdue" ? "danger" : view.key === "active" ? "info" : "warning"}
+          />
+        ))}
+        <details className="relative shrink-0">
+          <summary
+            className={cn(
+              "flex h-10 cursor-pointer list-none items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-colors [&::-webkit-details-marker]:hidden",
+              selectedIsMore ? "bg-ink text-surface" : "bg-surface text-slate shadow-card hover:text-ink",
+            )}
+          >
+            {selectedIsMore ? selectedViewMeta.label : "More views"}
+            {selectedIsMore && <span className="rounded-full bg-surface/20 px-1.5 text-xs tabular-nums">{countRow[selectedView]}</span>}
+            <ChevronDown size={14} />
+          </summary>
+          <div className="absolute left-0 top-12 z-30 w-64 rounded-card bg-surface p-1.5 shadow-lg">
+            {moreViews.map((view) => (
+              <Link
+                key={view.key}
+                href={viewHref(currentParams, view.key)}
+                title={view.description}
+                className={cn(
+                  "flex items-center justify-between gap-3 rounded-input px-2.5 py-2 text-sm transition-colors hover:bg-canvas",
+                  view.key === selectedView ? "font-semibold text-pigment" : "text-ink",
+                )}
+              >
+                {view.label}
+                <span className="text-xs tabular-nums text-slate">{countRow[view.key]}</span>
+              </Link>
+            ))}
+          </div>
+        </details>
       </div>
 
-      <FilterBar className="items-end gap-2">
-        {VIEWS.filter((view) => PRIMARY_VIEW_KEYS.includes(view.key)).map((view) => {
-          const active = view.key === selectedView;
-          return (
-            <Link
-              key={view.key}
-              href={viewHref(currentParams, view.key)}
-              title={view.description}
-              aria-current={active ? "page" : undefined}
+      {/* Search stays prominent. Everything else waits behind one button. */}
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <form className="relative min-w-0 flex-1 basis-64 sm:max-w-md">
+            <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate" />
+            <input type="hidden" name="view" value={selectedView} />
+            {activeFilters.map((f) => (
+              <input key={f.key} type="hidden" name={f.key} value={params[f.key as keyof typeof params] ?? ""} />
+            ))}
+            <input
+              name="q"
+              defaultValue={q}
+              placeholder="Search order number or customer"
+              className="h-11 w-full rounded-full bg-surface pl-10 pr-4 text-sm text-ink shadow-card outline-none placeholder:text-slate/70 focus-visible:ring-2 focus-visible:ring-pigment"
+            />
+          </form>
+          <details className="group relative">
+            <summary
               className={cn(
-                "inline-flex h-10 items-center gap-2 rounded-chip px-3 text-sm font-medium transition-colors",
-                active
-                  ? "bg-pigment text-surface"
-                  : "bg-canvas text-slate hover:bg-pigment-soft hover:text-ink",
+                "flex h-11 cursor-pointer list-none items-center gap-2 rounded-full px-4 text-sm font-medium transition-colors [&::-webkit-details-marker]:hidden",
+                activeFilters.length ? "bg-pigment-soft text-pigment" : "bg-surface text-slate shadow-card hover:text-ink",
               )}
             >
-              {view.label}
-              <span className={cn("rounded-full px-1.5 text-xs", active ? "bg-surface/20" : "bg-surface text-slate")}>
-                {countRow[view.key]}
+              <Sliders size={16} />
+              Filters
+              {activeFilters.length > 0 && (
+                <span className="rounded-full bg-pigment px-1.5 text-xs font-semibold tabular-nums text-surface">{activeFilters.length}</span>
+              )}
+            </summary>
+            <div className="fixed bottom-[5.5rem] left-3 right-[4.75rem] z-40 rounded-card bg-surface p-4 shadow-lg sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-13 sm:w-[36rem]">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <OrdersFilterSelect label="Status" value={status} paramName="status" currentParams={currentParams.toString()}>
+                  <option value="">All statuses</option>
+                  {STATUS_FILTERS.map((status) => (
+                    <option key={status} value={status}>{titleCase(status)}</option>
+                  ))}
+                </OrdersFilterSelect>
+                <OrdersFilterSelect label="Source" value={source} paramName="source" currentParams={currentParams.toString()}>
+                  <option value="">All sources</option>
+                  <option value="etsy">Etsy</option>
+                  <option value="shopify">Shopify</option>
+                  <option value="manual">Manual</option>
+                </OrdersFilterSelect>
+                <OrdersFilterSelect label="Shop" value={shop} paramName="shop" currentParams={currentParams.toString()}>
+                  <option value="">All shops</option>
+                  {filterData.shops.map((shop) => (
+                    <option key={shop.id} value={shop.id}>{shop.name}</option>
+                  ))}
+                </OrdersFilterSelect>
+                <OrdersFilterSelect label="Designer" value={designer} paramName="designer" currentParams={currentParams.toString()}>
+                  <option value="">All designers</option>
+                  <option value="unassigned">Unassigned</option>
+                  {filterData.designers.map((designer) => (
+                    <option key={designer.id} value={designer.id}>{designer.name ?? designer.email}</option>
+                  ))}
+                </OrdersFilterSelect>
+                <OrdersFilterSelect label="Due" value={due} paramName="due" currentParams={currentParams.toString()}>
+                  <option value="">Any due date</option>
+                  {Object.entries(DUE_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </OrdersFilterSelect>
+              </div>
+              {activeFilters.length > 0 && (
+                <div className="mt-3 flex justify-end border-t border-line/60 pt-3">
+                  <Link href={clearFiltersHref(currentParams)} className="text-sm font-medium text-pigment hover:text-ink">
+                    Clear all filters
+                  </Link>
+                </div>
+              )}
+            </div>
+          </details>
+          {emailAttention > 0 && (
+            <Link
+              href="/emails"
+              className="ml-auto inline-flex h-11 items-center gap-2 rounded-full px-3 text-sm text-slate transition-colors hover:text-ink"
+            >
+              <Mail size={15} className="text-rose" />
+              <span>
+                {emailAttention} email{emailAttention === 1 ? "" : "s"} need a reply
               </span>
+              <ArrowRight size={14} />
             </Link>
-          );
-        })}
-        <OrdersFilterSelect label="Show" value={selectedView} paramName="view" currentParams={currentParams.toString()}>
-          {VIEWS.map((view) => (
-            <option key={view.key} value={view.key}>
-              {view.label} ({countRow[view.key]})
-            </option>
-          ))}
-        </OrdersFilterSelect>
-      </FilterBar>
-
-      <FilterBar className="items-end">
-        {/* basis-full: below sm this always starts its own flex-wrap row (a
-            flex-basis of 100% forces a line break), so it never has to fight
-            the filter selects' min-w-32 floor for space on a phone — without
-            it, the search box was squeezed down to ~30px, invisible next to
-            "Status". At sm+ it drops back to the normal flex-1 sizing. */}
-        <form className="relative min-w-0 basis-full flex-1 sm:basis-auto sm:max-w-sm">
-          <Search
-            size={16}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate"
-          />
-          <input type="hidden" name="view" value={selectedView} />
-          <input
-            name="q"
-            defaultValue={q}
-            placeholder="Search order or customer"
-            className="h-10 w-full rounded-input border border-line bg-canvas pl-9 pr-3 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-pigment"
-          />
-        </form>
-
-        <OrdersFilterSelect label="Status" value={status} paramName="status" currentParams={currentParams.toString()}>
-          <option value="">All statuses</option>
-          {STATUS_FILTERS.map((status) => (
-            <option key={status} value={status}>{titleCase(status)}</option>
-          ))}
-        </OrdersFilterSelect>
-        <OrdersFilterSelect label="Source" value={source} paramName="source" currentParams={currentParams.toString()}>
-          <option value="">All sources</option>
-          <option value="etsy">Etsy</option>
-          <option value="shopify">Shopify</option>
-          <option value="manual">Manual</option>
-        </OrdersFilterSelect>
-        <OrdersFilterSelect label="Shop" value={shop} paramName="shop" currentParams={currentParams.toString()}>
-          <option value="">All shops</option>
-          {filterData.shops.map((shop) => (
-            <option key={shop.id} value={shop.id}>{shop.name}</option>
-          ))}
-        </OrdersFilterSelect>
-        <OrdersFilterSelect label="Designer" value={designer} paramName="designer" currentParams={currentParams.toString()}>
-          <option value="">All designers</option>
-          <option value="unassigned">Unassigned</option>
-          {filterData.designers.map((designer) => (
-            <option key={designer.id} value={designer.id}>{designer.name ?? designer.email}</option>
-          ))}
-        </OrdersFilterSelect>
-        <OrdersFilterSelect label="Due" value={due} paramName="due" currentParams={currentParams.toString()}>
-          <option value="">Any due date</option>
-          <option value="overdue">Overdue</option>
-          <option value="today">Due today</option>
-          <option value="week">Due next 7 days</option>
-          <option value="none">No due date</option>
-        </OrdersFilterSelect>
-        <div className="ml-auto flex flex-wrap items-center gap-1">
-          <span className="px-2 text-xs font-medium text-slate">Rows</span>
-          {PAGE_SIZES.map((size) => (
-            <Link
-              key={size}
-              href={filterHref(currentParams, "pageSize", String(size))}
-              aria-current={pageSize === size ? "true" : undefined}
-              className={cn(
-                "inline-flex h-10 min-w-10 items-center justify-center rounded-input px-2 text-sm font-medium transition-colors",
-                pageSize === size
-                  ? "bg-ink text-surface"
-                  : "text-slate hover:bg-canvas hover:text-ink",
-              )}
-            >
-              {size}
-            </Link>
-          ))}
+          )}
         </div>
-      </FilterBar>
-
-      {emailAttention > 0 && (
-        <DataPanel className="flex flex-wrap items-center gap-3 border-rose/25 bg-rose/[0.03] px-4 py-3">
-          <Mail size={16} className="text-rose" />
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-ink">{emailAttention} email item{emailAttention === 1 ? "" : "s"} need action</p>
-            <p className="text-xs text-slate">
-              {emailNeedsAction.unmatched} unmatched replies, {emailNeedsAction.failed} failed sends
-            </p>
+        {activeFilters.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {activeFilters.map((f) => (
+              <Link
+                key={f.key}
+                href={filterHref(currentParams, f.key, "")}
+                className="inline-flex h-8 items-center gap-1.5 rounded-full bg-pigment-soft pl-3 pr-2 text-xs font-medium text-pigment transition-colors hover:bg-pigment hover:text-surface"
+                aria-label={`Remove filter ${f.label}`}
+              >
+                {f.label}
+                <X size={12} />
+              </Link>
+            ))}
           </div>
-          <Link href="/emails" className="ml-auto inline-flex h-10 items-center rounded-input bg-pigment px-3 text-sm font-medium text-surface hover:opacity-90">
-            Open Emails
-          </Link>
-        </DataPanel>
-      )}
+        )}
+      </div>
 
       <TableShell>
         {rows.length === 0 ? (
           <EmptyState
             icon={Package}
-            headline="No orders in this view"
-            body="Try another saved view or clear a column filter."
+            headline={`Nothing in ${selectedViewMeta.label.toLowerCase()}`}
+            body={activeFilters.length ? "Try clearing a filter." : "All clear here."}
+            action={
+              activeFilters.length ? (
+                <Link href={clearFiltersHref(currentParams)} className="text-sm font-medium text-pigment hover:text-ink">
+                  Clear filters
+                </Link>
+              ) : undefined
+            }
           />
         ) : (
           <OrdersOperationsTable
@@ -857,9 +892,57 @@ export default async function OrdersPage({
             firstResult={firstResult}
             lastResult={lastResult}
             total={total}
+            pageSize={pageSize}
+            pageSizes={[...PAGE_SIZES]}
           />
         )}
       </TableShell>
     </Page>
+  );
+}
+
+const DUE_LABELS: Record<string, string> = {
+  overdue: "Overdue",
+  today: "Due today",
+  week: "Due next 7 days",
+  none: "No due date",
+};
+
+function clearFiltersHref(params: URLSearchParams) {
+  const next = new URLSearchParams(params);
+  for (const key of ["status", "source", "shop", "designer", "due", "page"]) next.delete(key);
+  return `/orders?${next.toString()}`;
+}
+
+function ViewPill({
+  href,
+  active,
+  label,
+  count,
+  title,
+  tone,
+}: {
+  href: string;
+  active: boolean;
+  label: string;
+  count: number;
+  title: string;
+  tone: "info" | "warning" | "danger";
+}) {
+  const dot = { info: "bg-pigment", warning: "bg-amber", danger: "bg-rose" }[tone];
+  return (
+    <Link
+      href={href}
+      title={title}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-3.5 text-sm font-medium transition-colors",
+        active ? "bg-ink text-surface" : "bg-surface text-slate shadow-card hover:text-ink",
+      )}
+    >
+      {count > 0 && !active && <span className={cn("size-1.5 rounded-full", dot)} />}
+      {label}
+      <span className={cn("tabular-nums", active ? "text-surface/80" : "text-ink")}>{count}</span>
+    </Link>
   );
 }

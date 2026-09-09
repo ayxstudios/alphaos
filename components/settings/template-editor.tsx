@@ -38,7 +38,7 @@ function TemplateCard({ businessId, template }: { businessId: string; template: 
   const [resetting, startReset] = useTransition();
 
   return (
-    <details className="group rounded-card border border-line bg-surface shadow-sm">
+    <details className="group rounded-card bg-surface shadow-card">
       <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
         <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{template.label}</span>
         <Badge variant={template.customized ? "info" : "neutral"} dot>

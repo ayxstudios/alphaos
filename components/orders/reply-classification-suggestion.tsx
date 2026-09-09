@@ -52,7 +52,7 @@ export function ReplyClassificationSuggestion({ suggestion }: { suggestion: Sugg
         </Badge>
         {suggestion.rationale && <span className="text-xs text-slate">{suggestion.rationale}</span>}
       </div>
-      <p className="mt-2 whitespace-pre-wrap rounded-input border border-line bg-surface p-2 text-sm text-ink">
+      <p className="mt-2 whitespace-pre-wrap rounded-input bg-canvas p-2 text-sm text-ink">
         {suggestion.strippedText || "No new reply text found."}
       </p>
       <div className="mt-3 flex flex-wrap gap-2">

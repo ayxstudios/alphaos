@@ -6,8 +6,9 @@ import { useRouter } from "next/navigation";
 
 import { createManualPrintJob } from "@/app/(app)/queue/print/actions";
 import { TrackingCompleteForm } from "@/components/orders/tracking-complete-form";
-import { Badge, Button, DataPanel, Select, useToast } from "@/components/ui";
+import { Badge, Button, DataPanel, Disclosure, Select, useToast } from "@/components/ui";
 import { AlertTriangle, ArrowRight, Printer, Truck } from "@/components/ui/icons";
+import { cn } from "@/lib/utils";
 import type { PrintProvider } from "@/lib/print/mapping";
 
 export type ReconcileState =
@@ -116,6 +117,7 @@ export function PrintQueue({ orders }: { orders: PrintQueueItemVM[] }) {
 function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
   const activeProvider = order.latestPrintJob?.provider ?? order.defaultProvider;
   const [provider, setProvider] = useState<PrintProvider>(activeProvider);
+  const [trackingOpen, setTrackingOpen] = useState(false);
   const [pending, start] = useTransition();
   const router = useRouter();
   const toast = useToast();
@@ -141,133 +143,117 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
     });
   }
 
+  const providerName = providerLabel(job?.provider ?? order.defaultProvider);
+  const statusLine = job
+    ? `${providerName} · ${job.providerStatus ?? "not checked yet"}`
+    : `Not sent yet · will go to ${providerLabel(provider)}`;
+
   return (
-    <DataPanel className={isTrouble ? "overflow-hidden border-rose/40" : "overflow-hidden"}>
-      <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="min-w-0 space-y-3">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-lg font-semibold text-ink">Order {order.orderNumber}</h3>
-                <Badge variant={chip.variant} dot>
-                  {chip.label}
-                </Badge>
-                {age && <span className="text-xs text-slate">{age} old</span>}
-              </div>
-              <p className="text-sm text-slate">
-                {order.shopName} · {order.source} · {order.customerName} · ordered {fmtDate(order.placedAt)}
-              </p>
-            </div>
-            <Link href={`/orders/${order.id}`} className="text-sm font-medium text-pigment hover:text-ink">
-              Open order
+    <DataPanel className="overflow-hidden">
+      <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-start lg:gap-6">
+        {/* Who and what, one line each. */}
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Link href={`/orders/${order.id}`} className="text-base font-semibold text-ink hover:text-pigment">
+              {order.orderNumber}
             </Link>
+            <Badge variant={chip.variant} dot={isTrouble}>{chip.label}</Badge>
+            {age && <span className="text-xs text-slate">{age}</span>}
           </div>
+          <p className="truncate text-sm text-slate">
+            {order.customerName} · {order.shopName} · ordered {fmtDate(order.placedAt)}
+          </p>
+          <p className={cn("flex items-center gap-1.5 text-sm", isTrouble ? "text-rose" : "text-ink")}>
+            {isTrouble ? <AlertTriangle size={14} className="shrink-0" /> : inPrint ? <Truck size={14} className="shrink-0 text-slate" /> : <Printer size={14} className="shrink-0 text-slate" />}
+            <span className="truncate">{statusLine}</span>
+          </p>
 
-          <div className="grid gap-2 sm:grid-cols-3">
-            <Info label="Platform order" value={order.orderNumber} />
-            <Info label="Shop" value={order.shopName} />
-            <Info label="Customer" value={order.customerName} />
-          </div>
-
-          {job && (
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Info label="Provider" value={providerLabel(job.provider)} />
-              <Info label="Provider status" value={job.providerStatus ?? "Not checked yet"} />
-            </div>
+          {isTrouble && (
+            <p className="text-sm text-rose/90">
+              {chip.label === "Missing at provider" ? "No matching order at the provider. " : "The provider reported a problem. "}
+              {job?.reconcileNote ?? job?.providerStatusReason ?? ""}
+            </p>
           )}
 
           {job?.trackingNumber && (
-            <div className="flex items-center gap-2 rounded-input border border-line bg-canvas px-3 py-2 text-sm">
+            <p className="flex items-center gap-2 text-sm">
               <Truck size={14} className="text-slate" />
               <span className="font-medium text-ink">{job.trackingNumber}</span>
               {job.trackingCompany && <span className="text-slate">via {job.trackingCompany}</span>}
               {job.trackingUrl && (
-                <a href={job.trackingUrl} target="_blank" rel="noreferrer" className="ml-auto text-pigment hover:text-ink">
-                  Track
-                </a>
+                <a href={job.trackingUrl} target="_blank" rel="noreferrer" className="text-pigment hover:text-ink">Track</a>
               )}
-            </div>
+            </p>
           )}
 
-          {order.artworkUrl && (
-            <a
-              href={order.artworkUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-sm font-medium text-pigment hover:text-ink"
-            >
-              Open latest portrait <ArrowRight size={14} />
-            </a>
-          )}
           {job?.platformSyncError && (
-            <div className="rounded-input border border-rose/25 bg-rose/10 p-3 text-sm text-rose">
-              Platform writeback failed: {job.platformSyncError}
-            </div>
-          )}
-
-          {isTrouble && (
-            <div className="flex flex-col gap-2 rounded-input border border-rose/30 bg-rose/5 p-3">
-              <div className="flex items-start gap-2">
-                <AlertTriangle size={16} className="mt-0.5 shrink-0 text-rose" />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-rose">
-                    {chip.label === "Missing at provider"
-                      ? "No matching order was found at the provider."
-                      : "The provider reported a problem with this order."}
-                  </p>
-                  <p className="mt-0.5 text-sm text-rose/90">
-                    {job?.reconcileNote ?? job?.providerStatusReason ?? "Check the provider dashboard directly."}
-                  </p>
-                </div>
-              </div>
-              <a
-                href={PROVIDER_DASHBOARD[job?.provider ?? order.defaultProvider]}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex w-fit items-center gap-1 rounded-input border border-rose/40 bg-surface px-3 py-1.5 text-sm font-medium text-rose hover:bg-rose/10"
-              >
-                Open {providerLabel(job?.provider ?? order.defaultProvider)} dashboard <ArrowRight size={14} />
-              </a>
-            </div>
+            <p className="text-sm text-rose">Platform writeback failed: {job.platformSyncError}</p>
           )}
         </div>
 
-        <div className="space-y-4 rounded-input border border-line bg-canvas p-4">
-          <div className="flex items-center gap-2 font-medium text-ink">
-            {inPrint ? <Truck size={16} /> : <Printer size={16} />}
-            Print fulfilment
-          </div>
-          {canStart ? (
-            <>
-              <Select
-                label="Provider"
-                value={provider}
-                disabled={pending}
-                onChange={(e) => setProvider(e.currentTarget.value as PrintProvider)}
-              >
-                <option value="lumaprints">Luma Prints</option>
-                <option value="gelato">Gelato</option>
-              </Select>
+        {/* The one thing to do. */}
+        <div className="w-full shrink-0 lg:w-72">
+          {canStart && (
+            <div className="flex items-end gap-2">
+              <div className="min-w-0 flex-1">
+                <Select label="Provider" value={provider} disabled={pending} onChange={(e) => setProvider(e.currentTarget.value as PrintProvider)}>
+                  <option value="lumaprints">Luma Prints</option>
+                  <option value="gelato">Gelato</option>
+                </Select>
+              </div>
               <Button type="button" disabled={pending} loading={pending} onClick={runStart}>
                 <Printer size={15} />
                 Sent to print
               </Button>
-            </>
-          ) : null}
-          {inPrint && (
-            <TrackingCompleteForm orderId={order.id} source={order.source} provider={activeProvider} />
+            </div>
           )}
+          {inPrint && !trackingOpen && (
+            <div className="flex justify-end">
+              <Button type="button" variant="secondary" onClick={() => setTrackingOpen(true)}>
+                <Truck size={15} />
+                Add tracking
+              </Button>
+            </div>
+          )}
+          {inPrint && trackingOpen && <TrackingCompleteForm orderId={order.id} source={order.source} provider={activeProvider} />}
         </div>
       </div>
+
+      <Disclosure summary="Details" className="rounded-none shadow-none border-t border-line/70">
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Info label="Platform order" value={order.orderNumber} />
+          <Info label="Shop" value={order.shopName} />
+          <Info label="Customer" value={order.customerName} />
+          <Info label="Source" value={order.source} />
+          <Info label="Provider" value={job ? providerLabel(job.provider) : providerLabel(provider)} />
+          <Info label="Provider status" value={job?.providerStatus ?? "Not checked yet"} />
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
+          {order.artworkUrl && (
+            <a href={order.artworkUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-pigment hover:text-ink">
+              Open latest portrait <ArrowRight size={14} />
+            </a>
+          )}
+          <a
+            href={PROVIDER_DASHBOARD[job?.provider ?? order.defaultProvider]}
+            target="_blank"
+            rel="noreferrer"
+            className={cn("inline-flex items-center gap-1 font-medium hover:text-ink", isTrouble ? "text-rose" : "text-pigment")}
+          >
+            Open {providerName} dashboard <ArrowRight size={14} />
+          </a>
+          <Link href={`/orders/${order.id}`} className="font-medium text-pigment hover:text-ink">Open order</Link>
+        </div>
+      </Disclosure>
     </DataPanel>
   );
 }
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-input border border-line bg-canvas px-3 py-2">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate">{label}</p>
-      <p className="mt-1 truncate text-sm font-medium text-ink">{value}</p>
+    <div className="rounded-input bg-canvas px-3 py-2">
+      <p className="text-xs text-slate">{label}</p>
+      <p className="mt-0.5 truncate text-sm font-medium text-ink">{value}</p>
     </div>
   );
 }

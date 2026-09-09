@@ -6,13 +6,7 @@ import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
 import { customers, orders } from "@/lib/db/schema";
 import { loadShellData } from "@/lib/shell/context";
-import {
-  EmptyState,
-  FilterBar,
-  Page,
-  PageHeader,
-  TableShell,
-} from "@/components/ui";
+import { EmptyState, Page, PageHeader, TableShell } from "@/components/ui";
 import { Search, Users } from "@/components/ui/icons";
 
 export const dynamic = "force-dynamic";
@@ -108,82 +102,50 @@ export default async function CustomersPage({
 
   return (
     <Page>
-      <PageHeader
-        title="Customers"
-        description="Customer records are merged by normalized email inside each business."
-      />
+      <PageHeader title="Customers" description="Everyone who has ordered, one record per email." />
 
-      <FilterBar>
-        {/* basis-full: full width of its own row below sm, so it never has to
-            share a cramped line with the Rows selector on a phone (matches
-            the same fix on /orders — a search box should never compete for
-            space with unrelated controls at that width). */}
-        <form className="relative min-w-0 basis-full flex-1 sm:basis-auto sm:max-w-sm">
-          <Search
-            size={16}
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate"
-          />
-          <input
-            name="q"
-            defaultValue={q}
-            placeholder="Search customers"
-            className="h-10 w-full rounded-input border border-line bg-canvas pl-9 pr-3 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-pigment"
-          />
-          {pageSize !== 20 && <input type="hidden" name="pageSize" value={pageSize} />}
-        </form>
-        <div className="ml-auto flex flex-wrap items-center gap-1">
-          <span className="px-2 text-xs font-medium text-slate">Rows</span>
-          {PAGE_SIZES.map((size) => (
-            <Link
-              key={size}
-              href={pageSizeHref(currentParams, size)}
-              aria-current={pageSize === size ? "true" : undefined}
-              className={
-                pageSize === size
-                  ? "inline-flex h-9 min-w-10 items-center justify-center rounded-input bg-ink px-2 text-sm font-medium text-surface"
-                  : "inline-flex h-9 min-w-10 items-center justify-center rounded-input px-2 text-sm font-medium text-slate transition-colors hover:bg-canvas hover:text-ink"
-              }
-            >
-              {size}
-            </Link>
-          ))}
-        </div>
-      </FilterBar>
+      <form className="relative w-full max-w-md">
+        <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate" />
+        <input
+          name="q"
+          defaultValue={q}
+          placeholder="Search by name or email"
+          className="h-11 w-full rounded-full bg-surface pl-10 pr-4 text-sm text-ink shadow-card outline-none placeholder:text-slate/70 focus-visible:ring-2 focus-visible:ring-pigment"
+        />
+        {pageSize !== 20 && <input type="hidden" name="pageSize" value={pageSize} />}
+      </form>
 
       {rows.length === 0 ? (
         <TableShell>
           <EmptyState
             icon={Users}
-            headline="No customers found"
-            body="Customers appear after an order has a manually entered email."
+            headline={q ? "No one matches that" : "No customers yet"}
+            body={q ? "Try a shorter name or the email." : "Customers appear after an order has an email."}
           />
         </TableShell>
       ) : (
         <TableShell>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-2 text-sm text-slate">
-            <span>
-              Showing {firstResult}-{lastResult} of {total}
-            </span>
-            <Pagination currentParams={currentParams} page={page} totalPages={totalPages} />
-          </div>
-          <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_8rem_10rem] gap-4 border-b border-line px-4 py-2 text-xs font-medium uppercase text-slate md:grid">
+          <div className="hidden grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_6rem_10rem] gap-4 border-b border-line/60 px-4 py-2.5 text-xs font-medium text-slate md:grid">
             <span>Customer</span>
             <span>Email</span>
             <span>Orders</span>
-            <span>Latest activity</span>
+            <span>Latest order</span>
           </div>
-          <div className="divide-y divide-line">
+          <div className="divide-y divide-line/60">
             {rows.map((row) => (
               <Link
                 key={row.id}
                 href={`/customers/${row.id}`}
-                className="grid grid-cols-1 gap-1 px-4 py-3 transition-colors hover:bg-canvas md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_8rem_10rem] md:items-center md:gap-4"
+                className="grid grid-cols-1 gap-0.5 px-4 py-3.5 transition-colors hover:bg-canvas md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_6rem_10rem] md:items-center md:gap-4"
               >
                 <p className="truncate text-sm font-semibold text-ink">
                   {customerName(row)}
                 </p>
                 <p className="truncate text-sm text-slate">{row.email}</p>
-                <p className="text-sm text-slate">{row.orderCount}</p>
+                <p className="text-sm tabular-nums text-slate">
+                  {row.orderCount}
+                  <span className="md:hidden"> order{row.orderCount === 1 ? "" : "s"}</span>
+                </p>
                 <p className="text-sm text-slate">
                   {row.latestOrderAt
                     ? new Intl.DateTimeFormat("en-AU", {
@@ -196,10 +158,26 @@ export default async function CustomersPage({
               </Link>
             ))}
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-2 text-sm text-slate">
-            <span>
-              Showing {firstResult}-{lastResult} of {total}
-            </span>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line/60 px-4 py-2.5 text-sm text-slate">
+            <div className="flex items-center gap-2">
+              <span className="tabular-nums">{firstResult}-{lastResult} of {total}</span>
+              <span className="text-line">·</span>
+              <span className="text-xs">Rows</span>
+              {PAGE_SIZES.map((size) => (
+                <Link
+                  key={size}
+                  href={pageSizeHref(currentParams, size)}
+                  aria-current={pageSize === size ? "true" : undefined}
+                  className={
+                    pageSize === size
+                      ? "inline-flex h-8 min-w-8 items-center justify-center rounded-input bg-ink px-1.5 text-xs font-medium tabular-nums text-surface"
+                      : "inline-flex h-8 min-w-8 items-center justify-center rounded-input px-1.5 text-xs font-medium tabular-nums text-slate transition-colors hover:bg-canvas hover:text-ink"
+                  }
+                >
+                  {size}
+                </Link>
+              ))}
+            </div>
             <Pagination currentParams={currentParams} page={page} totalPages={totalPages} />
           </div>
         </TableShell>

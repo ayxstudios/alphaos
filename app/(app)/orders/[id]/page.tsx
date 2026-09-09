@@ -21,6 +21,7 @@ import {
 import {
   Badge,
   DataPanel,
+  Disclosure,
   EmptyState,
   Page,
   PageHeader,
@@ -33,14 +34,12 @@ import {
   Brush,
   Calendar,
   Camera,
-  ChevronDown,
   Clock,
   Inbox,
   Mail,
   Palette,
   Pencil,
   Plus,
-  Truck,
   User,
   type IconProps,
 } from "@/components/ui/icons";
@@ -81,6 +80,13 @@ function fmtDateTime(date: Date | string | null) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(value);
+}
+
+function fmtDate(date: Date | string | null) {
+  if (!date) return "No due date";
+  const value = typeof date === "string" ? new Date(date) : date;
+  if (Number.isNaN(value.getTime())) return "Unknown";
+  return new Intl.DateTimeFormat("en-AU", { day: "2-digit", month: "short", year: "numeric" }).format(value);
 }
 
 function customerDisplay(input: {
@@ -502,7 +508,7 @@ export default async function OrderDetailPage({
             {editable && (
               <Link
                 href={`/orders/${order.id}/complete`}
-                className="inline-flex h-9 items-center gap-2 rounded-input border border-line bg-surface px-3 text-sm font-medium text-ink transition-colors hover:bg-canvas"
+                className="inline-flex h-9 items-center gap-2 rounded-input bg-surface px-3 text-sm font-medium text-ink shadow-card transition-colors hover:bg-canvas"
               >
                 <Pencil size={15} />
                 Edit
@@ -514,12 +520,14 @@ export default async function OrderDetailPage({
 
       {/* The one thing to do next, in plain English — with the actual control to
           do it right here (assign a designer / go to QC / …). */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-card border border-line bg-surface px-4 py-3 text-sm shadow-sm">
-        <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-pigment">
-          <ArrowRight size={14} />
-          Next step
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-card bg-pigment-soft px-5 py-4">
+        <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-pigment text-surface">
+          <ArrowRight size={16} />
         </span>
-        <span className="font-medium text-ink">{nextAction.label}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-xs font-medium text-pigment">Next step</span>
+          <span className="block text-base font-semibold text-ink">{nextAction.label}</span>
+        </span>
         {nextAction.kind === "assign" && editable && (
           <div className="w-full sm:ml-auto sm:w-auto">
             <OrderReassignForm
@@ -536,7 +544,7 @@ export default async function OrderDetailPage({
         {nextAction.kind === "link" && (
           <Link
             href={nextAction.href}
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-input bg-pigment px-4 text-sm font-medium text-surface transition-opacity hover:opacity-90 sm:ml-auto"
+            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-input bg-pigment px-4 text-sm font-medium text-surface transition-opacity hover:opacity-90"
           >
             {nextAction.cta}
             <ArrowRight size={14} />
@@ -551,7 +559,7 @@ export default async function OrderDetailPage({
       <DataPanel className="overflow-hidden p-0">
         <div
           className={cn(
-            "grid grid-cols-2 gap-px bg-line",
+            "grid grid-cols-2 gap-px bg-line/60",
             // Exactly enough columns for the facts actually shown, at every
             // breakpoint, so there is never a leftover blank cell. The 5-fact
             // case (no style bar below) is odd on the 2-col phone grid, so its
@@ -565,7 +573,7 @@ export default async function OrderDetailPage({
           <Fact icon={Mail} label="Email" value={order.customerEmail ?? "No email yet"} muted={!order.customerEmail} />
           {!styleSetter && <Fact icon={Brush} label="Style" value={styleLabel} muted={styles.length === 0} />}
           <Fact icon={Palette} label="Designer" value={assignee} muted={assignee === "Unassigned"} />
-          <Fact icon={Calendar} label="Due" value={fmtDateTime(order.dueAt)} />
+          <Fact icon={Calendar} label="Due" value={fmtDate(order.dueAt)} />
         </div>
       </DataPanel>
 
@@ -581,8 +589,8 @@ export default async function OrderDetailPage({
       )}
 
       {order.notes && (
-        <div className="rounded-card border border-pigment/20 bg-pigment-soft/40 p-4 shadow-sm">
-          <div className="text-xs font-semibold uppercase tracking-wide text-pigment">
+        <div className="rounded-card bg-surface p-4 shadow-card">
+          <div className="text-xs font-medium text-pigment">
             Designer notes / customer request
           </div>
           <p className="mt-1.5 whitespace-pre-wrap text-sm text-ink">{order.notes}</p>
@@ -595,12 +603,12 @@ export default async function OrderDetailPage({
         <div className="flex flex-col gap-4">
 
           <DataPanel className="overflow-hidden">
-            <div className="border-b border-line px-4 py-3">
+            <div className="border-b border-line/60 px-4 py-3">
               <SectionHeader title="Purchased items" />
             </div>
             {personalization && (
-              <div className="border-b border-line bg-pigment-soft/30 px-4 py-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-pigment">
+              <div className="border-b border-line/60 bg-pigment-soft/30 px-4 py-3">
+                <p className="text-xs font-medium text-pigment">
                   What the customer wrote at checkout
                 </p>
                 <p className="mt-1 whitespace-pre-wrap text-sm text-ink">{personalization}</p>
@@ -609,7 +617,7 @@ export default async function OrderDetailPage({
             {items.length === 0 ? (
               <EmptyState icon={Inbox} headline="No item details yet" body="Use Edit to add product, figure count, style and fulfilment." />
             ) : (
-              <ul className="divide-y divide-line">
+              <ul className="divide-y divide-line/60">
                 {items.map((item, index) => {
                   const media = order.source === "shopify" ? mediaForItem(item, shopifyMedia, index) : null;
                   const content = (
@@ -619,7 +627,7 @@ export default async function OrderDetailPage({
                         <img
                           src={media.imageUrl}
                           alt={media.imageAlt ?? item.title ?? "Shopify product"}
-                          className="size-20 shrink-0 rounded-input border border-line object-cover"
+                          className="size-20 shrink-0 rounded-input object-cover shadow-card"
                         />
                       )}
                       <div className="min-w-0 flex-1">
@@ -689,7 +697,7 @@ export default async function OrderDetailPage({
               }
             />
             {references.length === 0 ? (
-              <div className="mt-3 rounded-input border border-dashed border-line bg-canvas p-4 text-center">
+              <div className="mt-3 rounded-input bg-canvas p-5 text-center">
                 <Camera className="mx-auto text-slate" size={20} />
                 <p className="mt-2 text-sm text-slate">No reference photos yet.</p>
                 {editable && (
@@ -706,7 +714,7 @@ export default async function OrderDetailPage({
               <div className="mt-3 grid grid-cols-3 gap-2">
                 {references.map((image) => (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img key={image.id} src={image.url} alt="" className="aspect-square rounded-input border border-line object-cover" />
+                  <img key={image.id} src={image.url} alt="" className="aspect-square rounded-input object-cover shadow-card" />
                 ))}
               </div>
             )}
@@ -725,7 +733,7 @@ export default async function OrderDetailPage({
           )}
 
           <DataPanel className="overflow-hidden">
-            <div className="border-b border-line px-4 py-3">
+            <div className="border-b border-line/60 px-4 py-3">
               <SectionHeader title="Messages" />
             </div>
             {timeline.length === 0 ? (
@@ -735,7 +743,7 @@ export default async function OrderDetailPage({
                 body="Customer email history for this order will appear here."
               />
             ) : (
-              <ul className="divide-y divide-line">
+              <ul className="divide-y divide-line/60">
                 {timeline.map((m) => {
                   const inbound = m.direction === "inbound";
                   const when = m.sentAt ?? m.createdAt;
@@ -782,13 +790,47 @@ export default async function OrderDetailPage({
         {/* Right: everything else is waiting on — who has it, when it's due,
             what print and proof are doing, and the full history underneath. */}
         <aside className="flex flex-col gap-4">
-          {editable && (
-            <DataPanel className="p-4">
-              <SectionHeader
-                title="Quick actions"
-                description={`${hasDesigner ? "Reassign" : "Assign a designer"}, or send this order back for changes.`}
+          <DataPanel className="p-4">
+            <SectionHeader title="Ask Alpha AI" />
+            <div className="mt-3">
+              <AskAlpha orderId={order.id} compact />
+            </div>
+          </DataPanel>
+
+          {/* Where it is right now: designer + proof, two short facts. */}
+          <DataPanel className="p-4">
+            <SectionHeader title="Where it is" />
+            <dl className="mt-3 flex flex-col gap-3 text-sm">
+              <Field label="Designer" value={assignee} />
+              {designerCountdown && (
+                <div>
+                  <dt className="text-xs font-medium text-slate">Designer deadline</dt>
+                  <dd
+                    className={cn(
+                      "mt-0.5 flex items-center gap-1.5 font-medium",
+                      designerDeadline && designerDeadline.getTime() < now.getTime() ? "text-rose" : "text-ink",
+                    )}
+                  >
+                    <Clock size={14} className="shrink-0" />
+                    {designerCountdown}
+                  </dd>
+                </div>
+              )}
+              <Field label="Proof" value={proofStatusLine} sub={latestProof?.revisionNotes ? `“${latestProof.revisionNotes}”` : null} />
+              <Field
+                label="Latest QC"
+                value={latestQc ? `${titleCase(latestQc.result)} · ${fmtDateTime(latestQc.createdAt)}` : "No QC yet"}
+                sub={latestQc?.reason ?? null}
               />
-              <div className="mt-4 flex flex-col gap-4">
+            </dl>
+          </DataPanel>
+
+          {editable && (
+            <Disclosure
+              summary="Reassign or request a revision"
+              defaultOpen={nextAction.kind === "assign"}
+            >
+              <div className="flex flex-col gap-4">
                 <OrderReassignForm
                   orderId={order.id}
                   assigned={hasDesigner}
@@ -797,7 +839,7 @@ export default async function OrderDetailPage({
                     name: designer.name ?? designer.email,
                   }))}
                 />
-                <div className="border-t border-line pt-4">
+                <div className="border-t border-line/60 pt-4">
                   <OrderRevisionForm
                     orderId={order.id}
                     initialNote={revisionStarter}
@@ -811,51 +853,27 @@ export default async function OrderDetailPage({
                   )}
                 </div>
               </div>
-            </DataPanel>
+            </Disclosure>
           )}
 
-          <DataPanel className="p-4">
-            <SectionHeader title="Ask Alpha" />
-            <div className="mt-3">
-              <AskAlpha orderId={order.id} compact />
-            </div>
-          </DataPanel>
-
-          <DataPanel className="p-4">
-            <SectionHeader title="Designer status" />
-            <dl className="mt-3 flex flex-col gap-3 text-sm">
-              <Field label="Assigned to" value={assignee} />
-              {designerCountdown && (
-                <div>
-                  <dt className="text-xs font-medium text-slate">Deadline</dt>
-                  <dd
-                    className={cn(
-                      "mt-0.5 flex items-center gap-1.5 font-medium",
-                      designerDeadline && designerDeadline.getTime() < now.getTime() ? "text-rose" : "text-ink",
-                    )}
-                  >
-                    <Clock size={14} className="shrink-0" />
-                    {designerCountdown}
-                  </dd>
-                </div>
-              )}
-            </dl>
-          </DataPanel>
-
-          <DataPanel className="p-4">
-            <SectionHeader title="Production &amp; tracking" />
-            <dl className="mt-3 flex flex-col gap-3 text-sm">
-              <Field
-                label="Latest QC"
-                value={latestQc ? `${titleCase(latestQc.result)} · ${fmtDateTime(latestQc.createdAt)}` : "No QC yet"}
-                sub={latestQc?.reason ?? null}
-              />
+          <Disclosure
+            summary="Print &amp; tracking"
+            hint={
+              latestTracking?.trackingNumber
+                ? `Tracking ${latestTracking.trackingNumber}`
+                : printRows.length
+                  ? `${printRows.length} print job${printRows.length === 1 ? "" : "s"}`
+                  : "No print job yet"
+            }
+            defaultOpen={hasPhysicalItem && ["approved", "printing", "shipped"].includes(order.status)}
+          >
+            <dl className="flex flex-col gap-3 text-sm">
               <Field
                 label="Print jobs"
                 value={printRows.length ? `${printRows.length} print job(s)` : "No print job yet"}
               />
               {printRows.map((print, index) => (
-                <div key={`${print.provider}-${print.createdAt.toISOString()}-${index}`} className="rounded-input bg-canvas p-2">
+                <div key={`${print.provider}-${print.createdAt.toISOString()}-${index}`} className="rounded-input bg-canvas p-2.5">
                   <p className="font-medium text-ink">{titleCase(print.provider)} · {titleCase(print.method)}</p>
                   <p className="text-xs text-slate">{print.status ?? "No provider status"} · {fmtDateTime(print.createdAt)}</p>
                   <p className="text-xs text-slate">
@@ -913,40 +931,23 @@ export default async function OrderDetailPage({
               )}
             </dl>
             {hasPhysicalItem && editable && (
-              <details className="group mt-3 rounded-input border border-line">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium text-ink">
-                  <span className="inline-flex items-center gap-2">
-                    <Truck size={15} className="text-slate" />
-                    Add / update tracking
-                  </span>
-                  <ChevronDown size={16} className="text-slate transition-transform group-open:rotate-180" />
-                </summary>
-                <div className="border-t border-line p-3">
-                  <TrackingCompleteForm
-                    orderId={order.id}
-                    source={order.source}
-                    disabled={order.status === "cancelled" || order.status === "on_hold"}
-                  />
-                </div>
-              </details>
+              <TrackingCompleteForm
+                orderId={order.id}
+                source={order.source}
+                disabled={order.status === "cancelled" || order.status === "on_hold"}
+              />
             )}
-          </DataPanel>
+          </Disclosure>
 
-          <DataPanel className="p-4">
-            <SectionHeader title="Proof status" />
-            <p className="mt-2 text-sm font-medium text-ink">{proofStatusLine}</p>
-            {latestProof?.revisionNotes && (
-              <p className="mt-1 text-sm text-slate">&ldquo;{latestProof.revisionNotes}&rdquo;</p>
-            )}
-          </DataPanel>
-
-          <DataPanel id="notes" className="overflow-hidden">
-            <div className="border-b border-line px-4 py-3">
-              <SectionHeader title="Activity timeline" />
-            </div>
-            <div className="p-4">
+          <Disclosure
+            summary="Activity"
+            hint={`${detail.events.length} event${detail.events.length === 1 ? "" : "s"}`}
+            defaultOpen
+            className="scroll-mt-20"
+          >
+            <div id="notes">
               {editable && <OrderCommentForm orderId={order.id} />}
-              <ul className="mt-4 divide-y divide-line">
+              <ul className="mt-4 divide-y divide-line/60">
                 {detail.events.length === 0 ? (
                   <li className="py-3 text-sm text-slate">No activity yet.</li>
                 ) : (
@@ -974,7 +975,7 @@ export default async function OrderDetailPage({
                 )}
               </ul>
             </div>
-          </DataPanel>
+          </Disclosure>
         </aside>
       </div>
     </Page>
@@ -1000,7 +1001,7 @@ function Fact({
         {label}
       </div>
       <div
-        className={cn("mt-1.5 truncate text-sm font-semibold", muted ? "text-slate" : "text-ink")}
+        className={cn("mt-1.5 break-words text-sm font-semibold", muted ? "text-slate" : "text-ink")}
         title={value}
       >
         {value}

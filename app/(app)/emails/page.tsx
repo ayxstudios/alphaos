@@ -54,8 +54,8 @@ export default async function EmailsPage({ searchParams }: { searchParams: Searc
   return (
     <Page className="max-w-none">
       <PageHeader
-        title="Emails"
-        description="Customer mail that needs action, outbound queues, and searchable history."
+        title="Messages"
+        description="Customer mail, newest need first."
         eyebrow={selected.name}
         actions={
           <ComposeButton

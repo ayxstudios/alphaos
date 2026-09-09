@@ -110,7 +110,7 @@ export default async function StylesPage() {
     <Page>
       <PageHeader
         title="Portrait Styles"
-        description="The styles this workspace sells and the rules that auto-assign an order to a style. An order is tagged with the first style whose title rule matches the product name (or the default style). A designer only receives orders in the styles you give them here."
+        description="Each order is tagged by the first title rule that matches, and only goes to designers who do that style."
       />
       <UnrecognisedPanel
         products={unrecognised}

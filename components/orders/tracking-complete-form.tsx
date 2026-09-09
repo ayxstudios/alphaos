@@ -64,15 +64,15 @@ export function TrackingCompleteForm({
   }
 
   return (
-    <div className="mt-4 border-t border-line pt-4">
+    <div className="mt-4 border-t border-line/60 pt-4">
       <div className="flex items-center gap-2 text-sm font-medium text-ink">
         <Truck size={16} />
         Add shipping tracking
       </div>
       <div className="mt-3 flex flex-col gap-3">
         {providerLocked ? (
-          <div className="rounded-input border border-line bg-canvas px-3 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate">Print provider</p>
+          <div className="rounded-input bg-canvas px-3 py-2">
+            <p className="text-xs font-medium text-slate">Print provider</p>
             <p className="mt-1 text-sm font-medium text-ink">{providerLabel(activeProvider)}</p>
           </div>
         ) : (
