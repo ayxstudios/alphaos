@@ -3,7 +3,7 @@ import { and, count, eq, gte, inArray, isNull, lt } from "drizzle-orm";
 
 import { isAlphaCaller } from "@/lib/alpha/auth";
 import { withSystemContext } from "@/lib/db";
-import { alphaEvents, assignments, businesses, messages, orders, printJobs } from "@/lib/db/schema";
+import { alphaEvents, assignments, businesses, messages, orders, printJobs, users } from "@/lib/db/schema";
 
 export const runtime = "nodejs";
 
@@ -27,12 +27,15 @@ export async function GET(req: NextRequest) {
       .groupBy(orders.businessId);
     const newLast24h = await tx.select({ businessId: orders.businessId, n: count() }).from(orders).where(gte(orders.createdAt, dayAgo)).groupBy(orders.businessId);
     const shippedLast24h = await tx.select({ businessId: orders.businessId, n: count() }).from(orders).where(and(inArray(orders.status, ["shipped", "delivered", "complete"]), gte(orders.updatedAt, dayAgo))).groupBy(orders.businessId);
+    // Named, so the owners' rundown can say who is late (staff names only,
+    // never customer data).
     const lateDesigners = await tx
-      .select({ designerId: assignments.designerId, n: count() })
+      .select({ designerId: assignments.designerId, name: users.name, n: count() })
       .from(assignments)
       .innerJoin(orders, eq(orders.id, assignments.orderId))
+      .leftJoin(users, eq(users.id, assignments.designerId))
       .where(and(eq(orders.status, "in_design"), lt(assignments.dueAt, now), eq(assignments.active, true)))
-      .groupBy(assignments.designerId);
+      .groupBy(assignments.designerId, users.name);
     const unansweredMessages = await tx
       .select({ businessId: messages.businessId, n: count() })
       .from(messages)
