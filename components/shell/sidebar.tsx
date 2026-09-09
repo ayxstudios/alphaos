@@ -137,22 +137,18 @@ export function Sidebar({
         <Link
           href={homeHref}
           onClick={onNavigate}
-          aria-label="AlphaOS dashboard"
-          className={cn(
-            "flex size-9 shrink-0 items-center justify-center rounded-input bg-pigment text-surface font-display text-base font-bold",
-            focusRing,
-          )}
+          aria-label="AlphaOS home"
+          className={cn("flex min-w-0 items-center gap-2 rounded-input", focusRing)}
         >
-          A
+          {collapsed && !mobile ? (
+            <span className="font-display text-lg font-semibold leading-5 text-pigment">α</span>
+          ) : (
+            <span className="min-w-0">
+              <span className="block font-display text-lg font-semibold leading-5 text-ink">AlphaOS</span>
+              <span className="block text-xs text-slate">Operations</span>
+            </span>
+          )}
         </Link>
-        {(!collapsed || mobile) && (
-          <div className="min-w-0">
-            <p className="font-display text-lg font-semibold leading-5 text-ink">
-              AlphaOS
-            </p>
-            <p className="text-xs text-slate">Operations</p>
-          </div>
-        )}
       </div>
 
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-2">
