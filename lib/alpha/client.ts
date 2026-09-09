@@ -107,25 +107,44 @@ async function postHook(path: string, body: unknown, timeoutMs: number) {
   }
 }
 
-function humanizeSnapshotKey(key: string): string {
-  return key
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .toLowerCase();
-}
+const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 
-/** Never an error string: a short plain-English line built straight from
- * whatever numeric fields the snapshot has, so the widget always shows
- * something useful even with the daemon fully unreachable. */
+/** Never an error string: a short plain-English answer built straight from
+ * the role-scoped snapshot, so the widget always says something useful
+ * even with the daemon fully unreachable. Reads like a colleague, not a
+ * key/value dump. */
 function snapshotFallbackAnswer(snapshot: Record<string, unknown> | null | undefined): string {
-  const parts: string[] = [];
-  if (snapshot && typeof snapshot === "object") {
-    for (const [key, value] of Object.entries(snapshot)) {
-      if (typeof value === "number") parts.push(`${humanizeSnapshotKey(key)}: ${value}`);
+  const s = snapshot && typeof snapshot === "object" ? snapshot : {};
+  const role = String(s.role ?? "");
+  const lines: string[] = [];
+
+  if (role === "designer") {
+    const queue = n(s.queueCount);
+    const inDesign = n(s.inDesignCount);
+    const qc = n(s.awaitingQcCount);
+    const next = Array.isArray(s.nextDeadlines) ? (s.nextDeadlines as { orderNumber?: string }[]) : [];
+    if (queue + inDesign + qc === 0) lines.push("Your board is clear right now.");
+    else lines.push(`You have ${plural(queue, "order")} in your queue, ${inDesign} in design and ${qc} waiting for QC.`);
+    if (next[0]?.orderNumber) lines.push(`Next deadline: ${next.map((d) => d.orderNumber).filter(Boolean).slice(0, 3).join(", ")}.`);
+    if (n(s.revisionsThisWeek) > 0) lines.push(`${plural(n(s.revisionsThisWeek), "revision")} came back this week.`);
+  } else {
+    const now = n(s.now);
+    const today = n(s.today);
+    const soon = n(s.soon);
+    const overdue = n(s.overdue);
+    const messages = n(s.messagesWaiting);
+    if (now + today + soon === 0) lines.push("Nothing is waiting on you right now.");
+    else {
+      const bits = [now ? `${now} need${now === 1 ? "s" : ""} you now` : null, today ? `${today} for today` : null, soon ? `${soon} coming up soon` : null].filter(Boolean);
+      lines.push(`${bits.join(", ")}.`);
     }
+    if (now > 0) lines.push("Start with the replies at the top of your Today list, they have waited longest.");
+    if (overdue > 0) lines.push(`${plural(overdue, "order is", "orders are")} past the due date.`);
+    if (messages > 0) lines.push(`${plural(messages, "customer message")} still need${messages === 1 ? "s" : ""} a reply.`);
   }
-  const summary = parts.length ? `Here is what I can see right now: ${parts.join(", ")}.` : "Nothing urgent is showing right now.";
-  return `${summary} Alpha will answer in full shortly.`;
+
+  return lines.join(" ");
 }
 
 /** Queue an event for Alpha. Safe inside any tx; never throws on hook failure. */
