@@ -1,7 +1,7 @@
 /**
  * QC checklist configuration and snapshotting.
  *
- * The ten default items are the house QC standard (see CLAUDE.md / the QC
+ * The five default items are the house QC standard (see CLAUDE.md / the QC
  * brief). Shops may diverge later: a shop's checklist is read from
  * `shops.integrationConfig.checklist` when present, otherwise the default is
  * used. `shops.checklistVersion` numbers the standard so an audit can tell which
@@ -23,18 +23,13 @@ export type ChecklistSnapshot = {
 /** Per-item pass/fail, keyed by item key. true = passed. */
 export type ItemResults = Record<number, boolean>;
 
-/** The house standard — ten items, in the order a VA scans them. */
+/** The house standard: five checks, in the order a VA scans them (owner 2026-09-09). */
 export const DEFAULT_CHECKLIST: ChecklistItem[] = [
-  { key: 1, label: "Portrait style is correct, matches house style, not too realistic or cartoonish" },
-  { key: 2, label: "Rings and jewellery match the reference photo exactly" },
-  { key: 3, label: "All tattoos present and accurately hand-drawn" },
-  { key: 4, label: "Visible text (clothing, signs) is correct and legible" },
-  { key: 5, label: "Eye colour is accurate" },
-  { key: 6, label: "Pet fur colour, markings, and texture match the reference" },
-  { key: 7, label: "Hair colour and hairstyle are accurate" },
-  { key: 8, label: "Hands and fingers anatomically correct, no missing or extra fingers" },
-  { key: 9, label: "Ear shape matches the reference" },
-  { key: 10, label: "Number of hands, people, and pets is correct, nothing added, removed or duplicated" },
+  { key: 1, label: "Likeness: faces, eye colour, hair colour and hairstyle match the reference photos" },
+  { key: 2, label: "Count: number of people, pets and hands matches the order, nothing added, removed or duplicated" },
+  { key: 3, label: "Style: matches the ordered style and the house look, not too realistic or cartoonish" },
+  { key: 4, label: "Details: jewellery, tattoos, pet markings and any visible text are correct and legible" },
+  { key: 5, label: "Anatomy and finish: hands, fingers and ears are correct, no artefacts, edges clean at print size" },
 ];
 
 /**
@@ -72,7 +67,7 @@ function extractCustomChecklist(config: unknown): ChecklistItem[] | null {
   return items.length ? items : null;
 }
 
-/** Keyboard hint for an item: 1–9, then 0 for the tenth. */
+/** Keyboard hint for an item: 1-9, then 0 for a tenth. */
 export function shortcutFor(key: number): string {
   return String(key % 10);
 }

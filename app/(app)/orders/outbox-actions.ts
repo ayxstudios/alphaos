@@ -292,6 +292,7 @@ async function advanceQcEmailIfNeeded(
   if (!qcPass || typeof qcPass !== "object") return { ok: true };
   const itemResults = (qcPass as { itemResults?: unknown }).itemResults as ItemResults | undefined;
   const expectedFrom = (qcPass as { expectedFrom?: unknown }).expectedFrom;
+  const signature = (qcPass as { signature?: unknown }).signature;
   if (expectedFrom !== "awaiting_qc" || !itemResults) return { ok: true };
 
   const [order] = await withUserContext(user, (tx) =>
@@ -304,7 +305,7 @@ async function advanceQcEmailIfNeeded(
       orderId,
       to: "awaiting_approval",
       expectedFrom: "awaiting_qc",
-      metadata: { itemResults, via: "outbox_email_send" },
+      metadata: { itemResults, signature: typeof signature === "string" ? signature : "", via: "outbox_email_send" },
     });
     if (proofId) {
       await withUserContext(user, (tx) =>

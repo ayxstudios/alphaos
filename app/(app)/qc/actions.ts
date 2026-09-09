@@ -112,6 +112,7 @@ export async function prepareQcEmailPreview(input: {
   expectedFrom: OrderStatus;
   checklist: ChecklistSnapshot;
   itemResults: ItemResults;
+  signature: string;
 }): Promise<QcEmailPreviewResult> {
   const user = await requireVa();
   if ("error" in user) return { ok: false, code: user.error.code, message: user.error.message };
@@ -174,6 +175,7 @@ export async function confirmQcPassAndSend(input: {
   attachmentFingerprint: string | null;
   subject: string;
   body: string;
+  signature: string;
 }): Promise<QcResult> {
   const user = await requireVa();
   if ("error" in user) return user.error;
@@ -229,6 +231,7 @@ export async function confirmQcPassAndSend(input: {
           qcPass: {
             expectedFrom: input.expectedFrom,
             itemResults: input.itemResults,
+            signature: input.signature,
             checklistItems: input.checklist.items.map((item) => ({ key: item.key, label: item.label })),
             attachmentAssetId: attachment.assetId,
             attachmentFingerprint: attachment.fingerprint,
@@ -278,7 +281,7 @@ export async function confirmQcPassAndSend(input: {
       orderId: input.orderId,
       to: "awaiting_approval",
       expectedFrom: input.expectedFrom,
-      metadata: { itemResults: input.itemResults, via: "qc_email_send", messageId: prepared.messageId },
+      metadata: { itemResults: input.itemResults, signature: input.signature, via: "qc_email_send", messageId: prepared.messageId },
     });
     await withUserContext(user, async (tx) => {
       await tx.update(proofs).set({ sentAt: new Date() }).where(eq(proofs.id, prepared.proofId));
@@ -318,6 +321,7 @@ export async function submitQcFail(input: {
   checklist: ChecklistSnapshot;
   failedKeys: number[];
   reason: string;
+  signature: string;
 }): Promise<QcResult> {
   const auth = await requireVa();
   if ("error" in auth) return auth.error;
@@ -345,7 +349,7 @@ export async function submitQcFail(input: {
       orderId: input.orderId,
       to: "in_design",
       expectedFrom: input.expectedFrom,
-      metadata: { reason, itemResults },
+      metadata: { reason, itemResults, signature: input.signature },
     });
     revalidate(input.orderId);
     return { ok: true, status };

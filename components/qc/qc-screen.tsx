@@ -20,6 +20,7 @@ import { VersionStrip } from "./version-strip";
 import { QcHeader } from "./qc-header";
 import { FailDialog } from "./fail-dialog";
 import { ShortcutLegend, LegendToggle } from "./shortcut-legend";
+import { SignatureInput, normalizeSignature } from "./signature-input";
 
 const LEGEND_KEY = "qc-legend-dismissed";
 
@@ -45,6 +46,8 @@ export function QcScreen({
   const [emailPreview, setEmailPreview] = useState<Extract<QcEmailPreviewResult, { ok: true }>["preview"] | null>(null);
   const [emailBody, setEmailBody] = useState("");
   const [legendOpen, setLegendOpen] = useState(true);
+  const [signature, setSignature] = useState("");
+  const signed = signature.length > 0 && normalizeSignature(signature) === normalizeSignature(reviewerName);
 
   // Reset per-order state whenever we land on a new order.
   useEffect(() => {
@@ -53,6 +56,7 @@ export function QcScreen({
     setFailOpen(false);
     setEmailPreview(null);
     setEmailBody("");
+    setSignature("");
   }, [ctx.orderId, ctx.versions]);
 
   useEffect(() => {
@@ -123,13 +127,14 @@ export function QcScreen({
   );
 
   const doPass = useCallback(() => {
-    if (!ctx.isReviewable || !allChecked || pending) return;
+    if (!ctx.isReviewable || !allChecked || !signed || pending) return;
     start(async () => {
       const res = await prepareQcEmailPreview({
         orderId: ctx.orderId,
         expectedFrom: ctx.status,
         checklist: ctx.checklist,
         itemResults: checked,
+        signature,
       });
       if (res.ok) {
         setEmailPreview(res.preview);
@@ -141,7 +146,7 @@ export function QcScreen({
         toast({ variant: "danger", title: "Couldn't prepare email", description: res.message });
       }
     });
-  }, [ctx, allChecked, pending, checked, toast, router]);
+  }, [ctx, allChecked, signed, signature, pending, checked, toast, router]);
 
   const confirmSend = useCallback(() => {
     if (!emailPreview || pending) return;
@@ -158,11 +163,12 @@ export function QcScreen({
         attachmentFingerprint: emailPreview.attachment.fingerprint,
         subject: emailPreview.subject,
         body: emailBody,
+        signature,
       });
       if (res.ok) setEmailPreview(null);
       handleResult(res, "Email sent, sent to approval");
     });
-  }, [checked, ctx, emailBody, emailPreview, handleResult, pending]);
+  }, [checked, ctx, emailBody, emailPreview, handleResult, pending, signature]);
 
   const doFail = useCallback(
     (failedKeys: number[], reason: string) => {
@@ -173,12 +179,13 @@ export function QcScreen({
           checklist: ctx.checklist,
           failedKeys,
           reason,
+          signature,
         });
         if (res.ok) setFailOpen(false);
         handleResult(res, "Failed, returned to designer");
       });
     },
-    [ctx, handleResult],
+    [ctx, handleResult, signature],
   );
 
   // Global keyboard shortcuts.
@@ -222,7 +229,7 @@ export function QcScreen({
       }
       if (e.key === "f" || e.key === "F") {
         e.preventDefault();
-        setFailOpen(true);
+        if (signed && ctx.isReviewable && !pending) setFailOpen(true);
         return;
       }
       if (e.key === "Enter") {
@@ -237,7 +244,7 @@ export function QcScreen({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [
+  }, [signed, pending, 
     ctx.isReviewable, failOpen, emailPreview, legendOpen, nextId, prevId, shortcutMap,
     goTo, tickAll, toggle, doPass, dismissLegend, openLegend,
   ]);
@@ -306,15 +313,13 @@ export function QcScreen({
                 {failedCount > 0 && <Badge variant="danger">{failedCount} X</Badge>}
               </p>
             )}
-            <div className="rounded-input bg-canvas px-3 py-2 text-xs text-slate">
-              QC sign-off: <span className="font-medium text-ink">{reviewerName}</span>
-            </div>
+            <SignatureInput value={signature} onChange={setSignature} expectedName={reviewerName} disabled={!ctx.isReviewable || pending} />
             <div className="flex gap-2">
               <Button
                 variant="danger"
                 className="flex-1"
                 onClick={() => setFailOpen(true)}
-                disabled={!ctx.isReviewable || pending}
+                disabled={!ctx.isReviewable || !signed || pending}
               >
                 <XCircle size={16} /> Fail{" "}
                 <kbd className="rounded border border-surface/30 px-1 text-xs">F</kbd>
@@ -324,7 +329,7 @@ export function QcScreen({
                 className="flex-1"
                 onClick={doPass}
                 loading={pending}
-                disabled={!ctx.isReviewable || !allChecked}
+                disabled={!ctx.isReviewable || !allChecked || !signed}
               >
                 <Check size={16} /> Pass{" "}
                 <kbd className="rounded border border-surface/30 px-1 text-xs">↵</kbd>

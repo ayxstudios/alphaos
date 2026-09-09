@@ -719,6 +719,8 @@ export const qcChecks = pgTable(
     itemResults: jsonb("item_results"),
     result: qcResult("result").notNull(),
     reason: text("reason"),
+    /** The reviewer's name as they typed it at sign-off (never prefilled). */
+    signature: text("signature"),
     createdAt: createdAt(),
   },
   (t) => [

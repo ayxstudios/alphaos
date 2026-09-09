@@ -233,8 +233,8 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
   // order's shop (never trusted from the client); the client only supplies the
   // per-item verdicts. This also produces the authoritative snapshot we persist.
   let qc: QcOutcome | null = null;
-  if (key === "awaiting_qc->awaiting_approval") qc = await assertQc(tx, order, "pass", input.metadata);
-  if (key === "awaiting_qc->in_design") qc = await assertQc(tx, order, "fail", input.metadata);
+  if (key === "awaiting_qc->awaiting_approval") qc = await assertQc(tx, order, "pass", input.metadata, actor);
+  if (key === "awaiting_qc->in_design") qc = await assertQc(tx, order, "fail", input.metadata, actor);
 
   // Conditional (compare-and-swap) update — belt to the FOR UPDATE braces.
   const updated = await tx
@@ -368,7 +368,31 @@ type QcOutcome = {
   checklist: ChecklistSnapshot;
   itemResults: ItemResults;
   reason: string | null;
+  /** The name the reviewer typed at sign-off; must match their account name. */
+  signature: string | null;
 };
+
+function normalizeSignature(s: string): string {
+  return s.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/**
+ * The sign-off signature (owner 2026-09-09): a person passes or fails QC only
+ * by typing their own name, so the check carries a name they wrote, not one
+ * the account stamped. Verified here, server side, against the actor's name.
+ * System actors (none today) are exempt.
+ */
+async function assertSignature(tx: Tx, actor: Actor, metadata?: Record<string, unknown>): Promise<string | null> {
+  if (actor.role === "system") return null;
+  const typed = typeof metadata?.signature === "string" ? metadata.signature.trim().replace(/\s+/g, " ") : "";
+  if (!typed) throw new PreconditionError("Sign off first: type your name to pass or fail QC.");
+  const [who] = await tx.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, actor.id)).limit(1);
+  const expected = (who?.name || "").trim() || (who?.email || "").split("@")[0];
+  if (!expected || normalizeSignature(typed) !== normalizeSignature(expected)) {
+    throw new PreconditionError(`The sign-off must match the name on your account (${expected || "unknown"}).`);
+  }
+  return typed;
+}
 
 /**
  * The QC gate. Resolves the authoritative checklist from the order's SHOP (never
@@ -383,8 +407,10 @@ async function assertQc(
   tx: Tx,
   order: { shopId: string },
   result: "pass" | "fail",
-  metadata?: Record<string, unknown>,
+  metadata: Record<string, unknown> | undefined,
+  actor: Actor,
 ): Promise<QcOutcome> {
+  const signature = await assertSignature(tx, actor, metadata);
   const [shop] = await tx
     .select({ checklistVersion: shops.checklistVersion, integrationConfig: shops.integrationConfig })
     .from(shops)
@@ -407,7 +433,7 @@ async function assertQc(
         "Cannot pass QC: every checklist item must be ticked.",
       );
     }
-    return { result, checklist, itemResults, reason: null };
+    return { result, checklist, itemResults, reason: null, signature };
   }
 
   // Fail.
@@ -419,7 +445,7 @@ async function assertQc(
   if (!reason) {
     throw new PreconditionError("Cannot fail QC: a reason for the designer is required.");
   }
-  return { result, checklist, itemResults, reason };
+  return { result, checklist, itemResults, reason, signature };
 }
 
 async function insertQc(
@@ -438,6 +464,7 @@ async function insertQc(
     // later audit shows which standard applied at the time.
     checklistSnapshot: qc.checklist,
     itemResults: qc.itemResults,
+    signature: qc.signature,
   });
 }
 
