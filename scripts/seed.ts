@@ -113,7 +113,7 @@ async function main() {
   const d3 = randomUUID();
   const passwordHash = await hashPassword(DEV_PASSWORD);
   await db.insert(schema.users).values([
-    { id: admin, name: "Ada Admin", email: "admin@aystudios.io", role: "admin", passwordHash },
+    { id: admin, name: "Admin", email: "admin@aystudios.io", role: "admin", passwordHash },
     { id: va1, name: "Vic VA", email: "va1@aystudios.io", role: "va", passwordHash },
     { id: va2, name: "Val VA", email: "va2@aystudios.io", role: "va", passwordHash },
     { id: d1, name: "Dana Designer", email: "d1@aystudios.io", role: "designer", passwordHash },

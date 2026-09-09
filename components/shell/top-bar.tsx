@@ -155,17 +155,19 @@ export function TopBar({
         >
           <Search size={18} />
         </button>
+        {/* Alpha as a proper tab at the top (owner 2026-09-09), not just an icon. */}
         <button
           type="button"
           aria-label="Open Alpha chat"
           onClick={() => window.dispatchEvent(new CustomEvent("alphaos:chat-open"))}
           className={cn(
-            "inline-flex size-9 items-center justify-center rounded-input text-slate",
-            "transition-colors motion-hover hover:bg-canvas hover:text-ink",
+            "inline-flex h-9 items-center gap-2 rounded-input border border-pigment/20 bg-pigment-soft px-3 text-sm font-semibold text-pigment",
+            "transition-colors motion-hover hover:bg-pigment hover:text-surface",
             focusRing,
           )}
         >
-          <Sparkles size={18} />
+          <Sparkles size={16} />
+          <span>Alpha</span>
         </button>
         <Popover
           ariaLabel={`Notifications${unread ? `, ${unread} unread` : ""}`}
