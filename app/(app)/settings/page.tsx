@@ -441,6 +441,18 @@ export default async function SettingsPage({
                 ))}
               </div>
             )}
+            <div className="rounded-input border border-line bg-canvas p-3 text-xs leading-relaxed text-slate">
+              <p>
+                The term &ldquo;Etsy&rdquo; is a trademark of Etsy, Inc. This application uses the Etsy API but is not
+                endorsed or certified by Etsy, Inc.
+              </p>
+              <p className="mt-1">
+                Internal tool, own shops only. Questions about this application:{" "}
+                <a className="underline" href="mailto:admin@aystudios.io">
+                  admin@aystudios.io
+                </a>
+              </p>
+            </div>
           </section>
         )}
 
