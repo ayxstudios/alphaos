@@ -56,7 +56,8 @@ const loadShellCached = cache(
       const businesses = await tx
         .select({ id: businessesTable.id, name: businessesTable.name })
         .from(businessesTable)
-        .orderBy(businessesTable.name);
+        // A demo workspace never wins the default slot: real businesses first, then by name.
+        .orderBy(sql`${businessesTable.name} ilike '%demo%'`, businessesTable.name);
       const [unreadRow] = await tx
         .select({ n: sql<number>`count(*)::int` })
         .from(notifications)
