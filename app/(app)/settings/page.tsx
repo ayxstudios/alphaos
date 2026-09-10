@@ -449,7 +449,7 @@ export default async function SettingsPage({
               <p className="mt-1">
                 Internal tool, own shops only. Questions about this application:{" "}
                 <a
-                  className="inline-flex min-h-[44px] items-center underline"
+                  className="-my-[12px] inline-flex min-h-[44px] items-center underline"
                   href="mailto:admin@aystudios.io"
                 >
                   admin@aystudios.io
