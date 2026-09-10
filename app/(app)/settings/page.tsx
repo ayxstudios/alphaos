@@ -448,7 +448,10 @@ export default async function SettingsPage({
               </p>
               <p className="mt-1">
                 Internal tool, own shops only. Questions about this application:{" "}
-                <a className="underline" href="mailto:admin@aystudios.io">
+                <a
+                  className="inline-flex min-h-[44px] items-center underline"
+                  href="mailto:admin@aystudios.io"
+                >
                   admin@aystudios.io
                 </a>
               </p>
