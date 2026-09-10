@@ -26,12 +26,13 @@ export function buildAuthorizeUrl(opts: {
   redirectUri: string;
   state: string;
   challenge: string;
+  scopes?: readonly string[];
 }): string {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: opts.keystring,
     redirect_uri: opts.redirectUri,
-    scope: ETSY_SCOPES.join(" "),
+    scope: (opts.scopes ?? ETSY_SCOPES).join(" "),
     state: opts.state,
     code_challenge: opts.challenge,
     code_challenge_method: "S256",

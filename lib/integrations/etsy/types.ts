@@ -12,6 +12,15 @@ export const ETSY_SCOPES = [
   "shops_r",
 ] as const;
 
+// A shop that only creates draft listings for us (no order sync, no
+// customer data) never requests listings_d: the token is structurally
+// unable to delete anything on Etsy, not just told not to.
+export const ETSY_SCOPES_DRAFT_LISTINGS_ONLY = [
+  "listings_r",
+  "listings_w",
+  "shops_r",
+] as const;
+
 export const ETSY_API_BASE = "https://api.etsy.com/v3/application";
 export const ETSY_TOKEN_URL = "https://api.etsy.com/v3/public/oauth/token";
 export const ETSY_AUTHORIZE_URL = "https://www.etsy.com/oauth/connect";
@@ -44,6 +53,13 @@ export type EtsyIntegrationConfig = {
   syncingSince?: string; // ISO; concurrency guard
   lastSyncAt?: string; // ISO; last successful sync completion, not the cursor
   backfillCutoffAt?: string; // ISO; receipts placed before this import archived
+  // When set, the OAuth connect flow requests ETSY_SCOPES_DRAFT_LISTINGS_ONLY
+  // instead of the full ETSY_SCOPES set: this shop's token can read and
+  // create draft listings only, never sync orders/customer data and never
+  // delete (listings_d is never requested). Set once on the shop row before
+  // the admin clicks Connect; existing shops are unaffected (undefined = full
+  // scope, same as before this flag existed).
+  etsyScopePurpose?: "draft_listings_only";
 };
 
 export type EtsyTokenResponse = {

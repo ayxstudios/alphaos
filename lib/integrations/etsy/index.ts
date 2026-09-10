@@ -22,6 +22,7 @@ export {
 export { ReauthRequiredError, EtsyApiError } from "./errors";
 export {
   ETSY_SCOPES,
+  ETSY_SCOPES_DRAFT_LISTINGS_ONLY,
   type EtsyCredentials,
   type EtsyIntegrationConfig,
   type FigureRule,
