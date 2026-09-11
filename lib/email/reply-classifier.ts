@@ -8,9 +8,12 @@ export type ReplyClassification = {
   model: string;
 };
 
-const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
-const DEFAULT_MODEL = "claude-sonnet-5";
+import { completeText } from "@/lib/ai/complete";
+
+// Direct Anthropic road; the Alpha relay (no key on the app) is slower, see
+// lib/ai/complete.ts. Both run inside the gmail-poll cron (60 s).
 const REQUEST_TIMEOUT_MS = 4_500;
+const RELAY_TIMEOUT_MS = 25_000;
 
 export function stripQuotedReplyText(input: string): string {
   const normalized = input.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -49,43 +52,16 @@ export async function classifyProofReply(input: {
     };
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
-  const model = process.env.ANTHROPIC_MODEL || DEFAULT_MODEL;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const res = await fetch(ANTHROPIC_MESSAGES_URL, {
-      method: "POST",
-      signal: controller.signal,
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 160,
-        messages: [
-          {
-            role: "user",
-            content: buildPrompt({ subject: input.subject, strippedText }),
-          },
-        ],
-      }),
-    });
-    if (!res.ok) return null;
-    const json = (await res.json()) as { content?: { type?: string; text?: string }[] };
-    const text = json.content?.find((part) => part.type === "text")?.text?.trim();
-    if (!text) return null;
-    const parsed = parseClassification(text);
-    if (!parsed) return null;
-    return { ...parsed, strippedText, model };
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeout);
-  }
+  const completion = await completeText(buildPrompt({ subject: input.subject, strippedText }), {
+    maxTokens: 160,
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    relayTimeoutMs: RELAY_TIMEOUT_MS,
+    kind: "classify-reply",
+  });
+  if (!completion) return null;
+  const parsed = parseClassification(completion.text);
+  if (!parsed) return null;
+  return { ...parsed, strippedText, model: completion.model };
 }
 
 function buildPrompt(input: { subject: string | null; strippedText: string }): string {

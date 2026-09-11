@@ -1,3 +1,6 @@
+// The narrative may come through the Alpha relay (up to 20 s); see lib/health/narrative.ts.
+export const maxDuration = 30;
+
 import Link from "next/link";
 import { redirect } from "next/navigation";
 

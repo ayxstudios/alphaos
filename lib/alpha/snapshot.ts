@@ -5,7 +5,7 @@
 // already trust (getTodayQueue, getMyWeek) so the numbers Alpha quotes match
 // what the person sees on screen; withUserContext keeps every query inside
 // this user's own row-level security.
-import { and, count, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, count, eq, gte, inArray, isNull, lt } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { assignments, businesses, orders, printJobs, users, designerProfiles } from "@/lib/db/schema";
@@ -65,7 +65,7 @@ async function loadOrdersByStatus(user: RequestUser, businessId: string): Promis
     const rows = await tx
       .select({ status: orders.status, n: count() })
       .from(orders)
-      .where(and(eq(orders.businessId, businessId), inArray(orders.status, OPEN_ORDER_STATUSES)))
+      .where(and(eq(orders.businessId, businessId), isNull(orders.archivedAt), inArray(orders.status, OPEN_ORDER_STATUSES)))
       .groupBy(orders.status);
     return Object.fromEntries(rows.map((r) => [r.status, Number(r.n)]));
   });
@@ -107,7 +107,7 @@ async function buildAdminSnapshot(user: RequestUser, businessId: string): Promis
         tx
           .select({ n: count() })
           .from(orders)
-          .where(and(eq(orders.businessId, businessId), lt(orders.dueAt, now), inArray(orders.status, OPEN_ORDER_STATUSES))),
+          .where(and(eq(orders.businessId, businessId), isNull(orders.archivedAt), lt(orders.dueAt, now), inArray(orders.status, OPEN_ORDER_STATUSES))),
         tx.select({ status: printJobs.status, n: count() }).from(printJobs).where(eq(printJobs.businessId, businessId)).groupBy(printJobs.status),
         tx.select({ name: businesses.name }).from(businesses).where(eq(businesses.id, businessId)).limit(1),
       ]);

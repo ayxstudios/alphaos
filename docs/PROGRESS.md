@@ -138,7 +138,7 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
 
 ## Feature flags
 
-- **Anthropic-backed features are hidden unless `ANTHROPIC_API_KEY` is set.**
+- **AI-backed features are hidden unless the app can reach a model: `ANTHROPIC_API_KEY`, or the Alpha relay (`ALPHA_HOOK_URL` + `ALPHA_HOOK_SECRET`, lib/ai/complete.ts, 2026-09-12).**
   This single runtime flag gates the daily health narrative, inbound reply
   classification suggestions, and any future Auto-QC UI. Do not treat the
   missing narrative/suggestions as broken when the key is absent; the intended

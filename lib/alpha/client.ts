@@ -226,3 +226,40 @@ export async function chatAlpha(req: AlphaChatRequest): Promise<AlphaChatAnswer>
     return { answer: snapshotFallbackAnswer(req.snapshot), escalated: false, source: "snapshot" };
   }
 }
+
+/**
+ * One plain text completion through Alpha (2026-09-12): the small AI jobs
+ * inside AlphaOS (proof-reply classification, the daily health narrative)
+ * run on the same daemon that answers the chat widget when the app has no
+ * Anthropic key of its own. The prompt goes in as one turn of /alpha/chat,
+ * framed as a system task so the manager persona does not add a greeting,
+ * and the answer field comes back verbatim. Returns null when the relay is
+ * not configured or does not answer in time; never throws.
+ */
+export async function completeViaAlpha(
+  prompt: string,
+  opts: { timeoutMs?: number; kind?: string } = {},
+): Promise<string | null> {
+  if (!alphaConnected()) return null;
+  const framed = [
+    "[System task from AlphaOS, not a person chatting. Do exactly the task below and put the raw result in the answer field: nothing else, no greeting, no extra sentence, no markdown. This is never a policy question, so escalate must be false.]",
+    "",
+    prompt,
+  ].join("\n");
+  try {
+    const out = await postHook(
+      "/alpha/chat",
+      {
+        messages: [{ role: "user", content: framed }],
+        askedBy: { userId: "system", role: "admin", name: "AlphaOS system" },
+        snapshot: null,
+        page: `system:${opts.kind ?? "task"}`,
+      },
+      opts.timeoutMs ?? 25000,
+    );
+    const answer = String(out.answer ?? "").trim();
+    return answer || null;
+  } catch {
+    return null;
+  }
+}

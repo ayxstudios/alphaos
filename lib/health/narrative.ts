@@ -3,13 +3,15 @@ import { createHash } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 
 import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
+import { completeText } from "@/lib/ai/complete";
 import { SYSTEM_ACTOR_ID, withUserContext, type RequestUser } from "@/lib/db";
 import { dailyHealthReports } from "@/lib/db/schema";
 import type { HealthMetrics, HealthScope } from "@/lib/health/daily-report";
 
-const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
-const DEFAULT_MODEL = "claude-sonnet-5";
+// Direct Anthropic road; the Alpha relay (no key on the app) takes 10 to 20 s
+// through the tunnel, so /health declares maxDuration 30 and the cron has 60.
 const REQUEST_TIMEOUT_MS = 4_500;
+const RELAY_TIMEOUT_MS = 20_000;
 const FALLBACK_TEXT = "Narrative unavailable; metrics are current.";
 
 export type NarrativeResult = {
@@ -108,33 +110,15 @@ function buildPrompt(metrics: HealthMetrics) {
   ].join("\n");
 }
 
-async function callAnthropic(prompt: string, signal: AbortSignal) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
-  const model = process.env.ANTHROPIC_MODEL || DEFAULT_MODEL;
-
-  const res = await fetch(ANTHROPIC_MESSAGES_URL, {
-    method: "POST",
-    signal,
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 220,
-      messages: [{ role: "user", content: prompt }],
-    }),
+async function callModel(prompt: string) {
+  const completion = await completeText(prompt, {
+    maxTokens: 220,
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    relayTimeoutMs: RELAY_TIMEOUT_MS,
+    kind: "health-narrative",
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Anthropic narrative request failed: ${res.status} ${text.slice(0, 180)}`);
-  }
-  const json = (await res.json()) as { content?: { type?: string; text?: string }[] };
-  const text = json.content?.find((part) => part.type === "text")?.text?.trim();
-  if (!text) throw new Error("Anthropic narrative response had no text");
-  return text;
+  if (!completion) throw new Error("Narrative model request failed or timed out");
+  return completion.text;
 }
 
 async function loadTodaysCache(user: RequestUser, metrics: HealthMetrics): Promise<CachedReport | null> {
@@ -235,10 +219,8 @@ export async function loadDailyNarrative(user: RequestUser, metrics: HealthMetri
   }
 
   const previous = await loadPreviousCache(user, metrics.scope);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const text = await callAnthropic(buildPrompt(metrics), controller.signal);
+    const text = await callModel(buildPrompt(metrics));
     await saveNarrative(user, metrics, text, "ok");
     return { text, status: "generated", generatedAt: new Date().toISOString() };
   } catch (error) {
@@ -256,8 +238,6 @@ export async function loadDailyNarrative(user: RequestUser, metrics: HealthMetri
       status: "fallback",
       generatedAt: previousUsable?.generatedAt.toISOString() ?? null,
     };
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

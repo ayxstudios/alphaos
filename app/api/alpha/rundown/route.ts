@@ -19,11 +19,12 @@ export async function GET(req: NextRequest) {
     const byStatus = await tx
       .select({ businessId: orders.businessId, status: orders.status, n: count() })
       .from(orders)
+      .where(isNull(orders.archivedAt))
       .groupBy(orders.businessId, orders.status);
     const overdue = await tx
       .select({ businessId: orders.businessId, n: count() })
       .from(orders)
-      .where(and(lt(orders.dueAt, now), inArray(orders.status, ["awaiting_photos", "ready_to_assign", "in_design", "awaiting_qc", "awaiting_approval", "approved", "printing", "awaiting_details"])))
+      .where(and(isNull(orders.archivedAt), lt(orders.dueAt, now), inArray(orders.status, ["awaiting_photos", "ready_to_assign", "in_design", "awaiting_qc", "awaiting_approval", "approved", "printing", "awaiting_details"])))
       .groupBy(orders.businessId);
     const newLast24h = await tx.select({ businessId: orders.businessId, n: count() }).from(orders).where(gte(orders.createdAt, dayAgo)).groupBy(orders.businessId);
     const shippedLast24h = await tx.select({ businessId: orders.businessId, n: count() }).from(orders).where(and(inArray(orders.status, ["shipped", "delivered", "complete"]), gte(orders.updatedAt, dayAgo))).groupBy(orders.businessId);
