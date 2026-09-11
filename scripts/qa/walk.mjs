@@ -19,7 +19,7 @@ const OUT = args.out || "var/qa";
 const PASSWORD = args.password || "alphaos123";
 const USERS = { admin: "admin@aystudios.io", va: "va1@aystudios.io", designer: "d1@aystudios.io" };
 const DEFAULT_PAGES = {
-  admin: ["/dashboard", "/orders", "/queue", "/board", "/emails", "/customers", "/designers", "/styles", "/payouts", "/queue/print", "/health", "/settings", "/notifications"],
+  admin: ["/dashboard", "/orders", "/queue", "/board", "/emails", "/customers", "/designers", "/styles", "/payouts", "/queue/print", "/health", "/settings"],
   va: ["/dashboard", "/orders", "/queue", "/board", "/emails", "/customers", "/queue/print", "/orders/new"],
   designer: ["/board"],
 };
