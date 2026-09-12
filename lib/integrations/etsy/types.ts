@@ -82,6 +82,14 @@ export type EtsyReceipt = {
   country_iso?: string | null;
   formatted_address?: string | null;
   transactions: EtsyTransaction[];
+  // Etsy's own fulfilment state. Read at import so a backfilled receipt that
+  // was already shipped/completed/cancelled/refunded on Etsy lands in the
+  // matching order status instead of every import defaulting to
+  // awaiting_details (2026-09-12 overdue-sweep fix: 82 backfilled PixArt
+  // orders were already Completed on Etsy but stuck as awaiting_details,
+  // which made them count as overdue work).
+  status?: string | null; // "Paid" | "Payment Processing" | "Completed" | "Canceled" | "Fully Refunded" | ...
+  is_shipped?: boolean | null;
 };
 
 export type EtsyReceiptsResponse = {

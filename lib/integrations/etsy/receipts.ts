@@ -273,6 +273,7 @@ async function importReceipt(args: {
   const archived = isBeforeBackfillCutoff(placedAt, config);
   const archivedAt = archived ? new Date() : null;
   const shippingAddress = normalizeEtsyReceiptAddress(receipt);
+  const initialStatus = etsyReceiptToInitialStatus(receipt);
 
   return withSystemContext(async (tx) => {
     // Customer, only when Etsy actually gave us an email.
@@ -319,7 +320,7 @@ async function importReceipt(args: {
         // Etsy's human-facing order number IS the receipt id — same value for both.
         platformOrderId: String(receipt.receipt_id),
         platformOrderName: String(receipt.receipt_id),
-        status: "awaiting_details",
+        status: initialStatus,
         source: "etsy",
         placedAt,
         dueAt,
@@ -348,7 +349,7 @@ async function importReceipt(args: {
       actorId: null, // system import
       action: "order.imported",
       fromState: null,
-      toState: "awaiting_details",
+      toState: initialStatus,
       metadata: {
         source: "etsy",
         via,
@@ -357,6 +358,8 @@ async function importReceipt(args: {
         transactionCount: receipt.transactions?.length ?? 0,
         archived,
         backfillCutoffAt: config.backfillCutoffAt ?? null,
+        etsyStatus: receipt.status ?? null,
+        etsyIsShipped: receipt.is_shipped ?? null,
       },
     });
 
@@ -364,9 +367,10 @@ async function importReceipt(args: {
     // Etsy otherwise sends NO automated email at import (a VA completes
     // figure/style/photos first — this is unrelated to that, just a warm "we
     // got it"), and it's a no-op whenever Etsy didn't give us a buyer email
-    // (email_r scope), which is most receipts today. Never on a backfill or
-    // an archived (pre-cutoff) import.
-    if (email && !archived && via !== "backfill") {
+    // (email_r scope), which is most receipts today. Never on a backfill, an
+    // archived (pre-cutoff) import, or an order Etsy says is already
+    // shipped/completed/cancelled (nothing to acknowledge on history).
+    if (email && !archived && via !== "backfill" && initialStatus === "awaiting_details") {
       await queueStageEmail(
         tx,
         { id: orderId, businessId, customerId, platformOrderId: String(receipt.receipt_id), platformOrderName: String(receipt.receipt_id) },
@@ -384,6 +388,24 @@ function splitName(name: string | null): [string | null, string | null] {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return [parts[0], null];
   return [parts[0], parts.slice(1).join(" ")];
+}
+
+/**
+ * The order status a receipt should land in AT IMPORT, honouring Etsy's own
+ * fulfilment state. Almost every receipt is still open work and gets the
+ * usual `awaiting_details` (a VA fills in figure/style/photos); the
+ * exception is a receipt Etsy already says is done — most commonly a
+ * backfilled historical order that was fulfilled before AlphaOS ever synced
+ * it. Those must NOT enter the queue as unshipped work, or they inflate the
+ * overdue count forever (2026-09-12 overdue-sweep: 82 PixArt backfill
+ * orders were exactly this).
+ */
+export function etsyReceiptToInitialStatus(receipt: EtsyReceipt): "complete" | "cancelled" | "awaiting_details" {
+  const status = (receipt.status ?? "").trim().toLowerCase();
+  if (status === "canceled" || status === "cancelled") return "cancelled";
+  if (status === "fully refunded" || status === "refunded") return "cancelled";
+  if (receipt.is_shipped || status === "completed") return "complete";
+  return "awaiting_details";
 }
 
 function computeDueAt(placedAt: Date, slaConfig: Record<string, unknown> | null): Date {

@@ -25,7 +25,10 @@ import { DEFAULT_CHECKLIST, type ChecklistSnapshot, type ItemResults } from "@/l
 
 export const HEALTH_TIME_ZONE = "Australia/Melbourne";
 
-const CLOSED_STATUSES = ["delivered", "complete", "cancelled"] as const;
+// "shipped" is excluded here (2026-09-12 overdue sweep): once an order has
+// left the building its due_at is no longer meaningful operational work,
+// matching DUE_STATUSES in lib/home/shared.ts which never includes it.
+const CLOSED_STATUSES = ["shipped", "delivered", "complete", "cancelled"] as const;
 const INTAKE_STATUSES = ["awaiting_details", "awaiting_photos"] as const;
 const WIP_STATUSES = ["in_design", "awaiting_qc"] as const;
 
