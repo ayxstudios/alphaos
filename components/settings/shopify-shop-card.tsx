@@ -29,6 +29,8 @@ export type ShopifyShopVM = {
   id: string;
   name: string;
   authType: AuthMode;
+  /** Synced through the staff seat on the agent's Mac (no app token). */
+  staffSession: boolean;
   status: "connected" | "not_connected";
   shopDomain: string | null;
   hasClientId: boolean;
@@ -153,7 +155,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
                 Sync {health === "never" ? "never run" : "stale"}
               </Badge>
             )}
-            {!webhookStatus.pointingCorrectly && (
+            {!webhookStatus.pointingCorrectly && !shop.staffSession && (
               <Badge variant="danger" dot>Webhook missing</Badge>
             )}
           </div>
@@ -165,6 +167,11 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
       <div className="border-t border-line p-4">
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
           <div className="flex flex-col gap-4">
+            {shop.staffSession && (
+              <p className="rounded-input bg-canvas/70 p-3 text-sm text-slate">
+                Orders come in through the staff seat every 15 minutes, no app token needed. Saving a real Admin API token below switches this shop to it.
+              </p>
+            )}
             <form action={saveShopifyCredentials} className="grid gap-3 rounded-input bg-canvas/70 p-3">
               <input type="hidden" name="shopId" value={shop.id} />
               <input type="hidden" name="authType" value={mode} />

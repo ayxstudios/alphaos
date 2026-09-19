@@ -33,7 +33,7 @@ export async function syncAllShops(opts: { budgetMs?: number; trigger?: "cron" |
 
   const shopRows = await withSystemContext((tx) =>
     tx
-      .select({ id: shops.id, platform: shops.platform })
+      .select({ id: shops.id, platform: shops.platform, integrationConfig: shops.integrationConfig })
       .from(shops)
       .where(
         and(
@@ -49,6 +49,9 @@ export async function syncAllShops(opts: { budgetMs?: number; trigger?: "cron" |
   const result: SyncAllResult = { budgetMs, processed: 0, skippedOverBudget: 0, shops: [] };
 
   for (const s of shopRows) {
+    // A staff-session Shopify shop is synced by the agent's Mac, never here.
+    const road = (s.integrationConfig as { syncRoad?: string } | null)?.syncRoad;
+    if (road === "staff_session" && process.env.ALPHAOS_STAFF_SESSION !== "1") continue;
     if (Date.now() - start > budgetMs) {
       result.skippedOverBudget++;
       continue; // its lastSyncAt stays oldest → picked up first next tick

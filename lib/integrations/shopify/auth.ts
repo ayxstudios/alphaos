@@ -33,9 +33,15 @@ export function shopifyWebhookHmacKey(creds: ShopifyCredentials): string | undef
 /** Whether a shop has enough credentials to reach the Admin API. */
 export function isShopifyConnected(creds: ShopifyCredentials): boolean {
   if (!creds.shopDomain) return false;
+  if (resolveShopifyAuthType(creds) === "staff_session") return staffSessionAvailable();
   return resolveShopifyAuthType(creds) === "client_credentials"
     ? !!(creds.clientId && creds.clientSecret)
     : !!creds.accessToken;
+}
+
+/** True only inside the local staff-session sync process (see types.ts). */
+export function staffSessionAvailable(): boolean {
+  return process.env.ALPHAOS_STAFF_SESSION === "1";
 }
 
 export function shopifyAccessTokenValid(creds: ShopifyCredentials): boolean {
@@ -96,7 +102,8 @@ export async function exchangeClientCredentials(
 export async function freshShopifyCredentials(
   creds: ShopifyCredentials,
 ): Promise<ShopifyCredentials> {
-  if (resolveShopifyAuthType(creds) === "legacy" || shopifyAccessTokenValid(creds)) {
+  const type = resolveShopifyAuthType(creds);
+  if (type === "legacy" || type === "staff_session" || shopifyAccessTokenValid(creds)) {
     return creds;
   }
   if (!creds.shopDomain || !creds.clientId || !creds.clientSecret) {

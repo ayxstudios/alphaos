@@ -23,8 +23,14 @@ export const SHOPIFY_SCOPES = [
  *   webhook HMAC.
  * - "legacy": deprecated admin-created custom apps issuing a PERMANENT shpat_
  *   token plus a separate API secret key for webhook HMAC.
+ * - "staff_session" (2026-09-20): no app token exists (our staff seat may not
+ *   install apps), so the Admin GraphQL calls ride a logged-in staff browser
+ *   session on the agent's Mac (scripts/shopify-session-sync.ts). Only that
+ *   process sets ALPHAOS_STAFF_SESSION=1; everywhere else (Vercel) the shop
+ *   reads as not connected, so fulfilment pushes, webhooks and product media
+ *   skip it cleanly and the cron never tries it.
  */
-export type ShopifyAuthType = "client_credentials" | "legacy";
+export type ShopifyAuthType = "client_credentials" | "legacy" | "staff_session";
 
 /** Encrypted per-shop credential blob (shops.credentials). */
 export type ShopifyCredentials = {
@@ -86,6 +92,10 @@ export type GqlOrder = {
   sourceName: string | null; // "web", "pos", "shopify_draft_order", …
   legacyResourceId: string;
   createdAt: string; // ISO
+  // Shopify's own state, read so history that is already done never enters the
+  // queue as live work (same rule as the Etsy import, 2026-09-12 overdue sweep).
+  displayFulfillmentStatus?: string | null; // "FULFILLED", "UNFULFILLED", "PARTIALLY_FULFILLED", …
+  cancelledAt?: string | null;
   email: string | null;
   customer: { firstName: string | null; lastName: string | null; email: string | null } | null;
   shippingAddress: {

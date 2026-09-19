@@ -85,6 +85,9 @@ export type NormalizedOrder = {
   lastName: string | null;
   shippingAddress?: ShippingAddressInput | null;
   lineItems: NormalizedLineItem[];
+  // Shopify's own fulfilment state at read time. Undefined on the REST webhook
+  // payload (a brand-new order is open work by definition).
+  platformState?: "open" | "fulfilled" | "cancelled";
 };
 
 /**
@@ -115,6 +118,8 @@ query($cursor: String, $q: String) {
       sourceName
       legacyResourceId
       createdAt
+      displayFulfillmentStatus
+      cancelledAt
       email
       customer { firstName lastName email }
       shippingAddress {
@@ -371,8 +376,14 @@ export async function importShopifyOrder(args: {
     lines: realLines.map((li) => ({ sku: li.sku, title: li.title })),
     config: shop.config,
   });
-  const status =
-    klass === "triage"
+  // An order Shopify already shows as fulfilled or cancelled is history, not
+  // work: it lands complete/cancelled and never auto-assigns or emails anyone.
+  const done = order.platformState === "fulfilled" || order.platformState === "cancelled";
+  const status = order.platformState === "cancelled"
+    ? ("cancelled" as const)
+    : order.platformState === "fulfilled"
+      ? ("complete" as const)
+      : klass === "triage"
       ? ("triage" as const)
       : klass === "fulfillment_only"
         ? ("fulfillment_only" as const)
@@ -491,7 +502,7 @@ export async function importShopifyOrder(args: {
     // Skipped on a backfill (suppressCustomerEmail) so re-scanning history never
     // dumps old orders into designers' live queues or skews their daily capacity.
     let assignedTo: string | null = null;
-    if (status === "ready_to_assign" && !needsReview && !shop.suppressCustomerEmail && !archived) {
+    if (status === "ready_to_assign" && !needsReview && !shop.suppressCustomerEmail && !archived && !done) {
       assignedTo = (
         await runAutoAssign(tx, { orderId, businessId: shop.businessId, assignedBy: null })
       ).assigned;
@@ -517,6 +528,7 @@ export async function importShopifyOrder(args: {
         needsReview,
         archived,
         backfillCutoffAt: shop.config.backfillCutoffAt ?? null,
+        shopifyState: order.platformState ?? null,
         assignedTo,
         autoAssigned: assignedTo != null,
         figures: items.map((i) => ({ count: i.count, source: i.source, note: i.note, style: matchStyle(i.li.title, i.li.sku, businessStyles) })),
@@ -534,7 +546,8 @@ export async function importShopifyOrder(args: {
       status === "awaiting_photos" &&
       photoRequestEnabled(shop.config) &&
       !shop.suppressCustomerEmail &&
-      !archived
+      !archived &&
+      !done
     ) {
       await queuePhotoRequest(tx, {
         id: orderId,
@@ -550,7 +563,7 @@ export async function importShopifyOrder(args: {
     // warm "we got it" the moment ANY order lands, regardless of status. Same
     // suppression guards as the photo request (never on a backfill, never when
     // the shop has customer email suppressed).
-    if (!shop.suppressCustomerEmail && !archived) {
+    if (!shop.suppressCustomerEmail && !archived && !done) {
       await queueStageEmail(tx, {
         id: orderId,
         businessId: shop.businessId,
@@ -583,6 +596,8 @@ query($id: ID!) {
     sourceName
     legacyResourceId
     createdAt
+    displayFulfillmentStatus
+    cancelledAt
     email
     customer { firstName lastName email }
     shippingAddress {
@@ -659,6 +674,11 @@ export function normalizeGraphqlOrder(o: GqlOrder): NormalizedOrder {
     firstName: o.customer?.firstName ?? null,
     lastName: o.customer?.lastName ?? null,
     shippingAddress: normalizeShopifyAddress(o.shippingAddress),
+    platformState: o.cancelledAt
+      ? "cancelled"
+      : o.displayFulfillmentStatus === "FULFILLED"
+        ? "fulfilled"
+        : "open",
     lineItems: o.lineItems.nodes.map((li) => {
       const attrs = li.customAttributes ?? [];
       return {

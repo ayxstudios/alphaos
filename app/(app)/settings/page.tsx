@@ -172,6 +172,7 @@ export default async function SettingsPage({
         getShopCredentials(tx, s.id),
       )) as ShopifyCredentials;
       const cfg = (s.integrationConfig ?? {}) as ShopifyIntegrationConfig;
+      const staffSession = resolveShopifyAuthType(creds) === "staff_session";
       const connected = isShopifyConnected(creds);
       const liveCreds = connected ? await freshShopifyCredentials(creds) : creds;
       const webhookStatus = connected
@@ -191,8 +192,9 @@ export default async function SettingsPage({
       return {
         id: s.id,
         name: s.name,
-        authType: resolveShopifyAuthType(creds),
-        status: connected ? "connected" : "not_connected",
+        authType: staffSession ? "legacy" : (resolveShopifyAuthType(creds) as "legacy" | "client_credentials"),
+        staffSession,
+        status: connected || staffSession ? "connected" : "not_connected",
         shopDomain: creds.shopDomain ?? null,
         hasClientId: !!creds.clientId,
         hasClientSecret: !!creds.clientSecret,

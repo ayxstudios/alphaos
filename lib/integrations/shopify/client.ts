@@ -142,6 +142,9 @@ export class ShopifyClient {
   }
 
   private async ensureAccessToken(): Promise<string> {
+    // Staff-session shops have no token; the local sync's fetch transport
+    // answers the call through the logged-in browser (types.ts).
+    if (this.authType === "staff_session") return "staff_session";
     // Legacy shops carry a permanent token — nothing to refresh.
     if (this.authType === "legacy") {
       if (!this.creds.accessToken) {
