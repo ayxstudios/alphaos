@@ -41,7 +41,27 @@ import { syncShopOrders } from "../lib/integrations/shopify";
 
 const AGENT_DIR = path.join(os.homedir(), "Documents/ai-employee-agent");
 const AGENT_ENV = process.env.AGENT_ENV || path.join(AGENT_DIR, ".env");
-const CDP = process.env.STAFF_SESSION_CDP || "http://127.0.0.1:9222";
+// Its own browser, its own single profile (2026-09-21). This used to attach to whatever Chrome owned
+// :9222, which is the kiosk: ONE Chrome process with three profiles open (Default, "Profile 3" =
+// the Shopify staff login, "Profile 5"). Over CDP both profile windows land in contexts()[0], so
+// newPage() opened in whichever profile was used last: 12 runs "stuck at accounts.shopify.com/lookup"
+// in the wrong profile, 101 "Browser context management is not supported", and a tab flashing on the
+// kiosk screen every 15 minutes. Chrome refuses Target.createTarget for the non-default profile's
+// browserContextId (tested), so picking the profile over CDP is not possible. A dedicated data dir
+// with one profile cannot be the wrong one. STAFF_SESSION_CDP still forces the old attach mode.
+const CDP = process.env.STAFF_SESSION_CDP || "";
+const PROFILE_DIR = process.env.STAFF_SESSION_PROFILE || path.join(AGENT_DIR, "var/browser-profiles/shopify-staff-sync");
+const SEED_FROM = process.env.STAFF_SESSION_SEED || path.join(os.homedir(), ".kiosk-chrome-profile", "Profile 3");
+
+/** First run only: copy the profile that already holds the staff session, so nobody logs in again. */
+function seedProfileOnce() {
+  const dest = path.join(PROFILE_DIR, "Default");
+  if (fs.existsSync(path.join(dest, "Cookies")) || !fs.existsSync(path.join(SEED_FROM, "Cookies"))) return false;
+  const skip = /(^|\/)(Singleton[^/]*|Cache|Code Cache|GPUCache|DawnCache|GrShaderCache|ShaderCache|Service Worker|blob_storage|Crashpad|LOCK|lockfile)(\/|$)/;
+  fs.mkdirSync(PROFILE_DIR, { recursive: true });
+  fs.cpSync(SEED_FROM, dest, { recursive: true, filter: (src) => !skip.test(src) });
+  return true;
+}
 
 // Playwright lives in the agent repo; AlphaOS itself doesn't depend on it.
 const req = createRequire(path.join(AGENT_DIR, "package.json"));
@@ -61,8 +81,14 @@ type Page = {
   evaluate<R, A>(fn: (a: A) => Promise<R>, arg: A): Promise<R>;
   close(): Promise<void>;
 };
-type Browser = { contexts(): { newPage(): Promise<Page> }[] };
-const { chromium } = req("playwright") as { chromium: { connectOverCDP(url: string): Promise<Browser> } };
+type Context = { newPage(): Promise<Page>; close(): Promise<void> };
+type Browser = { contexts(): Context[] };
+const { chromium } = req("playwright") as {
+  chromium: {
+    connectOverCDP(url: string): Promise<Browser>;
+    launchPersistentContext(dir: string, opts: Record<string, unknown>): Promise<Context>;
+  };
+};
 
 function agentEnv(): Record<string, string> {
   const out: Record<string, string> = {};
@@ -227,8 +253,22 @@ async function main() {
   );
   if (!targets.length) return log("nothing_to_sync");
 
-  const browser = await chromium.connectOverCDP(CDP);
-  const ctx = browser.contexts()[0];
+  let own: Context | null = null;
+  let ctx: Context;
+  if (CDP) {
+    ctx = (await chromium.connectOverCDP(CDP)).contexts()[0];
+  } else {
+    if (seedProfileOnce()) log("profile_seeded", { from: SEED_FROM });
+    own = ctx = await chromium.launchPersistentContext(PROFILE_DIR, {
+      channel: "chrome",
+      headless: false,
+      // Playwright adds --use-mock-keychain on macOS. Cookies seeded from a real Chrome profile are
+      // encrypted with the REAL keychain key, so under the mock one they cannot be read and the
+      // profile is simply logged out (first run of this code: straight to accounts.shopify.com/lookup).
+      ignoreDefaultArgs: ["--use-mock-keychain", "--password-store=basic"],
+      args: ["--window-position=-4000,-4000", "--window-size=1280,900", "--no-first-run", "--no-default-browser-check", "--disable-blink-features=AutomationControlled"],
+    });
+  }
   const page = await ctx.newPage();
   try {
     const byDomain = new Map<string, { handle: string; csrf: string }>();
@@ -244,6 +284,8 @@ async function main() {
     }
   } finally {
     await page.close().catch(() => {});
+    // a clean close flushes cookies and lets Chrome delete its code-sign copy (they leak otherwise)
+    if (own) await own.close().catch(() => {});
   }
 }
 
