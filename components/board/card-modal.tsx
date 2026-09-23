@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { Avatar, Button, Disclosure, StatusChip, useToast } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
-import { AlertTriangle, Camera, X } from "@/components/ui/icons";
+import { AlertTriangle, Camera, Check, X } from "@/components/ui/icons";
 import { Countdown } from "./countdown";
 import {
   cardLabels,
@@ -44,10 +44,13 @@ export function CardModal({
   card,
   viewerRole,
   onClose,
+  onSubmitForQc,
 }: {
   card: BoardCard;
   viewerRole: ViewerRole;
   onClose: () => void;
+  /** Designer only: send the card to Awaiting QC from here (true = moved). */
+  onSubmitForQc?: () => Promise<boolean>;
 }) {
   const toast = useToast();
   const [mounted, setMounted] = useState(false);
@@ -166,6 +169,13 @@ export function CardModal({
                 setDetail(next);
                 setEvents(next.events);
               }}
+              onSubmitForQc={
+                onSubmitForQc
+                  ? async () => {
+                      if (await onSubmitForQc()) onClose();
+                    }
+                  : undefined
+              }
             />
             <Gallery images={detail?.images ?? null} cover={card.thumbnailUrl} />
 
@@ -311,11 +321,13 @@ function CardUploadPanel({
   viewerRole,
   detail,
   onSaved,
+  onSubmitForQc,
 }: {
   card: BoardCard;
   viewerRole: ViewerRole;
   detail: CardDetail | null;
   onSaved: (detail: CardDetail) => void;
+  onSubmitForQc?: () => Promise<void>;
 }) {
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -323,6 +335,7 @@ function CardUploadPanel({
   const canDesignerUpload = card.status === "in_design";
   const [type, setType] = useState<CardAssetType>(designer ? "submission" : "reference");
   const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState<UploadProgress[]>([]);
   const submissions = (detail?.images ?? []).filter((image) => image.type === "submission");
   const latestSubmission = submissions.at(-1) ?? null;
@@ -422,8 +435,8 @@ function CardUploadPanel({
             <p className="mt-1 text-xs text-slate">
               {canDesignerUpload
                 ? latestSubmission
-                  ? "Add a new version before submitting to QC. Every version is kept, the newest is reviewed."
-                  : "Upload the finished portrait before moving this card to QC."
+                  ? "Ready for QC: the newest version is the one reviewed. Every version is kept, so add another first if you want to change it."
+                  : "Upload the finished portrait, then submit it for QC."
                 : designerNote}
             </p>
           </div>
@@ -458,6 +471,25 @@ function CardUploadPanel({
             <Camera size={15} />
             {/* Versions are never overwritten: each upload adds one. */}
             {latestSubmission && designer ? "Add new version" : "Upload"}
+          </Button>
+        )}
+        {designer && canDesignerUpload && latestSubmission && onSubmitForQc && (
+          <Button
+            type="button"
+            size="sm"
+            loading={submitting}
+            disabled={uploading}
+            onClick={async () => {
+              setSubmitting(true);
+              try {
+                await onSubmitForQc();
+              } finally {
+                setSubmitting(false);
+              }
+            }}
+          >
+            <Check size={15} />
+            Submit for QC
           </Button>
         )}
         <input

@@ -92,8 +92,8 @@ export function DesignerBoard({ initial, viewerRole }: { initial: Cols; viewerRo
    * screen size) and the tap-to-act mobile buttons (no drag needed) — one
    * optimistic-update / rollback / toast path either way.
    */
-  async function moveTo(card: BoardCard, from: ColKey, to: ColKey) {
-    if (from === to) return;
+  async function moveTo(card: BoardCard, from: ColKey, to: ColKey): Promise<boolean> {
+    if (from === to) return false;
     const prev = cols;
     setCols((c) => ({
       ...c,
@@ -109,9 +109,10 @@ export function DesignerBoard({ initial, viewerRole }: { initial: Cols; viewerRo
         title: res.code === "stale" ? "Already moved" : "Move failed",
         description: res.message,
       });
-    } else {
-      router.refresh();
+      return false;
     }
+    router.refresh();
+    return true;
   }
 
   async function onDragEnd(e: DragEndEvent) {
@@ -120,6 +121,13 @@ export function DesignerBoard({ initial, viewerRole }: { initial: Cols; viewerRo
     const to = e.over ? (String(e.over.id) as ColKey) : null;
     if (!found || !to || !DROP_TARGETS.has(to)) return;
     await moveTo(found.card, found.col, to);
+  }
+
+  /** Submit for QC from inside the card modal (same path as the board button). */
+  async function submitFromModal(card: BoardCard): Promise<boolean> {
+    const found = locate(card.orderId);
+    if (!found) return false;
+    return moveTo(found.card, found.col, "awaitingQc");
   }
 
   return (
@@ -132,8 +140,8 @@ export function DesignerBoard({ initial, viewerRole }: { initial: Cols; viewerRo
           <MobileDesignerBoard
             cols={cols}
             onOpen={setOpenCard}
-            onStart={(card) => moveTo(card, "myQueue", "inDesign")}
-            onSubmit={(card, from) => moveTo(card, from, "awaitingQc")}
+            onStart={async (card) => void (await moveTo(card, "myQueue", "inDesign"))}
+            onSubmit={async (card, from) => void (await moveTo(card, from, "awaitingQc"))}
           />
         </div>
       )}
@@ -151,7 +159,14 @@ export function DesignerBoard({ initial, viewerRole }: { initial: Cols; viewerRo
         ))}
       </div>
       <DragOverlay>{active ? <OrderCard card={active} overlay /> : null}</DragOverlay>
-      {openCard && <CardModal card={openCard} viewerRole={viewerRole} onClose={() => setOpenCard(null)} />}
+      {openCard && (
+        <CardModal
+          card={openCard}
+          viewerRole={viewerRole}
+          onClose={() => setOpenCard(null)}
+          onSubmitForQc={viewerRole === "designer" ? () => submitFromModal(openCard) : undefined}
+        />
+      )}
     </DndContext>
   );
 }
