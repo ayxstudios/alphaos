@@ -51,7 +51,7 @@ export default async function UploadPage({
       />
 
       <footer className="pt-2 text-center text-xs text-slate">
-        Questions? Reply to our message on Etsy.
+        Questions? Just reply to the message we sent you.
       </footer>
     </main>
   );

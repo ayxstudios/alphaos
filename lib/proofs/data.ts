@@ -102,16 +102,18 @@ export async function recordProofView(token: string): Promise<void> {
 }
 
 export type ProofImageSource = {
-  url: string;
+  /** Exactly one of url (CDN-hosted) or r2Key (private bucket) is set. */
+  url: string | null;
+  r2Key: string | null;
   businessName: string;
 };
 
 /**
  * Resolve the source image the preview route should watermark: the latest
  * final/submission asset for the token's order, plus the business name for the
- * watermark label. Only CDN-hosted assets expose a fetchable URL; R2 assets
- * would need signing infra that does not exist yet, so they resolve to null
- * (the route then 404s rather than leaking anything).
+ * watermark label. CDN assets carry a fetchable URL; R2 assets (every designer
+ * submission) carry their private key, which the route reads server-side, so
+ * the clean bytes never leave the server either way.
  */
 export async function getProofImageSource(
   token: string,
@@ -125,8 +127,8 @@ export async function getProofImageSource(
     if (!proof) return null;
 
     const asset = await resolvePreviewAsset(tx, proof.orderId);
-    if (!asset?.url) return null;
-    return { url: asset.url, businessName: proof.businessName };
+    if (!asset) return null;
+    return { url: asset.url, r2Key: asset.r2Key, businessName: proof.businessName };
   });
 }
 
@@ -134,16 +136,18 @@ export async function getProofImageSource(
 async function resolvePreviewAsset(
   tx: Tx,
   orderId: string,
-): Promise<{ url: string | null } | null> {
+): Promise<{ url: string | null; r2Key: string | null } | null> {
   const rows = await tx
-    .select({ url: assets.url, type: assets.type, createdAt: assets.createdAt })
+    .select({ url: assets.url, r2Key: assets.r2Key, type: assets.type, createdAt: assets.createdAt })
     .from(assets)
     .where(
       and(eq(assets.orderId, orderId), inArray(assets.type, [...PREVIEW_TYPES]), isNull(assets.deletedAt)),
     )
     .orderBy(desc(assets.createdAt));
-  if (!rows.length) return null;
+  // Only assets we can actually read count, so the page never shows a broken image.
+  const readable = rows.filter((r) => r.url || r.r2Key);
+  if (!readable.length) return null;
   // Prefer a "final" if one exists; otherwise the newest submission.
-  const final = rows.find((r) => r.type === "final");
-  return final ?? rows[0];
+  const final = readable.find((r) => r.type === "final");
+  return final ?? readable[0];
 }

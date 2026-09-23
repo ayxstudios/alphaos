@@ -27,7 +27,8 @@ import {
   resolveTemplate,
   type TemplateKey,
 } from "@/lib/email/templates";
-import { appUrl } from "@/lib/urls";
+import { skipStaleBacklog } from "@/lib/email/backlog-guard";
+import { appUrl, uploadUrl } from "@/lib/urls";
 import { previewNotificationSweep, type NotificationSweepResult } from "@/lib/notifications/sla-sweep";
 import { ensureBackfillCutoff } from "@/lib/orders/archive";
 import {
@@ -442,13 +443,26 @@ export async function triggerGmailPoll(businessId: string): Promise<InboundSumma
   return summary;
 }
 
-/** Safety rail: turn customer email sending on/off for a business (default OFF). */
-export async function setEmailSendingEnabled(businessId: string, enabled: boolean): Promise<void> {
+/**
+ * Safety rail: turn customer email sending on/off for a business (default OFF).
+ * Turning it ON first marks stale unsent system emails as skipped (finished or
+ * archived orders, or older than STALE_AFTER_DAYS) in the same transaction, so
+ * the auto flush never mails a backlog to buyers whose orders moved on. See
+ * lib/email/backlog-guard.ts.
+ */
+export async function setEmailSendingEnabled(
+  businessId: string,
+  enabled: boolean,
+): Promise<{ skipped: number; heldFromQueue: number }> {
   const user = await requireAdmin();
-  await withUserContext(user, (tx) =>
-    tx.update(businesses).set({ emailSendingEnabled: enabled }).where(eq(businesses.id, businessId)),
-  );
+  const result = await withUserContext(user, async (tx) => {
+    const guard = enabled ? await skipStaleBacklog(tx, businessId) : { skipped: 0, heldFromQueue: 0 };
+    await tx.update(businesses).set({ emailSendingEnabled: enabled }).where(eq(businesses.id, businessId));
+    return guard;
+  });
   revalidatePath("/settings");
+  revalidatePath("/emails");
+  return result;
 }
 
 export type GmailTestResult = {
@@ -492,7 +506,9 @@ export async function sendGmailTest(businessId: string, toRaw: string): Promise<
     order_number: "TEST-1001",
     business_name: businessName,
     proof_link: appUrl("/proof/sample-test"),
-    upload_link: appUrl("/u/sample-test"),
+    upload_link: uploadUrl("sample-test"),
+    tracking_number: "TEST123456789",
+    tracking_url: "https://example.com/track/TEST123456789",
   };
 
   const keys: TemplateKey[] = EDITABLE_TEMPLATE_KEYS;
@@ -662,7 +678,8 @@ export async function saveEmailTemplate(formData: FormData): Promise<void> {
   const businessId = String(formData.get("businessId") ?? "");
   const key = assertTemplateKey(String(formData.get("key") ?? ""));
   const subject = String(formData.get("subject") ?? "").trim();
-  const body = String(formData.get("body") ?? "").trim();
+  // Browsers submit textarea newlines as CRLF; store plain LF like the defaults.
+  const body = String(formData.get("body") ?? "").replace(/\r\n?/g, "\n").trim();
   if (!businessId || !subject || !body) throw new Error("Subject and body are required");
 
   await withUserContext(user, (tx) =>

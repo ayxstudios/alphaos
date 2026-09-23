@@ -20,6 +20,19 @@ neonConfig.poolQueryViaFetch = true;
 // Local/CI only (NEON_LOCAL_PROXY); a no-op in every deployed environment.
 applyLocalNeonProxy();
 
+// Local Postgres for tests/dev ONLY (never set in prod): route the driver's
+// WebSocket through a plain ws->tcp proxy, e.g. NEON_LOCAL_WS_PROXY=127.0.0.1:5488/v1,
+// so test scripts and `next dev` can run against a throwaway local database
+// instead of the production Neon branch.
+if (process.env.NEON_LOCAL_WS_PROXY) {
+  const proxy = process.env.NEON_LOCAL_WS_PROXY;
+  neonConfig.wsProxy = (host, port) => `${proxy}?address=${host}:${port}`;
+  neonConfig.useSecureWebSocket = false;
+  neonConfig.pipelineTLS = false;
+  neonConfig.pipelineConnect = false;
+  neonConfig.poolQueryViaFetch = false;
+}
+
 const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
 
 /**

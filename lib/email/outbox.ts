@@ -24,6 +24,8 @@ export type OutboxItem = {
   subject: string;
   body: string;
   error: string | null;
+  /** Set when turning sending on marked this stale email as skipped (lib/email/backlog-guard.ts). */
+  skippedReason: string | null;
   createdAt: string; // ISO
 };
 
@@ -53,6 +55,7 @@ export async function getOutbox(
         subject: messages.subject,
         body: messages.body,
         error: messages.error,
+        metadata: messages.metadata,
         createdAt: messages.createdAt,
         customerId: messages.customerId,
         platformOrderId: orders.platformOrderId,
@@ -95,6 +98,8 @@ export async function getOutbox(
       subject: r.subject ?? "",
       body: r.body ?? "",
       error: r.error,
+      skippedReason:
+        ((r.metadata as { skippedOnEnable?: { reason?: string } } | null)?.skippedOnEnable?.reason) ?? null,
       createdAt: r.createdAt.toISOString(),
     }));
   });

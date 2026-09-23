@@ -8,7 +8,7 @@ import {
 import { businesses, users, notifications } from "@/lib/db/schema";
 import { refreshAccessToken } from "./oauth";
 import { GmailApiError, GmailReauthRequiredError, GmailNotConnectedError } from "./errors";
-import { buildMimeMessage, buildRawMessage, type OutgoingEmail } from "./mime";
+import { buildMimeMessage, buildRawMessage, formatFromHeader, type OutgoingEmail } from "./mime";
 import {
   GMAIL_API_BASE,
   type GmailCredentials,
@@ -36,14 +36,17 @@ export class GmailClient {
   private constructor(
     private readonly businessId: string,
     private creds: GmailCredentials,
+    private readonly senderName: string | null = null,
   ) {}
 
   static async forBusiness(businessId: string): Promise<GmailClient> {
-    const creds = await withSystemContext((tx) =>
-      getBusinessGmailCredentials(tx, businessId),
-    );
+    const { creds, name } = await withSystemContext(async (tx) => {
+      const c = await getBusinessGmailCredentials(tx, businessId);
+      const [b] = await tx.select({ name: businesses.name }).from(businesses).where(eq(businesses.id, businessId));
+      return { creds: c, name: b?.name ?? null };
+    });
     if (!creds) throw new GmailNotConnectedError(businessId);
-    return new GmailClient(businessId, creds as GmailCredentials);
+    return new GmailClient(businessId, creds as GmailCredentials, name);
   }
 
   get address(): string | undefined {
@@ -55,7 +58,7 @@ export class GmailClient {
     email: Omit<OutgoingEmail, "from">,
     opts?: { threadId?: string },
   ): Promise<GmailSendResponse> {
-    const from = this.creds.address ?? "me";
+    const from = this.creds.address ? formatFromHeader(this.senderName, this.creds.address) : "me";
     if (email.attachments?.length) {
       const mime = buildMimeMessage({ ...email, from });
       if (mime.byteLength > GMAIL_MAX_RFC822_BYTES) {
