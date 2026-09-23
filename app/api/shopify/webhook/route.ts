@@ -48,7 +48,25 @@ export async function POST(req: NextRequest) {
       .from(shops)
       .where(and(eq(shops.platform, "shopify"), eq(shops.externalShopId, domain)));
     if (!shop) return null;
-    const creds = (await getShopCredentials(tx, shop.id)) as ShopifyCredentials;
+    // Credentials that cannot be decrypted (a wrong ENCRYPTION_KEY, a cloned
+    // database) fail closed like a shop with none: a calm 401, logged, instead
+    // of an unhandled 500 on every Shopify retry.
+    let creds: ShopifyCredentials;
+    try {
+      creds = (await getShopCredentials(tx, shop.id)) as ShopifyCredentials;
+    } catch (error) {
+      console.log(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "warn",
+          integration: "shopify",
+          shopId: shop.id,
+          event: "webhook_credentials_unreadable",
+          error: error instanceof Error ? error.name : "unknown",
+        }),
+      );
+      creds = {} as ShopifyCredentials;
+    }
     return { shop, creds };
   });
 
