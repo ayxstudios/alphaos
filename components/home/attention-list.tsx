@@ -20,7 +20,7 @@ const KIND_TONE: Record<TodayKind, string> = {
 };
 
 const KIND_SHORT: Record<TodayKind, string> = {
-  reply: "Reply",
+  reply: "Message",
   details: "Details",
   proof_silent: "Quiet proof",
   photos_silent: "No photos",

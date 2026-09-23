@@ -202,7 +202,17 @@ export async function getTodayQueue(user: RequestUser, businessId: string, now =
       const m = latestMsg.get(o.id);
       if (m && m.direction === "inbound") {
         const since = new Date(m.at).getTime();
-        push("reply", since, `Reply to ${name}`, { label: "Reply", href: `/orders/${o.id}#reply` }, 100);
+        // The line says who is waiting; the button says who the reply goes to
+        // (or which order, when we have no name), so a row never reads
+        // "Reply ... Reply ... Reply".
+        const known = name !== "the customer";
+        push(
+          "reply",
+          since,
+          known ? `${name} is waiting on a reply` : "The customer is waiting on a reply",
+          { label: known ? `Reply to ${name}` : `Reply about ${base.orderNumber}`, href: `/orders/${o.id}#reply` },
+          100,
+        );
       }
 
       switch (o.status) {
