@@ -28,6 +28,8 @@ export function OrdersFilterSelect({
       {label}
       <span className="relative">
         <select
+          name={paramName}
+          aria-label={label}
           value={value}
           onChange={(event) => {
             window.location.href = hrefFor(event.currentTarget.value);

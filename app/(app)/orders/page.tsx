@@ -140,7 +140,7 @@ function validDir(value: string | undefined): SortDir {
 
 function titleCase(value: string | null | undefined) {
   if (!value) return "Unknown";
-  return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase()).replace(/\bQc\b/g, "QC");
 }
 
 function operationalStatusLabel(input: {
