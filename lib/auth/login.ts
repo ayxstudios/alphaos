@@ -1,13 +1,24 @@
 import { CredentialsSignin } from "next-auth";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
-import { users, loginAttempts } from "@/lib/db/schema";
+import { users, loginAttempts, rateLimits } from "@/lib/db/schema";
 import { verifyPassword } from "./password";
 import type { Role } from "./config";
 
 const MAX_FAILED = 10;
 const LOCK_MS = 15 * 60 * 1000; // 15 minutes
+
+/**
+ * Per-IP limit, next to the per-email lockout (security QA 2026-09-23 P2): the
+ * email lockout alone let one address spray passwords across every account.
+ * Only FAILED attempts count, so a team behind one office NAT signing in at
+ * shift start is never throttled; 30 failures in 15 minutes from one IP locks
+ * that IP (every email) until the window rolls over. Stored in `rate_limits`
+ * (no RLS, no tenant data) under `login-ip:<ip>`.
+ */
+export const IP_MAX_FAILED = 30;
+export const IP_WINDOW_SEC = 15 * 60;
 
 /** Distinct error so the login form can show the lockout message. */
 export class AccountLockedError extends CredentialsSignin {
@@ -33,9 +44,15 @@ export type AuthedUser = {
 export async function authenticate(
   rawEmail: string,
   password: string,
+  ip: string | null = null,
 ): Promise<AuthedUser | null> {
   const email = rawEmail.trim().toLowerCase();
   const now = new Date();
+
+  // Checked before the user lookup and bcrypt, so a throttled IP costs nothing.
+  if (ip && (await ipFailures(ip)) >= IP_MAX_FAILED) {
+    throw new AccountLockedError();
+  }
 
   const [attempt] = await db
     .select()
@@ -69,6 +86,7 @@ export async function authenticate(
 
   if (!ok) {
     await registerFailure(email, attempt?.failedCount ?? 0, now);
+    if (ip) await registerIpFailure(ip);
     return null;
   }
 
@@ -103,4 +121,48 @@ async function registerFailure(
     .insert(loginAttempts)
     .values({ email, ...set })
     .onConflictDoUpdate({ target: loginAttempts.email, set });
+}
+
+/**
+ * The client IP for the per-IP limit, from the request Auth.js hands to
+ * authorize(). On Vercel `x-forwarded-for` is set by the edge (a client-sent
+ * value is overwritten, proven on staging), first entry = the client. Null when
+ * there is no proxy header (local dev, scripts): no per-IP limit then, rather
+ * than one shared bucket for everyone.
+ */
+export function loginClientIp(headers: Headers | null | undefined): string | null {
+  if (!headers) return null;
+  const xff = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const ip = xff || headers.get("x-real-ip")?.trim() || "";
+  return ip ? ip.slice(0, 64) : null;
+}
+
+const ipBucket = (ip: string) => `login-ip:${ip}`;
+
+/** Failures from this IP in the current window (0 once the window rolled over). */
+async function ipFailures(ip: string): Promise<number> {
+  const [row] = await db
+    .select({
+      hits: rateLimits.hits,
+      live: sql<boolean>`${rateLimits.windowStart} >= now() - make_interval(secs => ${IP_WINDOW_SEC})`,
+    })
+    .from(rateLimits)
+    .where(eq(rateLimits.bucket, ipBucket(ip)));
+  return row?.live ? row.hits : 0;
+}
+
+/** One atomic upsert: +1 in the current window, or restart the window at 1. */
+async function registerIpFailure(ip: string): Promise<void> {
+  const rolledOver = sql`${rateLimits.windowStart} < now() - make_interval(secs => ${IP_WINDOW_SEC})`;
+  await db
+    .insert(rateLimits)
+    .values({ bucket: ipBucket(ip), hits: 1, windowStart: sql`now()`, updatedAt: sql`now()` })
+    .onConflictDoUpdate({
+      target: rateLimits.bucket,
+      set: {
+        hits: sql`case when ${rolledOver} then 1 else ${rateLimits.hits} + 1 end`,
+        windowStart: sql`case when ${rolledOver} then now() else ${rateLimits.windowStart} end`,
+        updatedAt: sql`now()`,
+      },
+    });
 }

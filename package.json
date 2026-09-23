@@ -34,6 +34,7 @@
     "test:reminders": "tsx scripts/test-reminders.ts",
     "test:designer-lane": "tsx scripts/test-designer-lane.ts",
     "test:team": "tsx scripts/test-team.ts",
+    "test:security": "tsx scripts/test-security.ts",
     "test:send-enable-guard": "tsx scripts/test-send-enable-guard.ts",
     "test:all": "node scripts/test-all.mjs",
     "ci:local": "bash scripts/ci-local.sh",
