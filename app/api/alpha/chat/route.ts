@@ -5,6 +5,7 @@ import type { RequestUser } from "@/lib/db";
 import { loadShellData } from "@/lib/shell/context";
 import { buildAlphaSnapshot } from "@/lib/alpha/snapshot";
 import { chatAlpha, type AlphaChatMessage } from "@/lib/alpha/client";
+import { scopeChatOrder } from "@/lib/alpha/chat-scope";
 
 export const runtime = "nodejs";
 
@@ -54,8 +55,11 @@ export async function POST(req: NextRequest) {
   if (!messages.length) {
     return NextResponse.json({ error: "messages is required" }, { status: 400 });
   }
-  const page = typeof body.page === "string" ? body.page.slice(0, 300) : null;
-  const orderId = typeof body.orderId === "string" && body.orderId.trim() ? body.orderId : null;
+  // Only an order the caller can see (their own RLS context) reaches the relay.
+  const { orderId, page } = await scopeChatOrder(user, {
+    page: typeof body.page === "string" ? body.page.slice(0, 300) : null,
+    orderId: typeof body.orderId === "string" && body.orderId.trim() ? body.orderId.trim() : null,
+  });
 
   const shell = await loadShellData(user);
   if (shell.displayName) user.name = shell.displayName;

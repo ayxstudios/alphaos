@@ -8,6 +8,7 @@ import {
   type LumaShipmentsResponse,
 } from "./types";
 import type { NormalizedProviderOrder, PrintProviderClient } from "@/lib/print/provider-types";
+import { mocksAllowed } from "@/lib/mock/guard";
 
 const RATE_LIMIT_PER_SEC = 5;
 const MIN_INTERVAL_MS = 1000 / RATE_LIMIT_PER_SEC;
@@ -27,7 +28,9 @@ function log(event: string, fields: Record<string, unknown>) {
   console.log(JSON.stringify({ ts: new Date().toISOString(), integration: "lumaprints", event, ...fields }));
 }
 
-function isMockMode(credentials?: LumaPrintsCredentials): boolean {
+export function isMockMode(credentials?: LumaPrintsCredentials): boolean {
+  // Never on the production deployment (lib/mock/guard.ts).
+  if (!mocksAllowed()) return false;
   // Global switch, or a mock credential (lib/mock: a "mock_" username is
   // answered from fixtures; real credentials never are).
   return process.env.PRINT_PROVIDER_MOCK === "1" || String(credentials?.username ?? "").startsWith("mock_");

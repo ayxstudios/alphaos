@@ -219,9 +219,88 @@ async function main() {
     );
   }
 
+  // -- 6. Designer cannot read the email thread, even on an assigned order ------
+  // (0038_rls_designer_tighten: messages_select is staff only.)
+  {
+    const [own] = await withUserContext(asUser(admin, "admin"), (tx) =>
+      tx
+        .select({ orderId: schema.assignments.orderId, businessId: schema.assignments.businessId })
+        .from(schema.assignments)
+        .where(and(eq(schema.assignments.designerId, d2), eq(schema.assignments.active, true)))
+        .limit(1),
+    );
+    const probeId = `rls-msg-probe-${Date.now()}`;
+    await withUserContext(asUser(admin, "admin"), (tx) =>
+      tx.insert(schema.messages).values({
+        id: probeId,
+        businessId: own.businessId,
+        orderId: own.orderId,
+        direction: "inbound",
+        channel: "email",
+        status: "received",
+        subject: "rls probe",
+        body: "from buyer@example.com",
+        address: "buyer@example.com",
+      }),
+    );
+    const staffSees = await withUserContext(asUser(va1, "va"), (tx) =>
+      tx.select({ id: schema.messages.id }).from(schema.messages).where(eq(schema.messages.id, probeId)),
+    );
+    const designerSees = await withUserContext(asUser(d2, "designer"), (tx) =>
+      tx.select({ id: schema.messages.id }).from(schema.messages).where(eq(schema.messages.orderId, own.orderId)),
+    );
+    await withUserContext(asUser(admin, "admin"), (tx) =>
+      tx.delete(schema.messages).where(eq(schema.messages.id, probeId)),
+    );
+    report(
+      "Designer cannot read messages on their own assigned order",
+      staffSees.length === 1 && designerSees.length === 0,
+      `VA sees probe=${staffSees.length}; designer sees ${designerSees.length} messages on assigned order`,
+    );
+  }
+
+  // -- 7. Designer cannot rewrite their own profile (rank, capacity) ----------
+  {
+    const before = await withUserContext(asUser(admin, "admin"), (tx) =>
+      tx
+        .select({ rank: schema.designerProfiles.rank, dailyCapacity: schema.designerProfiles.dailyCapacity })
+        .from(schema.designerProfiles)
+        .where(eq(schema.designerProfiles.userId, d2)),
+    );
+    let writeResult = "";
+    try {
+      const updated = await withUserContext(asUser(d2, "designer"), (tx) =>
+        tx
+          .update(schema.designerProfiles)
+          .set({ rank: -1, dailyCapacity: 500 })
+          .where(eq(schema.designerProfiles.userId, d2))
+          .returning({ userId: schema.designerProfiles.userId }),
+      );
+      writeResult = `${updated.length} row(s) updated`;
+    } catch (err) {
+      writeResult = `rejected: ${rootMsg(err)}`;
+    }
+    const after = await withUserContext(asUser(admin, "admin"), (tx) =>
+      tx
+        .select({ rank: schema.designerProfiles.rank, dailyCapacity: schema.designerProfiles.dailyCapacity })
+        .from(schema.designerProfiles)
+        .where(eq(schema.designerProfiles.userId, d2)),
+    );
+    const unchanged =
+      before.length === 1 &&
+      after.length === 1 &&
+      after[0].rank === before[0].rank &&
+      after[0].dailyCapacity === before[0].dailyCapacity;
+    report(
+      "Designer cannot change their own rank or capacity",
+      unchanged,
+      `designer write: ${writeResult}; rank ${before[0]?.rank}->${after[0]?.rank}, capacity ${before[0]?.dailyCapacity}->${after[0]?.dailyCapacity}`,
+    );
+  }
+
   console.log(
     `\n${failures === 0 ? "ALL PASSED" : failures + " FAILED"} ` +
-      `(${5 - failures}/5 assertions passed)`,
+      `(${7 - failures}/7 assertions passed)`,
   );
   process.exit(failures === 0 ? 0 : 1);
 }

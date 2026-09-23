@@ -125,8 +125,16 @@ function wrapBase64(input: string): string {
 
 /** Minimal, safe text→HTML: escape, linkify http(s) URLs, paragraphs from blank lines. */
 export function textToHtml(text: string): string {
+  // Quotes too: linkify puts URLs inside href="...", and a URL is customer
+  // text (a first name like `https://x/"onmouseover="...` broke out of the
+  // attribute in the proof email, security QA round 2).
   const esc = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   const linkify = (s: string) =>
     s.replace(/(https?:\/\/[^\s<]+)/g, (url) => `<a href="${url}">${url}</a>`);
   // Bodies saved from a browser textarea arrive with CRLF; normalise so blank

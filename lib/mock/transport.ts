@@ -26,6 +26,7 @@ import {
   shopifyOrdersSince,
   type MockMail,
 } from "./data";
+import { mocksAllowed } from "./guard";
 
 type Handler = (req: Request, url: URL) => Promise<Response | null>;
 
@@ -348,6 +349,10 @@ const HANDLERS: Handler[] = [shopify, etsy, google, anthropic];
 
 export function installMockTransport(): void {
   if (installed) return;
+  if (!mocksAllowed()) {
+    console.error(JSON.stringify({ ts: new Date().toISOString(), integration: "mock", event: "refused_in_production" }));
+    return;
+  }
   installed = true;
   realFetch = globalThis.fetch.bind(globalThis);
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {

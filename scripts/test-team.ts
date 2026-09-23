@@ -113,8 +113,15 @@ async function main() {
     const on = await setUserActive(admin, vaId, true);
     report(
       "reactivated user signs in again",
-      on.ok && (await authenticate(vaEmail, vaPassword))?.id === vaId && (await recheckToken({ ...liveToken })) !== null,
+      on.ok &&
+        (await authenticate(vaEmail, vaPassword))?.id === vaId &&
+        (await recheckToken({ ...liveToken, signedInAt: Date.now() + 1 })) !== null,
       `reactivate ok=${on.ok}`,
+    );
+    report(
+      "reactivation does not revive a session from before the deactivation",
+      (await recheckToken(liveToken)) === null,
+      "token issued before deactivation = null",
     );
     report("a VA cannot deactivate anyone", !(await setUserActive(seedVa, vaId, false)).ok, "setUserActive(va) refused");
 
@@ -188,6 +195,13 @@ async function main() {
         if (!created.ids.includes(a.id)) reactivate.add(a.id);
       } else othersOff = false;
     }
+    // A hand-edited request with a non-boolean ("no") used to skip the guard.
+    const lastOffString = await setUserActive(admin, admin.id, "no" as unknown as boolean);
+    report(
+      "a non-boolean active value is refused (no last-admin bypass)",
+      !lastOffString.ok && (await userRow(admin.id))?.active === true,
+      lastOffString.ok ? "was allowed" : lastOffString.message,
+    );
     const lastOff = await setUserActive(admin, admin.id, false);
     const stillActive = (await userRow(admin.id))?.active === true;
     report(

@@ -2,7 +2,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 
 import { authConfig, type Role } from "./config";
-import { authenticate } from "./login";
+import { authenticate, loginClientIp } from "./login";
 import { recheckToken } from "./session-check";
 
 /**
@@ -32,14 +32,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
-      authorize: async (creds) => {
+      authorize: async (creds, request) => {
         const email = creds?.email;
         const password = creds?.password;
         if (typeof email !== "string" || typeof password !== "string") {
           return null;
         }
-        // Returns the user, null (bad creds), or throws AccountLockedError.
-        return await authenticate(email, password);
+        // Returns the user, null (bad creds), or throws AccountLockedError
+        // (email locked, or too many failures from this IP).
+        return await authenticate(email, password, loginClientIp(request?.headers));
       },
     }),
   ],

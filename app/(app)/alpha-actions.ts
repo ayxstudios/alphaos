@@ -32,11 +32,13 @@ async function requireUser(): Promise<(RequestUser & { name: string }) | null> {
 export async function askAlphaAboutOrder(orderId: string | null, questionRaw: string): Promise<AskAlphaResult> {
   const user = await requireUser();
   if (!user) return { ok: false, message: "Not signed in" };
-  const question = questionRaw.trim();
+  const question = typeof questionRaw === "string" ? questionRaw.trim() : "";
   if (!question) return { ok: false, message: "Type a question first" };
   if (question.length > 2000) return { ok: false, message: "That question is too long" };
 
   let businessId: string | null = null;
+  // Only an order the caller can see (RLS, below) goes to the relay or gets a comment.
+  let visibleOrderId: string | null = null;
   let context: Record<string, unknown> = {};
 
   if (orderId) {
@@ -64,6 +66,7 @@ export async function askAlphaAboutOrder(orderId: string | null, questionRaw: st
       return { order, items };
     });
     if (found) {
+      visibleOrderId = orderId;
       businessId = found.order.businessId;
       const figureCount = found.items.reduce((sum, it) => sum + (it.figureCount ?? 0), 0);
       const options = found.items.flatMap((it) => (Array.isArray(it.options) ? it.options : []));
@@ -83,14 +86,14 @@ export async function askAlphaAboutOrder(orderId: string | null, questionRaw: st
     question,
     askedBy: { userId: user.id, role: user.role, name: user.name },
     businessId,
-    orderId,
+    orderId: visibleOrderId,
     context,
   });
 
-  if (orderId) {
+  if (visibleOrderId) {
     await addComment(
       user,
-      orderId,
+      visibleOrderId,
       `Asked Alpha: "${question}"\n\nAlpha: ${answer.answer}`,
     ).catch(() => {
       /* the answer still reached the person asking even if logging fails */
