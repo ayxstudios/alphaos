@@ -12,7 +12,8 @@ import { activityLog, assignments, earnings, orders, users } from "@/lib/db/sche
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { WITH_CUSTOMER_STATUSES } from "@/lib/orders/board-constants";
 import { loadDesignerContact, type DesignerContact } from "@/lib/designers/profile";
-import { startOfWeekInTimezone, formatInTimezone } from "@/lib/designers/quiet-hours";
+import { DEFAULT_TIMEZONE, startOfWeekInTimezone, formatInTimezone } from "@/lib/designers/quiet-hours";
+import { formatDeadline } from "@/lib/time";
 
 export type UpcomingDeadline = {
   orderId: string;
@@ -137,7 +138,7 @@ async function loadWeek(tx: Tx, target: string): Promise<DesignerWeek> {
       orderNumber: r.orderNumber ?? r.fallbackNumber,
       status: r.status,
       dueAt: r.dueAt?.toISOString() ?? null,
-      dueAtLocal: r.dueAt ? formatInTimezone(r.dueAt, contact?.timezone) : null,
+      dueAtLocal: r.dueAt ? formatDeadline(r.dueAt, contact?.timezone ?? DEFAULT_TIMEZONE) : null,
     })),
   };
 }

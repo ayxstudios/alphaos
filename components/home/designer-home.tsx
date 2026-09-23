@@ -6,6 +6,8 @@ import { ArrowRight, Calendar, Columns } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import type { RequestUser } from "@/lib/db";
 import { getDesignerHome } from "@/lib/home/designer";
+import { DEFAULT_TIMEZONE } from "@/lib/designers/quiet-hours";
+import { formatDeadline } from "@/lib/time";
 import { pctDelta } from "@/lib/home/shared";
 import { DayLine, HomeSection, RowLabel, StatTile } from "./primitives";
 
@@ -17,9 +19,9 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
   const h = await getDesignerHome(user);
   const active = h.board.queue + h.board.inDesign + h.board.revisions + h.board.awaitingQc;
   const next = h.week.upcoming.slice(0, 5);
-  const tz = h.week.contact?.timezone || "Australia/Melbourne";
-  const fmtDue = (iso: string | null) =>
-    iso ? new Intl.DateTimeFormat("en-AU", { timeZone: tz, weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(new Date(iso)).replace(",", "") : "No date";
+  // The designer's own zone (same as the board card and My Week), zone named.
+  const tz = h.week.contact?.timezone || DEFAULT_TIMEZONE;
+  const fmtDue = (iso: string | null) => formatDeadline(iso, tz, "No date");
   const sentence = [
     h.overdue ? `${h.overdue} order${h.overdue === 1 ? " is" : "s are"} late` : h.dueToday ? `${h.dueToday} due today` : "Nothing due today",
     `${active} on your board`,

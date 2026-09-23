@@ -49,7 +49,16 @@ const COLUMNS: { key: ColKey; title: string }[] = [
   { key: "complete", title: `Complete (last ${COMPLETE_COLUMN_WINDOW_DAYS} days)` },
 ];
 
-export function DesignerBoard({ initial, viewerRole }: { initial: Cols; viewerRole: "admin" | "va" | "designer" }) {
+export function DesignerBoard({
+  initial,
+  viewerRole,
+  timeZone,
+}: {
+  initial: Cols;
+  viewerRole: "admin" | "va" | "designer";
+  /** The board owner's zone: a designer reads their deadline in it. */
+  timeZone: string;
+}) {
   const router = useRouter();
   const toast = useToast();
   const [cols, setCols] = useState<Cols>(initial);
@@ -163,6 +172,7 @@ export function DesignerBoard({ initial, viewerRole }: { initial: Cols; viewerRo
         <CardModal
           card={openCard}
           viewerRole={viewerRole}
+          timeZone={timeZone}
           onClose={() => setOpenCard(null)}
           onSubmitForQc={viewerRole === "designer" ? () => submitFromModal(openCard) : undefined}
         />

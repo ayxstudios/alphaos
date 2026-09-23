@@ -171,7 +171,7 @@ async function BoardContent({
                   </Link>
                 </div>
               )}
-              <DesignerBoard initial={columns} viewerRole={user.role} />
+              <DesignerBoard initial={columns} viewerRole={user.role} timeZone={board.timeZone} />
               <Disclosure
                 summary="Earnings history"
                 hint={board.earningHistory.length ? `${board.earningHistory.length} order${board.earningHistory.length === 1 ? "" : "s"}` : "nothing yet"}

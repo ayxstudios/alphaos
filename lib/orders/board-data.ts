@@ -12,7 +12,9 @@ import {
   earnings,
   qcChecks,
   proofs,
+  designerProfiles,
 } from "@/lib/db/schema";
+import { DEFAULT_TIMEZONE, isValidTimezone } from "@/lib/designers/quiet-hours";
 import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
 import { issueLabels } from "@/lib/proofs/issues";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
@@ -305,6 +307,8 @@ export type DesignerBoard = {
   dailyEarnings: number;
   periodEarnings: number;
   earningHistory: DesignerEarningHistory[];
+  /** The board owner's own timezone (their deadlines are shown in it). */
+  timeZone: string;
 };
 
 export type DesignerEarningHistory = {
@@ -358,7 +362,7 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
     // The live columns (queue/in-design/QC) and the capped Complete column are
     // independent queries — same with the earnings figures below — so they all
     // go over the wire together instead of one round trip after another.
-    const [activeRows, completeRows, [daily], [period], earningRows] = await Promise.all([
+    const [activeRows, completeRows, [daily], [period], earningRows, [profile]] = await Promise.all([
       tx
         .select(BOARD_ROW_SELECT)
         .from(orders)
@@ -408,6 +412,11 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
         .where(eq(earnings.designerId, target))
         .orderBy(desc(earnings.createdAt))
         .limit(20),
+      tx
+        .select({ timezone: designerProfiles.timezone })
+        .from(designerProfiles)
+        .where(eq(designerProfiles.userId, target))
+        .limit(1),
     ]);
 
     const rows = [...activeRows, ...completeRows];
@@ -435,6 +444,7 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
         withCustomer: pick((r) => (WITH_CUSTOMER_STATUSES as readonly string[]).includes(r.status)),
         complete: cards.filter((c) => meta.get(c.orderId)!.status === "complete"),
       },
+      timeZone: isValidTimezone(profile?.timezone ?? null) ? (profile?.timezone as string) : DEFAULT_TIMEZONE,
       dailyEarnings: Number(daily?.total ?? 0),
       periodEarnings: Number(period?.total ?? 0),
       earningHistory: earningRows.map((earning) => ({

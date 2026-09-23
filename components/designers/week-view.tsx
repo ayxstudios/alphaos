@@ -76,7 +76,7 @@ export function DesignerWeekView({ week }: { week: DesignerWeek }) {
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate">Timezone</p>
-            <p className="text-ink">{c?.timezoneRaw ?? "Not set"}</p>
+            <p className="text-ink">{c?.timezoneRaw ?? (c ? `Not set (${c.timezone} used)` : "Not set")}</p>
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate">Quiet hours</p>

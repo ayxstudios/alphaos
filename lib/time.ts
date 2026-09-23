@@ -21,15 +21,30 @@ function toDate(value: When): Date | null {
  * that shows the hour or minute gets the zone name appended. Returns `fallback`
  * for a missing or invalid value.
  */
-export function formatAt(value: When, options: Intl.DateTimeFormatOptions, fallback = ""): string {
+export function formatAt(
+  value: When,
+  options: Intl.DateTimeFormatOptions,
+  fallback = "",
+  timeZone: string = APP_TIME_ZONE,
+): string {
   const d = toDate(value);
   if (!d) return fallback;
   const showsTime = options.hour !== undefined || options.minute !== undefined;
   return new Intl.DateTimeFormat("en-AU", {
     ...options,
-    timeZone: APP_TIME_ZONE,
+    timeZone,
     ...(showsTime ? { timeZoneName: "short" as const } : {}),
   }).format(d);
+}
+
+/**
+ * A designer's deadline, in THEIR zone (profile timezone, see
+ * lib/designers/quiet-hours.ts), with the zone name: "Wed 24 Sept, 2:39 pm
+ * GMT+7". The one format the board card, Home and My Week share, so the same
+ * deadline never reads as two different clocks.
+ */
+export function formatDeadline(value: When, timeZone: string, fallback = ""): string {
+  return formatAt(value, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }, fallback, timeZone).replace(",", "");
 }
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;

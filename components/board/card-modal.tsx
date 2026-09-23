@@ -24,7 +24,7 @@ import {
 import type { BoardCard } from "@/lib/orders/board-data";
 import { isWithCustomer, SENT_BACK_FROM } from "@/lib/orders/board-constants";
 import type { CardDetail, CardEvent, CardImage } from "@/lib/orders/card-detail";
-import { formatAt } from "@/lib/time";
+import { formatAt, formatDeadline } from "@/lib/time";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 type ViewerRole = "admin" | "va" | "designer";
@@ -43,11 +43,14 @@ const dateFmt = {
 export function CardModal({
   card,
   viewerRole,
+  timeZone,
   onClose,
   onSubmitForQc,
 }: {
   card: BoardCard;
   viewerRole: ViewerRole;
+  /** The designer's zone; their deadline is shown in it (staff keep the app zone). */
+  timeZone?: string;
   onClose: () => void;
   /** Designer only: send the card to Awaiting QC from here (true = moved). */
   onSubmitForQc?: () => Promise<boolean>;
@@ -263,7 +266,12 @@ export function CardModal({
           {viewerRole === "designer" ? (
             // The designer's own deadline (their assignment), never the customer SLA.
             <Meta label="Your deadline">
-              <DueLine dueAt={card.dueAt} done={card.status === "complete"} withCustomer={isWithCustomer(card.status)} />
+              <DueLine
+                dueAt={card.dueAt}
+                done={card.status === "complete"}
+                withCustomer={isWithCustomer(card.status)}
+                timeZone={timeZone}
+              />
             </Meta>
           ) : (
             <>
@@ -606,11 +614,23 @@ function uploadToR2(
   });
 }
 
-function DueLine({ dueAt, done = false, withCustomer = false }: { dueAt: string | null; done?: boolean; withCustomer?: boolean }) {
+function DueLine({
+  dueAt,
+  done = false,
+  withCustomer = false,
+  timeZone,
+}: {
+  dueAt: string | null;
+  done?: boolean;
+  withCustomer?: boolean;
+  timeZone?: string;
+}) {
   return (
     <div className="flex flex-wrap items-center gap-x-2">
       <Countdown dueAt={dueAt} done={done} withCustomer={withCustomer} />
-      {dueAt && !withCustomer && <span className="text-xs text-slate">{dateFmt.format(new Date(dueAt))}</span>}
+      {dueAt && !withCustomer && (
+        <span className="text-xs text-slate">{timeZone ? formatDeadline(dueAt, timeZone) : dateFmt.format(new Date(dueAt))}</span>
+      )}
     </div>
   );
 }
