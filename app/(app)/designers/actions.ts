@@ -1,11 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser } from "@/lib/db";
-import { designerProfiles, users } from "@/lib/db/schema";
+import { businesses, designerBusinesses, designerProfiles, users } from "@/lib/db/schema";
+import { hashPassword } from "@/lib/auth/password";
 import {
   isValidE164,
   isValidHHMM,
@@ -193,4 +194,80 @@ export async function setContact(userId: string, patch: ContactPatch): Promise<A
   revalidatePath("/board");
   revalidatePath("/me");
   return { ok: true };
+}
+
+export type AddDesignerInput = {
+  name: string;
+  email: string;
+  password: string;
+  /** Businesses the designer can be assigned work in. Empty = the ones the caller works in. */
+  businessIds?: string[];
+};
+
+export type AddDesignerResult = { ok: true; userId: string } | { ok: false; message: string };
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD = 8;
+/** A new designer starts with a small daily limit so auto-assign can reach them at all (0 = never). */
+const NEW_DESIGNER_DAILY_LIMIT = 5;
+
+/**
+ * Create a designer account from the roster (admin only). Until this existed
+ * the only way to mint a designer was `npm run create-user` on the owner
+ * connection, which also never attached the designer to a business — so on a
+ * live workspace nobody could reach the finished-portrait upload at all.
+ *
+ * Writes the user (role designer), a designer profile ranked last, and the
+ * designer_businesses links, all in one transaction. The temporary password is
+ * hashed here and never stored or logged in clear.
+ */
+export async function addDesigner(input: AddDesignerInput): Promise<AddDesignerResult> {
+  const session = await auth();
+  if (!session?.user) return { ok: false, message: "Not signed in" };
+  const user: RequestUser = { id: session.user.id, role: session.user.role };
+  if (user.role !== "admin") return { ok: false, message: "Only an admin can add designers" };
+
+  const name = (input.name ?? "").trim().replace(/\s+/g, " ");
+  const email = (input.email ?? "").trim().toLowerCase();
+  const password = input.password ?? "";
+  if (name.length < 2 || name.length > 80) return { ok: false, message: "Enter the designer's name" };
+  if (!EMAIL_RE.test(email) || email.length > 200) return { ok: false, message: "Enter a valid email address" };
+  if (password.length < MIN_PASSWORD) {
+    return { ok: false, message: `The temporary password needs at least ${MIN_PASSWORD} characters` };
+  }
+  const wanted = [...new Set((input.businessIds ?? []).map((id) => id.trim()).filter(Boolean))];
+
+  try {
+    const userId = await withUserContext(user, async (tx) => {
+      const [existing] = await tx.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+      if (existing) throw new Error("An account with that email already exists");
+
+      // Only businesses the admin can see (RLS) are attachable.
+      const visible = await tx.select({ id: businesses.id }).from(businesses);
+      const visibleIds = new Set(visible.map((b) => b.id));
+      const attach = wanted.length ? wanted.filter((id) => visibleIds.has(id)) : [...visibleIds];
+      if (!attach.length) throw new Error("Choose at least one business for this designer");
+
+      const [{ maxRank }] = await tx
+        .select({ maxRank: sql<number>`coalesce(max(${designerProfiles.rank}), -1)::int` })
+        .from(designerProfiles);
+
+      const [created] = await tx
+        .insert(users)
+        .values({ name, email, role: "designer", passwordHash: await hashPassword(password) })
+        .returning({ id: users.id });
+      await tx.insert(designerProfiles).values({
+        userId: created.id,
+        rank: Number(maxRank) + 1,
+        dailyCapacity: NEW_DESIGNER_DAILY_LIMIT,
+      });
+      await tx.insert(designerBusinesses).values(attach.map((businessId) => ({ userId: created.id, businessId })));
+      return created.id;
+    });
+    revalidatePath("/designers");
+    revalidatePath("/board");
+    return { ok: true, userId };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Could not add the designer" };
+  }
 }

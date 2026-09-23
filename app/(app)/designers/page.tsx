@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { getDesignerRoster } from "@/lib/designers/roster";
 import { getStyleCatalog } from "@/lib/designers/styles";
 import { loadShellData } from "@/lib/shell/context";
+import { AddDesigner } from "@/components/designers/add-designer";
 import { DesignerRoster } from "@/components/designers/designer-roster";
 import { DataPanel, EmptyState, Page, PageHeader } from "@/components/ui";
 import { Users } from "@/components/ui/icons";
@@ -17,7 +18,8 @@ export default async function DesignersPage() {
   // Staff-only surface; designers have no business here.
   if (user.role === "designer") redirect("/board");
 
-  const { selected } = await loadShellData(user);
+  const { selected, options } = await loadShellData(user);
+  const isAdmin = user.role === "admin";
   const [designers, styleCatalog] = await Promise.all([
     getDesignerRoster(user),
     getStyleCatalog(user, selected.id),
@@ -28,6 +30,7 @@ export default async function DesignersPage() {
       <PageHeader
         title="Designers"
         description="Auto-assign works down this list, matching styles and never past a daily limit."
+        actions={isAdmin && designers.length > 0 ? <AddDesigner businesses={options} variant="secondary" /> : undefined}
       />
 
       {designers.length === 0 ? (
@@ -35,7 +38,12 @@ export default async function DesignersPage() {
           <EmptyState
             icon={Users}
             headline="No designers yet"
-            body="Active designers with a profile will appear here to rank and configure."
+            body={
+              isAdmin
+                ? "Add a designer and their board, with the finished-portrait upload, appears right away."
+                : "Ask an admin to add designers; they appear here to rank and configure."
+            }
+            action={isAdmin ? <AddDesigner businesses={options} /> : undefined}
           />
         </DataPanel>
       ) : (
