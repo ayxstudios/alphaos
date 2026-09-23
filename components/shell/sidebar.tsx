@@ -176,7 +176,8 @@ export function Sidebar({
     <aside
       className={cn(
         "flex h-screen shrink-0 flex-col border-r border-line bg-surface transition-[width] duration-150 ease-standard",
-        collapsed && !mobile ? "w-[4.5rem]" : "w-60",
+        // In the phone drawer the panel sets the width: fill it, no blank strip.
+        mobile ? "w-full" : collapsed ? "w-[4.5rem]" : "w-60",
       )}
     >
       <div
@@ -214,8 +215,8 @@ export function Sidebar({
         )}
       </nav>
 
-      <div className="border-t border-line p-2">
-        {onToggle && !mobile && (
+      {onToggle && !mobile && (
+        <div className="border-t border-line p-2">
           <button
             type="button"
             onClick={onToggle}
@@ -230,8 +231,8 @@ export function Sidebar({
             <Columns size={17} className={cn(collapsed && "rotate-180")} />
             {!collapsed && <span className="ml-2">Collapse</span>}
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </aside>
   );
 }
