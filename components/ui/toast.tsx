@@ -96,7 +96,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={toast}>
       {children}
       <div
-        className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-full max-w-sm flex-col gap-2"
+        // Below lg the bottom tab bar (h-16) is there: toasts sit above it,
+        // inset 16px on both sides (w-full plus right-4 ran off the left edge
+        // of a phone). lg and up: bottom right, as before.
+        className="pointer-events-none fixed inset-x-4 bottom-20 z-[60] flex flex-col gap-2 sm:left-auto sm:w-full sm:max-w-sm lg:bottom-4 lg:right-4"
         role="region"
         aria-label="Notifications"
       >
