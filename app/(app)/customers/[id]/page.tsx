@@ -175,8 +175,8 @@ function assetSummary(rows: AssetCountRow[]) {
   const count = (type: string) =>
     rows.find((row) => row.type === type)?.count ?? 0;
   return [
-    `${count("reference")} reference`,
-    `${count("submission")} work`,
+    `${count("reference")} customer photo${count("reference") === 1 ? "" : "s"}`,
+    `${count("submission")} draft${count("submission") === 1 ? "" : "s"}`,
     `${count("final")} final`,
   ].join(" · ");
 }
@@ -443,11 +443,12 @@ export default async function CustomerDetailPage({
               : "No messages yet"
           }
         />
+        {/* Order totals are not stored, so no Spend tile shouting "Not
+            tracked": show how long they have been a customer instead. */}
         <StatCard
-          label="Spend"
-          value="Not tracked"
-          detail="Order totals are not stored yet"
-          tone="warning"
+          label="Customer since"
+          value={fmtDate(customer.createdAt)}
+          detail={latestOrder ? `Latest order ${fmtDate(latestOrder.createdAt)}` : "No orders yet"}
         />
       </div>
 
@@ -586,7 +587,7 @@ export default async function CustomerDetailPage({
                             </dd>
                           </div>
                           <div className="flex items-center justify-between gap-3">
-                            <dt className="text-slate">QC / VA</dt>
+                            <dt className="text-slate">QC</dt>
                             <dd className="truncate text-right font-medium text-ink">
                               {latestQc
                                 ? `${titleCase(latestQc.result)} by ${
@@ -608,7 +609,7 @@ export default async function CustomerDetailPage({
                             </dd>
                           </div>
                           <div className="flex items-center justify-between gap-3">
-                            <dt className="text-slate">Assets</dt>
+                            <dt className="text-slate">Files</dt>
                             <dd className="truncate text-right font-medium text-ink">
                               {assetSummary(assetsForOrder)}
                             </dd>
@@ -664,13 +665,13 @@ export default async function CustomerDetailPage({
 
           <DataPanel className="overflow-hidden">
             <div className="border-b border-line/60 px-4 py-3">
-              <SectionHeader title="Communication" />
+              <SectionHeader title="Messages" />
             </div>
             {messageRows.length === 0 ? (
               <EmptyState
                 icon={Inbox}
                 headline="No messages"
-                body="Customer messages linked to this customer or their orders will appear here."
+                body="Emails with this customer and their orders show here."
               />
             ) : (
               <ul className="divide-y divide-line/60">
@@ -681,7 +682,7 @@ export default async function CustomerDetailPage({
                         variant={message.direction === "inbound" ? "info" : "neutral"}
                         dot
                       >
-                        {message.direction === "inbound" ? "Customer" : "Outbound"}
+                        {message.direction === "inbound" ? "From customer" : "From us"}
                       </Badge>
                       {message.direction === "outbound" && (message.status === "draft" || message.status === "queued") && (
                         <Badge variant="warning">{message.status === "draft" ? "Draft, not sent" : "Queued, not sent"}</Badge>
@@ -712,7 +713,7 @@ export default async function CustomerDetailPage({
               <EmptyState
                 icon={Users}
                 headline="No activity"
-                body="Workflow movement and team comments appear here after work starts."
+                body="Order changes and team notes show here once work starts."
               />
             ) : (
               <ul className="divide-y divide-line/60">
