@@ -82,7 +82,7 @@ const VA_STEPS: TourStep[] = [
         target: ['[data-tour="page:orders"]'],
         undo: "back",
         reset: "/orders?view=active",
-        say: "Open Needs Details for orders missing information.",
+        say: "Open Needs details for orders missing information.",
       },
     ],
     nav: { kind: "nav", say: "Open Orders to see every order." },

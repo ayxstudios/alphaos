@@ -94,6 +94,37 @@ const BULK_STATUSES: { value: OrderStatus; label: string }[] = [
   { value: "cancelled", label: "Cancelled" },
 ];
 
+/**
+ * What a person reads for each derived status: short, sentence case, and the
+ * same words as the view tabs and the order page. The derived keys stay as they
+ * are (the stage timers and help text key off them).
+ */
+const STATUS_LABEL: Record<string, string> = {
+  "Needs VA Review": "Needs review",
+  "Awaiting VA Details": "Needs details",
+  "Awaiting Customer Photos": "Awaiting photos",
+  "Assigned - Not Started": "Not started",
+  "With Designer": "In design",
+  "Awaiting Designer Revision": "In revision",
+  "Awaiting Designer QC Fix": "Failed QC",
+  "Awaiting VA QC": "Awaiting QC",
+  "Awaiting Customer Approval": "Awaiting approval",
+  "Ready to Ship": "Ready to print",
+  "In Print": "Printing",
+  "Shipped - Awaiting Tracking": "Needs tracking",
+  "Completed With Tracking": "Complete",
+  "On Hold": "On hold",
+  "Fulfilment Only": "Fulfilment only",
+};
+
+function statusLabel(row: { derivedStatus: string; assignee: string; status: string }): string {
+  // An unassigned order waiting for a designer says so plainly.
+  if (row.derivedStatus === "Needs VA Review" && row.status === "ready_to_assign" && row.assignee === "Unassigned") {
+    return "Unassigned";
+  }
+  return STATUS_LABEL[row.derivedStatus] ?? row.derivedStatus;
+}
+
 const COLUMN_STORAGE_KEY = "orders_table_columns";
 
 const ORDER_COLUMNS: ColumnDef[] = [
@@ -108,8 +139,8 @@ const ORDER_COLUMNS: ColumnDef[] = [
         <Link href={`/orders/${row.id}`} className="truncate text-sm font-semibold text-ink hover:text-pigment">
           {row.orderNumber}
         </Link>
-        <p className="truncate text-xs text-slate" title={row.itemTitle}>{row.itemTitle}</p>
-        {row.itemSummary && <p className="truncate text-xs text-slate" title={row.itemSummary}>{row.itemSummary}</p>}
+        <p className="break-words text-xs text-slate">{row.itemTitle}</p>
+        {row.itemSummary && <p className="break-words text-xs text-slate">{row.itemSummary}</p>}
       </div>
     ),
   },
@@ -121,8 +152,8 @@ const ORDER_COLUMNS: ColumnDef[] = [
     priority: "core",
     render: (row) => (
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-ink" title={row.customer} data-tour="order:customer">{row.customer}</p>
-        <p className="truncate text-xs text-slate" title={row.customerEmail ?? "No email"}>{row.customerEmail ?? "No email"}</p>
+        <p className="break-words text-sm font-medium text-ink" data-tour="order:customer">{row.customer}</p>
+        <p className="text-xs text-slate [overflow-wrap:anywhere]">{row.customerEmail ?? "No email"}</p>
       </div>
     ),
   },
@@ -134,8 +165,8 @@ const ORDER_COLUMNS: ColumnDef[] = [
     priority: "wide",
     render: (row) => (
       <div className="min-w-0">
-        <p className="truncate text-sm text-ink" title={row.source}>{row.source}</p>
-        <p className="truncate text-xs text-slate" title={row.platform}>{row.platform}</p>
+        <p className="break-words text-sm text-ink">{row.source}</p>
+        <p className="break-words text-xs text-slate">{row.platform}</p>
       </div>
     ),
   },
@@ -148,13 +179,13 @@ const ORDER_COLUMNS: ColumnDef[] = [
     render: (row) => (
       <div className="flex min-w-0 flex-col gap-1">
         <div className="flex items-center gap-1.5">
-          <Badge variant={statusTone(row)} dot>{row.derivedStatus}</Badge>
-          <InfoBubble label={`What "${row.derivedStatus}" means`}>
-            <StatusHelp status={row.derivedStatus} reason={row.reviewReason} />
+          <Badge variant={statusTone(row)} dot className="whitespace-nowrap">{statusLabel(row)}</Badge>
+          <InfoBubble label={`What "${statusLabel(row)}" means`}>
+            <StatusHelp status={row.derivedStatus} label={statusLabel(row)} reason={row.reviewReason} />
           </InfoBubble>
         </div>
         {row.reviewReason && (
-          <p className="truncate text-xs leading-snug text-amber" title={row.reviewReason}>{row.reviewReason}</p>
+          <p className="text-xs leading-snug text-amber">{row.reviewReason}</p>
         )}
       </div>
     ),
@@ -165,7 +196,7 @@ const ORDER_COLUMNS: ColumnDef[] = [
     sort: "owner",
     width: "7rem",
     priority: "wide",
-    render: (row) => <p className="truncate text-sm text-slate" title={row.assignee}>{row.assignee}</p>,
+    render: (row) => <p className="break-words text-sm text-slate">{row.assignee}</p>,
   },
   {
     key: "ordered",
@@ -194,16 +225,18 @@ const ORDER_COLUMNS: ColumnDef[] = [
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
           {row.isOverdue && <span className="size-1.5 shrink-0 rounded-full bg-rose" aria-hidden="true" />}
-          <span className={cn("truncate text-sm", row.isOverdue ? "font-medium text-rose" : "text-slate")}>
+          <span className={cn("text-sm", row.isOverdue ? "font-medium text-rose" : "text-slate")}>
             {row.isOverdue ? `Overdue · ${fmtShortDate(row.dueAt)}` : fmtDate(row.dueAt)}
           </span>
         </div>
-        <p
-          className={cn("truncate text-xs", row.stageTimer.isOverdue ? "font-medium text-rose" : "text-slate")}
-          title={row.stageTimer.followUpLabel ?? row.stageTimer.label}
-        >
-          {formatStageRemaining(row.stageTimer)} · {row.stageTimer.followUpLabel ?? row.stageTimer.label}
-        </p>
+        {row.stageTimer.remainingMs != null && (
+          <p
+            className={cn("text-xs", row.stageTimer.isOverdue ? "font-medium text-rose" : "text-slate")}
+            title={`Time left for this step (${row.stageTimer.label})`}
+          >
+            {row.stageTimer.followUpLabel ?? `Step: ${formatStageRemaining(row.stageTimer)}`}
+          </p>
+        )}
       </div>
     ),
   },
@@ -366,11 +399,11 @@ const DEFAULT_HELP = {
   todo: "Open the order to see the next step.",
 };
 
-function StatusHelp({ status, reason }: { status: string; reason: string | null }) {
+function StatusHelp({ status, label, reason }: { status: string; label: string; reason: string | null }) {
   const help = STATUS_HELP[status] ?? DEFAULT_HELP;
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-sm font-semibold text-ink">{status}</p>
+      <p className="text-sm font-semibold text-ink">{label}</p>
       <div className="flex flex-col gap-0.5">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate">What it means</p>
         <p className="text-sm leading-snug text-ink">{help.means}</p>
@@ -752,10 +785,10 @@ export function OrdersOperationsTable({
                       <Link href={`/orders/${row.id}`} className="text-base font-semibold text-ink hover:text-pigment">
                         {row.orderNumber}
                       </Link>
-                      <p className="truncate text-sm text-slate">{row.customer}</p>
+                      <p className="break-words text-sm text-slate">{row.customer}</p>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <Badge variant={statusTone(row)} dot>{row.derivedStatus}</Badge>
+                      <Badge variant={statusTone(row)} dot className="whitespace-nowrap">{statusLabel(row)}</Badge>
                     </div>
                   </div>
                   {row.reviewReason && <p className="mt-1.5 text-sm leading-snug text-amber">{row.reviewReason}</p>}
@@ -766,7 +799,7 @@ export function OrdersOperationsTable({
                     </div>
                     <div>
                       <dt className="text-xs text-slate">Designer</dt>
-                      <dd className="truncate text-ink">{row.assignee}</dd>
+                      <dd className="break-words text-ink">{row.assignee}</dd>
                     </div>
                     <div>
                       <dt className="text-xs text-slate">Due</dt>
@@ -780,7 +813,7 @@ export function OrdersOperationsTable({
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-xs text-slate">Stage time</dt>
+                      <dt className="text-xs text-slate">This step</dt>
                       <dd className={cn("font-medium", row.stageTimer.isOverdue ? "text-rose" : "text-ink")}>
                         {formatStageRemaining(row.stageTimer)}
                       </dd>

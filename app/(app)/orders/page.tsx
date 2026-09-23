@@ -101,17 +101,17 @@ const STATUS_FILTERS = [
 const VIEWS: { key: ViewKey; label: string; description: string }[] = [
   { key: "active", label: "All open", description: "Everything still needing attention" },
   { key: "overdue", label: "Overdue", description: "Past the due date" },
-  { key: "needs_details", label: "Needs Details", description: "VA must complete imported order details" },
-  { key: "needs_photos", label: "Needs Photos", description: "Waiting on reference photos" },
+  { key: "needs_details", label: "Needs details", description: "Imported orders a VA still has to fill in" },
+  { key: "needs_photos", label: "Awaiting photos", description: "Waiting on reference photos" },
   { key: "unassigned", label: "Unassigned", description: "Ready but no active designer" },
-  { key: "awaiting_qc", label: "Awaiting QC", description: "Ready for VA quality review" },
-  { key: "revisions", label: "Revision", description: "Back in design after a revision" },
+  { key: "awaiting_qc", label: "Awaiting QC", description: "Ready for a quality check" },
+  { key: "revisions", label: "In revision", description: "Back in design after a revision" },
   { key: "failed_qc", label: "Failed QC", description: "Latest QC failed and is being fixed" },
-  { key: "awaiting_customer", label: "Awaiting Customer", description: "Proof sent or awaiting approval" },
-  { key: "ready_to_ship", label: "Ready to Ship", description: "Physical approved order without a print job" },
-  { key: "shipped_waiting_tracking", label: "Shipped - Awaiting Tracking", description: "Print job exists without tracking" },
-  { key: "completed_with_tracking", label: "Completed With Tracking", description: "Print job tracking has been captured" },
-  { key: "completed", label: "Completed", description: "Completed, delivered, or cancelled orders" },
+  { key: "awaiting_customer", label: "Awaiting approval", description: "Proof sent, waiting for the customer" },
+  { key: "ready_to_ship", label: "Ready to print", description: "Approved prints not sent to the printer yet" },
+  { key: "shipped_waiting_tracking", label: "Needs tracking", description: "Sent to print, no tracking yet" },
+  { key: "completed_with_tracking", label: "Tracking added", description: "Tracking number saved" },
+  { key: "completed", label: "Completed", description: "Completed, delivered or cancelled" },
 ];
 
 // The five counts that matter most, day to day. Everything else (the other
@@ -212,12 +212,12 @@ function reviewReasonText(input: {
   assignee: string | null;
 }): string | null {
   if (input.derivedStatus !== "Needs VA Review") return null;
-  if (input.status === "triage") return "This is a draft order. Open it and choose the right order type.";
-  if (!input.email) return "No customer email yet. Add the customer's email so we can send the proof.";
-  if (input.unresolvedFigures) return "We do not know how many figures. Open it and set the figure count.";
-  if (input.fulfilmentConflict) return "The order says both digital file and print. Check which one the customer paid for.";
-  if (!input.assignee) return "No designer is free for this order right now. Please assign it to a designer by hand.";
-  return "Open this order and check what is missing.";
+  if (input.status === "triage") return "Draft order. Choose the order type.";
+  if (!input.email) return "No customer email yet. Add it.";
+  if (input.unresolvedFigures) return "Figure count unknown. Set it.";
+  if (input.fulfilmentConflict) return "Says both digital and print. Check which.";
+  if (!input.assignee) return "No designer is free. Assign one.";
+  return "Open it and check what is missing.";
 }
 
 /**
@@ -871,7 +871,7 @@ export default async function OrdersPage({
             >
               <Mail size={15} className="text-rose" />
               <span>
-                {emailAttention} email{emailAttention === 1 ? "" : "s"} need a reply
+                {emailAttention} email{emailAttention === 1 ? " needs" : "s need"} a reply
               </span>
               <ArrowRight size={14} />
             </Link>
@@ -898,8 +898,8 @@ export default async function OrdersPage({
         {rows.length === 0 ? (
           <EmptyState
             icon={Package}
-            headline={`Nothing in ${selectedViewMeta.label.toLowerCase()}`}
-            body={activeFilters.length ? "Try clearing a filter." : "All clear here."}
+            headline={activeFilters.length ? "No orders match" : "Nothing here right now"}
+            body={activeFilters.length ? "Try clearing a filter." : `No orders are in ${selectedViewMeta.label} at the moment.`}
             action={
               activeFilters.length ? (
                 <Link href={clearFiltersHref(currentParams)} className="text-sm font-medium text-pigment hover:text-ink">
