@@ -342,7 +342,7 @@ function JobRunRow({ job }: { job: JobRunHealth }) {
         {job.error && <p className="mt-1 text-xs text-rose">{job.error}</p>}
         {failedIds && <p className="mt-1 text-xs text-slate">Failed orders: {failedIds}</p>}
       </div>
-      <Badge variant={badge.variant} dot>
+      <Badge variant={badge.variant} dot className="w-fit">
         {badge.label}
       </Badge>
     </div>
@@ -359,7 +359,7 @@ function ShopSyncRow({ shop }: { shop: ShopSyncHealth }) {
           {shop.lastSyncAt ? `last synced ${formatDateTime(shop.lastSyncAt)}` : "not synced yet"}
         </p>
       </div>
-      <Badge variant={shop.stale ? "danger" : "success"} dot>
+      <Badge variant={shop.stale ? "danger" : "success"} dot className="w-fit">
         {shop.stale ? "Not syncing" : "Fine"}
       </Badge>
     </Link>
@@ -378,7 +378,7 @@ function MailboxPollRow({ mailbox }: { mailbox: GmailMailboxHealth }) {
           <p className="mt-1 text-xs text-slate">Gmail has newer mail than AlphaOS has read.</p>
         )}
       </div>
-      <Badge variant={mailbox.stalled ? "danger" : "success"} dot>
+      <Badge variant={mailbox.stalled ? "danger" : "success"} dot className="w-fit">
         {mailbox.stalled ? `Stuck${mailbox.ageHours != null ? ` ${Math.round(mailbox.ageHours)} h` : ""}` : "Fine"}
       </Badge>
     </div>
