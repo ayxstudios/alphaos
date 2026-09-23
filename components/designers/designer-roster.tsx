@@ -174,7 +174,7 @@ function Row({
                 focusRing,
               )}
             >
-              <ChevronDown size={13} className="rotate-180" />
+              <ChevronDown size={16} className="rotate-180" />
             </button>
             <button
               type="button"
@@ -186,7 +186,7 @@ function Row({
                 focusRing,
               )}
             >
-              <ChevronDown size={13} />
+              <ChevronDown size={16} />
             </button>
           </div>
         )}
