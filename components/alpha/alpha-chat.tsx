@@ -49,7 +49,7 @@ function SendGlyph({ size = 16 }: { size?: number }) {
 }
 
 /**
- * Alpha's floating chat widget -- the same AI manager that answers on
+ * Alpha's chat panel (opened from the top bar) -- the same AI manager that answers on
  * WhatsApp, now live inside AlphaOS. Mounted once in AppShell for every
  * role. Persists its thread per user in localStorage; falls back to a calm
  * snapshot-built answer whenever the daemon can't be reached (never an
@@ -224,7 +224,7 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
                   aria-expanded={menuOpen}
                   onClick={() => setMenuOpen((v) => !v)}
                   className={cn(
-                    "inline-flex size-8 items-center justify-center rounded-input text-slate",
+                    "inline-flex size-11 items-center justify-center rounded-input text-slate sm:size-8",
                     "transition-colors motion-hover hover:bg-canvas hover:text-ink",
                     focusRing,
                   )}
@@ -240,7 +240,7 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
                       role="menuitem"
                       onClick={clearChat}
                       className={cn(
-                        "w-full rounded-input px-2 py-1.5 text-left text-sm text-ink",
+                        "min-h-11 w-full rounded-input px-2 py-1.5 text-left text-sm text-ink sm:min-h-0",
                         "transition-colors motion-hover hover:bg-canvas",
                         focusRing,
                       )}
@@ -255,7 +255,7 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
                 aria-label="Close Alpha AI"
                 onClick={() => setOpen(false)}
                 className={cn(
-                  "inline-flex size-8 items-center justify-center rounded-input text-slate",
+                  "inline-flex size-11 items-center justify-center rounded-input text-slate sm:size-8",
                   "transition-colors motion-hover hover:bg-canvas hover:text-ink",
                   focusRing,
                 )}
@@ -279,7 +279,7 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
                       type="button"
                       onClick={() => void send(s)}
                       className={cn(
-                        "rounded-full border border-line bg-canvas px-3 py-1.5 text-xs text-ink",
+                        "min-h-11 rounded-full border border-line bg-canvas px-3 py-1.5 text-sm text-ink sm:min-h-0 sm:text-xs",
                         "transition-colors motion-hover hover:bg-pigment-soft hover:border-pigment/30",
                         focusRing,
                       )}

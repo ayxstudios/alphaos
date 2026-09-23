@@ -121,7 +121,7 @@ export function TopBar({
                       role="menuitem"
                       onClick={() => choose(o.id, close)}
                       className={cn(
-                        "flex items-center justify-between gap-3 rounded-input px-2 py-1.5 text-left text-sm",
+                        "flex min-h-11 items-center justify-between gap-3 rounded-input px-2 py-1.5 text-left text-sm lg:min-h-9",
                         "transition-colors motion-hover hover:bg-canvas",
                         focusRing,
                         active ? "text-pigment" : "text-ink",
@@ -359,7 +359,7 @@ export function TopBar({
                   type="submit"
                   role="menuitem"
                   className={cn(
-                    "flex w-full items-center gap-2 rounded-input px-2 py-1.5 text-left text-sm text-ink",
+                    "flex min-h-11 w-full items-center gap-2 rounded-input px-2 py-1.5 text-left text-sm text-ink lg:min-h-9",
                     "transition-colors motion-hover hover:bg-canvas",
                     focusRing,
                   )}
