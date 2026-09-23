@@ -10,6 +10,7 @@ import { shops, orders, orderItems, customers, assets, activityLog } from "@/lib
 import { runAutoAssign } from "@/lib/orders/assign";
 import { runTransition } from "@/lib/orders/transitions";
 import { normalizeOrderNumber } from "@/lib/orders/reconcile";
+import { shopStyleChoices } from "@/lib/designers/styles";
 import {
   assetKey,
   extFor,
@@ -140,7 +141,7 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
         .from(shops)
         .where(eq(shops.id, input.shopId));
       if (!shop) return { ok: false as const, message: "Shop not found" };
-      if (!styleAllowed(input.style, shop.styles)) {
+      if (!styleAllowed(input.style, await shopStyleChoices(tx, shop.businessId, shop.styles))) {
         return { ok: false as const, message: "Choose one of this shop's configured portrait styles." };
       }
       const businessId = shop.businessId;
@@ -311,7 +312,7 @@ export async function completeOrderDetails(input: {
         .select({ styles: shops.styles })
         .from(shops)
         .where(eq(shops.id, order.shopId));
-      if (!styleAllowed(input.style, shop?.styles ?? null)) {
+      if (!styleAllowed(input.style, await shopStyleChoices(tx, businessId, shop?.styles))) {
         return { ok: false as const, message: "Choose one of this shop's configured portrait styles." };
       }
 

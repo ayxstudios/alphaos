@@ -6,6 +6,7 @@ import { withUserContext } from "@/lib/db";
 import { shops } from "@/lib/db/schema";
 import { loadShellData } from "@/lib/shell/context";
 import { isR2Configured } from "@/lib/storage/r2";
+import { shopStyleChoices } from "@/lib/designers/styles";
 import { NewOrderForm, type ShopOption } from "@/components/orders/new-order-form";
 import { Page, PageHeader } from "@/components/ui";
 
@@ -18,8 +19,8 @@ export default async function NewOrderPage() {
   if (user.role === "designer") redirect("/board");
   const { selected } = await loadShellData(user);
 
-  const rows = await withUserContext(user, (tx) =>
-    tx
+  const rows = await withUserContext(user, async (tx) => {
+    const list = await tx
       .select({
         id: shops.id,
         name: shops.name,
@@ -29,8 +30,11 @@ export default async function NewOrderPage() {
       })
       .from(shops)
       .where(and(eq(shops.active, true), eq(shops.businessId, selected.id)))
-      .orderBy(shops.name),
-  );
+      .orderBy(shops.name);
+    const out = [];
+    for (const r of list) out.push({ ...r, styles: await shopStyleChoices(tx, selected.id, r.styles) });
+    return out;
+  });
 
   const options: ShopOption[] = rows.map((r) => ({
     id: r.id,

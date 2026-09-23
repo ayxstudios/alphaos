@@ -52,14 +52,15 @@ export function AttentionList({ items, total, allHref = "/today" }: { items: Tod
         {items.map((it) => (
           <li key={it.id} className="flex items-center gap-3 py-2.5">
             <span className={cn("hidden w-20 shrink-0 rounded-chip px-2 py-0.5 text-center text-xs font-medium sm:block", KIND_TONE[it.kind])}>{KIND_SHORT[it.kind]}</span>
-            <div className="min-w-0 flex-1">
+            {/* The whole row opens the order: on a phone the action button is hidden. */}
+            <Link href={it.action.href} className={cn("min-w-0 flex-1 rounded-input", focusRing)}>
               <div className="flex min-w-0 items-center gap-2 text-xs text-slate">
                 <ShopBadge platform={it.platform} name={it.shop} className="min-w-0 text-xs" />
                 <span className="shrink-0 font-semibold text-ink">{it.orderNumber}</span>
                 <span className="ml-auto shrink-0 whitespace-nowrap tabular-nums">{it.age}</span>
               </div>
               <p className="truncate text-sm text-ink">{it.todo}</p>
-            </div>
+            </Link>
             <Link
               href={it.action.href}
               className={cn("hidden h-8 shrink-0 items-center rounded-input bg-canvas px-3 text-xs font-medium text-ink hover:bg-pigment-soft sm:inline-flex", focusRing)}

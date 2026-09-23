@@ -98,3 +98,15 @@ export async function getStyleCatalog(user: RequestUser, businessId: string): Pr
     return list.map((s) => s.name);
   });
 }
+
+/**
+ * The style choices an order form offers for a shop: the shop's own list when
+ * an admin set one (Settings), else the business's portrait styles (/styles).
+ * Without the fallback a shop with no list showed "No styles configured" and a
+ * VA could not set the style while completing an imported order.
+ */
+export async function shopStyleChoices(tx: Tx, businessId: string, shopStyles: string[] | null | undefined): Promise<string[]> {
+  const own = (shopStyles ?? []).map((s) => s.trim()).filter(Boolean);
+  if (own.length) return own;
+  return (await listBusinessStyles(tx, businessId)).map((s) => s.name);
+}
