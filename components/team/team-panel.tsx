@@ -240,7 +240,7 @@ function DeactivateDrawer({ member, onClose }: { member: TeamMember | null; onCl
           <ul className="list-disc space-y-1 pl-5 text-sm text-slate">
             <li>They cannot sign in, a session they have open ends on their next click, and their sign-in link stops working.</li>
             {member.role === "designer" && (
-              <li>They get no new orders and leave the roster and the Designers board list.</li>
+              <li>They get no new orders and leave the Designers list and Boards.</li>
             )}
             {member.role === "designer" && (
               <li>Orders already with them stay with them until you reassign them.</li>

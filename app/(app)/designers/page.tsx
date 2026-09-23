@@ -31,7 +31,7 @@ export default async function DesignersPage() {
   return (
     <Page>
       <PageHeader
-        title="Designer Roster"
+        title="Designers"
         tourId="page:roster"
         description="New orders go to the first designer on this list who draws the style and is under their daily limit."
         actions={isAdmin && designers.length > 0 ? <AddDesigner businesses={options} variant="secondary" /> : undefined}

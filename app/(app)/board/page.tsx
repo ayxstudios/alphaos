@@ -113,7 +113,7 @@ async function BoardContent({
   return (
     <Page className="max-w-none">
       <PageHeader
-        title={isStaff ? "Designers" : "My Board"}
+        title={isStaff ? "Boards" : "My Board"}
         tourId={isStaff ? "page:designers" : "page:board"}
         description={isStaff ? undefined : "Soonest deadline first."}
         actions={

@@ -44,7 +44,7 @@ const ADMIN_NAV: NavItem[] = [
   { label: "Orders", href: "/orders", icon: Package },
   { label: "QC", href: "/qc", icon: Eye },
   { label: "Messages", href: "/emails", icon: Mail },
-  { label: "Designers", href: "/board", icon: Columns },
+  { label: "Boards", href: "/board", icon: Columns },
   { label: "Print", href: "/queue/print", icon: Truck },
   { label: "Money", href: "/payouts", icon: Wallet },
   { label: "Settings", href: "/settings", icon: Settings },
@@ -52,7 +52,7 @@ const ADMIN_NAV: NavItem[] = [
 
 const ADMIN_MORE: NavItem[] = [
   { label: "System Health", href: "/health", icon: AlertTriangle },
-  { label: "Designer Roster", href: "/designers", icon: Palette },
+  { label: "Designers", href: "/designers", icon: Palette },
   { label: "Portrait Styles", href: "/styles", icon: Brush },
   { label: "Customers", href: "/customers", icon: Users },
 ];
@@ -63,12 +63,12 @@ const VA_NAV: NavItem[] = [
   { label: "Orders", href: "/orders", icon: Package },
   { label: "QC", href: "/qc", icon: Eye },
   { label: "Messages", href: "/emails", icon: Mail },
-  { label: "Designers", href: "/board", icon: Columns },
+  { label: "Boards", href: "/board", icon: Columns },
   { label: "Print", href: "/queue/print", icon: Truck },
 ];
 
 const VA_MORE: NavItem[] = [
-  { label: "Designer Roster", href: "/designers", icon: Palette },
+  { label: "Designers", href: "/designers", icon: Palette },
   { label: "Portrait Styles", href: "/styles", icon: Brush },
   { label: "Customers", href: "/customers", icon: Users },
 ];

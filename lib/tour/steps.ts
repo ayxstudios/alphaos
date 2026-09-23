@@ -198,7 +198,7 @@ const ADMIN_STEPS: TourStep[] = [
         say: "Team and sign-ins lists everyone who can sign in. Choose a group to see who is in it.",
       },
     ],
-    nav: { kind: "nav", say: "The roster decides who gets new orders. Open it to manage your team." },
+    nav: { kind: "nav", say: "Designers lists who gets new orders, top first. Open it to manage your team." },
   },
   {
     id: "styles",
