@@ -473,7 +473,11 @@ export default async function OrderDetailPage({
     hasTracking: Boolean(latestTracking?.trackingNumber),
     hasPhysical: hasPhysicalItem,
   });
-  const sourceLabel = `${order.shopName} · ${titleCase(order.shopPlatform ?? order.source)}`;
+  // "PixArt Etsy", not "PixArt Etsy · Etsy": the platform only when the shop name lacks it.
+  const platformName = titleCase(order.shopPlatform ?? order.source);
+  const sourceLabel = order.shopName?.toLowerCase().includes(platformName.toLowerCase())
+    ? order.shopName
+    : `${order.shopName} · ${platformName}`;
   const editable = staffView;
   const showAiFeatures = anthropicFeaturesEnabled();
   const canCreateRevision = editable && REVISION_FROM_STATUSES.has(order.status as OrderStatus);
