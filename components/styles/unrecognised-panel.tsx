@@ -91,7 +91,7 @@ export function UnrecognisedPanel({
                 }
                 className="size-4 rounded border-line text-pigment focus:ring-pigment"
               />
-              Defaulted to {defaultStyleName ?? "default"} · {defaulted.length}
+              Went to {defaultStyleName ?? "the default style"} by default · {defaulted.length}
             </label>
             <Button
               type="button"
@@ -204,22 +204,26 @@ function ProductRow({
 
   return (
     <div className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center">
-      {onToggle && (
-        <input
-          type="checkbox"
-          checked={!!checked}
-          onChange={onToggle}
-          aria-label={`Select ${product.title ?? "product"}`}
-          className="size-4 shrink-0 rounded border-line text-pigment focus:ring-pigment"
-        />
-      )}
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-ink">{product.title ?? "Untitled product"}</p>
-        <p className="text-xs text-slate">
-          {product.sku ? `SKU ${product.sku} · ` : ""}
-          {product.orders} order{product.orders === 1 ? "" : "s"}
-          {product.via === "default" && product.defaultStyle ? ` · defaulted to ${product.defaultStyle}` : ""}
-        </p>
+      {/* Checkbox and product side by side at every size; the title wraps
+          on a phone instead of being cut short. */}
+      <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
+        {onToggle && (
+          <input
+            type="checkbox"
+            checked={!!checked}
+            onChange={onToggle}
+            aria-label={`Select ${product.title ?? "product"}`}
+            className="mt-0.5 size-4 shrink-0 rounded border-line text-pigment focus:ring-pigment sm:mt-0"
+          />
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-ink sm:truncate">{product.title ?? "Untitled product"}</p>
+          <p className="text-xs text-slate">
+            {product.sku ? `SKU ${product.sku} · ` : ""}
+            {product.orders} order{product.orders === 1 ? "" : "s"}
+            {product.via === "default" && product.defaultStyle ? ` · went to ${product.defaultStyle} by default` : ""}
+          </p>
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Select
