@@ -7,7 +7,7 @@
  */
 import { EDITABLE_TEMPLATE_KEYS, TEMPLATE_META, type TemplateKey } from "@/lib/email/templates";
 
-/** A blank starting point — not one of the business's saved templates. */
+/** A blank starting point, not one of the business's saved templates. */
 export const BLANK_TEMPLATE_KEY = "blank" as const;
 export type ReplyTemplateChoice = TemplateKey | typeof BLANK_TEMPLATE_KEY;
 

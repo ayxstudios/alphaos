@@ -27,7 +27,7 @@ const SECTIONS: { key: ColKey; title: string; empty: string }[] = [
  * moves a queued order into design, "Submit for QC" sends a designed order on
  * (the server still enforces a submission exists first; a rejection just
  * shows the same toast the desktop board shows). Awaiting QC, With the
- * customer and Complete are read-only — there is nothing left for the designer to do there.
+ * customer and Complete are read-only: there is nothing left for the designer to do there.
  */
 export function MobileDesignerBoard({
   cols,
