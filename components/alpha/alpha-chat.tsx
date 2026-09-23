@@ -192,23 +192,8 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
 
   return createPortal(
     <>
-      {!open && (
-        <button
-          type="button"
-          aria-label="Open Alpha AI"
-          onClick={() => setOpen(true)}
-          className={cn(
-            "fixed z-40 flex items-center gap-2 rounded-full bg-pigment px-4 py-3 text-surface shadow-lg",
-            "transition-transform motion-hover hover:opacity-90 active:scale-95",
-            "bottom-20 right-4 sm:bottom-6 sm:right-6",
-            focusRing,
-          )}
-        >
-          <Bot size={20} />
-          <span className="hidden text-sm font-medium sm:inline">Alpha AI</span>
-        </button>
-      )}
-
+      {/* No floating launcher: Alpha AI opens from its tab in the top bar (and
+          the menu), so nothing floats over the last row of a page. */}
       {open && (
         <div
           role="dialog"
