@@ -278,7 +278,10 @@ export function TopBar({
                       type="button"
                       onClick={() => {
                         close();
-                        if (notification.href) router.push(notification.href);
+                        // Only an in-app path: never another origin ("//x",
+                        // "https://x") or a javascript: URL, whatever wrote the row.
+                        const href = notification.href;
+                        if (href && /^\/(?![/\\])/.test(href)) router.push(href);
                       }}
                       className={cn(
                         "rounded-input px-2 py-2 text-left transition-colors hover:bg-canvas",
