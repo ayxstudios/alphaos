@@ -422,6 +422,7 @@ export default async function SettingsPage({
       <div className="flex min-w-0 flex-col gap-6">
         <PageHeader
           title="Settings"
+          tourId="page:settings"
         />
         <SetupChecklist businessName={selected.name} items={checklistItems} />
 

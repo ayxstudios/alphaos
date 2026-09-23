@@ -78,7 +78,7 @@ export function EmailWorkspace({
 
       {/* The hero: what a person has to deal with. */}
       <section className="rounded-card bg-surface shadow-card">
-        <div className="flex items-center gap-2 px-4 py-3">
+        <div className="flex items-center gap-2 px-4 py-3" data-tour="page:messages">
           <h2 className="text-base font-semibold text-ink">Needs you</h2>
           {unmatched.length + failed.length > 0 && <Badge variant="warning">{unmatched.length + failed.length}</Badge>}
         </div>

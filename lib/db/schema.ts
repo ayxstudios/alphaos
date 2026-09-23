@@ -15,6 +15,8 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
+import type { OnboardingState } from "../tour/state";
+
 /**
  * Database schema (Drizzle ORM, PostgreSQL / Neon).
  *
@@ -159,6 +161,8 @@ export const users = pgTable("user", {
   phone: text("phone"),
   // bcrypt hash; nullable — not every user has a password set yet.
   passwordHash: text("password_hash"),
+  // First-run tour progress (lib/tour/state.ts). Null = never seen it.
+  onboarding: jsonb("onboarding").$type<OnboardingState>(),
 });
 
 // Database-backed login throttling (no Redis). Keyed by lowercased email so it

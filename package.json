@@ -36,7 +36,9 @@
     "test:send-enable-guard": "tsx scripts/test-send-enable-guard.ts",
     "test:all": "node scripts/test-all.mjs",
     "ci:local": "bash scripts/ci-local.sh",
-    "seed:qc": "tsx scripts/seed-qc.ts"
+    "seed:qc": "tsx scripts/seed-qc.ts",
+    "test:tour": "node scripts/tour-check.mjs",
+    "db:local-tour": "scripts/local-db/setup-tour-db.sh"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1102.0",

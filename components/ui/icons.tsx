@@ -110,6 +110,13 @@ export const ChevronDown = (p: IconProps) => (
     <polyline points="6 9 12 15 18 9" />
   </Icon>
 );
+export const HelpCircle = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M9.6 9.3a2.5 2.5 0 0 1 4.8 1c0 1.7-2.4 2.2-2.4 3.7" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />
+  </Icon>
+);
 export const Info = (p: IconProps) => (
   <Icon {...p}>
     <circle cx="12" cy="12" r="10" />
@@ -318,6 +325,20 @@ export const Sliders = (p: IconProps) => (
 export const ChevronRight = (p: IconProps) => (
   <Icon {...p}>
     <path d="M9 6l6 6-6 6" />
+  </Icon>
+);
+
+export const Compass = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M15.5 8.5l-2 5-5 2 2-5z" />
+  </Icon>
+);
+
+export const BookOpen = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M2 5h6a4 4 0 0 1 4 4v11a3 3 0 0 0-3-3H2z" />
+    <path d="M22 5h-6a4 4 0 0 0-4 4v11a3 3 0 0 1 3-3h7z" />
   </Icon>
 );
 

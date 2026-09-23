@@ -64,7 +64,7 @@ export function MobileDesignerBoard({
     <div className="flex flex-col gap-6">
       {SECTIONS.filter((s) => cols[s.key].length > 0).map((section) => (
         <div key={section.key} className="flex flex-col gap-2.5">
-          <div className="flex items-center justify-between px-0.5">
+          <div className="flex items-center justify-between px-0.5" data-tour={`col:${section.key}`}>
             <h2 className="text-sm font-semibold text-ink">{section.title}</h2>
             <span className="rounded-full bg-canvas px-2 py-0.5 text-xs font-medium text-slate">
               {cols[section.key].length}

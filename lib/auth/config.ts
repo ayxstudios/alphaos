@@ -24,6 +24,8 @@ export const authConfig = {
       if (user) {
         token.id = user.id;
         token.role = (user as { role?: Role }).role ?? "designer";
+        // When this sign-in happened: the first-run tour's "Later" waits for the next one.
+        token.signedInAt = Date.now();
       }
       return token;
     },
@@ -31,6 +33,7 @@ export const authConfig = {
       if (session.user) {
         session.user.id = (token.id as string) ?? session.user.id;
         session.user.role = (token.role as Role) ?? "designer";
+        session.user.signedInAt = typeof token.signedInAt === "number" ? token.signedInAt : 0;
       }
       return session;
     },

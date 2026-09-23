@@ -33,14 +33,17 @@ export function PageHeader({
   description,
   actions,
   eyebrow,
+  tourId,
 }: {
   title: string;
   description?: string;
   actions?: React.ReactNode;
   eyebrow?: React.ReactNode;
+  /** Spotlight hook for the first-run tour (lib/tour/steps.ts). */
+  tourId?: string;
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="flex flex-wrap items-end justify-between gap-3" data-tour={tourId}>
       <div className="min-w-0">
         {eyebrow && (
           <div className="mb-1 text-xs font-medium text-slate/80">{eyebrow}</div>

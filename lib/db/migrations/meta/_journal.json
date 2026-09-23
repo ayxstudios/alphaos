@@ -253,6 +253,13 @@
       "when": 1788953027274,
       "tag": "0035_qc_signature",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790150400000,
+      "tag": "0036_user_onboarding",
+      "breakpoints": true
     }
   ]
 }

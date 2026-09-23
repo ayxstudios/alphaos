@@ -81,6 +81,7 @@ async function BoardContent({
     <Page className="max-w-none">
       <PageHeader
         title={isStaff ? "Designers" : "My board"}
+        tourId={isStaff ? "page:designers" : "page:board"}
         description={isStaff ? undefined : "Soonest deadline first."}
         actions={
           // A column below `sm` (align-items:stretch gives each row a real,
