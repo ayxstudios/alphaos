@@ -57,7 +57,10 @@ export function stateLabel(s: OrderStatus | null): string {
  * the designer it belongs to, the card is simply waiting in their queue.
  */
 export function designerStateLabel(s: OrderStatus | null): string {
-  return s === "ready_to_assign" ? "In your queue" : stateLabel(s);
+  if (s === "ready_to_assign") return "In your queue";
+  // The board's own word for a proof the customer is looking at.
+  if (s === "awaiting_approval") return "With the customer";
+  return stateLabel(s);
 }
 
 /**

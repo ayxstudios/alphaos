@@ -130,6 +130,8 @@ export function CardModal({
   const designerView = viewerRole === "designer";
   // A designer reads their own words for a queued card ("In your queue").
   const chipLabel = designerView ? designerStateLabel(card.status) : undefined;
+  // Passed QC or complete: nothing left on the designer's clock.
+  const designerDone = designerView && (card.status === "complete" || isWithCustomer(card.status));
 
   if (!mounted) return null;
 
@@ -179,11 +181,14 @@ export function CardModal({
               </h2>
               <div className="flex flex-wrap items-center gap-2 pt-1 md:hidden">
                 <StatusChip status={card.status} label={chipLabel} />
-                <Countdown
-                  dueAt={viewerRole === "designer" ? card.dueAt : card.orderDueAt}
-                  done={card.status === "complete"}
-                  withCustomer={viewerRole === "designer" && isWithCustomer(card.status)}
-                />
+                {/* A designer's finished part has no clock: the chip says where it is. */}
+                {!designerDone && (
+                  <Countdown
+                    dueAt={viewerRole === "designer" ? card.dueAt : card.orderDueAt}
+                    done={card.status === "complete"}
+                    withCustomer={viewerRole === "designer" && isWithCustomer(card.status)}
+                  />
+                )}
               </div>
             </div>
             <CardUploadPanel
@@ -291,8 +296,9 @@ export function CardModal({
             <StatusChip status={card.status} label={chipLabel} />
           </Meta>
           {viewerRole === "designer" ? (
-            // The designer's own deadline (their assignment), never the customer SLA.
-            <Meta label="Your deadline">
+            // The designer's own deadline (their assignment), never the
+            // customer SLA; gone once their part is done (the status says so).
+            !designerDone && <Meta label="Your deadline">
               <DueLine
                 dueAt={card.dueAt}
                 done={card.status === "complete"}
