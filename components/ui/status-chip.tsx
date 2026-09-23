@@ -74,9 +74,11 @@ const toneClasses: Record<Tone, string> = {
 export type StatusChipProps = {
   status: OrderStatus;
   className?: string;
+  /** Overrides the words only (tone and icon stay the status's own). */
+  label?: string;
 };
 
-export function StatusChip({ status, className }: StatusChipProps) {
+export function StatusChip({ status, className, label }: StatusChipProps) {
   const meta = STATUS[status];
   const Glyph = meta.icon;
   return (
@@ -88,7 +90,7 @@ export function StatusChip({ status, className }: StatusChipProps) {
       )}
     >
       <Glyph size={13} className="shrink-0" />
-      {meta.label}
+      {label ?? meta.label}
     </span>
   );
 }
