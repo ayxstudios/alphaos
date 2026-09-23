@@ -34,7 +34,16 @@ export type BoardCard = {
   /** Human order number shown in the UI (Shopify name / Etsy receipt id). */
   orderNumber: string;
   status: OrderStatus;
-  dueAt: string | null; // ISO
+  /**
+   * The deadline this viewer is shown and sorted by (ISO). A designer sees
+   * their OWN deadline (the active assignment's due_at, see CLAUDE.md
+   * Deadlines); staff see the customer SLA (orders.due_at).
+   */
+  dueAt: string | null;
+  /** Customer-facing SLA (orders.due_at). */
+  orderDueAt: string | null;
+  /** The assigned designer's own deadline (active assignments.due_at). */
+  assignmentDueAt: string | null;
   figureCount: number;
   figuresResolved: boolean;
   style: string | null;
@@ -62,6 +71,7 @@ type OrderRow = {
   platformOrderName: string | null;
   status: OrderStatus;
   dueAt: Date | null;
+  assignmentDueAt: Date | null;
   businessId: string;
   customerId: string | null;
   revisionCount: number;
@@ -249,11 +259,16 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
     }
   }
 
+  const iso = (d: Date | null) => (d ? d.toISOString() : null);
   return rows.map((o) => ({
     orderId: o.id,
     orderNumber: o.platformOrderName ?? o.platformOrderId,
     status: o.status,
-    dueAt: o.dueAt ? o.dueAt.toISOString() : null,
+    // A designer works to their own deadline; the customer SLA is staff-facing.
+    // An assignment without a due_at (legacy rows) falls back to the SLA.
+    dueAt: iso(viewerRole === "designer" ? (o.assignmentDueAt ?? o.dueAt) : o.dueAt),
+    orderDueAt: iso(o.dueAt),
+    assignmentDueAt: iso(o.assignmentDueAt),
     figureCount: fig.get(o.id) ?? 0,
     figuresResolved: !hasNull.get(o.id),
     style: style.get(o.id) ?? null,
@@ -320,6 +335,7 @@ const BOARD_ROW_SELECT = {
   platformOrderName: orders.platformOrderName,
   status: orders.status,
   dueAt: orders.dueAt,
+  assignmentDueAt: assignments.dueAt,
   businessId: orders.businessId,
   customerId: orders.customerId,
   revisionCount: orders.revisionCount,
@@ -395,7 +411,11 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
     const rows = [...activeRows, ...completeRows];
     const cards = await enrich(tx, rows, user.role);
     const meta = new Map(rows.map((r) => [r.id, r]));
-    const pick = (pred: (r: OrderRow) => boolean) => cards.filter((c) => pred(meta.get(c.orderId)!));
+    // "Soonest deadline first": every live column is sorted by the date the
+    // viewer is shown (undated cards last). Complete keeps most-recent-first.
+    const byDue = (a: BoardCard, b: BoardCard) =>
+      (a.dueAt ? Date.parse(a.dueAt) : Infinity) - (b.dueAt ? Date.parse(b.dueAt) : Infinity);
+    const pick = (pred: (r: OrderRow) => boolean) => cards.filter((c) => pred(meta.get(c.orderId)!)).sort(byDue);
 
     return {
       columns: {
@@ -407,7 +427,7 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
           const card = cards.find((c) => c.orderId === r.id);
           return r.status === "in_design" && r.revisionCount > 0 && !card?.qcFail;
         }),
-        complete: pick((r) => r.status === "complete"),
+        complete: cards.filter((c) => meta.get(c.orderId)!.status === "complete"),
       },
       dailyEarnings: Number(daily?.total ?? 0),
       periodEarnings: Number(period?.total ?? 0),

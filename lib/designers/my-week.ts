@@ -5,7 +5,7 @@
  * looking at one designer. The week starts Monday 00:00 in the DESIGNER'S OWN
  * timezone (never the server's), same as the deadlines they're shown.
  */
-import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
 import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
 import { assignments, earnings, orders, users } from "@/lib/db/schema";
@@ -80,18 +80,21 @@ async function loadWeek(tx: Tx, target: string): Promise<DesignerWeek> {
       ),
     );
 
+  const myDue = sql<Date | null>`coalesce(${assignments.dueAt}, ${orders.dueAt})`.mapWith(orders.dueAt);
   const activeRows = await tx
     .select({
       orderId: orders.id,
       orderNumber: orders.platformOrderName,
       fallbackNumber: orders.platformOrderId,
       status: orders.status,
-      dueAt: orders.dueAt,
+      // The designer's OWN deadline (the active assignment), not the customer
+      // SLA; a legacy assignment without one falls back to orders.due_at.
+      dueAt: myDue,
     })
     .from(orders)
     .innerJoin(assignments, and(eq(assignments.orderId, orders.id), eq(assignments.active, true), eq(assignments.designerId, target)))
     .where(and(inArray(orders.status, ["ready_to_assign", "in_design", "awaiting_qc"]), liveOrderWhere()))
-    .orderBy(asc(orders.dueAt));
+    .orderBy(sql`${myDue} asc nulls last`);
 
   const judged = Number(completedThisWeek?.judged ?? 0);
   const onTime = Number(completedThisWeek?.onTime ?? 0);

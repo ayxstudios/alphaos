@@ -251,16 +251,23 @@ export function CardModal({
           <Meta label="Status">
             <StatusChip status={card.status} />
           </Meta>
-          <Meta label="Due">
-            <div className="flex items-center gap-2">
-              <Countdown dueAt={card.dueAt} />
-              {card.dueAt && (
-                <span className="text-xs text-slate">
-                  {dateFmt.format(new Date(card.dueAt))}
-                </span>
+          {viewerRole === "designer" ? (
+            // The designer's own deadline (their assignment), never the customer SLA.
+            <Meta label="Your deadline">
+              <DueLine dueAt={card.dueAt} />
+            </Meta>
+          ) : (
+            <>
+              <Meta label="Customer due">
+                <DueLine dueAt={card.orderDueAt} />
+              </Meta>
+              {card.assignmentDueAt && (
+                <Meta label="Designer due">
+                  <DueLine dueAt={card.assignmentDueAt} />
+                </Meta>
               )}
-            </div>
-          </Meta>
+            </>
+          )}
           {labels.length > 0 && (
             <Meta label="Labels">
               <div className="flex flex-wrap gap-1">
@@ -321,6 +328,14 @@ function CardUploadPanel({
   const submissions = (detail?.images ?? []).filter((image) => image.type === "submission");
   const latestSubmission = submissions.at(-1) ?? null;
   const canUpload = !designer || canDesignerUpload;
+  // Why a designer can't upload right now, in the card's own terms: a card
+  // that hasn't been started is NOT locked, it just needs starting first.
+  const designerNote =
+    card.status === "ready_to_assign"
+      ? "Start this card first (tap Start, or drag it to In Design), then upload the finished portrait here."
+      : card.status === "awaiting_qc"
+        ? "Submitted for QC. Uploads open again if QC sends it back."
+        : "Uploads are locked after QC.";
 
   useEffect(() => {
     if (designer) setType("submission");
@@ -328,11 +343,7 @@ function CardUploadPanel({
 
   async function upload(files: File[]) {
     if (!canUpload) {
-      toast({
-        variant: "warning",
-        title: "Upload locked",
-        description: "Finished portraits cannot be changed after the card leaves design.",
-      });
+      toast({ variant: "warning", title: "Upload not open", description: designerNote });
       return;
     }
     const images = files.filter((file) => file.type.startsWith("image/"));
@@ -381,7 +392,14 @@ function CardUploadPanel({
       onSaved(saved.detail);
       toast({
         variant: "success",
-        title: images.length === 1 ? "Photo uploaded" : `${images.length} photos uploaded`,
+        title:
+          designer && type === "submission"
+            ? images.length === 1
+              ? "New version added"
+              : `${images.length} new versions added`
+            : images.length === 1
+              ? "Photo uploaded"
+              : `${images.length} photos uploaded`,
       });
       if (fileRef.current) fileRef.current.value = "";
     } catch (error) {
@@ -405,9 +423,9 @@ function CardUploadPanel({
             <p className="mt-1 text-xs text-slate">
               {canDesignerUpload
                 ? latestSubmission
-                  ? "Upload another version before submitting to QC. The newest version is reviewed first."
+                  ? "Add a new version before submitting to QC. Every version is kept, the newest is reviewed."
                   : "Upload the finished portrait before moving this card to QC."
-                : "Uploads are locked after the card leaves design."}
+                : designerNote}
             </p>
           </div>
         ) : (
@@ -428,17 +446,21 @@ function CardUploadPanel({
             </select>
           </label>
         )}
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          loading={uploading}
-          disabled={!canUpload}
-          onClick={() => fileRef.current?.click()}
-        >
-          <Camera size={15} />
-          {latestSubmission && designer ? "Replace" : "Upload"}
-        </Button>
+        {/* No upload control at all while a designer can't upload: the note
+            above says what to do instead. */}
+        {canUpload && (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            loading={uploading}
+            onClick={() => fileRef.current?.click()}
+          >
+            <Camera size={15} />
+            {/* Versions are never overwritten: each upload adds one. */}
+            {latestSubmission && designer ? "Add new version" : "Upload"}
+          </Button>
+        )}
         <input
           ref={fileRef}
           type="file"
@@ -448,30 +470,32 @@ function CardUploadPanel({
           onChange={(event) => event.target.files && void upload(Array.from(event.target.files))}
         />
       </div>
-      <button
-        type="button"
-        disabled={uploading || !canUpload}
-        onClick={() => fileRef.current?.click()}
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={(event) => {
-          event.preventDefault();
-          void upload(Array.from(event.dataTransfer.files));
-        }}
-        className={cn(
-          "mt-3 flex h-16 w-full items-center justify-center gap-2 rounded-input border border-dashed border-line bg-surface text-sm text-slate",
-          "transition-colors hover:border-pigment/40 hover:text-ink disabled:pointer-events-none disabled:opacity-60",
-          focusRing,
-        )}
-      >
-        <Camera size={16} />
-        {uploading
-          ? "Uploading..."
-          : designer
-            ? canDesignerUpload
-              ? "Drop finished portrait here or click Upload"
-              : "Uploads locked after QC"
-            : "Drop images here or click Upload"}
-      </button>
+      {canUpload && (
+        <button
+          type="button"
+          disabled={uploading}
+          onClick={() => fileRef.current?.click()}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            event.preventDefault();
+            void upload(Array.from(event.dataTransfer.files));
+          }}
+          className={cn(
+            "mt-3 flex h-16 w-full items-center justify-center gap-2 rounded-input border border-dashed border-line bg-surface text-sm text-slate",
+            "transition-colors hover:border-pigment/40 hover:text-ink disabled:pointer-events-none disabled:opacity-60",
+            focusRing,
+          )}
+        >
+          <Camera size={16} />
+          {uploading
+            ? "Uploading..."
+            : designer
+              ? latestSubmission
+                ? "Drop a new version here or click Add new version"
+                : "Drop finished portrait here or click Upload"
+              : "Drop images here or click Upload"}
+        </button>
+      )}
       {progress.length > 0 && (
         <div className="mt-3 space-y-2">
           {progress.map((row) => {
@@ -497,7 +521,7 @@ function CardUploadPanel({
       )}
       {submissions.length > 0 && (
         <div className="mt-3">
-          <p className="mb-2 text-xs font-medium text-ink">Portrait versions</p>
+          <p className="mb-2 text-xs font-medium text-ink">Portrait versions ({submissions.length}), newest last</p>
           <div className="flex gap-2 overflow-x-auto pb-1">
             {submissions.map((image, index) => (
               <div key={image.id} className="w-20 shrink-0">
@@ -506,7 +530,7 @@ function CardUploadPanel({
                   <img src={image.url} alt="" className="size-20 rounded-input border border-line object-cover" />
                 </a>
                 <p className="mt-1 truncate text-xs text-slate">
-                  {index === submissions.length - 1 ? "Latest" : `v${index + 1}`}
+                  {`v${index + 1}${index === submissions.length - 1 ? ", latest" : ""}`}
                 </p>
               </div>
             ))}
@@ -540,6 +564,15 @@ function uploadToR2(
     xhr.onerror = () => reject(new Error(`Upload failed for ${file.name}`));
     xhr.send(file);
   });
+}
+
+function DueLine({ dueAt }: { dueAt: string | null }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-2">
+      <Countdown dueAt={dueAt} />
+      {dueAt && <span className="text-xs text-slate">{dateFmt.format(new Date(dueAt))}</span>}
+    </div>
+  );
 }
 
 function Meta({ label, children }: { label: string; children: React.ReactNode }) {
