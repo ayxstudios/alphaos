@@ -4,25 +4,17 @@ import { withUserContext, type RequestUser } from "@/lib/db";
 import { businesses, customers, orders, proofs } from "@/lib/db/schema";
 import {
   DEFAULT_TEMPLATES,
-  EDITABLE_TEMPLATE_KEYS,
   resolveTemplate,
   renderTemplate,
-  TEMPLATE_META,
-  type TemplateKey,
 } from "@/lib/email/templates";
 import { proofUrl, uploadUrl } from "@/lib/urls";
 import type { OrderStatus } from "./transitions";
+import { BLANK_TEMPLATE_KEY, type ReplyTemplateChoice } from "./reply-templates";
 
-/** A blank starting point — not one of the business's saved templates. */
-export const BLANK_TEMPLATE_KEY = "blank" as const;
-export type ReplyTemplateChoice = TemplateKey | typeof BLANK_TEMPLATE_KEY;
-
-export type ReplyTemplateOption = { key: ReplyTemplateChoice; label: string };
-
-export const REPLY_TEMPLATE_OPTIONS: ReplyTemplateOption[] = [
-  { key: BLANK_TEMPLATE_KEY, label: "Blank message" },
-  ...EDITABLE_TEMPLATE_KEYS.map((key) => ({ key, label: TEMPLATE_META[key].label })),
-];
+// The picker constants live in a db-free module (client components import
+// them); re-exported here so server importers keep one path. Client code
+// must import ./reply-templates, never this file (it pulls in lib/db).
+export { BLANK_TEMPLATE_KEY, REPLY_TEMPLATE_OPTIONS, type ReplyTemplateChoice, type ReplyTemplateOption } from "./reply-templates";
 
 /** The template most likely to be right for this order's current status. */
 export function defaultReplyTemplate(status: OrderStatus): ReplyTemplateChoice {
