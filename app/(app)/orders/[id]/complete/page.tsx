@@ -98,7 +98,7 @@ export default async function CompleteOrderPage({
   const existing: ExistingOrder = {
     orderId: order.id,
     shopId: order.shopId,
-    shopLabel: `${order.businessName} · ${order.shopName}`,
+    shopLabel: order.shopName,
     orderNumber: order.platformOrderName ?? "",
     status: order.status,
     source: order.source,
@@ -123,7 +123,8 @@ export default async function CompleteOrderPage({
     <Page className="max-w-5xl">
       <PageHeader
         title={editingImportedDetails ? "Complete order details" : "Edit order details"}
-        description={`${existing.shopLabel} · ${order.source === "etsy" ? "Etsy" : order.source === "shopify" ? "Shopify" : "Manual"} order ${existing.orderNumber}`}
+        eyebrow={order.businessName}
+        description={`Order ${existing.orderNumber} from ${order.shopName}`}
         actions={<StatusChip status={order.status as OrderStatus} />}
       />
       <NewOrderForm shops={[]} r2Enabled={isR2Configured()} existing={existing} />
