@@ -61,6 +61,22 @@ export function encryptCredentials(plaintext: ShopCredentials): Envelope {
   };
 }
 
+/**
+ * A stored value that is not a sealed envelope (`{}` from a disconnected or
+ * disarmed shop, a half-written row) means "no credentials", never a crash:
+ * Settings and every order page must still render with nothing connected.
+ */
+function isEnvelope(value: unknown): value is Envelope {
+  const e = value as Partial<Envelope> | null;
+  return (
+    !!e &&
+    typeof e === "object" &&
+    typeof e.iv === "string" &&
+    typeof e.tag === "string" &&
+    typeof e.data === "string"
+  );
+}
+
 function decrypt(envelope: Envelope): ShopCredentials {
   const decipher = createDecipheriv(
     ALGORITHM,
@@ -94,7 +110,9 @@ export async function getShopCredentials(
   if (!row) {
     throw new Error(`Shop not found (or not visible in this context): ${shopId}`);
   }
-  return decrypt(row.credentials as Envelope);
+  const sealed = row.credentials;
+  if (!isEnvelope(sealed)) return {};
+  return decrypt(sealed);
 }
 
 /** Encrypt and persist a shop's credentials. Requires an admin/system tx. */
@@ -128,8 +146,9 @@ export async function getBusinessGmailCredentials(
     .from(businesses)
     .where(eq(businesses.id, businessId))
     .limit(1);
-  if (!row?.gmailCredentials) return null;
-  return decrypt(row.gmailCredentials as Envelope);
+  const sealed = row?.gmailCredentials;
+  if (!isEnvelope(sealed)) return null;
+  return decrypt(sealed);
 }
 
 /** Encrypt and persist a business's Gmail credentials. Requires admin/system tx. */
@@ -159,8 +178,9 @@ export async function getBusinessPrintCredentials(
     .from(businesses)
     .where(eq(businesses.id, businessId))
     .limit(1);
-  if (!row?.printCredentials) return null;
-  return decrypt(row.printCredentials as Envelope);
+  const sealed = row?.printCredentials;
+  if (!isEnvelope(sealed)) return null;
+  return decrypt(sealed);
 }
 
 /** Encrypt and persist a business's print provider credentials. Admin/system tx. */
