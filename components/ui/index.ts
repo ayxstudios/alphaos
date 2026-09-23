@@ -18,6 +18,7 @@ export {
 export { Badge } from "./badge";
 export { Avatar } from "./avatar";
 export { Drawer } from "./drawer";
+export { ConfirmDrawer } from "./confirm-drawer";
 export { ToastProvider, useToast } from "./toast";
 export { Skeleton } from "./skeleton";
 export { EmptyState } from "./empty-state";

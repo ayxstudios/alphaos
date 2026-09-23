@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { cn } from "@/lib/utils";
 import {
   Button,
+  ConfirmDrawer,
   Input,
   Badge,
 } from "@/components/ui";
@@ -61,8 +62,8 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
     });
   }
 
+  const [backfillOpen, setBackfillOpen] = useState(false);
   function onBackfill() {
-    if (!confirm("Backfill re-scans the last 60 days. Orders before the cutoff import as archived. Continue?")) return;
     setError(null);
     setSummary(null);
     startBackfill(async () => {
@@ -77,8 +78,8 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
   const health = syncHealth(shop.lastSyncAt);
   const lastSync = formatSyncTime(shop.lastSyncAt);
   const cursor = shop.lastSyncCursor
-    ? formatAt(Number(shop.lastSyncCursor) * 1000, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }, "none")
-    : "none";
+    ? formatAt(Number(shop.lastSyncCursor) * 1000, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }, "nothing yet")
+    : "nothing yet";
   const cutoffDate = shop.backfillCutoffAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
 
   return (
@@ -153,13 +154,25 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={onBackfill}
+                onClick={() => setBackfillOpen(true)}
                 loading={backfilling}
                 disabled={shop.status !== "connected"}
               >
-                Backfill 60d
+                Re-import 60 days
               </Button>
-              <span className="text-xs text-slate">Shop ID {shop.etsyShopId ?? "not connected"} · cursor {cursor}</span>
+              <ConfirmDrawer
+                open={backfillOpen}
+                onClose={() => setBackfillOpen(false)}
+                onConfirm={onBackfill}
+                title="Re-import 60 days"
+                confirmLabel="Re-import"
+              >
+                <p className="text-sm text-slate">
+                  This checks the shop for every order from the last 60 days and adds any that are missing. Orders from
+                  before the cutoff come in as archived.
+                </p>
+              </ConfirmDrawer>
+              <span className="text-xs text-slate">Shop ID {shop.etsyShopId ?? "not connected"} · last order seen {cursor}</span>
             </div>
             {error && <p className="text-sm text-rose">{error}</p>}
             {summary && (
