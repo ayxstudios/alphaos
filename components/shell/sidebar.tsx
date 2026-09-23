@@ -23,7 +23,6 @@ import {
   Calendar,
   Eye,
   type IconProps,
-  Bot,
   Wallet,
 } from "@/components/ui/icons";
 
@@ -100,37 +99,6 @@ export function Sidebar({
   const more = role === "designer" ? DESIGNER_MORE : role === "admin" ? ADMIN_MORE : VA_MORE;
   const homeHref = "/dashboard";
 
-  // Alpha AI lives in the main menu: same brain as the WhatsApp number,
-  // opens the chat panel (mounted once in AppShell) instead of routing.
-  function renderAlpha() {
-    const link = (
-      <button
-        key="alpha-ai"
-        type="button"
-        onClick={() => {
-          onNavigate?.();
-          window.dispatchEvent(new CustomEvent("alphaos:chat-open"));
-        }}
-        className={cn(
-          "group relative flex h-10 w-full items-center gap-3 rounded-input px-3 text-sm font-medium text-pigment",
-          "transition-colors duration-150 ease-standard motion-hover hover:bg-pigment-soft",
-          focusRing,
-          collapsed && !mobile && "justify-center px-0",
-        )}
-      >
-        <Bot size={19} className="shrink-0" />
-        {(!collapsed || mobile) && <span>Alpha AI</span>}
-      </button>
-    );
-    return collapsed && !mobile ? (
-      <Tooltip key="alpha-ai" content="Alpha AI" side="right">
-        {link}
-      </Tooltip>
-    ) : (
-      link
-    );
-  }
-
   function renderItem(item: NavItem) {
     const active = pathname === item.href || pathname.startsWith(item.href + "/");
     const Glyph = item.icon;
@@ -204,9 +172,9 @@ export function Sidebar({
       </div>
 
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-2">
-        {nav.slice(0, 1).map(renderItem)}
-        {renderAlpha()}
-        {nav.slice(1).map(renderItem)}
+        {/* Alpha AI is not a menu item: it has one way in, its tab in the top
+            bar, which is on screen on every page on a laptop and a phone. */}
+        {nav.map(renderItem)}
         {more.length > 0 && (
           <>
             <div className="my-3 h-px bg-line/70" />

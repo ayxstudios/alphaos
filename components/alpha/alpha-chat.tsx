@@ -192,8 +192,8 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
 
   return createPortal(
     <>
-      {/* No floating launcher: Alpha AI opens from its tab in the top bar (and
-          the menu), so nothing floats over the last row of a page. */}
+      {/* No floating launcher and no menu item: Alpha AI opens from its tab in
+          the top bar only, so nothing floats over the last row of a page. */}
       {open && (
         <div
           role="dialog"
