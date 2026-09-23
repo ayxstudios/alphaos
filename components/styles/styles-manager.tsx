@@ -154,7 +154,13 @@ function StyleCard({
       setNameDraft(style.name);
       return;
     }
-    onRun(() => renameStyle(style.id, n), "Style renamed");
+    // A refused name or rate goes back to the saved value, so the field never
+    // shows something that did not save.
+    onRun(async () => {
+      const res = await renameStyle(style.id, n);
+      if (!res.ok) setNameDraft(style.name);
+      return res;
+    }, "Style renamed");
   }
 
   function addMatch() {
@@ -174,7 +180,11 @@ function StyleCard({
       setRateDraft(style.perFigureRate ?? "");
       return;
     }
-    onRun(() => setStyleRate(style.id, r), "Rate saved");
+    onRun(async () => {
+      const res = await setStyleRate(style.id, r);
+      if (!res.ok) setRateDraft(style.perFigureRate ?? "");
+      return res;
+    }, "Rate saved");
   }
 
   function removeMatch(m: string) {
