@@ -51,23 +51,23 @@ const ROSTER: GuideAnswer = {
 const DESIGNER: GuideAnswer[] = [
   {
     q: "Where do I upload the finished portrait?",
-    a: "Open the order card on My Board while it is In Design and add the file under Finished portrait. You can add a newer version until it goes to QC; the newest one is checked first.",
+    a: "Open the card on My Board and tap Start if it is new. Then tap the Finished portrait area and choose the file (on a laptop you can drop it there). Every version is kept; QC checks the newest.",
   },
   {
     q: "How do I send my work to QC?",
-    a: "After uploading, drag the card to Awaiting QC, or tap Submit for QC on a phone. It will not move until a portrait has been uploaded.",
+    a: "Once the portrait is added, press Submit for QC, in the card or under it on My Board. On a laptop you can also drag the card to Awaiting QC.",
   },
   {
     q: "My portrait came back. What now?",
-    a: "It is under Failed QC or Revisions with a note on what to change. Fix those first, upload a new version and send it to QC again.",
+    a: "It moves to Failed QC or Revisions, and the card shows what to change at the top. Add a new version with the changes, then submit it for QC again.",
   },
   {
-    q: "What does Awaiting approval mean?",
-    a: "Your portrait passed QC and the customer has been sent a link to see it. If they ask for changes, the order comes back to you under Revisions.",
+    q: "What does With the Customer mean?",
+    a: "Your portrait passed QC and the customer has a link to see it. There is nothing to do unless they ask for changes; then it comes back to you under Revisions.",
   },
   {
     q: "I started an order by mistake",
-    a: "On a laptop, drag it back to My Queue. The same works for a card you sent to Awaiting QC too early, as long as it has not been checked yet.",
+    a: "On a laptop, drag it back to My Queue. That also works for a card sent to Awaiting QC too early, until QC checks it. On a phone, ask your VA to move it back.",
   },
   {
     q: "Where do I see what I have earned?",
