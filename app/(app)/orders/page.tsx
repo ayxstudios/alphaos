@@ -405,8 +405,10 @@ export default async function OrdersPage({
     redirect(`/orders?${next.toString()}`);
   }
 
+  // Most imported Etsy orders have no customers row yet: the list shows the
+  // buyer name from the receipt (customerName below), so search it too.
   const queryFilter = q
-    ? sql`(${orders.platformOrderName} ilike ${`%${q}%`} or ${orders.platformOrderId} ilike ${`%${q}%`} or ${customers.email} ilike ${`%${q}%`} or concat_ws(' ', ${customers.firstName}, ${customers.lastName}) ilike ${`%${q}%`})`
+    ? sql`(${orders.platformOrderName} ilike ${`%${q}%`} or ${orders.platformOrderId} ilike ${`%${q}%`} or ${customers.email} ilike ${`%${q}%`} or concat_ws(' ', ${customers.firstName}, ${customers.lastName}) ilike ${`%${q}%`} or ${orders.rawImport}->>'name' ilike ${`%${q}%`} or ${orders.rawImport}->>'buyer_email' ilike ${`%${q}%`})`
     : undefined;
   const sourceFilter =
     source === "etsy" || source === "shopify" || source === "manual"
