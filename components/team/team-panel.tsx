@@ -306,6 +306,7 @@ function ResetPasswordDrawer({
           email={done.email}
           password={done.password}
           onDone={close}
+          inactive={!member.active}
         />
       ) : member ? (
         <form onSubmit={submit} className="flex flex-col gap-4">
