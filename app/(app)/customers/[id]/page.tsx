@@ -38,6 +38,7 @@ import {
 import { ComposeButton } from "@/components/emails/compose-button";
 import { formatAt } from "@/lib/time";
 import { DUE_STATUSES } from "@/lib/home/shared";
+import { activityLabel } from "@/lib/orders/activity-label";
 
 export const dynamic = "force-dynamic";
 
@@ -145,7 +146,7 @@ function titleCase(value: string | null | undefined) {
 }
 
 function shortAction(value: string) {
-  return value.replace(/^order\./, "").replaceAll("_", " ");
+  return activityLabel(value);
 }
 
 function groupByOrder<T extends { orderId: string | null }>(rows: T[]) {

@@ -293,10 +293,11 @@ export async function bulkReassignOrders(
         continue;
       }
 
-      await tx
+      const previous = await tx
         .update(assignments)
         .set({ active: false })
-        .where(and(eq(assignments.orderId, order.id), eq(assignments.active, true)));
+        .where(and(eq(assignments.orderId, order.id), eq(assignments.active, true)))
+        .returning({ id: assignments.id });
       await tx.insert(assignments).values({
         businessId: order.businessId,
         orderId: order.id,
@@ -309,7 +310,8 @@ export async function bulkReassignOrders(
         businessId: order.businessId,
         orderId: order.id,
         actorId: user.id,
-        action: "order.reassigned",
+        // The first designer on an order is an assignment, not a reassignment.
+        action: previous.length ? "order.reassigned" : "order.assigned",
         metadata: { designerId, via: "bulk_orders_dashboard" },
       });
       changed += 1;
