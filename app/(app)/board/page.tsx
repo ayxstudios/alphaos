@@ -4,14 +4,14 @@ import Link from "next/link";
 
 import { auth } from "@/lib/auth";
 import type { RequestUser } from "@/lib/db";
-import { getDesignerBoard } from "@/lib/orders/board-data";
+import { getDesignerBoard, type BoardCard, type DesignerBoard as BoardData } from "@/lib/orders/board-data";
 import { getRailDesigners } from "@/lib/designers/roster";
 import { DesignerBoard } from "@/components/board/designer-board";
 import { DesignerPicker } from "@/components/board/designer-picker";
 import { DesignerRail } from "@/components/board/designer-rail";
 import { Badge, DataPanel, Disclosure, EmptyState, Page, PageHeader } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
-import { Calendar, Columns } from "@/components/ui/icons";
+import { Calendar, Columns, Search } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import BoardLoading from "./loading";
 
@@ -30,6 +30,22 @@ function shortDate(value: string): string {
   }).format(new Date(value));
 }
 
+/** A card matches a designer's search on its number, title, first name, style or options. */
+function cardMatches(card: BoardCard, needle: string): boolean {
+  const hay = [card.orderNumber, card.title, card.customerName, card.style, ...card.options.map((o) => o.value)]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return hay.includes(needle);
+}
+
+function filterColumns(cols: BoardData["columns"], q: string): BoardData["columns"] {
+  const needle = q.toLowerCase();
+  const out = { ...cols };
+  for (const k of Object.keys(out) as (keyof typeof out)[]) out[k] = out[k].filter((c) => cardMatches(c, needle));
+  return out;
+}
+
 export default async function BoardPage({
   searchParams,
 }: {
@@ -41,6 +57,9 @@ export default async function BoardPage({
   const sp = await searchParams;
   const designerParam = typeof sp.designer === "string" ? sp.designer : undefined;
   const isStaff = user.role !== "designer";
+  // Designer search (top bar) lands here: filter their own cards. Staff search
+  // goes to /orders, so a stray ?q= on a staff board is ignored.
+  const q = !isStaff && typeof sp.q === "string" ? sp.q.trim().slice(0, 100) : "";
 
   // Designers can only ever see their own board; staff pick one from the
   // right-hand rail (app shell) or the mobile dropdown below.
@@ -53,8 +72,8 @@ export default async function BoardPage({
   // there for however long the query takes, looking frozen. Keying the
   // boundary on targetId forces a fresh Suspense fallback on every switch.
   return (
-    <Suspense key={targetId ?? "none"} fallback={<BoardLoading />}>
-      <BoardContent user={user} isStaff={isStaff} targetId={targetId} />
+    <Suspense key={`${targetId ?? "none"}:${q}`} fallback={<BoardLoading />}>
+      <BoardContent user={user} isStaff={isStaff} targetId={targetId} q={q} />
     </Suspense>
   );
 }
@@ -63,10 +82,12 @@ async function BoardContent({
   user,
   isStaff,
   targetId,
+  q,
 }: {
   user: RequestUser;
   isStaff: boolean;
   targetId?: string;
+  q: string;
 }) {
   // Staff land on a board, never on a picker: with no ?designer= the first
   // designer in the rail (rank order) is opened. The rail switches.
@@ -76,6 +97,9 @@ async function BoardContent({
   targetId = resolvedId;
 
   const pickerDesigners = designers.map((d) => ({ id: d.id, name: d.name }));
+  const count = (cols: BoardData["columns"]) => Object.values(cols).reduce((n, list) => n + list.length, 0);
+  const columns = board ? (q ? filterColumns(board.columns, q) : board.columns) : null;
+  const matched = columns ? count(columns) : 0;
 
   return (
     <Page className="max-w-none">
@@ -130,9 +154,28 @@ async function BoardContent({
         {isStaff && <DesignerRail designers={designers} current={targetId} />}
 
         <div className="min-w-0 flex-1">
-          {board ? (
+          {board && columns ? (
             <div className="flex flex-col gap-4">
-              <DesignerBoard initial={board.columns} viewerRole={user.role} />
+              {q && (
+                <div
+                  role="status"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-card bg-surface px-4 py-2.5 text-sm shadow-card"
+                >
+                  <Search size={15} className="shrink-0 text-slate" />
+                  <span className="min-w-0 text-ink">
+                    {matched === 0
+                      ? <>None of your cards match &ldquo;{q}&rdquo;.</>
+                      : <>{matched} of your {count(board.columns)} cards match &ldquo;{q}&rdquo;.</>}
+                  </span>
+                  <Link
+                    href="/board"
+                    className={cn("inline-flex min-h-11 items-center font-medium text-pigment hover:text-ink lg:min-h-0", focusRing)}
+                  >
+                    Clear search
+                  </Link>
+                </div>
+              )}
+              <DesignerBoard initial={columns} viewerRole={user.role} />
               <Disclosure
                 summary="Earnings history"
                 hint={board.earningHistory.length ? `${board.earningHistory.length} paid order${board.earningHistory.length === 1 ? "" : "s"}` : "nothing yet"}

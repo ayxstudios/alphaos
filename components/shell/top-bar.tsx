@@ -62,11 +62,17 @@ export function TopBar({
     });
   }
 
+  // Designers cannot open /orders (it redirects to their board), so their
+  // search looks through their own cards on /board instead.
+  const designer = user.role === "designer";
+  const searchPath = designer ? "/board" : "/orders";
+  const searchLabel = designer ? "Search my cards" : "Search orders or customers";
+
   function submitSearch(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmed = query.trim();
     router.push(
-      trimmed ? `/orders?q=${encodeURIComponent(trimmed)}` : "/orders",
+      trimmed ? `${searchPath}?q=${encodeURIComponent(trimmed)}` : searchPath,
     );
   }
 
@@ -138,7 +144,8 @@ export function TopBar({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search orders or customers"
+            placeholder={searchLabel}
+            aria-label={searchLabel}
             className={cn(
               "h-10 w-full rounded-input border border-line bg-canvas pl-9 pr-3 text-sm text-ink placeholder:text-slate/75",
               "transition-colors focus:bg-surface",
@@ -149,17 +156,21 @@ export function TopBar({
       </div>
 
       <div className="flex items-center gap-2">
-        <button
-          type="button"
-          aria-label="Open order search"
-          onClick={() => router.push("/orders")}
-          className={cn(
-            "inline-flex size-9 items-center justify-center rounded-input text-slate transition-colors hover:bg-canvas hover:text-ink sm:hidden",
-            focusRing,
-          )}
-        >
-          <Search size={18} />
-        </button>
+        {/* Phone: staff jump to the orders list and its search. A designer's
+            phone board is one short list with nothing to search from here. */}
+        {!designer && (
+          <button
+            type="button"
+            aria-label="Open order search"
+            onClick={() => router.push("/orders")}
+            className={cn(
+              "inline-flex size-9 items-center justify-center rounded-input text-slate transition-colors hover:bg-canvas hover:text-ink sm:hidden",
+              focusRing,
+            )}
+          >
+            <Search size={18} />
+          </button>
+        )}
         {/* Alpha as a proper tab at the top (owner 2026-09-09), not just an icon. */}
         <button
           type="button"
