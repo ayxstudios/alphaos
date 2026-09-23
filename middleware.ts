@@ -46,6 +46,13 @@ const ADMIN_ONLY = [/^\/payouts(\/|$)/, /^\/health(\/|$)/];
 const PUBLIC = [/^\/auth\/link\/[^/]+\/?$/];
 
 export default auth((req) => {
+  // Vercel's preview toolbar (vercel.live feedback.js, injected on preview
+  // deployments such as staging) probes `OPTIONS /` from phone browsers; a
+  // page route answers that with 400, a console error on every page load.
+  // Answer it plainly. No CORS headers: this widens nothing cross-origin.
+  if (req.method === "OPTIONS") {
+    return new NextResponse(null, { status: 204, headers: { Allow: "GET, HEAD, POST, OPTIONS" } });
+  }
   const { pathname } = req.nextUrl;
   if (PUBLIC.some((r) => r.test(pathname))) return NextResponse.next();
   const isProtected = PROTECTED.some((r) => r.test(pathname));
