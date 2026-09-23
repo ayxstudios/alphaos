@@ -16,9 +16,9 @@ import {
   triggerShopifySync,
   backfillShopifyShop,
   registerShopifyWebhooks,
-  saveShopBackfillCutoff,
 } from "@/app/(app)/settings/actions";
 import { ResolutionRulesEditor } from "@/components/settings/resolution-rules-editor";
+import { CutoffForm } from "@/components/settings/cutoff-form";
 import { formatSyncTime, syncHealth } from "@/lib/integrations/sync-health";
 import type { ShopifyWebhookStatus, SyncSummary } from "@/lib/integrations/shopify";
 import type { FigureRule } from "@/lib/integrations/figures";
@@ -261,21 +261,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
               )}
             </form>
 
-            <form action={saveShopBackfillCutoff} className="rounded-input bg-canvas/70 p-3">
-              <input type="hidden" name="shopId" value={shop.id} />
-              <div className="flex flex-wrap items-end gap-3">
-                <Input
-                  label="Live-order cutoff"
-                  name="backfillCutoffDate"
-                  type="date"
-                  defaultValue={cutoffDate}
-                  required
-                />
-                <Button type="submit" variant="secondary" size="sm">
-                  Save cutoff
-                </Button>
-              </div>
-            </form>
+            <CutoffForm shopId={shop.id} cutoffDate={cutoffDate} />
 
             <div className="rounded-input bg-canvas/70 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
