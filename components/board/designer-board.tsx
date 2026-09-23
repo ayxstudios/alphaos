@@ -182,7 +182,9 @@ export function DesignerBoard({
   }
 
   return (
-    <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+    // A fixed id keeps dnd-kit's aria-describedby the same on the server and
+    // in the browser (its counter otherwise differs: a hydration mismatch).
+    <DndContext id="designer-board" sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
       {/* Phone-first designer view: cards stack in one column, big Start/Submit
           buttons instead of drag. Staff (and designers on a wide screen) get
           the Trello-style drag board below. */}
