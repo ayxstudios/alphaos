@@ -122,3 +122,12 @@ nothing awkward or robotic in copy or motion (A), fits the calm design (D).
 "Fast" judges the tour's own motion and response. Page render time on the
 local dev server (reported as "server" by the check) is not counted; app
 loading speed is owned elsewhere.
+
+## Last measured (warm dev server, `npm run test:tour`: 706 passed, 0 failed)
+
+- Start to first pointer movement: 8 to 13ms on a laptop, 25 to 36ms on a
+  phone (limit 300ms), including from the "?" menu.
+- Each step's own demonstration: 0.3 to 2.6s (limit 4s).
+- Watch how it works: 36s for VA and admin, 30.5 to 32.5s for designer.
+- The tour runtime ships as its own async chunk; ordinary pages never load it
+  (the check asserts no `tour-runtime` request before the tour opens).
