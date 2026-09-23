@@ -769,9 +769,9 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
           {mode === "watch-end" && (
             <div className="flex flex-col gap-3">
               <h2 id={titleId} className="font-display text-lg font-semibold text-ink">
-                That is the whole day.
+                That is your day in AlphaOS.
               </h2>
-              <p className="text-sm text-slate">Now try each step yourself, in about a minute. Or close this and start working.</p>
+              <p className="text-sm text-slate">Now try each step yourself, in about a minute. The ? at the top brings this back any time.</p>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <button type="button" onClick={finishWatch} className={secondaryBtn}>
                   Got it
