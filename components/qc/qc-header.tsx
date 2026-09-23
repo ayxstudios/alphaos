@@ -61,7 +61,8 @@ export function QcHeader({
             {ctx.orderNumber}
           </h1>
           <StatusChip status={ctx.status as OrderStatus} />
-          <TimeInQc since={ctx.enteredQcAt} />
+          {/* Only a live QC clock: a passed or finished order is not "in QC". */}
+          {ctx.status === "awaiting_qc" && <TimeInQc since={ctx.enteredQcAt} />}
         </div>
         <Fact label="Customer">{ctx.customerName}</Fact>
         <Fact label="Figures">

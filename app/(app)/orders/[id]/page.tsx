@@ -446,7 +446,10 @@ export default async function OrderDetailPage({
   // customer SLA), in plain English.
   const now = new Date();
   const designerDeadline = assignment[0]?.dueAt ?? null;
-  const designerCountdown = !hasDesigner
+  // The designer's clock only runs while the work is with them; once the order
+  // has gone to QC, the customer or print, a countdown would only mislead.
+  const designerWorking = order.status === "ready_to_assign" || order.status === "in_design";
+  const designerCountdown = !hasDesigner || !designerWorking
     ? null
     : designerDeadline
       ? designerDeadline.getTime() < now.getTime()
