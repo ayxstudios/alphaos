@@ -194,10 +194,18 @@ export async function saveCustomerUploads(token: string, keys: string[], note: s
       if (CLOSED.includes(order.status)) return { ok: false as const, message: "This order is closed." };
 
       const prefix = `${usingDevStore() ? DEV_STORE_PREFIX : ""}${order.businessId}/${order.id}/reference/`;
-      if (r2Keys.some((k) => !k.startsWith(prefix))) throw new Error("Upload does not belong to this order.");
+      // Exactly one plain file name under this order's prefix (no "..", no sub-path),
+      // so a key can never point at another order's object.
+      if (r2Keys.some((k) => !k.startsWith(prefix) || !/^[A-Za-z0-9-]+\.[A-Za-z0-9]+$/.test(k.slice(prefix.length)))) {
+        throw new Error("Upload does not belong to this order.");
+      }
 
       for (const key of r2Keys) {
-        const head = await headStored(key);
+        // A key that never landed (or a storage hiccup) must read as a plain
+        // retry to the customer, never the storage SDK's error name.
+        const head = await headStored(key).catch(() => {
+          throw new Error("One of your photos did not finish uploading. Please add it again.");
+        });
         if (!head.contentType || !ALLOWED_IMAGE_TYPES.test(head.contentType)) throw new Error("One of the files is not a supported photo.");
         if (!head.contentLength || head.contentLength <= 0 || head.contentLength > MAX_UPLOAD_BYTES) throw new Error("One of the files is over 25 MB.");
       }
