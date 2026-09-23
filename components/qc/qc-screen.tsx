@@ -426,7 +426,7 @@ function EmailPreviewDialog({
         aria-labelledby="qc-email-preview-title"
         className="grid max-h-[92vh] w-full max-w-6xl grid-cols-1 overflow-y-auto rounded-modal bg-surface shadow-lg xl:grid-cols-[minmax(0,1fr)_28rem] xl:grid-rows-[minmax(0,92vh)] xl:overflow-hidden"
       >
-        <div className="min-h-0 overflow-y-auto p-5">
+        <div className="min-h-0 p-5 xl:overflow-y-auto">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 id="qc-email-preview-title" className="font-display text-xl font-semibold text-ink">Preview customer email</h2>
@@ -470,7 +470,7 @@ function EmailPreviewDialog({
           </div>
         </div>
 
-        <aside className="min-h-0 overflow-y-auto border-t border-line bg-canvas p-5 xl:border-l xl:border-t-0">
+        <aside className="min-h-0 border-t border-line bg-canvas p-5 xl:overflow-y-auto xl:border-l xl:border-t-0">
           <div className="rounded-card border border-line bg-surface p-3 text-sm">
             <p className="text-xs text-slate">To: <span className="text-ink">{preview.to}</span></p>
             <p className="mt-1 text-xs text-slate">Subject: <span className="font-medium text-ink">{preview.subject}</span></p>
