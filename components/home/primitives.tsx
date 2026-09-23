@@ -60,7 +60,7 @@ export function StatTile({
       {context && (
         <div className="mt-1.5 flex items-center gap-1.5 text-xs text-slate">
           {showPill && delta && <DeltaPill pct={delta.pct as number | null} good={delta.good} />}
-          <span className="truncate">{context}</span>
+          <span className="min-w-0">{context}</span>
         </div>
       )}
       {spark && (
