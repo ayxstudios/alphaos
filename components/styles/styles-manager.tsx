@@ -23,6 +23,8 @@ export type StyleVM = {
   titleMatches: string[];
   isDefault: boolean;
   designerIds: string[];
+  /** Unfinished orders tagged with this style (deleting it blocks their pay). */
+  openOrders: number;
 };
 
 export type DesignerOption = { id: string; name: string; styles: string[] };
@@ -235,7 +237,11 @@ function StyleCard({
             variant="ghost"
             size="sm"
             onClick={() => {
-              if (confirm(`Delete the "${style.name}" style? Designers will keep their other styles.`)) {
+              const tagged =
+                style.openOrders > 0
+                  ? ` ${style.openOrders} unfinished order${style.openOrders === 1 ? " is" : "s are"} tagged with it: their designer${style.openOrders === 1 ? "" : "s"} cannot be paid for ${style.openOrders === 1 ? "it" : "them"} until you give ${style.openOrders === 1 ? "it" : "them"} another style.`
+                  : " No unfinished orders use it.";
+              if (confirm(`Delete the "${style.name}" style?${tagged} Designers will keep their other styles.`)) {
                 onRun(() => deleteStyle(style.id), "Style deleted");
               }
             }}

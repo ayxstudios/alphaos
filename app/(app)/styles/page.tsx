@@ -24,7 +24,7 @@ export default async function StylesPage() {
 
   const { selected } = await loadShellData(user);
 
-  const { styleRows, designerRows, productRows, businessStyles, ignoredRows } = await withUserContext(user, async (tx) => {
+  const { styleRows, designerRows, productRows, businessStyles, ignoredRows, openStyleRows } = await withUserContext(user, async (tx) => {
     const styleRows = await tx
       .select({
         id: styles.id,
@@ -74,8 +74,28 @@ export default async function StylesPage() {
       .where(eq(ignoredProducts.businessId, selected.id))
       .orderBy(desc(ignoredProducts.createdAt));
 
-    return { styleRows, designerRows, productRows, businessStyles, ignoredRows };
+    // Unfinished orders tagged with each style: deleting the style leaves them
+    // with no rate, so their designer's pay would block. The delete warns.
+    const openStyleRows = await tx
+      .select({
+        style: sql<string>`lower(${orderItems.style})`,
+        orders: sql<number>`count(distinct ${orderItems.orderId})::int`,
+      })
+      .from(orderItems)
+      .innerJoin(orders, eq(orders.id, orderItems.orderId))
+      .where(
+        and(
+          eq(orderItems.businessId, selected.id),
+          liveOrderWhere(),
+          notInArray(orders.status, ["complete", "cancelled"]),
+          sql`${orderItems.style} is not null`,
+        ),
+      )
+      .groupBy(sql`lower(${orderItems.style})`);
+
+    return { styleRows, designerRows, productRows, businessStyles, ignoredRows, openStyleRows };
   });
+  const openOrdersByStyle = new Map(openStyleRows.map((r) => [r.style, Number(r.orders)]));
 
   // A product is ignored by SKU when it has one, else by title.
   const ignoredSkus = new Set(ignoredRows.filter((r) => r.sku).map((r) => r.sku!.toLowerCase()));
@@ -104,6 +124,7 @@ export default async function StylesPage() {
     titleMatches: s.titleMatches ?? [],
     isDefault: s.isDefault,
     designerIds: designers.filter((d) => d.styles.includes(s.name.toLowerCase())).map((d) => d.id),
+    openOrders: openOrdersByStyle.get(s.name.toLowerCase()) ?? 0,
   }));
 
   return (
