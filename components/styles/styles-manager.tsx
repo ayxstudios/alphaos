@@ -386,18 +386,20 @@ function AssignDesignersDrawer({
           ))}
         </div>
       )}
-      <div className="mt-4 flex items-center gap-2">
+      {/* Same button order as every other drawer: Cancel, then the action. */}
+      <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <Button type="button" variant="ghost" className="min-h-11 sm:min-h-0" onClick={onClose}>
+          Cancel
+        </Button>
         <Button
           type="button"
+          className="min-h-11 sm:min-h-0"
           onClick={() => {
             onRun(() => setStyleDesigners(style.id, [...selected]), "Designers updated");
             onClose();
           }}
         >
           Save
-        </Button>
-        <Button type="button" variant="ghost" onClick={onClose}>
-          Cancel
         </Button>
       </div>
     </Drawer>
