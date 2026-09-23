@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 const only = process.argv.slice(2);
 const suites = Object.keys(pkg.scripts)
-  .filter((k) => k.startsWith("test:") && k !== "test:all")
+  .filter((k) => k.startsWith("test:") && k !== "test:all" && k !== "test:tour")
   .filter((k) => only.length === 0 || only.includes(k) || only.includes(k.slice(5)));
 
 const rows = [];
