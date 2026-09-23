@@ -24,6 +24,7 @@ import {
   Eye,
   type IconProps,
   Bot,
+  Wallet,
 } from "@/components/ui/icons";
 
 // Next 15.5 Link: full prefetch (page data, not only the skeleton) on pointer
@@ -45,7 +46,7 @@ const ADMIN_NAV: NavItem[] = [
   { label: "Messages", href: "/emails", icon: Mail },
   { label: "Designers", href: "/board", icon: Columns },
   { label: "Print", href: "/queue/print", icon: Truck },
-  { label: "Money", href: "/payouts", icon: ListChecks },
+  { label: "Money", href: "/payouts", icon: Wallet },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
