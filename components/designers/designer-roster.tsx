@@ -214,7 +214,7 @@ function Row({
             ))}
           </div>
         ) : (
-          <span className="text-xs text-slate">Any style</span>
+          <span className="text-xs text-slate">No styles yet</span>
         )}
       </div>
 
@@ -478,7 +478,7 @@ function StyleSelect({
               </span>
             ))
           ) : (
-            <span className="text-sm text-slate">Any style</span>
+            <span className="text-sm text-slate">No styles yet</span>
           )}
         </span>
         <ChevronDown size={15} className="shrink-0 text-slate" />
