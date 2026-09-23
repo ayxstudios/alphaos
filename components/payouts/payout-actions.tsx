@@ -55,12 +55,20 @@ export function MarkPeriodPaidButton({
   businessId,
   designerId,
   period,
+  designerName,
+  pendingLabel,
+  pendingCount,
 }: {
   businessId: string;
   designerId: string;
   period: string;
+  designerName: string;
+  /** The pending total, already formatted (e.g. "$16.00"). */
+  pendingLabel: string;
+  pendingCount: number;
 }) {
   const { pending, run } = useRunAction();
+  const orders = `${pendingCount} order${pendingCount === 1 ? "" : "s"}`;
   return (
     <Button
       type="button"
@@ -68,7 +76,8 @@ export function MarkPeriodPaidButton({
       variant="secondary"
       loading={pending}
       onClick={() => {
-        if (confirm("Mark this designer's pending earnings for this period as paid?")) {
+        // Paying is not undone from here, so say exactly who and how much.
+        if (confirm(`Mark ${pendingLabel} for ${designerName} (${orders}, ${period}) as paid? Pay them first; this only records it.`)) {
           run(() => markPeriodPaidAction(businessId, designerId, period));
         }
       }}
