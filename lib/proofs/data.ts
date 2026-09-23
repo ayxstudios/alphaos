@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 
 import { withSystemContext, type Tx } from "@/lib/db";
 import { activityLog, assets, businesses, orders, proofs } from "@/lib/db/schema";
@@ -19,6 +19,8 @@ export type ProofView = {
   decision: ProofDecision | null;
   decidedAt: string | null; // ISO
   hasPreview: boolean;
+  /** A newer proof was sent for the same order after this one. */
+  superseded: boolean;
 };
 
 const PREVIEW_TYPES = ["final", "submission"] as const;
@@ -34,6 +36,7 @@ export async function getProofView(token: string): Promise<ProofView | null> {
     const [row] = await tx
       .select({
         orderId: proofs.orderId,
+        createdAt: proofs.createdAt,
         decision: proofs.decision,
         decidedAt: proofs.decidedAt,
         orderStatus: orders.status,
@@ -49,6 +52,12 @@ export async function getProofView(token: string): Promise<ProofView | null> {
     if (!row) return null;
 
     const preview = await resolvePreviewAsset(tx, row.orderId);
+    // Scoped to the one order this token resolves to.
+    const [newer] = await tx
+      .select({ id: proofs.id })
+      .from(proofs)
+      .where(and(eq(proofs.orderId, row.orderId), gt(proofs.createdAt, row.createdAt)))
+      .limit(1);
 
     return {
       businessName: row.businessName,
@@ -58,6 +67,7 @@ export async function getProofView(token: string): Promise<ProofView | null> {
       decision: row.decision,
       decidedAt: row.decidedAt ? row.decidedAt.toISOString() : null,
       hasPreview: preview != null,
+      superseded: Boolean(newer),
     };
   });
 }

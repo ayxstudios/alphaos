@@ -51,6 +51,7 @@ export default async function ProofPage({
         hasPreview={proof.hasPreview}
         actionable={proof.actionable}
         initialDecision={proof.decision}
+        superseded={proof.superseded}
       />
 
       <footer className="pt-2 text-center text-xs text-slate">
