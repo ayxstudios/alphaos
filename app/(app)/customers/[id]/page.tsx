@@ -527,7 +527,7 @@ export default async function CustomerDetailPage({
                               const labels = optionLabels(item.options);
                               return (
                                 <div key={item.id} className="min-w-0">
-                                  <p className="truncate text-sm font-medium text-ink">
+                                  <p className="text-sm font-medium text-ink">
                                     {item.title ?? "Untitled item"}
                                   </p>
                                   <div className="mt-1 flex flex-wrap gap-1.5">
@@ -543,9 +543,12 @@ export default async function CustomerDetailPage({
                                     {item.style && (
                                       <Badge variant="neutral">{item.style}</Badge>
                                     )}
-                                    {item.variation && (
-                                      <Badge variant="neutral">{item.variation}</Badge>
-                                    )}
+                                    {/* Skip a variation that only repeats the figure chip ("1 figure"). */}
+                                    {item.variation &&
+                                      item.variation.trim().toLowerCase() !==
+                                        `${item.figureCount} figure${item.figureCount === 1 ? "" : "s"}` && (
+                                        <Badge variant="neutral">{item.variation}</Badge>
+                                      )}
                                   </div>
                                   {labels.length > 0 && (
                                     <p className="mt-2 line-clamp-2 text-xs text-slate">
