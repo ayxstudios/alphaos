@@ -74,7 +74,7 @@ export function UnrecognisedPanel({
         <span className="text-sm font-semibold text-ink">Products to confirm</span>
         {products.length > 0 ? <Badge variant="warning">{products.length}</Badge> : <span className="text-xs text-slate">All recognised</span>}
         <span className="ml-auto hidden text-xs text-slate sm:inline">Confirm once and it is remembered</span>
-        <ChevronDown size={16} className="shrink-0 text-slate transition-transform group-open:rotate-180" />
+        <ChevronDown size={16} className="ml-auto shrink-0 text-slate transition-transform group-open:rotate-180 sm:ml-0" />
       </summary>
       <div className="border-t border-line/70 px-4 pb-4">
 
@@ -148,7 +148,7 @@ export function UnrecognisedPanel({
             {ignored.map((p) => (
               <div key={p.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5 text-sm">
                 <span className="min-w-0 truncate text-ink">{p.title ?? "Untitled product"}</span>
-                {p.sku && <span className="text-xs text-slate">SKU {p.sku}</span>}
+                {p.sku && <span className="text-xs text-slate">{skuLabel(p.sku)}</span>}
                 <Button
                   type="button"
                   size="sm"
@@ -222,7 +222,7 @@ function ProductRow({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-ink sm:truncate">{product.title ?? "Untitled product"}</p>
           <p className="text-xs text-slate">
-            {product.sku ? `SKU ${product.sku} · ` : ""}
+            {product.sku ? `${skuLabel(product.sku)} · ` : ""}
             {product.orders} order{product.orders === 1 ? "" : "s"}
             {product.via === "default" && product.defaultStyle ? ` · went to ${product.defaultStyle} by default` : ""}
           </p>
@@ -283,4 +283,9 @@ function ProductRow({
       </div>
     </div>
   );
+}
+
+/** "SKU 1249", but never "SKU SKU-1018-1". */
+function skuLabel(sku: string): string {
+  return /^sku\b/i.test(sku.trim()) ? sku.trim() : `SKU ${sku}`;
 }
