@@ -424,7 +424,7 @@ function EmailPreviewDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="qc-email-preview-title"
-        className="grid grid-cols-1 max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-modal bg-surface shadow-lg xl:grid-cols-[minmax(0,1fr)_28rem]"
+        className="grid max-h-[92vh] w-full max-w-6xl grid-cols-1 overflow-y-auto rounded-modal bg-surface shadow-lg xl:grid-cols-[minmax(0,1fr)_28rem] xl:grid-rows-[minmax(0,92vh)] xl:overflow-hidden"
       >
         <div className="min-h-0 overflow-y-auto p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -488,7 +488,7 @@ function EmailPreviewDialog({
           />
 
           {/* Always in view: the send is the point of this dialog. */}
-          <div className="sticky -bottom-5 -mx-5 -mb-5 mt-4 flex flex-wrap justify-end gap-2 border-t border-line bg-canvas px-5 py-3">
+          <div className="sticky bottom-0 -mx-5 -mb-5 mt-4 flex flex-wrap justify-end gap-2 border-t border-line bg-canvas px-5 py-3">
             <Button type="button" variant="ghost" onClick={onCancel} disabled={pending}>
               Cancel
             </Button>
