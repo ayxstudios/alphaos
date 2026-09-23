@@ -200,7 +200,9 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
           className={cn(
             "fixed z-40 flex items-center gap-2 rounded-full bg-pigment px-4 py-3 text-surface shadow-lg",
             "transition-transform motion-hover hover:opacity-90 active:scale-95",
-            "bottom-20 right-4 sm:bottom-6 sm:right-6",
+            // Phone: the top bar's Alpha AI button is the way in; this one
+            // floated over cards, rows and buttons above the tab bar.
+            "bottom-20 right-4 max-sm:hidden sm:bottom-6 sm:right-6",
             focusRing,
           )}
         >
