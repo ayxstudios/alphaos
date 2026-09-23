@@ -233,7 +233,8 @@ export function TopBar({
         <Popover
           ariaLabel={`Notifications${unread ? `, ${unread} unread` : ""}`}
           triggerClassName={cn(
-            "relative inline-flex size-9 items-center justify-center rounded-input text-slate",
+            // 44px tap target on a phone, like the help button beside it.
+            "relative inline-flex size-11 lg:size-9 items-center justify-center rounded-input text-slate",
             "transition-colors motion-hover hover:bg-canvas hover:text-ink",
           )}
           trigger={
