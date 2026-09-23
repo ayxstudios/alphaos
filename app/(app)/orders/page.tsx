@@ -399,8 +399,13 @@ export default async function OrdersPage({
 
   if (!selectedView) {
     const cookieView = validView(cookieStore.get(ORDERS_VIEW_COOKIE)?.value);
-    const fallback = cookieView ?? (countRow.overdue > 0 ? "overdue" : "active");
+    // A search from the top bar (/orders?q=...) looks through every open
+    // order, and keeps its query and filters through this redirect.
+    const fallback = q ? "active" : cookieView ?? (countRow.overdue > 0 ? "overdue" : "active");
     const next = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (typeof value === "string" && value && key !== "view") next.set(key, value);
+    }
     next.set("view", fallback);
     redirect(`/orders?${next.toString()}`);
   }
