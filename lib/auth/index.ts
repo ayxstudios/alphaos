@@ -5,6 +5,7 @@ import { authConfig, type Role } from "./config";
 import { authenticate, loginClientIp } from "./login";
 import { authenticateLink } from "./login-link";
 import { recheckToken } from "./session-check";
+import { revokeOnSignOut } from "./sign-out";
 
 /**
  * Full Auth.js (NextAuth v5) config: the edge-safe base + the email/password
@@ -27,6 +28,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (params.user) return token; // fresh sign-in: authenticate() just checked the row
       return recheckToken(token);
     },
+  },
+  // Every sign-out, including the built-in POST /api/auth/signout, ends the
+  // person's sessions (not just this cookie). See ./sign-out.ts.
+  events: {
+    signOut: revokeOnSignOut,
   },
   providers: [
     Credentials({

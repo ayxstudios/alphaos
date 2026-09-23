@@ -25,6 +25,7 @@ import { recheckToken } from "../lib/auth/session-check";
 import { findNextEligibleDesigner } from "../lib/orders/assign";
 import { getDesignerRoster } from "../lib/designers/roster";
 import { createTeamMember, listTeam, resetUserPassword, revokeSessions, setUserActive } from "../lib/team/manage";
+import { revokeOnSignOut } from "../lib/auth/sign-out";
 
 let failures = 0;
 function report(name: string, pass: boolean, detail: string) {
@@ -150,6 +151,12 @@ async function main() {
     const beforeSignOut = { id: vaId, role: "va", signedInAt: Date.now() - 1 };
     await revokeSessions({ id: vaId, role: "va" }, vaId);
     report("sign-out revokes a copied cookie", (await recheckToken(beforeSignOut)) === null, "token issued before sign-out = null");
+    // The built-in POST /api/auth/signout goes through Auth.js events.signOut.
+    await new Promise((r) => setTimeout(r, 5));
+    const viaRoute = { id: vaId, role: "va", signedInAt: Date.now() };
+    await new Promise((r) => setTimeout(r, 5));
+    await revokeOnSignOut({ token: viaRoute });
+    report("Auth.js sign-out event revokes a copied cookie too", (await recheckToken(viaRoute)) === null, "token signed out via events.signOut = null");
     report("an unknown user id is refused", (await recheckToken({ id: randomUUID(), role: "va", signedInAt: Date.now() })) === null, "no row = null");
 
     // ---- 4. Inactive designer is skipped by auto-assign -----------------------
