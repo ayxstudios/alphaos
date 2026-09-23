@@ -357,8 +357,9 @@ export type DesignerEarningHistory = {
   createdAt: string;
 };
 
+/** The styles an earning paid for; empty (the row just leaves it out) when unknown. */
 function styleSummary(breakdown: unknown): string {
-  if (!Array.isArray(breakdown) || breakdown.length === 0) return "Unspecified";
+  if (!Array.isArray(breakdown) || breakdown.length === 0) return "";
   const styles = [
     ...new Set(
       breakdown
@@ -366,7 +367,7 @@ function styleSummary(breakdown: unknown): string {
         .filter((style): style is string => typeof style === "string" && style.trim().length > 0),
     ),
   ];
-  return styles.length ? styles.join(", ") : "Unspecified";
+  return styles.join(", ");
 }
 
 const BOARD_ROW_SELECT = {
