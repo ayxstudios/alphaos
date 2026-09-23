@@ -139,7 +139,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 onClick={() => dismiss(t.id)}
                 aria-label="Dismiss"
                 className={cn(
-                  "-mr-1 -mt-1 inline-flex size-7 shrink-0 items-center justify-center rounded-input text-slate",
+                  "-mr-2 -mt-2 inline-flex size-11 shrink-0 items-center justify-center rounded-input text-slate sm:-mr-1 sm:-mt-1 sm:size-7",
                   "transition-colors motion-hover hover:bg-canvas hover:text-ink",
                   focusRing,
                 )}
