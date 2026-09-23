@@ -22,7 +22,7 @@ import {
   type CardAssetType,
 } from "@/app/(app)/board/actions";
 import type { BoardCard } from "@/lib/orders/board-data";
-import { isWithCustomer } from "@/lib/orders/board-constants";
+import { isWithCustomer, SENT_BACK_FROM } from "@/lib/orders/board-constants";
 import type { CardDetail, CardEvent, CardImage } from "@/lib/orders/card-detail";
 import { formatAt } from "@/lib/time";
 
@@ -339,6 +339,13 @@ function CardUploadPanel({
   const [progress, setProgress] = useState<UploadProgress[]>([]);
   const submissions = (detail?.images ?? []).filter((image) => image.type === "submission");
   const latestSubmission = submissions.at(-1) ?? null;
+  // After a send-back (QC fail, revision) the old versions no longer count:
+  // the server refuses Submit for QC until a newer version is uploaded.
+  const lastSendBack = (detail?.events ?? [])
+    .filter((e) => e.toState === "in_design" && e.fromState && (SENT_BACK_FROM as readonly string[]).includes(e.fromState))
+    .reduce<string | null>((max, e) => (!max || e.createdAt > max ? e.createdAt : max), null);
+  const freshVersion =
+    !!latestSubmission && (!lastSendBack || Date.parse(latestSubmission.createdAt) > Date.parse(lastSendBack));
   const canUpload = !designer || canDesignerUpload;
   // Why a designer can't upload right now, in the card's own terms: a card
   // that hasn't been started is NOT locked, it just needs starting first.
@@ -434,9 +441,11 @@ function CardUploadPanel({
             <span className="text-xs font-medium text-ink">Finished portrait</span>
             <p className="mt-1 text-xs text-slate">
               {canDesignerUpload
-                ? latestSubmission
+                ? freshVersion
                   ? "Ready for QC: the newest version is the one reviewed. Every version is kept, so add another first if you want to change it."
-                  : "Upload the finished portrait, then submit it for QC."
+                  : latestSubmission
+                    ? "This came back for changes: add a new version, then submit it for QC. Every version is kept."
+                    : "Upload the finished portrait, then submit it for QC."
                 : designerNote}
             </p>
           </div>
@@ -473,7 +482,7 @@ function CardUploadPanel({
             {latestSubmission && designer ? "Add new version" : "Upload"}
           </Button>
         )}
-        {designer && canDesignerUpload && latestSubmission && onSubmitForQc && (
+        {designer && canDesignerUpload && freshVersion && onSubmitForQc && (
           <Button
             type="button"
             size="sm"

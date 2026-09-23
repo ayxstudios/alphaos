@@ -219,6 +219,7 @@ async function main() {
   await expectThrow("designer awaiting_approval -> approved", ctx.orderId, t(designer, "approved", "awaiting_approval"), "awaiting_approval");
 
   console.log("=== VA can create a late revision from completed work ===");
+  await addSubmission(ctx.lateOrderId); // the version the customer already had
   await transition(va, {
     orderId: ctx.lateOrderId,
     to: "in_design",
@@ -230,6 +231,21 @@ async function main() {
     "VA complete -> in_design revision",
     late.status === "in_design" && late.revisionCount === 1,
     `status ${late.status}, revisionCount ${late.revisionCount}`,
+  );
+
+  console.log("=== a revision needs a NEW version before it goes back to QC ===");
+  await expectThrow(
+    "resubmit after a revision with only the old version",
+    ctx.lateOrderId,
+    () => transition(va, { orderId: ctx.lateOrderId, to: "awaiting_qc", expectedFrom: "in_design" }),
+    "in_design",
+  );
+  await addSubmission(ctx.lateOrderId);
+  await transition(va, { orderId: ctx.lateOrderId, to: "awaiting_qc", expectedFrom: "in_design" });
+  report(
+    "resubmit after a revision with a new version",
+    (await statusOf(ctx.lateOrderId)) === "awaiting_qc",
+    `status now ${await statusOf(ctx.lateOrderId)}`,
   );
 
   // --- cleanup -------------------------------------------------------------

@@ -18,6 +18,15 @@ export const COMPLETE_COLUMN_MAX = 40;
  */
 export const WITH_CUSTOMER_STATUSES = ["awaiting_approval", "approved", "printing", "shipped", "delivered"] as const;
 
+/**
+ * States an order can be SENT BACK to design from (a QC fail, a customer or
+ * VA revision). A send-back asks for a new version, so a submission uploaded
+ * before it no longer counts toward Submit for QC (enforced in
+ * lib/orders/transitions.ts, mirrored in the card modal). Resuming from
+ * on_hold is not a send-back.
+ */
+export const SENT_BACK_FROM = ["awaiting_qc", "awaiting_approval", "approved", "printing", "shipped", "delivered", "complete"] as const;
+
 export function isWithCustomer(status: string): boolean {
   return (WITH_CUSTOMER_STATUSES as readonly string[]).includes(status);
 }
