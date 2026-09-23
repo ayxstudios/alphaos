@@ -33,6 +33,7 @@ import {
 import { TemplateEditor, type TemplateVM } from "@/components/settings/template-editor";
 import { ShopStylesPanel, type ShopStylesVM } from "@/components/settings/shop-styles-panel";
 import { SetupChecklist, type SetupChecklistItem } from "@/components/settings/setup-checklist";
+import { BusinessDetailsCard } from "@/components/settings/business-details-card";
 import {
   defaultTemplateForBusiness,
   EDITABLE_TEMPLATE_KEYS,
@@ -70,6 +71,7 @@ const SETTINGS_SECTIONS = [
   { key: "email", label: "Customer Email" },
   { key: "print", label: "Print Providers" },
   { key: "notifications", label: "Notifications" },
+  { key: "business", label: "Business" },
 ] as const;
 
 type SettingsSection = (typeof SETTINGS_SECTIONS)[number]["key"];
@@ -228,7 +230,13 @@ export default async function SettingsPage({
   )) as GmailCredentials | null;
   const [biz] = await withUserContext(user, (tx) =>
     tx
-      .select({ address: businesses.gmailAddress, sendingEnabled: businesses.emailSendingEnabled })
+      .select({
+        address: businesses.gmailAddress,
+        sendingEnabled: businesses.emailSendingEnabled,
+        stageAutoSend: businesses.stageEmailAutoSend,
+        name: businesses.name,
+        logoUrl: businesses.logoUrl,
+      })
       .from(businesses)
       .where(eq(businesses.id, selected.id)),
   );
@@ -241,6 +249,7 @@ export default async function SettingsPage({
     address: creds?.address ?? biz?.address ?? null,
     redirectUri: appUrl("/api/gmail/callback"),
     sendingEnabled: !!biz?.sendingEnabled,
+    stageAutoSend: !!biz?.stageAutoSend,
   };
 
   // --- Print provider credentials (Gelato / Luma Prints), per business ----
@@ -326,6 +335,13 @@ export default async function SettingsPage({
       return tx.select(cols).from(shops).where(eq(shops.businessId, selected.id)).orderBy(shops.name);
     })
   ).map((s) => ({ id: s.id, name: s.name, platform: s.platform, styles: s.styles ?? [] }));
+
+  // Portrait Styles (/styles) names: what a shop with no own list offers.
+  const styleCatalog = (
+    await withUserContext(user, (tx) =>
+      tx.select({ name: styles.name }).from(styles).where(eq(styles.businessId, selected.id)).orderBy(styles.name),
+    )
+  ).map((s) => s.name);
 
   const [styleStats] = await withUserContext(user, (tx) =>
     tx
@@ -496,7 +512,7 @@ export default async function SettingsPage({
               </DataPanel>
             ) : (
               <DataPanel className="px-4 py-1">
-                <ShopStylesPanel shops={styleShops} />
+                <ShopStylesPanel shops={styleShops} catalog={styleCatalog} />
               </DataPanel>
             )}
           </section>
@@ -543,6 +559,15 @@ export default async function SettingsPage({
             <SectionHeader title="Notifications" />
             <DailyHealthEmailSettingsPanel settings={dailyHealthSettings} admins={dailyHealthAdmins} />
             <NotificationDryRunPanel />
+          </section>
+        )}
+
+        {activeSection === "business" && (
+          <section className="flex flex-col gap-4">
+            <SectionHeader title="Business" />
+            <BusinessDetailsCard
+              business={{ id: selected.id, name: biz?.name ?? selected.name, logoUrl: biz?.logoUrl ?? null }}
+            />
           </section>
         )}
       </div>

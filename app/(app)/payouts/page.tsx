@@ -14,6 +14,7 @@ import {
   ResolveBlockedButton,
   VoidEarningForm,
 } from "@/components/payouts/payout-actions";
+import { formatAt } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -46,14 +47,7 @@ function money(value: string | number | null): string {
 }
 
 function formatDate(date: Date | null): string {
-  if (!date) return "-";
-  return new Intl.DateTimeFormat("en-AU", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
+  return formatAt(date, { day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }, "-");
 }
 
 function styleSummary(breakdown: EarningBreakdown[] | null): string {
@@ -282,7 +276,7 @@ export default async function PayoutsPage({
           </div>
           <div className="divide-y divide-line/60">
             {detailRows.map((row) => (
-              <div key={row.id} className="grid grid-cols-1 gap-2 px-4 py-3 text-sm lg:grid-cols-[1fr_1.5fr_auto_auto_auto] lg:items-center">
+              <div key={row.id} className="grid grid-cols-1 gap-2 px-4 py-3 text-sm lg:grid-cols-[1fr_1.5fr_auto_auto_auto_auto] lg:items-center">
                 <div>
                   <Link href={`/orders/${row.orderId}`} className="font-medium text-ink hover:text-pigment">
                     {row.orderNumber}
@@ -295,6 +289,13 @@ export default async function PayoutsPage({
                   {row.status}
                 </Badge>
                 <span className="text-right font-semibold text-ink">{money(row.amount)}</span>
+                {/* A pending earning (e.g. an order completed by mistake) can be voided
+                    before it is paid; blocked ones are voided from the panel above. */}
+                {row.status === "pending" ? (
+                  <VoidEarningForm businessId={businessId} earningId={row.id} />
+                ) : (
+                  <span className="hidden lg:block" />
+                )}
               </div>
             ))}
           </div>

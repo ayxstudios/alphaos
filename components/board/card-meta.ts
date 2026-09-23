@@ -1,6 +1,7 @@
 import type { BoardCard } from "@/lib/orders/board-data";
 import type { CardEvent } from "@/lib/orders/card-detail";
 import type { OrderStatus } from "@/lib/orders/transitions";
+import { formatAt } from "@/lib/time";
 
 /** Label tones map onto the design tokens — no colour outside the palette. */
 export type LabelTone = "neutral" | "pigment" | "amber" | "rose" | "sage";
@@ -124,5 +125,5 @@ export function relativeTime(iso: string, now = Date.now()): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.floor(h / 24);
   if (d < 7) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString("en-AU", { day: "2-digit", month: "short" });
+  return formatAt(iso, { day: "2-digit", month: "short" });
 }

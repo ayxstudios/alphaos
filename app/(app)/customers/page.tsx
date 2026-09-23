@@ -8,6 +8,7 @@ import { customers, orders } from "@/lib/db/schema";
 import { loadShellData } from "@/lib/shell/context";
 import { EmptyState, Page, PageHeader, TableShell } from "@/components/ui";
 import { Search, Users } from "@/components/ui/icons";
+import { formatAt } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -147,13 +148,7 @@ export default async function CustomersPage({
                   <span className="md:hidden"> order{row.orderCount === 1 ? "" : "s"}</span>
                 </p>
                 <p className="text-sm text-slate">
-                  {row.latestOrderAt
-                    ? new Intl.DateTimeFormat("en-AU", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      }).format(new Date(row.latestOrderAt))
-                    : "No orders"}
+                  {formatAt(row.latestOrderAt, { day: "2-digit", month: "short", year: "numeric" }, "No orders")}
                 </p>
               </Link>
             ))}

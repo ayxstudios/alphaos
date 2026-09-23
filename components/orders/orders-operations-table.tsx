@@ -13,6 +13,7 @@ import { Badge, Button, InfoBubble, useToast, type OrderStatus } from "@/compone
 import { ArrowRight, Columns, X } from "@/components/ui/icons";
 import { formatStageRemaining, type StageTimer } from "@/lib/orders/stage-timers";
 import { cn } from "@/lib/utils";
+import { formatAt } from "@/lib/time";
 
 export type OrdersDashboardRow = {
   id: string;
@@ -231,14 +232,7 @@ function fmtShortDate(value: string | null) {
 }
 
 function fmtDateTime(value: string | null) {
-  if (!value) return "Unknown";
-  return new Intl.DateTimeFormat("en-AU", {
-    timeZone: TZ,
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
+  return formatAt(value, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }, "Unknown");
 }
 
 function resultText(result: BulkActionResult) {

@@ -22,6 +22,7 @@ import { ResolutionRulesEditor } from "@/components/settings/resolution-rules-ed
 import { formatSyncTime, syncHealth } from "@/lib/integrations/sync-health";
 import type { ShopifyWebhookStatus, SyncSummary } from "@/lib/integrations/shopify";
 import type { FigureRule } from "@/lib/integrations/figures";
+import { formatAt } from "@/lib/time";
 
 type AuthMode = "client_credentials" | "legacy";
 
@@ -132,7 +133,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
 
   const health = syncHealth(shop.lastSyncAt);
   const lastSync = formatSyncTime(shop.lastSyncAt);
-  const cursor = shop.lastSyncCursor ? new Date(shop.lastSyncCursor).toLocaleString() : "none";
+  const cursor = formatAt(shop.lastSyncCursor, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }, "none");
   const cutoffDate = shop.backfillCutoffAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
   const webhookUris = webhookStatus.subscriptions
     .map((sub) => sub.uri)

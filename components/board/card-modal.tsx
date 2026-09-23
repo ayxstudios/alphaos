@@ -23,6 +23,7 @@ import {
 } from "@/app/(app)/board/actions";
 import type { BoardCard } from "@/lib/orders/board-data";
 import type { CardDetail, CardEvent, CardImage } from "@/lib/orders/card-detail";
+import { formatAt } from "@/lib/time";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 type ViewerRole = "admin" | "va" | "designer";
@@ -33,13 +34,10 @@ type UploadProgress = {
   status: "queued" | "uploading" | "done" | "failed";
 };
 
-const dateFmt = new Intl.DateTimeFormat("en-AU", {
-  weekday: "short",
-  day: "2-digit",
-  month: "short",
-  hour: "numeric",
-  minute: "2-digit",
-});
+const dateFmt = {
+  format: (value: Date | string | number) =>
+    formatAt(value, { weekday: "short", day: "2-digit", month: "short", hour: "numeric", minute: "2-digit" }),
+};
 
 export function CardModal({
   card,

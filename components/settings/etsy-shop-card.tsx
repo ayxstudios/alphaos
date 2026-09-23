@@ -14,6 +14,7 @@ import { ResolutionRulesEditor } from "@/components/settings/resolution-rules-ed
 import { formatSyncTime, syncHealth } from "@/lib/integrations/sync-health";
 import type { SyncSummary } from "@/lib/integrations/etsy";
 import type { FigureRule } from "@/lib/integrations/figures";
+import { formatAt } from "@/lib/time";
 
 export type EtsyShopVM = {
   id: string;
@@ -75,7 +76,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
   const health = syncHealth(shop.lastSyncAt);
   const lastSync = formatSyncTime(shop.lastSyncAt);
   const cursor = shop.lastSyncCursor
-    ? new Date(Number(shop.lastSyncCursor) * 1000).toLocaleString()
+    ? formatAt(Number(shop.lastSyncCursor) * 1000, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }, "none")
     : "none";
   const cutoffDate = shop.backfillCutoffAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
 

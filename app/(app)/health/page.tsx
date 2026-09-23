@@ -12,19 +12,14 @@ import { loadShellData } from "@/lib/shell/context";
 import { Badge, DataPanel, Disclosure, EmptyState, Page, PageHeader, SectionHeader } from "@/components/ui";
 import { Grid } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
+import { formatAt } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<{ scope?: string }>;
 
 function formatDateTime(value: string | null) {
-  if (!value) return "Never";
-  return new Intl.DateTimeFormat("en-AU", {
-    day: "2-digit",
-    month: "short",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
+  return formatAt(value, { day: "2-digit", month: "short", hour: "numeric", minute: "2-digit" }, "Never");
 }
 
 function formatGenerated(value: string | null) {

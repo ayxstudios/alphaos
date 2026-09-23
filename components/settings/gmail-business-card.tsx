@@ -9,6 +9,7 @@ import {
   saveGmailClient,
   triggerGmailPoll,
   setEmailSendingEnabled,
+  setStageEmailAutoSend,
   sendGmailTest,
   type GmailTestResult,
 } from "@/app/(app)/settings/actions";
@@ -24,6 +25,8 @@ export type GmailBusinessVM = {
   address: string | null;
   redirectUri: string;
   sendingEnabled: boolean;
+  /** businesses.stage_email_auto_send: stage emails send by themselves instead of waiting in Emails. */
+  stageAutoSend: boolean;
 };
 
 const STATUS: Record<GmailBusinessVM["status"], { label: string; variant: "success" | "warning" | "neutral" }> = {
@@ -41,6 +44,7 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
   const [poll, setPoll] = useState<InboundSummary | null>(null);
   const [pollError, setPollError] = useState<string | null>(null);
   const [togglePending, startToggle] = useTransition();
+  const [stagePending, startStage] = useTransition();
   const [testTo, setTestTo] = useState("");
   const [testPending, startTest] = useTransition();
   const [testResult, setTestResult] = useState<GmailTestResult | null>(null);
@@ -59,6 +63,21 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
             : "No stale emails to skip.",
         });
       }
+      router.refresh();
+    });
+  }
+
+  function onToggleStageAutoSend() {
+    startStage(async () => {
+      const turningOn = !gmail.stageAutoSend;
+      await setStageEmailAutoSend(gmail.businessId, turningOn);
+      toast({
+        variant: "success",
+        title: turningOn ? "Stage emails send by themselves" : "Stage emails wait for a VA",
+        description: turningOn
+          ? "New order received, in design, printing and shipped emails go out without approval."
+          : "New stage emails are drafted in Emails for a VA to approve.",
+      });
       router.refresh();
     });
   }
@@ -128,15 +147,38 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
           >
             {gmail.sendingEnabled ? "Turn off" : "Turn on"}
           </Button>
-          {!gmail.sendingEnabled && (
-            <p className="w-full text-xs text-slate">
-              Turning on skips unsent emails for finished orders or anything older than {STALE_AFTER_DAYS} days; they stay in Emails to send or discard by hand.
-            </p>
-          )}
+          <p className="w-full text-xs text-slate">
+            {gmail.sendingEnabled
+              ? "The master switch. On: approved emails and the automatic ones (photo request, photo reminder) go to customers. Off: nothing reaches a customer."
+              : `The master switch. Off: nothing reaches a customer. Turning on skips unsent emails for finished orders or anything older than ${STALE_AFTER_DAYS} days; they stay in Emails to send or discard by hand.`}
+          </p>
+        </div>
+
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-input border border-line bg-canvas/70 px-3 py-2.5">
+          <span className="text-sm font-medium text-ink">Stage emails send by themselves</span>
+          <Badge variant={gmail.stageAutoSend ? "success" : "neutral"} dot>
+            {gmail.stageAutoSend ? "ON" : "OFF"}
+          </Badge>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="ml-auto"
+            loading={stagePending}
+            onClick={onToggleStageAutoSend}
+          >
+            {gmail.stageAutoSend ? "Turn off" : "Turn on"}
+          </Button>
+          <p className="w-full text-xs text-slate">
+            Order received, in the artist&apos;s hands, printing, shipped and the proof reminder.{" "}
+            {gmail.stageAutoSend
+              ? "On: they send without approval (still only while sending is on)."
+              : "Off (recommended to start): they wait in Emails for a VA to approve."}
+          </p>
         </div>
 
         <div className="grid gap-4 xl:grid-cols-2">
-          <form action={saveGmailClient} className="flex flex-col gap-3">
+          <form action={saveGmailClient} className="flex min-w-0 flex-col gap-3">
             <input type="hidden" name="businessId" value={gmail.businessId} />
             <Input
               label="OAuth client ID"
@@ -184,7 +226,7 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
             <p className="truncate text-xs text-slate">Redirect URI: {gmail.redirectUri}</p>
           </form>
 
-          <div className="flex flex-col gap-3">
+          <div className="flex min-w-0 flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="secondary"

@@ -14,7 +14,7 @@ import {
   setBusinessPrintCredentials,
   type ShopCredentials,
 } from "@/lib/db/credentials";
-import { shops, businesses, emailTemplates, printProductMappings, users } from "@/lib/db/schema";
+import { shops, businesses, emailTemplates, printProductMappings, styles, users } from "@/lib/db/schema";
 import { reresolveShop, type ReresolveSummary } from "@/lib/orders/resolution";
 import type { FigureRule } from "@/lib/integrations/figures";
 import type { GmailCredentials } from "@/lib/integrations/gmail";
@@ -23,6 +23,7 @@ import {
   DEFAULT_TEMPLATES,
   EDITABLE_TEMPLATE_KEYS,
   TEMPLATE_META,
+  defaultTemplateForBusiness,
   renderTemplate,
   resolveTemplate,
   type TemplateKey,
@@ -67,37 +68,64 @@ async function requireAdmin(): Promise<RequestUser> {
 }
 
 /**
- * Set the portrait styles a shop offers — the catalog designers' styles are
- * chosen from. Trimmed, de-duplicated (case-insensitive). Admin-only (shops RLS
+ * Limit the portrait styles a shop's order forms offer (empty = every style in
+ * Portrait Styles). Names must exist in Portrait Styles and are stored in its
+ * spelling. Trimmed, de-duplicated (case-insensitive). Admin-only (shops RLS
  * is admin-write; settings is an admin surface).
  */
 export async function setShopStyles(
   shopId: string,
   raw: string[],
-): Promise<{ ok: true } | { ok: false; message: string }> {
+): Promise<{ ok: true; styles: string[] } | { ok: false; message: string }> {
   const user = await requireAdmin();
   if (!shopId) return { ok: false, message: "Missing shop" };
 
-  const seen = new Set<string>();
-  const styles: string[] = [];
-  for (const s of raw) {
-    const t = s.trim();
-    if (!t) continue;
-    const key = t.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    styles.push(t);
-  }
-
-  await withUserContext(user, (tx) =>
-    tx.update(shops).set({ styles: styles.length ? styles : null }).where(eq(shops.id, shopId)),
-  );
+  const result = await withUserContext(user, async (tx) => {
+    const [shop] = await tx
+      .select({ businessId: shops.businessId, styles: shops.styles })
+      .from(shops)
+      .where(eq(shops.id, shopId));
+    if (!shop) return { ok: false as const, message: "Shop not found" };
+    // Only names from Portrait Styles, stored in the catalog's own spelling: a
+    // free-typed name ("Watercolor" vs "watercolor", or a style that does not
+    // exist) tagged manual orders with a style that has no rate, which blocks
+    // the designer's pay. A stale name already on the shop (its style was
+    // renamed or deleted) is dropped rather than refused, so it can be cleared.
+    const catalog = new Map(
+      (await tx.select({ name: styles.name }).from(styles).where(eq(styles.businessId, shop.businessId))).map(
+        (s) => [s.name.toLowerCase(), s.name],
+      ),
+    );
+    const existing = new Set((shop.styles ?? []).map((s) => s.trim().toLowerCase()));
+    const seen = new Set<string>();
+    const picked: string[] = [];
+    const unknown: string[] = [];
+    for (const s of raw) {
+      const t = s.trim();
+      if (!t) continue;
+      const key = t.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const name = catalog.get(key);
+      if (name) picked.push(name);
+      else if (!existing.has(key)) unknown.push(t);
+    }
+    if (unknown.length) {
+      return {
+        ok: false as const,
+        message: `${unknown.map((u) => `"${u}"`).join(", ")} ${unknown.length === 1 ? "is" : "are"} not in Portrait Styles. Add it there first (with its rate).`,
+      };
+    }
+    await tx.update(shops).set({ styles: picked.length ? picked : null }).where(eq(shops.id, shopId));
+    return { ok: true as const, styles: picked };
+  });
+  if (!result.ok) return result;
   // Only revalidate the OTHER route (the styles catalog for the designers page);
   // revalidating "/settings" here would refetch the heavy settings page and undo
   // the optimistic chip edit. Settings is force-dynamic, so it reloads fresh next
   // visit anyway.
   revalidatePath("/designers");
-  return { ok: true };
+  return result;
 }
 
 /** Save a shop's Etsy app credentials (keystring + shared secret). Form action. */
@@ -465,6 +493,52 @@ export async function setEmailSendingEnabled(
   return result;
 }
 
+/**
+ * Stage emails (order received, in the artist's hands, printing, shipped, proof
+ * reminder): OFF (the default) drafts them into Emails for a VA to approve; ON
+ * queues them to send by themselves. Only affects emails created after the
+ * change, and nothing sends while customer email sending is off.
+ */
+export async function setStageEmailAutoSend(businessId: string, enabled: boolean): Promise<void> {
+  const user = await requireAdmin();
+  await withUserContext(user, (tx) =>
+    tx.update(businesses).set({ stageEmailAutoSend: enabled }).where(eq(businesses.id, businessId)),
+  );
+  revalidatePath("/settings");
+}
+
+/**
+ * The business's own name and logo, shown to customers on the photo upload and
+ * proof pages and used as {{business_name}} in emails. The logo is a public
+ * https image URL; empty shows the name as text.
+ */
+export async function saveBusinessDetails(
+  businessId: string,
+  input: { name: string; logoUrl: string },
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const user = await requireAdmin();
+  const name = input.name.trim().replace(/\s+/g, " ");
+  if (!name) return { ok: false, message: "Enter the business name" };
+  if (name.length > 80) return { ok: false, message: "Keep the name under 80 characters" };
+  const rawLogo = input.logoUrl.trim();
+  let logoUrl: string | null = null;
+  if (rawLogo) {
+    let url: URL;
+    try {
+      url = new URL(rawLogo);
+    } catch {
+      return { ok: false, message: "The logo link is not a valid web address" };
+    }
+    if (url.protocol !== "https:") return { ok: false, message: "The logo link must start with https://" };
+    logoUrl = url.toString();
+  }
+  await withUserContext(user, (tx) =>
+    tx.update(businesses).set({ name, logoUrl }).where(eq(businesses.id, businessId)),
+  );
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
 export type GmailTestResult = {
   ok: boolean;
   message?: string;
@@ -694,16 +768,28 @@ export async function saveEmailTemplate(formData: FormData): Promise<void> {
   revalidatePath("/settings");
 }
 
-/** Remove a business's override, reverting the template to the built-in default. */
-export async function resetEmailTemplate(businessId: string, key: string): Promise<void> {
+/**
+ * Remove a business's override, reverting the template to the built-in default.
+ * Returns that default so the editor shows it at once, without a reload.
+ */
+export async function resetEmailTemplate(
+  businessId: string,
+  key: string,
+): Promise<{ subject: string; body: string }> {
   const user = await requireAdmin();
   const templateKey = assertTemplateKey(key);
-  await withUserContext(user, (tx) =>
-    tx
+  const fallback = await withUserContext(user, async (tx) => {
+    await tx
       .delete(emailTemplates)
-      .where(and(eq(emailTemplates.businessId, businessId), eq(emailTemplates.key, templateKey))),
-  );
+      .where(and(eq(emailTemplates.businessId, businessId), eq(emailTemplates.key, templateKey)));
+    const [biz] = await tx
+      .select({ name: businesses.name, slug: businesses.slug })
+      .from(businesses)
+      .where(eq(businesses.id, businessId));
+    return defaultTemplateForBusiness(biz ?? {}, templateKey);
+  });
   revalidatePath("/settings");
+  return { subject: fallback.subject, body: fallback.body };
 }
 
 /* --- Print provider credentials (per business) --------------------------- */

@@ -17,6 +17,7 @@ import {
   reviewDefaults,
   type EtsyReceiptReview,
 } from "@/lib/integrations/etsy/receipt-review";
+import { formatAt } from "@/lib/time";
 
 export type ShopOption = {
   id: string;
@@ -60,10 +61,7 @@ function dueDefault(days: number) {
   return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
 }
 function formatDate(iso: string | null | undefined) {
-  if (!iso) return "Unknown";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "Unknown";
-  return new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short", year: "numeric" }).format(date);
+  return formatAt(iso, { day: "2-digit", month: "short", year: "numeric" }, "Unknown");
 }
 function isOverdue(iso: string | null | undefined) {
   if (!iso) return false;
