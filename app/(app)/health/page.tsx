@@ -66,7 +66,7 @@ export default async function HealthPage({
         title="System Health"
         tourId="page:health"
         description="Anything that needs a look comes first."
-        eyebrow={scope.kind === "all" ? "All businesses" : scope.businessName}
+        eyebrow={scope.kind === "all" ? "All Businesses" : scope.businessName}
         actions={
           <div className="inline-flex rounded-input bg-surface p-1 text-sm shadow-card">
             <Link
@@ -85,7 +85,7 @@ export default async function HealthPage({
                 allBusinesses && "bg-pigment-soft text-pigment",
               )}
             >
-              All businesses
+              All Businesses
             </Link>
           </div>
         }
