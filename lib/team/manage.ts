@@ -45,7 +45,9 @@ function fail(error: unknown, fallback: string): { ok: false; message: string } 
   return { ok: false, message: fallback };
 }
 
-const WORK_IN_FLIGHT = ["in_design", "awaiting_qc"] as const;
+// Orders still with a designer: their queue (assigned, not started) counts
+// too, or deactivating someone strands queued orders with no warning.
+const WORK_IN_FLIGHT = ["ready_to_assign", "in_design", "awaiting_qc"] as const;
 
 /** Everyone who can (or could) sign in, active first, then admins, VAs, designers. */
 export async function listTeam(actor: RequestUser): Promise<TeamMember[]> {

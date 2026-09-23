@@ -178,7 +178,7 @@ async function BoardContent({
               <DesignerBoard initial={columns} viewerRole={user.role} />
               <Disclosure
                 summary="Earnings history"
-                hint={board.earningHistory.length ? `${board.earningHistory.length} paid order${board.earningHistory.length === 1 ? "" : "s"}` : "nothing yet"}
+                hint={board.earningHistory.length ? `${board.earningHistory.length} order${board.earningHistory.length === 1 ? "" : "s"}` : "nothing yet"}
               >
                 {board.earningHistory.length === 0 ? (
                   <p className="py-1 text-sm text-slate">No completed payable orders yet.</p>

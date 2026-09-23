@@ -8,7 +8,7 @@
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
 import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
-import { assignments, earnings, orders, users } from "@/lib/db/schema";
+import { activityLog, assignments, earnings, orders, users } from "@/lib/db/schema";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { loadDesignerContact, type DesignerContact } from "@/lib/designers/profile";
 import { startOfWeekInTimezone, formatInTimezone } from "@/lib/designers/quiet-hours";
@@ -42,15 +42,26 @@ async function loadWeek(tx: Tx, target: string): Promise<DesignerWeek> {
   const now = new Date();
   const weekStart = startOfWeekInTimezone(now, contact?.timezone);
 
+  // On time = the designer handed the order to QC by THEIR OWN deadline (the
+  // assignment's due_at, CLAUDE.md Deadlines), not whether the whole order
+  // (customer approval, print, shipping) finished inside the customer SLA.
+  // A legacy assignment without a deadline falls back to orders.due_at, and an
+  // order with no submission on record is judged by its completion time.
+  const ownDeadline = sql`coalesce(${assignments.dueAt}, ${orders.dueAt})`;
+  const handedToQcAt = sql`coalesce((select min(${activityLog.createdAt}) from ${activityLog} where ${activityLog.orderId} = ${orders.id} and ${activityLog.toState} = 'awaiting_qc' and ${activityLog.createdAt} >= ${assignments.assignedAt}), ${earnings.createdAt})`;
   const [completedThisWeek] = await tx
     .select({
       total: sql<number>`count(*)::int`,
-      onTime: sql<number>`count(*) filter (where ${earnings.createdAt} <= ${orders.dueAt})::int`,
-      judged: sql<number>`count(*) filter (where ${orders.dueAt} is not null)::int`,
+      onTime: sql<number>`count(*) filter (where ${handedToQcAt} <= ${ownDeadline})::int`,
+      judged: sql<number>`count(*) filter (where ${ownDeadline} is not null)::int`,
       revisions: sql<number>`count(*) filter (where ${orders.revisionCount} > 0)::int`,
     })
     .from(earnings)
     .innerJoin(orders, eq(orders.id, earnings.orderId))
+    .leftJoin(
+      assignments,
+      and(eq(assignments.orderId, earnings.orderId), eq(assignments.designerId, target), eq(assignments.active, true)),
+    )
     .where(and(eq(earnings.designerId, target), gte(earnings.createdAt, weekStart)));
 
   const [weekTotal] = await tx

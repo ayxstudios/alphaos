@@ -254,16 +254,16 @@ export function CardModal({
           {viewerRole === "designer" ? (
             // The designer's own deadline (their assignment), never the customer SLA.
             <Meta label="Your deadline">
-              <DueLine dueAt={card.dueAt} />
+              <DueLine dueAt={card.dueAt} done={card.status === "complete"} />
             </Meta>
           ) : (
             <>
               <Meta label="Customer due">
-                <DueLine dueAt={card.orderDueAt} />
+                <DueLine dueAt={card.orderDueAt} done={card.status === "complete"} />
               </Meta>
               {card.assignmentDueAt && (
                 <Meta label="Designer due">
-                  <DueLine dueAt={card.assignmentDueAt} />
+                  <DueLine dueAt={card.assignmentDueAt} done={card.status === "complete"} />
                 </Meta>
               )}
             </>
@@ -566,10 +566,10 @@ function uploadToR2(
   });
 }
 
-function DueLine({ dueAt }: { dueAt: string | null }) {
+function DueLine({ dueAt, done = false }: { dueAt: string | null; done?: boolean }) {
   return (
     <div className="flex flex-wrap items-center gap-x-2">
-      <Countdown dueAt={dueAt} />
+      <Countdown dueAt={dueAt} done={done} />
       {dueAt && <span className="text-xs text-slate">{dateFmt.format(new Date(dueAt))}</span>}
     </div>
   );
