@@ -5,20 +5,40 @@ import { authConfig } from "@/lib/auth/config";
 
 const { auth } = NextAuth(authConfig);
 
-// Routes inside the app shell that require a session.
+// Routes inside the app shell that require a session. Every page under
+// app/(app) is listed, so role denials happen here as a clean 307 before any
+// page renders (the pages keep their own checks as the second line).
 const PROTECTED = [
   /^\/dashboard(\/|$)/,
+  /^\/today(\/|$)/,
   /^\/orders(\/|$)/,
   /^\/board(\/|$)/,
   /^\/queue(\/|$)/,
   /^\/qc(\/|$)/,
   /^\/customers(\/|$)/,
   /^\/settings(\/|$)/,
+  /^\/emails(\/|$)/,
+  /^\/designers(\/|$)/,
+  /^\/styles(\/|$)/,
+  /^\/payouts(\/|$)/,
+  /^\/health(\/|$)/,
+  /^\/help(\/|$)/,
+  /^\/me(\/|$)/,
 ];
 
 // The only areas a designer may reach. Per-order ownership on /orders/[id] is
 // enforced by RLS in the page (a designer only sees their assigned orders).
-const DESIGNER_ALLOWED = [/^\/dashboard(\/|$)/, /^\/board(\/|$)/, /^\/me(\/|$)/, /^\/orders\/[^/]+/];
+// Only the order page itself: not /orders/new, not /orders/[id]/complete.
+const DESIGNER_ALLOWED = [
+  /^\/dashboard(\/|$)/,
+  /^\/board(\/|$)/,
+  /^\/me(\/|$)/,
+  /^\/help(\/|$)/,
+  /^\/orders\/(?!new\/?$)[^/]+\/?$/,
+];
+
+// Admin-only areas (VAs are sent home, matching the pages' own redirects).
+const ADMIN_ONLY = [/^\/payouts(\/|$)/, /^\/health(\/|$)/];
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
@@ -37,6 +57,8 @@ export default auth((req) => {
     if (!allowed) {
       return NextResponse.redirect(new URL("/board", req.nextUrl.origin));
     }
+  } else if (session.user.role !== "admin" && ADMIN_ONLY.some((r) => r.test(pathname))) {
+    return NextResponse.redirect(new URL("/dashboard", req.nextUrl.origin));
   }
 
   return NextResponse.next();
