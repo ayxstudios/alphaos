@@ -422,7 +422,7 @@ export default async function CustomerDetailPage({
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard
           label="Orders"
           value={orderRows.length}
@@ -447,7 +447,7 @@ export default async function CustomerDetailPage({
             tracked": show how long they have been a customer instead. */}
         <StatCard
           label="Customer since"
-          value={fmtDate(customer.createdAt)}
+          value={formatAt(customer.createdAt, { month: "short", year: "numeric" }, "Not set")}
           detail={latestOrder ? `Latest order ${fmtDate(latestOrder.createdAt)}` : "No orders yet"}
         />
       </div>
