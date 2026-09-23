@@ -445,9 +445,8 @@ export default async function CustomerDetailPage({
         />
         <StatCard
           label="Spend"
-          value="Not tracked"
-          detail="Order totals are not stored yet"
-          tone="warning"
+          value="Not recorded"
+          detail="Order totals are not saved yet"
         />
       </div>
 
@@ -586,7 +585,7 @@ export default async function CustomerDetailPage({
                             </dd>
                           </div>
                           <div className="flex items-center justify-between gap-3">
-                            <dt className="text-slate">QC / VA</dt>
+                            <dt className="text-slate">QC</dt>
                             <dd className="truncate text-right font-medium text-ink">
                               {latestQc
                                 ? `${titleCase(latestQc.result)} by ${
@@ -608,13 +607,13 @@ export default async function CustomerDetailPage({
                             </dd>
                           </div>
                           <div className="flex items-center justify-between gap-3">
-                            <dt className="text-slate">Assets</dt>
+                            <dt className="text-slate">Files</dt>
                             <dd className="truncate text-right font-medium text-ink">
                               {assetSummary(assetsForOrder)}
                             </dd>
                           </div>
                           <div className="flex items-center justify-between gap-3">
-                            <dt className="text-slate">Latest work</dt>
+                            <dt className="text-slate">Last change</dt>
                             <dd className="truncate text-right font-medium text-ink">
                               {latestActivity
                                 ? `${

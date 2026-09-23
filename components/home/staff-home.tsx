@@ -137,7 +137,7 @@ function VaTiles({ h }: { h: StaffHome }) {
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <StatTile label="Needs you now" value={fmtInt(h.attention.counts.now)} hint="Someone is waiting" tone={h.attention.counts.now === 0 ? "good" : "bad"} href="/today" />
       <StatTile label="For today" value={fmtInt(h.attention.counts.today)} hint={`${h.attention.counts.soon} coming up soon`} tone={h.attention.counts.today === 0 ? "good" : "warn"} href="/today" />
-      <StatTile label="Replies to send" value={fmtInt(replies)} hint={`${h.messages.unmatched} not matched to an order`} href="/emails" />
+      <StatTile label="Replies to send" value={fmtInt(replies)} hint={h.messages.unmatched ? `${h.messages.unmatched} to link to an order` : "All linked to orders"} href="/emails" />
       <StatTile label="Overdue orders" value={fmtInt(h.overdue)} hint={qc ? `${qc} waiting for QC` : `${h.dueToday} due today`} tone={h.overdue === 0 ? "good" : "bad"} href="/orders?view=overdue" />
     </div>
   );
