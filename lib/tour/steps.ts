@@ -10,8 +10,9 @@ import type { Role } from "@/lib/auth/config";
  * a filter. Nothing is ever sent, assigned, passed or uploaded. Then the
  * person does the same thing themselves.
  *
- * `say` is the step's only line of copy: second person, 9 words at most,
- * written as the instruction the cursor is demonstrating.
+ * `say` is the step's copy: two short plain sentences, 12 to 22 words. The
+ * first says what the thing is, the second what to do (what the pointer
+ * demonstrates). Second person, no jargon.
  *
  * Targets are CSS selectors, tried in order; `css@@Text` also requires the
  * element's text to start with Text. The first visible match wins.
@@ -56,7 +57,7 @@ const VA_STEPS: TourStep[] = [
     title: "Today",
     path: "/today",
     acts: [],
-    nav: { kind: "nav", say: "Open Today to see what needs you first." },
+    nav: { kind: "nav", say: "Today lists what needs you first. Open it and work from the top down." },
   },
   {
     id: "search",
@@ -67,10 +68,10 @@ const VA_STEPS: TourStep[] = [
         kind: "search",
         target: ['main input[name="q"]'],
         sample: ['[data-tour="order:customer"]'],
-        say: "Type a name, then press Enter to search.",
+        say: "Search finds any order fast. Type a customer's name, then press Enter.",
       },
     ],
-    nav: { kind: "nav", say: "Open Orders to see every order." },
+    nav: { kind: "nav", say: "Orders holds every order from every shop. Open it to find the one you need." },
   },
   {
     id: "needs-details",
@@ -82,10 +83,10 @@ const VA_STEPS: TourStep[] = [
         target: ['[data-tour="page:orders"]'],
         undo: "back",
         reset: "/orders?view=active",
-        say: "Open Needs Details for orders missing information.",
+        say: "Some orders arrive missing information. Open Needs Details to see which ones need you.",
       },
     ],
-    nav: { kind: "nav", say: "Open Orders to see every order." },
+    nav: { kind: "nav", say: "Orders holds every order from every shop. Open it to find the one you need." },
   },
   {
     id: "qc",
@@ -96,10 +97,10 @@ const VA_STEPS: TourStep[] = [
         kind: "click",
         target: ['main a[href^="/qc/"]@@Start QC'],
         undo: "back",
-        say: "Press Start QC to check the next portrait.",
+        say: "Finished portraits wait here for your check. Press Start QC to review the next one.",
       },
     ],
-    nav: { kind: "nav", say: "Open QC to see portraits waiting for you." },
+    nav: { kind: "nav", say: "Finished portraits wait here for your check. Open QC to see what is waiting." },
   },
   {
     id: "messages",
@@ -110,10 +111,10 @@ const VA_STEPS: TourStep[] = [
         kind: "click",
         target: ["main details > summary@@All mail"],
         undo: "reclick",
-        say: "Open All mail to see every customer email.",
+        say: "Messages holds every customer email. Open All mail to read or search them.",
       },
     ],
-    nav: { kind: "nav", say: "Open Messages to answer customer email." },
+    nav: { kind: "nav", say: "Messages holds every customer email. Open it to answer the ones waiting on you." },
   },
   {
     id: "print",
@@ -124,10 +125,10 @@ const VA_STEPS: TourStep[] = [
         kind: "click",
         target: ["main details > summary@@Details"],
         undo: "reclick",
-        say: "Open Details to see where each print is.",
+        say: "Print lists approved orders ready to print. Open Details to see where each one is.",
       },
     ],
-    nav: { kind: "nav", say: "Open Print for orders ready to print." },
+    nav: { kind: "nav", say: "Print lists approved orders ready to print. Open it to send the next one." },
   },
 ];
 
@@ -137,14 +138,14 @@ const DESIGNER_STEPS: TourStep[] = [
     title: "My Board",
     path: "/board",
     acts: [],
-    nav: { kind: "nav", say: "Open My Board to see your orders." },
+    nav: { kind: "nav", say: "My Board holds every order given to you. Open it to see what is due first." },
   },
   {
     id: "card",
     title: "Open a card",
     path: "/board",
-    acts: [{ kind: "click", target: CARDS, undo: "close", say: "Open a card to see the order." }],
-    nav: { kind: "nav", say: "Open My Board to see your orders." },
+    acts: [{ kind: "click", target: CARDS, undo: "close", say: "Each card is one order with the customer's photos. Open a card to see the details." }],
+    nav: { kind: "nav", say: "My Board holds every order given to you. Open it to see what is due first." },
   },
   {
     id: "upload",
@@ -155,17 +156,17 @@ const DESIGNER_STEPS: TourStep[] = [
         kind: "drop",
         target: ['[data-tour="card:drop"]', '[data-tour="card:upload"]'],
         via: CARDS,
-        say: "Add your finished portrait here.",
+        say: "Your finished portrait goes on the order card. Add it here when the design is done.",
       },
     ],
-    nav: { kind: "nav", say: "Open My Board to see your orders." },
+    nav: { kind: "nav", say: "My Board holds every order given to you. Open it to see what is due first." },
   },
   {
     id: "week",
     title: "My Week",
     path: "/me",
     acts: [],
-    nav: { kind: "nav", say: "Open My Week to see what is due." },
+    nav: { kind: "nav", say: "My Week shows your deadlines and what you earned. Check it at the start of each day." },
   },
 ];
 
@@ -180,10 +181,10 @@ const ADMIN_STEPS: TourStep[] = [
         target: ['main a[href*="view=overdue"]'],
         undo: "back",
         reset: "/orders?view=active",
-        say: "Open Overdue to see every late order.",
+        say: "Orders holds every order from every shop. Open Overdue to see the late ones first.",
       },
     ],
-    nav: { kind: "nav", say: "Open Orders to see every order." },
+    nav: { kind: "nav", say: "Orders holds every order from every shop. Open it to search or filter." },
   },
   {
     id: "team",
@@ -194,10 +195,10 @@ const ADMIN_STEPS: TourStep[] = [
         kind: "click",
         target: ['[data-tour="team"] [role="tab"]:nth-of-type(2)'],
         undo: { click: ['[data-tour="team"] [role="tab"]:nth-of-type(1)'] },
-        say: "Choose a group to see who can sign in.",
+        say: "Team and sign-ins lists everyone who can sign in. Choose a group to see who is in it.",
       },
     ],
-    nav: { kind: "nav", say: "Open Designer Roster to manage your team." },
+    nav: { kind: "nav", say: "The roster decides who gets new orders. Open it to manage your team." },
   },
   {
     id: "styles",
@@ -208,10 +209,10 @@ const ADMIN_STEPS: TourStep[] = [
         kind: "click",
         target: ["main button@@Designers ·"],
         undo: "close",
-        say: "Open Designers to choose who draws each style.",
+        say: "Each style goes to the designers who draw it. Open Designers to choose who they are.",
       },
     ],
-    nav: { kind: "nav", say: "Open Portrait Styles to set styles and rates." },
+    nav: { kind: "nav", say: "Portrait styles set who draws what and at what rate. Open it to change them." },
   },
   {
     id: "settings",
@@ -223,10 +224,10 @@ const ADMIN_STEPS: TourStep[] = [
         target: ['main a[href="/settings?section=email"]'],
         undo: "back",
         reset: "/settings?section=etsy",
-        say: "Open Customer Email to connect your mailbox.",
+        say: "Settings connects your shops, email and printers. Open Customer Email to connect your mailbox.",
       },
     ],
-    nav: { kind: "nav", say: "Open Settings to connect shops and email." },
+    nav: { kind: "nav", say: "Settings connects your shops, email and printers. Open it when you add a shop." },
   },
   {
     id: "money",
@@ -237,10 +238,10 @@ const ADMIN_STEPS: TourStep[] = [
         kind: "click",
         target: ['main a[href*="designer="]'],
         undo: "back",
-        say: "Choose a designer to see what they earned.",
+        say: "Money shows what each designer has earned. Choose a designer to see their orders.",
       },
     ],
-    nav: { kind: "nav", say: "Open Money to see what designers earned." },
+    nav: { kind: "nav", say: "Money shows what each designer has earned. Open it to mark payments as paid." },
   },
   {
     id: "health",
@@ -252,10 +253,10 @@ const ADMIN_STEPS: TourStep[] = [
         target: ['main a[href="/health?scope=all"]'],
         undo: "back",
         reset: "/health",
-        say: "Choose All Businesses to check every shop at once.",
+        say: "Health flags problems behind the scenes. Choose All Businesses to check every shop at once.",
       },
     ],
-    nav: { kind: "nav", say: "Open System Health when numbers look wrong." },
+    nav: { kind: "nav", say: "Health flags problems behind the scenes. Open it when numbers look wrong." },
   },
 ];
 
@@ -270,3 +271,10 @@ export function stepLine(step: TourStep): string {
   return (step.acts[0] ?? step.nav).say;
 }
 
+
+/** Just the first sentence (what the thing is), for the Quick guide's one-screen list. */
+export function stepWhat(step: TourStep): string {
+  const line = stepLine(step);
+  const cut = line.indexOf(". ");
+  return cut > 0 ? line.slice(0, cut + 1) : line;
+}
