@@ -288,9 +288,16 @@ const google: Handler = async (req, url) => {
     const text = await bodyText(req);
     let threadId = `mock-sent-${n}`;
     try {
-      const parsed = JSON.parse(text) as { raw?: string; threadId?: string };
-      if (parsed.threadId) threadId = parsed.threadId;
-      const decoded = Buffer.from(parsed.raw ?? "", "base64url").toString("utf8");
+      // Two shapes: JSON {raw, threadId} on /messages/send, or the RFC 822
+      // message itself on the media upload (/upload/..., used for attachments).
+      let decoded: string;
+      if (url.pathname.includes("/upload/")) {
+        decoded = text;
+      } else {
+        const parsed = JSON.parse(text) as { raw?: string; threadId?: string };
+        if (parsed.threadId) threadId = parsed.threadId;
+        decoded = Buffer.from(parsed.raw ?? "", "base64url").toString("utf8");
+      }
       const head = decoded.split(/\r?\n\r?\n/)[0] ?? "";
       const headers = head
         .split(/\r?\n(?!\s)/)

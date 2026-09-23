@@ -43,7 +43,8 @@ so RLS is defined but not enforced in production. Staging enforces it.
 
 ## What is disarmed
 
-In the staging database: every business has `email_sending_enabled`,
+After `prepare.ts` (the default, and the state after every clone; see
+"Mock mode" below to arm it for the full journey), in the staging database: every business has `email_sending_enabled`,
 `stage_email_auto_send` and `daily_health_email_enabled` false,
 `gmail_credentials` and `print_credentials` null; both shops have
 `credentials = {}` (no Etsy or Shopify API call can authenticate).
@@ -53,6 +54,73 @@ relay, so no WhatsApp and no AI calls), `ALPHA_ACTIONS_ENABLED=false`,
 Not disarmed: R2. The preview uses production's bucket keys, so photos that
 exist in production show in staging and an upload from staging lands in the
 same bucket (under new keys; it cannot overwrite production objects).
+
+## Mock mode: arm and disarm (2026-09-23)
+
+Disarmed, staging cannot walk the whole order journey: QC pass sends the
+proof email (no mailbox), print and tracking have no provider, the shop
+writeback has no shop. Armed, every one of those calls is answered in-process
+by `lib/mock/transport.ts` (docs/MOCK.md), which mocks by CREDENTIAL: only a
+call that presents a mock credential is answered, nothing reaches Google,
+Gelato, Luma, Shopify or Etsy.
+
+Two halves, both needed:
+
+1. The deployment: `scripts/staging/deploy-preview.sh` sets
+   `MOCK_INTEGRATIONS=1` at runtime, so `instrumentation.ts` (the Next 15
+   instrumentation hook, on by default, Node runtime only) installs the
+   transport at every server start. The runtime log shows
+   `{"integration":"mock","event":"transport_installed"}`.
+2. The database: `scripts/staging/arm-mocks.ts` writes mock credentials for
+   PixArt, encrypted with the PREVIEW environment's `ENCRYPTION_KEY` (the
+   key the staging deployment decrypts with):
+
+```
+vercel env pull /tmp/alphaos-preview.env --environment preview --token "$VERCEL_TOKEN" \
+  --scope team_hdxl43AlgWsesgr06UyM3Lnk    # only for ENCRYPTION_KEY; delete the file after
+set -a; . ~/Documents/ai-employee-agent/.local/alphaos-staging.env; set +a
+TARGET_URL="$STAGING_DIRECT_URL" ENCRYPTION_KEY=<from that file> \
+  npx tsx scripts/staging/arm-mocks.ts
+```
+
+What it sets (and prints before/after, as none / mock / REAL, never a
+secret; it rolls back unless every value reads back as mock):
+
+| Field | Armed value |
+|---|---|
+| `businesses.gmail_credentials` | mock Gmail OAuth, refresh token `mock_rt_<b64 address>`, address = `gmail_address` (admin@pixartcreatives.co) |
+| `email_sending_enabled` | true (the send gate; the mock catches the send) |
+| `stage_email_auto_send` | false (stage emails stay drafts in the VA outbox) |
+| `daily_health_email_enabled` | false |
+| `businesses.print_credentials` | mock Gelato key + mock Luma basic auth |
+| `shops.credentials` (Shopify) | legacy `shpat_mock_...` token for the shop's own domain |
+| `shops.credentials` (Etsy) | `mock_` keystring, secret and tokens for the shop's own id |
+
+`integration_config` is not touched. Shop SYNC does not run on staging:
+Vercel crons never run on previews, and the Shopify shop's
+`syncRoad: "staff_session"` makes the scheduler skip it anyway. The shop
+credentials are there for the writebacks the journey makes (Shopify
+fulfilment with tracking, product media, Etsy receipt shipment). If a sync is
+ever driven by hand, the Etsy shop would import generated `@example.com`
+receipts from lib/mock/data.ts into the copy.
+
+Customer rows in staging are production copies with real addresses. That is
+safe only because the Gmail credential is a mock one: without the transport
+the send would go to Google with a fake token and fail, never deliver.
+
+Disarm: `scripts/staging/prepare.ts` (it nulls every credential and turns
+every email switch off, as after a clone). Its verification refuses to pass
+while anything is armed.
+
+### Proven journey (2026-09-23, mock-armed)
+
+VA assigns a `ready_to_assign` Shopify order to the staging designer; the
+designer taps Start (phone board), uploads `STAGING-TEST-mock.png`, submits
+for QC; the VA ticks the checklist, types the signature, previews and sends
+the proof email (message `sent`, Gmail ids `mock-sent-*`); the customer opens
+`/proof/<token>` and approves; the VA marks it sent to print (Gelato) and
+adds tracking, which fulfils in Shopify (mock `gid://shopify/Fulfillment/...`)
+and ships the order. Screenshots: `var/staging-shots/mock-journey/`.
 
 ## Redeploy a preview against staging
 
@@ -64,8 +132,10 @@ scripts/staging/deploy-preview.sh
 
 It deploys the current checkout as a preview with `DATABASE_URL`,
 `DIRECT_URL` (build and runtime), `AUTH_URL`, `NEXT_PUBLIC_APP_URL` and the
-relay variables overridden, then moves the `alphaos-staging.vercel.app`
-alias to it. The preview environment's own variables point at PRODUCTION,
+relay variables overridden and `MOCK_INTEGRATIONS=1` (the mock transport,
+which only answers mock credentials), then moves the
+`alphaos-staging.vercel.app` alias to it. The worktree or checkout needs a
+`.vercel/project.json` link (copy it from the main checkout). The preview environment's own variables point at PRODUCTION,
 so never deploy a plain preview and use it for testing. Previews have no
 deployment protection on this project; no bypass header is needed.
 
@@ -80,8 +150,9 @@ TARGET_URL="$STAGING_DIRECT_URL" APP_USER_PASSWORD="$STAGING_APP_USER_PASSWORD" 
 ```
 
 `prepare.ts` must run after every clone: the clone brings production's
-credentials and email switches with it. Both scripts refuse to write to the
-production endpoint.
+credentials and email switches with it. Run `arm-mocks.ts` after it when the
+full journey is to be tested (see "Mock mode"). All three scripts refuse to
+write to the production endpoint.
 
 ## Remove staging
 
