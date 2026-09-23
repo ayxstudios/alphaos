@@ -197,7 +197,7 @@ const ADMIN_STEPS: TourStep[] = [
         say: "Choose a group to see who can sign in.",
       },
     ],
-    nav: { kind: "nav", say: "Open Designer Roster to manage your team." },
+    nav: { kind: "nav", say: "Open Team to see who works here." },
   },
   {
     id: "styles",

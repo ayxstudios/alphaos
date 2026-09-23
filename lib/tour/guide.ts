@@ -45,7 +45,7 @@ const PRINT: GuideAnswer = {
 
 const ROSTER: GuideAnswer = {
   q: "How are new orders shared out?",
-  a: "New orders go down the Designer Roster from the top, only to designers who do that portrait style, and never past a designer's daily limit. Change the order, styles or limits on the Designer Roster page. The same page adds designers, VAs and admins, resets passwords, and deactivates anyone who leaves (they drop off the list and their history stays).",
+  a: "Each new order goes to the highest designer on the Team list who does that portrait style and is under their daily limit. Change the order, styles or limits on the Team page. The same page adds designers, VAs and admins, resets passwords, and deactivates anyone who leaves; their history stays.",
 };
 
 const DESIGNER: GuideAnswer[] = [

@@ -52,7 +52,7 @@ const ADMIN_NAV: NavItem[] = [
 
 const ADMIN_MORE: NavItem[] = [
   { label: "System Health", href: "/health", icon: AlertTriangle },
-  { label: "Designer Roster", href: "/designers", icon: Palette },
+  { label: "Team", href: "/designers", icon: Palette },
   { label: "Portrait Styles", href: "/styles", icon: Brush },
   { label: "Customers", href: "/customers", icon: Users },
 ];
@@ -68,7 +68,7 @@ const VA_NAV: NavItem[] = [
 ];
 
 const VA_MORE: NavItem[] = [
-  { label: "Designer Roster", href: "/designers", icon: Palette },
+  { label: "Team", href: "/designers", icon: Palette },
   { label: "Portrait Styles", href: "/styles", icon: Brush },
   { label: "Customers", href: "/customers", icon: Users },
 ];
