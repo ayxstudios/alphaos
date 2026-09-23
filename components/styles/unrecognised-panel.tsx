@@ -73,7 +73,7 @@ export function UnrecognisedPanel({
         <AlertTriangle size={16} className={products.length ? "text-amber" : "text-slate"} />
         <span className="text-sm font-semibold text-ink">Products to confirm</span>
         {products.length > 0 ? <Badge variant="warning">{products.length}</Badge> : <span className="text-xs text-slate">All recognised</span>}
-        <span className="ml-auto hidden text-xs text-slate sm:inline">Confirm once, recognised forever</span>
+        <span className="ml-auto hidden text-xs text-slate sm:inline">Confirm once and it is remembered</span>
         <ChevronDown size={16} className="shrink-0 text-slate transition-transform group-open:rotate-180" />
       </summary>
       <div className="border-t border-line/70 px-4 pb-4">

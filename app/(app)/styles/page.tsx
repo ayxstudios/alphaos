@@ -131,7 +131,7 @@ export default async function StylesPage() {
     <Page>
       <PageHeader
         title="Portrait Styles"
-        description="Each order is tagged by the first title rule that matches, and only goes to designers who do that style."
+        description="An order takes the style whose word is in its product title, and only goes to designers who draw that style."
       />
       <UnrecognisedPanel
         products={unrecognised}

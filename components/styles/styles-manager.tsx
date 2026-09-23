@@ -140,6 +140,7 @@ function StyleCard({
   const [rateDraft, setRateDraft] = useState(style.perFigureRate ?? "");
   const [matchInput, setMatchInput] = useState("");
   const [assignOpen, setAssignOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const assignedNames = designers
     .filter((d) => style.designerIds.includes(d.id))
@@ -232,20 +233,7 @@ function StyleCard({
           <Button type="button" variant="secondary" size="sm" onClick={() => setAssignOpen(true)}>
             Designers · {style.designerIds.length}
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              const tagged =
-                style.openOrders > 0
-                  ? ` ${style.openOrders} unfinished order${style.openOrders === 1 ? " is" : "s are"} tagged with it: their designer${style.openOrders === 1 ? "" : "s"} cannot be paid for ${style.openOrders === 1 ? "it" : "them"} until you give ${style.openOrders === 1 ? "it" : "them"} another style.`
-                  : " No unfinished orders use it.";
-              if (confirm(`Delete the "${style.name}" style?${tagged} Designers will keep their other styles.`)) {
-                onRun(() => deleteStyle(style.id), "Style deleted");
-              }
-            }}
-          >
+          <Button type="button" variant="ghost" size="sm" onClick={() => setDeleteOpen(true)}>
             Delete
           </Button>
         </div>
@@ -277,7 +265,7 @@ function StyleCard({
                 addMatch();
               }
             }}
-            placeholder="e.g. Watercolor"
+            placeholder={`A word, e.g. ${style.name.charAt(0).toUpperCase()}${style.name.slice(1)}`}
             aria-label="Add a title rule"
             className="h-9 max-w-xs"
           />
@@ -303,6 +291,37 @@ function StyleCard({
           {assignedNames.length ? `Designers: ${assignedNames.join(", ")}` : "No designers assigned yet"}
         </p>
       </div>
+
+      {/* Deleting is not undone, so say what it does to open orders first. */}
+      <Drawer open={deleteOpen} onClose={() => setDeleteOpen(false)} title="Delete style">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-ink">
+            Delete the <span className="font-semibold">{style.name}</span> style?
+          </p>
+          <p className="text-sm text-slate">
+            {style.openOrders > 0
+              ? `${style.openOrders} unfinished order${style.openOrders === 1 ? " uses" : "s use"} it. Their designer${style.openOrders === 1 ? "" : "s"} cannot be paid for ${style.openOrders === 1 ? "it" : "them"} until you give ${style.openOrders === 1 ? "it" : "them"} another style.`
+              : "No unfinished orders use it."}{" "}
+            Designers keep their other styles.
+          </p>
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="ghost" className="min-h-11 sm:min-h-0" onClick={() => setDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              className="min-h-11 sm:min-h-0"
+              onClick={() => {
+                setDeleteOpen(false);
+                onRun(() => deleteStyle(style.id), "Style deleted");
+              }}
+            >
+              Delete style
+            </Button>
+          </div>
+        </div>
+      </Drawer>
 
       <AssignDesignersDrawer
         open={assignOpen}
