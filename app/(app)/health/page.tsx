@@ -72,7 +72,7 @@ export default async function HealthPage({
             <Link
               href="/health"
               className={cn(
-                "rounded-[6px] px-3 py-1.5 font-medium text-slate",
+                "inline-flex min-h-11 items-center rounded-[6px] px-3 py-1.5 font-medium text-slate sm:min-h-0",
                 !allBusinesses && "bg-pigment-soft text-pigment",
               )}
             >
@@ -81,7 +81,7 @@ export default async function HealthPage({
             <Link
               href="/health?scope=all"
               className={cn(
-                "rounded-[6px] px-3 py-1.5 font-medium text-slate",
+                "inline-flex min-h-11 items-center rounded-[6px] px-3 py-1.5 font-medium text-slate sm:min-h-0",
                 allBusinesses && "bg-pigment-soft text-pigment",
               )}
             >

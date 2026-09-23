@@ -129,7 +129,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
                   href={`/api/etsy/connect?shopId=${shop.id}`}
                   aria-disabled={!shop.hasKeystring}
                   className={cn(
-                    "inline-flex h-8 items-center justify-center rounded-input bg-pigment px-3 text-sm font-medium text-surface",
+                    "inline-flex h-11 items-center justify-center rounded-input bg-pigment px-3 text-sm font-medium text-surface sm:h-8",
                     "transition-[opacity] motion-hover hover:opacity-90",
                     !shop.hasKeystring && "pointer-events-none opacity-50",
                   )}
