@@ -105,6 +105,15 @@ assert.equal(multi.inferredFigureCount, null);
 assert.equal(multi.inferredFulfillment, "physical");
 assert.equal(multi.combinedPersonalization, "Second item");
 
+// No product kind in the listing: the listing title itself prefills Product.
+const plainTitle = parseEtsyReceiptReview({
+  receipt_id: 2,
+  transactions: [{ title: "Custom Family Portrait, Cartoon Drawing From Photo", quantity: 1, variations: [] }],
+});
+assert.equal(plainTitle.inferredProductCategory, null);
+assert.equal(reviewDefaults(plainTitle).productTitle, "Custom Family Portrait, Cartoon Drawing From Photo");
+assert.equal(reviewDefaults(plainTitle, { productTitle: "Saved" }).productTitle, "Saved");
+
 const malformed = parseEtsyReceiptReview({
   receipt_id: "bad",
   transactions: [

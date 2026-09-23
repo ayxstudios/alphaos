@@ -247,7 +247,13 @@ export function reviewDefaults(
           ? String(review.inferredFigureCount)
           : "",
     style: saved.style?.trim() || "",
-    productTitle: saved.productTitle?.trim() || review.inferredProductCategory || "",
+    // Saved value, else the product kind read from the listing (Mug, Canvas),
+    // else the listing title itself, so a saved order is never "No item details".
+    productTitle:
+      saved.productTitle?.trim() ||
+      review.inferredProductCategory ||
+      review.transactions.find((t) => t.title?.trim())?.title?.trim() ||
+      "",
     productType: saved.productType ?? review.inferredFulfillment ?? "physical",
     notes: saved.notes?.trim() || review.combinedPersonalization || review.buyerNote || "",
   };
