@@ -328,6 +328,14 @@ function CardUploadPanel({
   const submissions = (detail?.images ?? []).filter((image) => image.type === "submission");
   const latestSubmission = submissions.at(-1) ?? null;
   const canUpload = !designer || canDesignerUpload;
+  // Why a designer can't upload right now, in the card's own terms: a card
+  // that hasn't been started is NOT locked, it just needs starting first.
+  const designerNote =
+    card.status === "ready_to_assign"
+      ? "Start this card first (tap Start, or drag it to In Design), then upload the finished portrait here."
+      : card.status === "awaiting_qc"
+        ? "Submitted for QC. Uploads open again if QC sends it back."
+        : "Uploads are locked after QC.";
 
   useEffect(() => {
     if (designer) setType("submission");
@@ -335,11 +343,7 @@ function CardUploadPanel({
 
   async function upload(files: File[]) {
     if (!canUpload) {
-      toast({
-        variant: "warning",
-        title: "Upload locked",
-        description: "Finished portraits cannot be changed after the card leaves design.",
-      });
+      toast({ variant: "warning", title: "Upload not open", description: designerNote });
       return;
     }
     const images = files.filter((file) => file.type.startsWith("image/"));
@@ -414,7 +418,7 @@ function CardUploadPanel({
                 ? latestSubmission
                   ? "Upload another version before submitting to QC. The newest version is reviewed first."
                   : "Upload the finished portrait before moving this card to QC."
-                : "Uploads are locked after the card leaves design."}
+                : designerNote}
             </p>
           </div>
         ) : (
@@ -435,17 +439,20 @@ function CardUploadPanel({
             </select>
           </label>
         )}
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          loading={uploading}
-          disabled={!canUpload}
-          onClick={() => fileRef.current?.click()}
-        >
-          <Camera size={15} />
-          {latestSubmission && designer ? "Replace" : "Upload"}
-        </Button>
+        {/* No upload control at all while a designer can't upload: the note
+            above says what to do instead. */}
+        {canUpload && (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            loading={uploading}
+            onClick={() => fileRef.current?.click()}
+          >
+            <Camera size={15} />
+            {latestSubmission && designer ? "Replace" : "Upload"}
+          </Button>
+        )}
         <input
           ref={fileRef}
           type="file"
@@ -455,30 +462,30 @@ function CardUploadPanel({
           onChange={(event) => event.target.files && void upload(Array.from(event.target.files))}
         />
       </div>
-      <button
-        type="button"
-        disabled={uploading || !canUpload}
-        onClick={() => fileRef.current?.click()}
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={(event) => {
-          event.preventDefault();
-          void upload(Array.from(event.dataTransfer.files));
-        }}
-        className={cn(
-          "mt-3 flex h-16 w-full items-center justify-center gap-2 rounded-input border border-dashed border-line bg-surface text-sm text-slate",
-          "transition-colors hover:border-pigment/40 hover:text-ink disabled:pointer-events-none disabled:opacity-60",
-          focusRing,
-        )}
-      >
-        <Camera size={16} />
-        {uploading
-          ? "Uploading..."
-          : designer
-            ? canDesignerUpload
+      {canUpload && (
+        <button
+          type="button"
+          disabled={uploading}
+          onClick={() => fileRef.current?.click()}
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            event.preventDefault();
+            void upload(Array.from(event.dataTransfer.files));
+          }}
+          className={cn(
+            "mt-3 flex h-16 w-full items-center justify-center gap-2 rounded-input border border-dashed border-line bg-surface text-sm text-slate",
+            "transition-colors hover:border-pigment/40 hover:text-ink disabled:pointer-events-none disabled:opacity-60",
+            focusRing,
+          )}
+        >
+          <Camera size={16} />
+          {uploading
+            ? "Uploading..."
+            : designer
               ? "Drop finished portrait here or click Upload"
-              : "Uploads locked after QC"
-            : "Drop images here or click Upload"}
-      </button>
+              : "Drop images here or click Upload"}
+        </button>
+      )}
       {progress.length > 0 && (
         <div className="mt-3 space-y-2">
           {progress.map((row) => {
