@@ -72,7 +72,7 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
             </Link>
           </div>
         </HomeSection>
-        <HomeSection title="My board" description={`${active} live orders`} className="lg:col-span-2">
+        <HomeSection title="My board" description={`${active} live order${active === 1 ? "" : "s"}`} className="lg:col-span-2">
           <StackedBar
             segments={[
               { key: "queue", label: "Queue", value: h.board.queue, color: "c3" },

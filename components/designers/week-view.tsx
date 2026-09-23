@@ -50,7 +50,9 @@ export function DesignerWeekView({ week }: { week: DesignerWeek }) {
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-ink">{u.orderNumber}</p>
                   <p className="text-xs text-slate">
-                    {stateLabel(u.status as OrderStatus)}
+                    {/* A queued card is assigned and waiting on the designer to
+                        start it: "Ready to assign" is the staff-side name. */}
+                    {u.status === "ready_to_assign" ? "In your queue" : stateLabel(u.status as OrderStatus)}
                     {u.dueAtLocal ? ` · due ${u.dueAtLocal}` : ""}
                   </p>
                 </div>
