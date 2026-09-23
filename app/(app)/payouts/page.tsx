@@ -8,7 +8,7 @@ import { loadShellData } from "@/lib/shell/context";
 import { earnings, orders, users, type EarningBreakdown } from "@/lib/db/schema";
 import { Badge, Button, DataPanel, EmptyState, Input, Page, PageHeader, Select, TableShell } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { AlertTriangle } from "@/components/ui/icons";
+import { AlertTriangle, Wallet } from "@/components/ui/icons";
 import {
   MarkPeriodPaidButton,
   ResolveBlockedButton,
@@ -57,15 +57,24 @@ function styleSummary(breakdown: EarningBreakdown[] | null): string {
 }
 
 function details(breakdown: EarningBreakdown[] | null): string {
-  if (!breakdown?.length) return "No item breakdown";
+  if (!breakdown?.length) return "No style details";
   return breakdown
     .map((row) => {
-      const rate = row.rate ? `$${Number(row.rate).toFixed(2)}` : "needs rate";
-      const amount = row.amount ? `$${Number(row.amount).toFixed(2)}` : "blocked";
-      return `${row.figureCount} x ${row.style ?? "Unspecified"} @ ${rate} = ${amount}`;
+      const style = row.style ?? "No style";
+      const figures = `${row.figureCount} figure${row.figureCount === 1 ? "" : "s"}`;
+      return row.rate
+        ? `${figures}, ${style}, $${Number(row.rate).toFixed(2)} each`
+        : `${figures}, ${style}, needs a rate`;
     })
     .join("; ");
 }
+
+const STATUS_LABEL: Record<PayoutRow["status"], string> = {
+  blocked: "Blocked",
+  pending: "To pay",
+  paid: "Paid",
+  voided: "Voided",
+};
 
 export default async function PayoutsPage({
   searchParams,
@@ -161,9 +170,9 @@ export default async function PayoutsPage({
   return (
     <Page>
       <PageHeader
-        title="Payouts"
+        title="Money"
         tourId="page:money"
-        description="What each designer has earned, captured as orders complete."
+        description="What each designer earned. An order counts once it is complete."
         actions={
           <a
             href={`/payouts/export?${qs.toString()}`}
@@ -181,7 +190,7 @@ export default async function PayoutsPage({
           ))}
         </Select>
         <Input name="period" type="month" defaultValue={period} aria-label="Period" className="h-11 w-44 rounded-full border-0 bg-surface shadow-card" />
-        <Button type="submit" variant="ghost" className="h-11 rounded-full">Show</Button>
+        <Button type="submit" variant="secondary" className="h-11 rounded-full">Show</Button>
       </form>
 
       {blocked.length > 0 && (
@@ -211,12 +220,12 @@ export default async function PayoutsPage({
 
       <TableShell>
         {summaries.length === 0 ? (
-          <EmptyState icon={AlertTriangle} headline="No earnings this period" body="Completed design work lands here once orders are marked complete." />
+          <EmptyState icon={Wallet} headline="No earnings this month" body="Designers earn when their orders are complete. Pick another month to look back." />
         ) : (
           <>
-            <div className="hidden grid-cols-[minmax(0,1.4fr)_1fr_1fr_5rem_auto] gap-4 border-b border-line/60 px-4 py-2.5 text-xs font-medium text-slate md:grid">
+            <div className="hidden grid-cols-[minmax(0,1.4fr)_1fr_1fr_5rem_13rem] gap-4 border-b border-line/60 px-4 py-2.5 text-xs font-medium text-slate md:grid">
               <span>Designer</span>
-              <span>Pending</span>
+              <span>To pay</span>
               <span>Paid</span>
               <span>Blocked</span>
               <span className="text-right">Actions</span>
@@ -225,14 +234,14 @@ export default async function PayoutsPage({
               {summaries.map((summary) => (
                 <div
                   key={summary.designerId}
-                  className="grid grid-cols-2 gap-x-4 gap-y-2 px-4 py-3.5 text-sm md:grid-cols-[minmax(0,1.4fr)_1fr_1fr_5rem_auto] md:items-center"
+                  className="grid grid-cols-2 gap-x-4 gap-y-2 px-4 py-3.5 text-sm md:grid-cols-[minmax(0,1.4fr)_1fr_1fr_5rem_13rem] md:items-center"
                 >
                   <div className="col-span-2 min-w-0 md:col-span-1">
                     <p className="truncate font-medium text-ink">{summary.name}</p>
                     <p className="truncate text-xs text-slate">{summary.email}</p>
                   </div>
                   <p>
-                    <span className="block text-xs text-slate md:hidden">Pending</span>
+                    <span className="block text-xs text-slate md:hidden">To pay</span>
                     <span className="font-medium tabular-nums text-ink">{money(summary.pendingTotal)}</span>
                     <span className="text-slate"> · {summary.pendingCount} order{summary.pendingCount === 1 ? "" : "s"}</span>
                   </p>
@@ -286,7 +295,8 @@ export default async function PayoutsPage({
           </div>
           <div className="divide-y divide-line/60">
             {detailRows.map((row) => (
-              <div key={row.id} className="grid grid-cols-1 gap-2 px-4 py-3 text-sm lg:grid-cols-[1fr_1.5fr_auto_auto_auto_auto] lg:items-center">
+              // Fixed columns so every row lines up (auto columns sized per row).
+              <div key={row.id} className="grid grid-cols-1 gap-2 px-4 py-3 text-sm lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_7rem_5rem_15rem] lg:items-center">
                 <div>
                   <Link href={`/orders/${row.orderId}`} className="font-medium text-ink hover:text-pigment">
                     {row.orderNumber}
@@ -294,11 +304,10 @@ export default async function PayoutsPage({
                   <p className="text-xs text-slate">{formatDate(row.createdAt)}</p>
                 </div>
                 <p className="text-slate">{details(row.breakdown)}</p>
-                <span>{row.figureCount} figure{row.figureCount === 1 ? "" : "s"}</span>
-                <Badge variant={row.status === "blocked" ? "warning" : row.status === "voided" ? "danger" : row.status === "paid" ? "success" : "neutral"}>
-                  {row.status}
+                <Badge className="w-fit" variant={row.status === "blocked" ? "warning" : row.status === "voided" ? "danger" : row.status === "paid" ? "success" : "neutral"}>
+                  {STATUS_LABEL[row.status]}
                 </Badge>
-                <span className="text-right font-semibold text-ink">{money(row.amount)}</span>
+                <span className="font-semibold text-ink lg:text-right">{money(row.amount)}</span>
                 {/* A pending earning (e.g. an order completed by mistake) can be voided
                     before it is paid; blocked ones are voided from the panel above. */}
                 {row.status === "pending" ? (
