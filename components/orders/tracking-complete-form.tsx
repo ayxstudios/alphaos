@@ -58,7 +58,7 @@ export function TrackingCompleteForm({
       }
       toast({
         variant: res.closeWarning ? "warning" : "success",
-        title: res.closeWarning ? "Tracking saved with Shopify warning" : "Tracking saved",
+        title: res.closeWarning ? "Tracking saved, but check Shopify" : "Tracking saved",
         description: res.closeWarning ?? res.message,
       });
       setTrackingNumber("");
@@ -107,7 +107,7 @@ export function TrackingCompleteForm({
         />
         {showTrackingUrl ? (
           <Input
-            label="Tracking URL"
+            label="Tracking link"
             type="url"
             value={trackingUrl}
             disabled={disabled || pending}
@@ -115,16 +115,14 @@ export function TrackingCompleteForm({
             onChange={(event) => setTrackingUrl(event.currentTarget.value)}
           />
         ) : (
-          <Button
+          <button
             type="button"
-            variant="ghost"
-            size="sm"
-            className="w-fit"
+            className="w-fit text-sm font-medium text-pigment transition-colors hover:text-ink disabled:opacity-50"
             disabled={disabled || pending}
             onClick={() => setShowTrackingUrl(true)}
           >
-            Add tracking URL
-          </Button>
+            Add a tracking link
+          </button>
         )}
         {isShopify && (
           <label className="flex items-start gap-2 rounded-input bg-canvas p-3 text-sm text-ink">

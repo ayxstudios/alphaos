@@ -280,9 +280,10 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
   }
 
   return (
-    <div className="px-4 py-3">
+    <div className="relative px-4 py-3">
+      {/* The "waiting over a day" dot sits in the gutter, so every row's text lines up with the header. */}
+      {stale && <span className="absolute left-1.5 top-[1.35rem] size-1.5 rounded-full bg-rose" aria-hidden="true" title="Waiting over 24h" />}
       <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-3 text-left" aria-expanded={open}>
-        <span className={cn("size-2 shrink-0 rounded-full", stale ? "bg-rose" : "bg-transparent")} aria-hidden="true" title={stale ? "Waiting over 24h" : undefined} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-ink">{reply.subject || "(no subject)"}</span>
           <span className="block truncate text-xs text-slate">{reply.fromAddress ?? "unknown sender"}</span>
