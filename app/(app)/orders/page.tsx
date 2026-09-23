@@ -659,7 +659,9 @@ export default async function OrdersPage({
         itemTitle: items[0]?.title ?? "No item details",
         itemSummary: [
           items.length > 1 ? `${items.length} items` : null,
-          items[0] && effectiveFigureCount(items[0]) != null ? `${effectiveFigureCount(items[0])} figures` : null,
+          items[0] && effectiveFigureCount(items[0]) != null
+            ? `${effectiveFigureCount(items[0])} figure${effectiveFigureCount(items[0]) === 1 ? "" : "s"}`
+            : null,
           items[0]?.style ?? null,
           physical ? "Physical" : items.some((item) => item.productType === "digital") ? "Digital" : null,
         ].filter(Boolean).join(" · "),

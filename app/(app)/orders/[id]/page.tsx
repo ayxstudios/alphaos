@@ -661,7 +661,11 @@ export default async function OrderDetailPage({
                             <Badge variant={item.productType === "physical" ? "info" : "success"}>
                               {titleCase(item.productType)}
                             </Badge>
-                            {item.figureCount != null && <Badge variant="neutral">{item.figureCount} figures</Badge>}
+                            {item.figureCount != null && (
+                              <Badge variant="neutral">
+                                {item.figureCount} figure{item.figureCount === 1 ? "" : "s"}
+                              </Badge>
+                            )}
                             {item.style && <Badge variant="neutral">{item.style}</Badge>}
                           </div>
                         </div>
@@ -736,7 +740,11 @@ export default async function OrderDetailPage({
             <DataPanel id="reply" className="p-4">
               <SectionHeader
                 title="Draft reply"
-                description="Copy this, paste it into the Etsy conversation, then tap Mark as sent."
+                description={
+                  order.source === "etsy"
+                    ? "Copy this, paste it into the Etsy conversation, then tap Mark as sent."
+                    : "Copy this, paste it into your email to the customer, then tap Mark as sent."
+                }
               />
               <div className="mt-3">
                 <ReplyDraft orderId={order.id} defaultTemplate={defaultReplyTemplate(order.status as OrderStatus)} />
