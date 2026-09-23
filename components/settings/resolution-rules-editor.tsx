@@ -272,8 +272,8 @@ export function ResolutionRulesEditor({
         {figure.length === 0 && <p className="text-xs text-slate">No figure rules yet.</p>}
         {figure.map((r, i) => (
           <div key={i} className="flex flex-col gap-2 rounded-input bg-canvas/70 p-2">
-            <div className="flex items-end gap-2">
-              <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-[12rem] flex-1">
                 <Input
                   label="Option name contains"
                   value={r.match}
