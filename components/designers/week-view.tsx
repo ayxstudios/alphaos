@@ -36,7 +36,10 @@ export function DesignerWeekView({ week }: { week: DesignerWeek }) {
       <DataPanel>
         <div className="border-b border-line px-4 py-3">
           <h2 className="text-sm font-semibold text-ink">Next deadlines</h2>
-          <p className="text-xs text-slate">Week starting {week.weekStartLabel} · {week.activeOrders} order{week.activeOrders === 1 ? "" : "s"} in flight</p>
+          <p className="text-xs text-slate">
+            Week starting {week.weekStartLabel} · {week.activeOrders} order{week.activeOrders === 1 ? "" : "s"} in flight
+            {week.withCustomer > 0 ? ` · ${week.withCustomer} with the customer` : ""}
+          </p>
         </div>
         {week.upcoming.length === 0 ? (
           <EmptyState icon={Calendar} headline="Nothing on deck" body="No active orders right now." />

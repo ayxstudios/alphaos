@@ -22,6 +22,7 @@ import {
   type CardAssetType,
 } from "@/app/(app)/board/actions";
 import type { BoardCard } from "@/lib/orders/board-data";
+import { isWithCustomer } from "@/lib/orders/board-constants";
 import type { CardDetail, CardEvent, CardImage } from "@/lib/orders/card-detail";
 import { formatAt } from "@/lib/time";
 
@@ -252,7 +253,7 @@ export function CardModal({
           {viewerRole === "designer" ? (
             // The designer's own deadline (their assignment), never the customer SLA.
             <Meta label="Your deadline">
-              <DueLine dueAt={card.dueAt} done={card.status === "complete"} />
+              <DueLine dueAt={card.dueAt} done={card.status === "complete"} withCustomer={isWithCustomer(card.status)} />
             </Meta>
           ) : (
             <>
@@ -564,11 +565,11 @@ function uploadToR2(
   });
 }
 
-function DueLine({ dueAt, done = false }: { dueAt: string | null; done?: boolean }) {
+function DueLine({ dueAt, done = false, withCustomer = false }: { dueAt: string | null; done?: boolean; withCustomer?: boolean }) {
   return (
     <div className="flex flex-wrap items-center gap-x-2">
-      <Countdown dueAt={dueAt} done={done} />
-      {dueAt && <span className="text-xs text-slate">{dateFmt.format(new Date(dueAt))}</span>}
+      <Countdown dueAt={dueAt} done={done} withCustomer={withCustomer} />
+      {dueAt && !withCustomer && <span className="text-xs text-slate">{dateFmt.format(new Date(dueAt))}</span>}
     </div>
   );
 }

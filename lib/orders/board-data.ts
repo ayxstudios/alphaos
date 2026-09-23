@@ -17,7 +17,7 @@ import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
 import { issueLabels } from "@/lib/proofs/issues";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { liveOrderWhere } from "@/lib/orders/archive";
-import { COMPLETE_COLUMN_MAX, COMPLETE_COLUMN_WINDOW_DAYS } from "@/lib/orders/board-constants";
+import { COMPLETE_COLUMN_MAX, COMPLETE_COLUMN_WINDOW_DAYS, WITH_CUSTOMER_STATUSES } from "@/lib/orders/board-constants";
 import type { OrderStatus } from "./transitions";
 import type { ProofAnnotation } from "@/lib/db/schema";
 
@@ -298,6 +298,8 @@ export type DesignerBoard = {
     failedQc: BoardCard[];
     awaitingQc: BoardCard[];
     revisions: BoardCard[];
+    /** Passed QC, now with the customer (approval, print, delivery): read only. */
+    withCustomer: BoardCard[];
     complete: BoardCard[];
   };
   dailyEarnings: number;
@@ -364,7 +366,7 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
           assignments,
           and(eq(assignments.orderId, orders.id), eq(assignments.active, true), eq(assignments.designerId, target)),
         )
-        .where(assignedToTarget(["ready_to_assign", "in_design", "awaiting_qc"])) as Promise<OrderRow[]>,
+        .where(assignedToTarget(["ready_to_assign", "in_design", "awaiting_qc", ...WITH_CUSTOMER_STATUSES])) as Promise<OrderRow[]>,
       tx
         .select(BOARD_ROW_SELECT)
         .from(orders)
@@ -427,6 +429,10 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
           const card = cards.find((c) => c.orderId === r.id);
           return r.status === "in_design" && r.revisionCount > 0 && !card?.qcFail;
         }),
+        // After a QC pass the order is out of the designer's hands until it
+        // completes; it stays visible here (quiet, no countdown) so a pass
+        // never looks like the card vanished.
+        withCustomer: pick((r) => (WITH_CUSTOMER_STATUSES as readonly string[]).includes(r.status)),
         complete: cards.filter((c) => meta.get(c.orderId)!.status === "complete"),
       },
       dailyEarnings: Number(daily?.total ?? 0),

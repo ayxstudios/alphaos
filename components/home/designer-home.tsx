@@ -81,6 +81,11 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
             height={22}
             ariaLabel="My board by column"
           />
+          {h.board.withCustomer > 0 && (
+            <p className="text-sm text-slate">
+              {h.board.withCustomer} passed QC and {h.board.withCustomer === 1 ? "is" : "are"} with the customer.
+            </p>
+          )}
           {h.limits.maxActive > 0 && <Meter label="Active orders" value={active} max={h.limits.maxActive} />}
           {h.limits.dailyCapacity > 0 && <Meter label="Assigned today" value={h.assignedToday} max={h.limits.dailyCapacity} />}
         </HomeSection>

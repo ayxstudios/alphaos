@@ -33,6 +33,7 @@ const COLUMN_TO_STATUS: Record<ColKey, OrderStatus> = {
   failedQc: "in_design",
   awaitingQc: "awaiting_qc",
   revisions: "in_design",
+  withCustomer: "awaiting_approval", // read only: never a drop target
   complete: "complete",
 };
 const DRAG_SOURCES = new Set<ColKey>(["myQueue", "inDesign", "failedQc", "awaitingQc", "revisions"]);
@@ -44,6 +45,7 @@ const COLUMNS: { key: ColKey; title: string }[] = [
   { key: "failedQc", title: "Failed QC" },
   { key: "awaitingQc", title: "Awaiting QC" },
   { key: "revisions", title: "Revisions" },
+  { key: "withCustomer", title: "With the customer" },
   { key: "complete", title: `Complete (last ${COMPLETE_COLUMN_WINDOW_DAYS} days)` },
 ];
 
