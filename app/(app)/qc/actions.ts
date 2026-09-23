@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, desc, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser } from "@/lib/db";
@@ -433,6 +433,29 @@ async function readQcEmailContext(tx: Tx, orderId: string) {
     .limit(1);
   if (!asset) return { ok: false as const, code: "attachment", message: "Upload a final portrait before sending." };
 
+  // Has the CUSTOMER already seen a proof and asked for changes? revisionCount
+  // also counts QC fails, which the customer never saw, so it cannot pick the
+  // "revised portrait" wording on its own. A proof already sent, or a
+  // customer-side move back to design (older orders), means this is a revision.
+  const [sentProof] = await tx
+    .select({ id: proofs.id })
+    .from(proofs)
+    .where(and(eq(proofs.orderId, orderId), isNotNull(proofs.sentAt)))
+    .limit(1);
+  const [customerRevision] = sentProof
+    ? [sentProof]
+    : await tx
+        .select({ id: activityLog.id })
+        .from(activityLog)
+        .where(
+          and(
+            eq(activityLog.orderId, orderId),
+            eq(activityLog.toState, "in_design"),
+            inArray(activityLog.fromState, ["awaiting_approval", "approved", "printing", "shipped", "delivered", "complete"]),
+          ),
+        )
+        .limit(1);
+
   return {
     ok: true as const,
     order: {
@@ -443,6 +466,7 @@ async function readQcEmailContext(tx: Tx, orderId: string) {
     customer,
     items: itemRows,
     asset,
+    customerHasSeenProof: !!customerRevision,
   };
 }
 
@@ -450,8 +474,8 @@ function selectProofTemplate(ctx: Extract<Awaited<ReturnType<typeof readQcEmailC
   key: TemplateKey;
   reason: string;
 } {
-  if (ctx.order.revisionCount > 0) {
-    return { key: "revision_received", reason: "Order has already had a revision round, so the generic revision-ready template is used." };
+  if (ctx.customerHasSeenProof) {
+    return { key: "revision_received", reason: "The customer already saw a proof and asked for changes, so the revision-ready template is used." };
   }
   const physical = ctx.items.some((item) => item.productType === "physical");
   const figures = ctx.items.reduce((sum, item) => sum + (item.figureCount ?? 0), 0);
