@@ -139,8 +139,12 @@ export function loginClientIp(headers: Headers | null | undefined): string | nul
 
 const ipBucket = (ip: string) => `login-ip:${ip}`;
 
-/** Failures from this IP in the current window (0 once the window rolled over). */
-async function ipFailures(ip: string): Promise<number> {
+/**
+ * Failures from this IP in the current window (0 once the window rolled over).
+ * Exported with registerIpFailure for the sign-in link provider (./login-link.ts),
+ * which shares this limit: a bad link counts like a bad password.
+ */
+export async function ipFailures(ip: string): Promise<number> {
   const [row] = await db
     .select({
       hits: rateLimits.hits,
@@ -152,7 +156,7 @@ async function ipFailures(ip: string): Promise<number> {
 }
 
 /** One atomic upsert: +1 in the current window, or restart the window at 1. */
-async function registerIpFailure(ip: string): Promise<void> {
+export async function registerIpFailure(ip: string): Promise<void> {
   const rolledOver = sql`${rateLimits.windowStart} < now() - make_interval(secs => ${IP_WINDOW_SEC})`;
   await db
     .insert(rateLimits)

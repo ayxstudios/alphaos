@@ -13,6 +13,7 @@ import {
   text,
   timestamp,
   uniqueIndex,
+  uuid,
 } from "drizzle-orm/pg-core";
 
 import type { OnboardingState } from "../tour/state";
@@ -179,6 +180,30 @@ export const loginAttempts = pgTable("login_attempts", {
     .defaultNow()
     .notNull(),
 });
+
+// Per-person sign-in links (lib/auth/login-link.ts, docs/LOGIN-LINKS.md). Only the
+// sha256 of the token is stored. One active link per user: minting a new one
+// revokes the previous (a partial unique index backs that up). No RLS, like
+// login_attempts: the "link" sign-in reads it before any session exists.
+export const loginLinks = pgTable(
+  "login_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("login_links_user_idx").on(t.userId),
+    uniqueIndex("login_links_one_active_uq").on(t.userId).where(sql`${t.revokedAt} is null`),
+  ],
+);
 
 // Generic fixed-window rate-limit counters (no Redis, mirroring login_attempts).
 // Keyed by an opaque bucket string, e.g. "proof:<ip>" or "proof-token:<token>".

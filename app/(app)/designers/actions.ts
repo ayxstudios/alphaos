@@ -7,7 +7,13 @@ import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { businesses, designerBusinesses, designerProfiles, users } from "@/lib/db/schema";
 import { newUserProblem, newUserRow } from "@/lib/auth/new-user";
-import { createTeamMember, resetUserPassword, setUserActive } from "@/lib/team/manage";
+import {
+  createSignInLink,
+  createTeamMember,
+  resetUserPassword,
+  revokeSignInLink,
+  setUserActive,
+} from "@/lib/team/manage";
 import {
   isValidE164,
   isValidHHMM,
@@ -306,4 +312,20 @@ export async function setMemberActive(
 /** Admin sets a new password for someone; their open sessions end. */
 export async function resetMemberPassword(userId: string, password: string): Promise<ActionResult> {
   return resetUserPassword(await sessionActor(), userId, password);
+}
+
+/** Create or replace someone's private sign-in link; the URL comes back once. */
+export async function makeSignInLink(
+  userId: string,
+): Promise<{ ok: true; url: string; expiresAt: string } | { ok: false; message: string }> {
+  const res = await createSignInLink(await sessionActor(), userId);
+  if (res.ok) revalidatePath("/designers");
+  return res;
+}
+
+/** Stop someone's sign-in link working. */
+export async function revokeMemberSignInLink(userId: string): Promise<ActionResult> {
+  const res = await revokeSignInLink(await sessionActor(), userId);
+  if (res.ok) revalidatePath("/designers");
+  return res.ok ? { ok: true } : res;
 }

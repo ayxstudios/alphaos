@@ -1,11 +1,12 @@
-import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, ne, sql } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
-import { assignments, orders, users } from "@/lib/db/schema";
+import { assignments, loginLinks, orders, users } from "@/lib/db/schema";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { hashPassword } from "@/lib/auth/password";
 import { newUserProblem, newUserRow, passwordProblem } from "@/lib/auth/new-user";
 import type { Role } from "@/lib/auth/config";
+import { linkDays, loginLinkUrl, mintLoginLinkTx, revokeLoginLinksTx } from "@/lib/auth/login-link";
 
 /**
  * Admin team management: add a VA or another admin, deactivate and reactivate
@@ -19,6 +20,12 @@ import type { Role } from "@/lib/auth/config";
  * the activity log keep pointing at the person. A deactivated person cannot
  * sign in (lib/auth/login.ts) and any session they hold is refused on the next
  * request (lib/auth/session-check.ts).
+ *
+ * Sign-in links (lib/auth/login-link.ts): an admin creates, replaces or revokes
+ * a person's private link here. Deactivating someone and resetting their
+ * password also revoke it, in the same transaction. login_links has no RLS (the
+ * link sign-in reads it before any session exists); these writes still run
+ * inside withUserContext for the acting admin, like every other write here.
  */
 
 export type TeamMember = {
@@ -29,6 +36,8 @@ export type TeamMember = {
   active: boolean;
   /** Designers only: orders still with them (in design or awaiting QC). */
   openOrders: number;
+  /** Their live sign-in link (unrevoked, unexpired), or null. ISO timestamps. */
+  link: { expiresAt: string; lastUsedAt: string | null } | null;
 };
 
 export type TeamResult<T = object> = ({ ok: true } & T) | { ok: false; message: string };
@@ -78,6 +87,14 @@ export async function listTeam(actor: RequestUser): Promise<TeamMember[]> {
       }
     }
 
+    const links = new Map<string, TeamMember["link"]>();
+    for (const l of await tx
+      .select({ userId: loginLinks.userId, expiresAt: loginLinks.expiresAt, lastUsedAt: loginLinks.lastUsedAt })
+      .from(loginLinks)
+      .where(and(isNull(loginLinks.revokedAt), gt(loginLinks.expiresAt, new Date())))) {
+      links.set(l.userId, { expiresAt: l.expiresAt.toISOString(), lastUsedAt: l.lastUsedAt?.toISOString() ?? null });
+    }
+
     return rows.map((r) => ({
       id: r.id,
       name: r.name ?? r.email,
@@ -85,6 +102,7 @@ export async function listTeam(actor: RequestUser): Promise<TeamMember[]> {
       role: r.role,
       active: r.active,
       openOrders: open.get(r.id) ?? 0,
+      link: links.get(r.id) ?? null,
     }));
   });
 }
@@ -160,6 +178,8 @@ export async function setUserActive(
           .set(active ? { active } : { active, sessionsValidAfter: new Date() })
           .where(eq(users.id, target.id));
       }
+      // Deactivated people keep no sign-in link: a reactivation needs a new one.
+      if (!active) await revokeLoginLinksTx(tx, target.id);
 
       if (target.role !== "designer") return 0;
       const [{ n }] = await tx
@@ -200,10 +220,53 @@ export async function resetUserPassword(
         .where(eq(users.id, targetId))
         .returning({ id: users.id });
       if (!updated.length) throw new TeamError("That person was not found");
+      // A reset is the "their access leaked" move: their sign-in link goes too.
+      await revokeLoginLinksTx(tx, targetId);
     });
     return { ok: true };
   } catch (error) {
     return fail(error, "Could not reset the password. Try again.");
+  }
+}
+
+/**
+ * Create (or replace) someone's private sign-in link. Returns the full URL once
+ * (only its hash is stored) and the expiry. Their previous link stops working.
+ */
+export async function createSignInLink(
+  actor: RequestUser | null,
+  targetId: string,
+  options: { days?: number } = {},
+): Promise<TeamResult<{ url: string; expiresAt: string }>> {
+  if (!isAdmin(actor)) return { ok: false, message: "Only an admin can make sign-in links" };
+  try {
+    const minted = await withUserContext(actor, async (tx) => {
+      const [target] = await tx
+        .select({ id: users.id, active: users.active })
+        .from(users)
+        .where(eq(users.id, targetId))
+        .limit(1);
+      if (!target) throw new TeamError("That person was not found");
+      if (!target.active) throw new TeamError("Reactivate them first, then make a link");
+      return mintLoginLinkTx(tx, { userId: target.id, createdBy: actor.id, days: linkDays(options.days) });
+    });
+    return { ok: true, url: loginLinkUrl(minted.token), expiresAt: minted.expiresAt.toISOString() };
+  } catch (error) {
+    return fail(error, "Could not make the link. Try again.");
+  }
+}
+
+/** Stop someone's sign-in link working. Sessions already open are not touched. */
+export async function revokeSignInLink(
+  actor: RequestUser | null,
+  targetId: string,
+): Promise<TeamResult<{ revoked: number }>> {
+  if (!isAdmin(actor)) return { ok: false, message: "Only an admin can revoke sign-in links" };
+  try {
+    const revoked = await withUserContext(actor, (tx) => revokeLoginLinksTx(tx, targetId));
+    return { ok: true, revoked };
+  } catch (error) {
+    return fail(error, "Could not revoke the link. Try again.");
   }
 }
 

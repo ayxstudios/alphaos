@@ -3,12 +3,14 @@ import Credentials from "next-auth/providers/credentials";
 
 import { authConfig, type Role } from "./config";
 import { authenticate, loginClientIp } from "./login";
+import { authenticateLink } from "./login-link";
 import { recheckToken } from "./session-check";
 
 /**
  * Full Auth.js (NextAuth v5) config: the edge-safe base + the email/password
- * Credentials provider. Sessions are JWT (no adapter, no session table lookups)
- * and carry the user's id and role so middleware can gate access on the edge.
+ * Credentials provider and the per-person sign-in link provider ("link").
+ * Sessions are JWT (no adapter, no session table lookups) and carry the
+ * user's id and role so middleware can gate access on the edge.
  *
  * Users are created by an admin or the seed script — there is no signup.
  */
@@ -41,6 +43,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // Returns the user, null (bad creds), or throws AccountLockedError
         // (email locked, or too many failures from this IP).
         return await authenticate(email, password, loginClientIp(request?.headers));
+      },
+    }),
+    // Per-person sign-in link (/auth/link/<token>, docs/LOGIN-LINKS.md). Same
+    // user shape as the password provider, so the JWT id/role/signedInAt and
+    // the per-request re-check apply unchanged. Shares the per-IP limit.
+    Credentials({
+      id: "link",
+      name: "Sign-in link",
+      credentials: { token: { label: "Link", type: "text" } },
+      authorize: async (creds, request) => {
+        return await authenticateLink(creds?.token, loginClientIp(request?.headers));
       },
     }),
   ],

@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { focusRing } from "@/components/ui/styles";
 import { Avatar, Badge, Button, DataPanel, Drawer, Input, SectionHeader, Select, useToast } from "@/components/ui";
 import { CredentialsOnce, makePassword } from "./credentials-once";
+import { SignInLinkDrawer } from "./sign-in-link-drawer";
 
 type Filter = "staff" | "designers" | "inactive";
 
@@ -19,13 +20,14 @@ const TAP = "min-h-11 sm:min-h-0";
 
 /**
  * Admin-only "Team and sign-ins" on the Designers page: everyone who can sign
- * in, with Add VA or admin, Reset password, and Deactivate / Reactivate.
+ * in, with Add VA or admin, Sign-in link (a private no-password link, see
+ * lib/auth/login-link.ts), Reset password, and Deactivate / Reactivate.
  * Designers themselves are added with the roster's Add designer (it also links
  * their business); they show up here once added.
  */
 export function TeamPanel({ members, currentUserId }: { members: TeamMember[]; currentUserId: string }) {
   const [filter, setFilter] = useState<Filter>("staff");
-  const [dialog, setDialog] = useState<{ kind: "deactivate" | "password"; member: TeamMember } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "deactivate" | "password" | "link"; member: TeamMember } | null>(null);
   const router = useRouter();
   const toast = useToast();
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -111,6 +113,7 @@ export function TeamPanel({ members, currentUserId }: { members: TeamMember[]; c
                         <Badge>{ROLE_LABEL[m.role]}</Badge>
                         {isYou && <Badge variant="info">You</Badge>}
                         {!m.active && <Badge variant="warning">Deactivated</Badge>}
+                        {m.active && m.link && <Badge variant="success">Link</Badge>}
                       </p>
                       <p className="truncate text-sm text-slate">{m.email}</p>
                       {m.role === "designer" && !m.active && m.openOrders > 0 && (
@@ -122,6 +125,15 @@ export function TeamPanel({ members, currentUserId }: { members: TeamMember[]; c
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
+                    {m.active && (
+                      <Button
+                        variant="secondary"
+                        className={cn(TAP, "col-span-2 sm:col-auto")}
+                        onClick={() => setDialog({ kind: "link", member: m })}
+                      >
+                        Sign-in link
+                      </Button>
+                    )}
                     <Button
                       variant="secondary"
                       className={TAP}
@@ -165,6 +177,11 @@ export function TeamPanel({ members, currentUserId }: { members: TeamMember[]; c
       />
       <ResetPasswordDrawer
         member={dialog?.kind === "password" ? dialog.member : null}
+        isYou={dialog?.member.id === currentUserId}
+        onClose={() => setDialog(null)}
+      />
+      <SignInLinkDrawer
+        member={dialog?.kind === "link" ? dialog.member : null}
         isYou={dialog?.member.id === currentUserId}
         onClose={() => setDialog(null)}
       />
@@ -213,7 +230,7 @@ function DeactivateDrawer({ member, onClose }: { member: TeamMember | null; onCl
             Deactivate <span className="font-semibold">{member.name}</span> ({member.email})?
           </p>
           <ul className="list-disc space-y-1 pl-5 text-sm text-slate">
-            <li>They cannot sign in, and a session they have open ends on their next click.</li>
+            <li>They cannot sign in, a session they have open ends on their next click, and their sign-in link stops working.</li>
             {member.role === "designer" && (
               <li>They get no new orders and leave the roster and the Designers board list.</li>
             )}
@@ -283,8 +300,8 @@ function ResetPasswordDrawer({
         <CredentialsOnce
           lead={
             isYou
-              ? "Your password is changed. You will be asked to sign in again with it."
-              : `${member.name}'s password is changed. Any session they had open has ended.`
+              ? "Your password is changed. You will be asked to sign in again with it. Your sign-in link, if you had one, has stopped working."
+              : `${member.name}'s password is changed. Any session they had open has ended, and their sign-in link has stopped working.`
           }
           email={done.email}
           password={done.password}

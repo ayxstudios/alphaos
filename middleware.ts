@@ -40,8 +40,14 @@ const DESIGNER_ALLOWED = [
 // Admin-only areas (VAs are sent home, matching the pages' own redirects).
 const ADMIN_ONLY = [/^\/payouts(\/|$)/, /^\/health(\/|$)/];
 
+// Public on purpose: a person's private sign-in link (lib/auth/login-link.ts)
+// must open with no session. Listed so a later catch-all protection rule
+// cannot swallow it by accident.
+const PUBLIC = [/^\/auth\/link\/[^/]+\/?$/];
+
 export default auth((req) => {
   const { pathname } = req.nextUrl;
+  if (PUBLIC.some((r) => r.test(pathname))) return NextResponse.next();
   const isProtected = PROTECTED.some((r) => r.test(pathname));
   if (!isProtected) return NextResponse.next();
 
