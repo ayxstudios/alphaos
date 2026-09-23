@@ -83,6 +83,8 @@ export function describeEvent(e: CardEvent): string | null {
       return "marked this delivered";
     case "order.complete":
       return "completed this order";
+    case "order.reassigned":
+      return e.metadata?.firstAssignment === true ? "assigned this to a designer" : "reassigned this to another designer";
     case "order.on_hold":
       return "put this on hold";
     case "order.cancelled":

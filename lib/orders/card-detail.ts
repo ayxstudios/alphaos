@@ -1,7 +1,7 @@
 import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
-import { activityLog, assets, orders, users } from "@/lib/db/schema";
+import { activityLog, assets, assignments, orders, users } from "@/lib/db/schema";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import type { OrderStatus } from "./transitions";
 
@@ -103,6 +103,23 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
         createdAt: r.createdAt.toISOString(),
       };
     });
+
+    // "order.reassigned" is logged by every manual (re)assignment, including an
+    // order's FIRST one. Mark the events that had no earlier assignment so the
+    // feed says "assigned", not "reassigned". The event and its assignment row
+    // share a transaction (same now()), so "earlier" is strictly before it.
+    // A designer only sees their own assignment rows (RLS), which reads right
+    // for them: the order was assigned to them.
+    if (rows.some((r) => r.action === "order.reassigned")) {
+      const assignedAts = (
+        await tx.select({ at: assignments.assignedAt }).from(assignments).where(eq(assignments.orderId, orderId))
+      ).map((a) => a.at.getTime());
+      rows.forEach((r, i) => {
+        if (r.action !== "order.reassigned") return;
+        const first = !assignedAts.some((at) => at < r.createdAt.getTime());
+        events[i] = { ...events[i], metadata: { ...(events[i].metadata ?? {}), firstAssignment: first } };
+      });
+    }
 
     const imageRows = await tx
       .select({

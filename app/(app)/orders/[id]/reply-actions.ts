@@ -15,7 +15,7 @@ import { activityLog, messages, orders } from "@/lib/db/schema";
 import {
   renderReplyDraft,
   type ReplyTemplateChoice,
-} from "@/lib/orders/reply-draft-data";
+} from "@/lib/orders/reply-draft";
 
 export type ReplyDraftResult =
   | { ok: true; subject: string; body: string }

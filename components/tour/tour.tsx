@@ -25,6 +25,20 @@ const GAP = 14;
 const EDGE = 12;
 const PAD = 6; // spotlight breathing room around the target
 
+/**
+ * The spotlight around a target, padded but kept inside the viewport: a
+ * target flush with the screen edge (the phone's bottom tab bar) would
+ * otherwise push the ring off screen.
+ */
+function spotBox(r: DOMRect): Box {
+  const ring = 2; // the 2px outline is drawn outside the box
+  const top = Math.max(ring, r.top - PAD);
+  const left = Math.max(ring, r.left - PAD);
+  const bottom = Math.min(window.innerHeight - ring, r.bottom + PAD);
+  const right = Math.min(window.innerWidth - ring, r.right + PAD);
+  return { top, left, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+}
+
 function isShown(el: Element): boolean {
   const r = el.getBoundingClientRect();
   if (r.width < 1 || r.height < 1) return false;
@@ -266,7 +280,7 @@ export function Tour({
         });
       }
       const r = found.el?.getBoundingClientRect();
-      const box = r ? { top: r.top - PAD, left: r.left - PAD, width: r.width + PAD * 2, height: r.height + PAD * 2 } : null;
+      const box = r ? spotBox(r) : null;
       setSpot((prev) => (sameBox(prev, box) ? prev : box));
       setVia((prev) => (prev === found.via ? prev : found.via));
       setLitKey((prev) => (prev === found.key ? prev : found.key));

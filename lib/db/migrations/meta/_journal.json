@@ -281,6 +281,13 @@
       "when": 1790409600000,
       "tag": "0039_login_links",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1790496000000,
+      "tag": "0040_rls_tighten_r2",
+      "breakpoints": true
     }
   ]
 }

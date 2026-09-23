@@ -10,7 +10,7 @@ import { dayBucket, fillDays, lastDays, sinceDays } from "./shared";
 export type DesignerHome = {
   week: DesignerWeek;
   /** My live work by column. */
-  board: { queue: number; inDesign: number; revisions: number; awaitingQc: number; complete14d: number };
+  board: { queue: number; inDesign: number; revisions: number; awaitingQc: number; withCustomer: number; complete14d: number };
   /** Figures delivered per day, last 14 days. */
   figures: { labels: string[]; values: number[] };
   figures7d: number;
@@ -42,6 +42,8 @@ const load = cache(async (userId: string): Promise<DesignerHome> => {
             inDesign: sql<number>`count(*) filter (where ${orders.status} = 'in_design' and ${orders.revisionCount} = 0)::int`,
             revisions: sql<number>`count(*) filter (where ${orders.status} = 'in_design' and ${orders.revisionCount} > 0)::int`,
             awaitingQc: sql<number>`count(*) filter (where ${orders.status} = 'awaiting_qc')::int`,
+            // Passed QC, not complete yet (approval, print, delivery).
+            withCustomer: sql<number>`count(*) filter (where ${orders.status} in ('awaiting_approval','approved','printing','shipped','delivered'))::int`,
             complete14d: sql<number>`count(*) filter (where ${orders.status} = 'complete' and ${orders.updatedAt} >= ${since14})::int`,
             overdue: sql<number>`count(*) filter (where ${orders.status} in ('ready_to_assign','in_design','awaiting_qc') and ${myDue} < now())::int`,
             dueToday: sql<number>`count(*) filter (where ${orders.status} in ('ready_to_assign','in_design','awaiting_qc') and ${dayBucket(myDue)} = to_char(timezone('Australia/Melbourne', now()), 'YYYY-MM-DD'))::int`,
@@ -75,6 +77,7 @@ const load = cache(async (userId: string): Promise<DesignerHome> => {
       inDesign: Number(c?.inDesign ?? 0),
       revisions: Number(c?.revisions ?? 0),
       awaitingQc: Number(c?.awaitingQc ?? 0),
+      withCustomer: Number(c?.withCustomer ?? 0),
       complete14d: Number(c?.complete14d ?? 0),
     },
     figures: { labels: days14.map((d) => d.label), values },

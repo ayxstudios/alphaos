@@ -1,5 +1,7 @@
 import type { NextRequest } from "next/server";
 
+import { secretsMatch } from "@/lib/secret-compare";
+
 /**
  * Authorize a Vercel Cron request. Vercel automatically sends
  * `Authorization: Bearer $CRON_SECRET` when CRON_SECRET is set in the project.
@@ -20,7 +22,7 @@ export function isAuthorizedCron(req: NextRequest): boolean {
     return false; // fail closed if unconfigured
   }
 
-  const authorized = req.headers.get("authorization") === `Bearer ${secret}`;
+  const authorized = secretsMatch(req.headers.get("authorization"), `Bearer ${secret}`);
   if (!authorized) {
     console.log(
       JSON.stringify({

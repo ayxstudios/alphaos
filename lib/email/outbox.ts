@@ -3,6 +3,7 @@ import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from "driz
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { customers, emailSenderIgnores, messages, orders } from "@/lib/db/schema";
 import { TEMPLATE_META } from "./templates";
+import { cleanSearchTerm, likeContains } from "@/lib/search";
 
 /** Pull the bare email out of a "Name <email>" From header. */
 function parseEmail(address: string | null): string | null {
@@ -26,8 +27,12 @@ export type OutboxItem = {
   error: string | null;
   /** Set when turning sending on marked this stale email as skipped (lib/email/backlog-guard.ts). */
   skippedReason: string | null;
+  /** The order is already delivered, complete or cancelled: a stage email here is out of date. */
+  orderFinished: string | null;
   createdAt: string; // ISO
 };
+
+const FINISHED_STATUSES = new Set(["delivered", "complete", "cancelled"]);
 
 /**
  * The VA outbox: outbound customer emails awaiting approval (`draft`), system-
@@ -60,6 +65,7 @@ export async function getOutbox(
         customerId: messages.customerId,
         platformOrderId: orders.platformOrderId,
         platformOrderName: orders.platformOrderName,
+        orderStatus: orders.status,
       })
       .from(messages)
       .leftJoin(orders, eq(orders.id, messages.orderId))
@@ -100,6 +106,7 @@ export async function getOutbox(
       error: r.error,
       skippedReason:
         ((r.metadata as { skippedOnEnable?: { reason?: string } } | null)?.skippedOnEnable?.reason) ?? null,
+      orderFinished: r.orderStatus && FINISHED_STATUSES.has(r.orderStatus) ? r.orderStatus : null,
       createdAt: r.createdAt.toISOString(),
     }));
   });
@@ -408,20 +415,20 @@ export async function getMailHistory(
   return withUserContext(user, async (tx) => {
     const pageSize = Math.min(Math.max(opts.pageSize ?? 50, 20), 100);
     const page = Math.max(opts.page ?? 1, 1);
-    const term = opts.q?.trim() ?? "";
+    const term = cleanSearchTerm(opts.q);
     const bizFilter =
       opts.businessId && opts.businessId !== "all" ? eq(messages.businessId, opts.businessId) : undefined;
     const suppressionFilter = opts.includeSuppressed ? undefined : isNull(messages.suppressedAt);
     const searchFilter =
       term.length >= 2
         ? or(
-            ilike(messages.address, `%${term}%`),
-            ilike(messages.subject, `%${term}%`),
-            ilike(orders.platformOrderName, `%${term}%`),
-            ilike(orders.platformOrderId, `%${term}%`),
-            ilike(customers.firstName, `%${term}%`),
-            ilike(customers.lastName, `%${term}%`),
-            sql`concat_ws(' ', ${customers.firstName}, ${customers.lastName}) ilike ${`%${term}%`}`,
+            ilike(messages.address, likeContains(term)),
+            ilike(messages.subject, likeContains(term)),
+            ilike(orders.platformOrderName, likeContains(term)),
+            ilike(orders.platformOrderId, likeContains(term)),
+            ilike(customers.firstName, likeContains(term)),
+            ilike(customers.lastName, likeContains(term)),
+            sql`concat_ws(' ', ${customers.firstName}, ${customers.lastName}) ilike ${likeContains(term)}`,
           )
         : undefined;
     const filters = [

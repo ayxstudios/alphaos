@@ -18,7 +18,7 @@ import type { Role } from "./config";
  *
  * Uses the raw `db` handle deliberately, like `authenticate` in ./login.ts:
  * this runs inside Auth.js before any user context exists, against the
- * "user" table, which has no RLS (an Auth.js table).
+ * "user" table, whose SELECT policy is open to every context (0040).
  */
 
 export type SessionRow = {

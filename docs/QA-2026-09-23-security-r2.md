@@ -173,3 +173,21 @@ applies 0038). No P1 found; every P2 that exposed data, sent duplicate
 customer email or leaked errors is fixed and covered. Switching production to
 app_user stays the safer state. The remaining RLS P2s are defence in depth
 and can follow.
+
+## Decisions
+
+Polish pass 2026-09-24: migration 0040 narrows `user`, `designer_businesses`, `customer_public`, the designer activity/asset inserts, notification deletes and channels, VA deletes and the unused Auth.js tables (test:rls covers each); the other P3s not listed here are fixed on this branch. Not changed:
+
+- `alpha_events` stays without RLS: its writers run in VA, system and designer transitions (lib/notifications/designer-events.ts) and need `.returning`, so a safe policy needs a per-event-type rule, not a blanket one.
+- `orders_designer_update` allows any column: a policy cannot limit columns; that needs a trigger, and transition() is the only designer writer today.
+- `orders_select` exposes `raw_import` to an assigned designer: RLS is per row; hiding one column needs a view or column grants that the order page's server read depends on.
+- `shops_select` returns credential ciphertext to designers: AES-GCM ciphertext with the key server side only; hiding it needs a designer-safe shop view.
+- VA UPDATE on earnings: kept, completing an order (a VA action) creates the earning; only DELETE is now admin only.
+- Concurrent reassignment losers get a 500: the reassign action is app/(app)/orders/actions.ts, the VA/admin lane's files in this pass.
+- Customer names have no length cap: they are written by the manual order actions under app/(app)/orders/new (same lane) and by platform imports.
+- The /orders list search still treats `%` and `_` as wildcards: same lane; `likeContains()` in lib/search.ts is ready for it.
+- `recheckToken` keeps a session when the database read fails: deliberate, a database blip must not sign every user out.
+- A designer calling team actions gets HTTP 200 `{}`: middleware sends designers away from /designers before the action runs, nothing is written; a calm message would mean letting designer POSTs reach that route.
+- `prepareQcEmailPreview` trusts the client checklist: a VA-only preview; the send runs the authoritative gate (assertQcPassAllowed).
+- Hidden orders are soft 404s on /orders/[id]: VA/admin lane's page (wrong proof and upload links now answer 404).
+- A designer's Start never drafts the `in_design` stage email: drafting needs the customer's email, which the designer's context must not read; the fix is a system-side draft (a sweep or a narrow definer function), a design call.

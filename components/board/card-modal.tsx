@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { Avatar, Button, Disclosure, StatusChip, useToast } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
-import { AlertTriangle, Camera, X } from "@/components/ui/icons";
+import { AlertTriangle, Camera, Check, X } from "@/components/ui/icons";
 import { Countdown } from "./countdown";
 import {
   cardLabels,
@@ -22,8 +22,9 @@ import {
   type CardAssetType,
 } from "@/app/(app)/board/actions";
 import type { BoardCard } from "@/lib/orders/board-data";
+import { isWithCustomer, SENT_BACK_FROM } from "@/lib/orders/board-constants";
 import type { CardDetail, CardEvent, CardImage } from "@/lib/orders/card-detail";
-import { formatAt } from "@/lib/time";
+import { formatAt, formatDeadline } from "@/lib/time";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 type ViewerRole = "admin" | "va" | "designer";
@@ -42,11 +43,17 @@ const dateFmt = {
 export function CardModal({
   card,
   viewerRole,
+  timeZone,
   onClose,
+  onSubmitForQc,
 }: {
   card: BoardCard;
   viewerRole: ViewerRole;
+  /** The designer's zone; their deadline is shown in it (staff keep the app zone). */
+  timeZone?: string;
   onClose: () => void;
+  /** Designer only: send the card to Awaiting QC from here (true = moved). */
+  onSubmitForQc?: () => Promise<boolean>;
 }) {
   const toast = useToast();
   const [mounted, setMounted] = useState(false);
@@ -128,7 +135,9 @@ export function CardModal({
         aria-modal="true"
         aria-label={`Order ${card.orderNumber}`}
         className={cn(
-          "relative z-10 my-auto flex w-full max-w-3xl flex-col-reverse overflow-hidden rounded-modal bg-surface shadow-lg md:flex-row",
+          // Phone: the work (upload, photos, notes) first, the details panel
+          // after it; status and deadline sit under the title instead.
+          "relative z-10 my-auto flex w-full max-w-3xl flex-col overflow-hidden rounded-modal bg-surface shadow-lg md:flex-row",
           "transition-[opacity,transform] motion-layout",
           visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2",
         )}
@@ -140,7 +149,7 @@ export function CardModal({
           onClick={onClose}
           aria-label="Close"
           className={cn(
-            "absolute right-3 top-3 z-20 inline-flex size-8 items-center justify-center rounded-input bg-surface/80 text-slate backdrop-blur",
+            "absolute right-3 top-3 z-20 inline-flex size-11 items-center justify-center rounded-input bg-surface/80 text-slate backdrop-blur md:size-8",
             "transition-colors motion-hover hover:bg-canvas hover:text-ink",
             focusRing,
           )}
@@ -156,6 +165,14 @@ export function CardModal({
               <h2 className="font-display text-xl font-semibold text-ink">
                 {card.title ?? "Custom portrait"}
               </h2>
+              <div className="flex flex-wrap items-center gap-2 pt-1 md:hidden">
+                <StatusChip status={card.status} />
+                <Countdown
+                  dueAt={viewerRole === "designer" ? card.dueAt : card.orderDueAt}
+                  done={card.status === "complete"}
+                  withCustomer={viewerRole === "designer" && isWithCustomer(card.status)}
+                />
+              </div>
             </div>
             <CardUploadPanel
               card={card}
@@ -165,6 +182,13 @@ export function CardModal({
                 setDetail(next);
                 setEvents(next.events);
               }}
+              onSubmitForQc={
+                onSubmitForQc
+                  ? async () => {
+                      if (await onSubmitForQc()) onClose();
+                    }
+                  : undefined
+              }
             />
             <Gallery images={detail?.images ?? null} cover={card.thumbnailUrl} />
 
@@ -236,7 +260,7 @@ export function CardModal({
                   focusRing,
                 )}
               />
-              <Button size="sm" onClick={send} loading={posting} disabled={!draft.trim()}>
+              <Button size="sm" className="max-md:h-11" onClick={send} loading={posting} disabled={!draft.trim()}>
                 Send
               </Button>
             </div>
@@ -245,14 +269,19 @@ export function CardModal({
         </div>
 
         {/* Sidebar */}
-        <aside className="shrink-0 space-y-4 border-b border-line bg-canvas/40 p-4 md:w-64 md:border-b-0 md:border-l">
+        <aside className="shrink-0 space-y-4 border-t border-line bg-canvas/40 p-4 md:w-64 md:border-t-0 md:border-l">
           <Meta label="Status">
             <StatusChip status={card.status} />
           </Meta>
           {viewerRole === "designer" ? (
             // The designer's own deadline (their assignment), never the customer SLA.
             <Meta label="Your deadline">
-              <DueLine dueAt={card.dueAt} done={card.status === "complete"} />
+              <DueLine
+                dueAt={card.dueAt}
+                done={card.status === "complete"}
+                withCustomer={isWithCustomer(card.status)}
+                timeZone={timeZone}
+              />
             </Meta>
           ) : (
             <>
@@ -310,11 +339,13 @@ function CardUploadPanel({
   viewerRole,
   detail,
   onSaved,
+  onSubmitForQc,
 }: {
   card: BoardCard;
   viewerRole: ViewerRole;
   detail: CardDetail | null;
   onSaved: (detail: CardDetail) => void;
+  onSubmitForQc?: () => Promise<void>;
 }) {
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -322,9 +353,17 @@ function CardUploadPanel({
   const canDesignerUpload = card.status === "in_design";
   const [type, setType] = useState<CardAssetType>(designer ? "submission" : "reference");
   const [uploading, setUploading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState<UploadProgress[]>([]);
   const submissions = (detail?.images ?? []).filter((image) => image.type === "submission");
   const latestSubmission = submissions.at(-1) ?? null;
+  // After a send-back (QC fail, revision) the old versions no longer count:
+  // the server refuses Submit for QC until a newer version is uploaded.
+  const lastSendBack = (detail?.events ?? [])
+    .filter((e) => e.toState === "in_design" && e.fromState && (SENT_BACK_FROM as readonly string[]).includes(e.fromState))
+    .reduce<string | null>((max, e) => (!max || e.createdAt > max ? e.createdAt : max), null);
+  const freshVersion =
+    !!latestSubmission && (!lastSendBack || Date.parse(latestSubmission.createdAt) > Date.parse(lastSendBack));
   const canUpload = !designer || canDesignerUpload;
   // Why a designer can't upload right now, in the card's own terms: a card
   // that hasn't been started is NOT locked, it just needs starting first.
@@ -347,6 +386,11 @@ function CardUploadPanel({
     const images = files.filter((file) => file.type.startsWith("image/"));
     if (!images.length) {
       toast({ variant: "danger", title: "No images selected" });
+      return;
+    }
+    const empty = images.find((file) => file.size === 0);
+    if (empty) {
+      toast({ variant: "danger", title: "Empty file", description: `${empty.name} is empty (0 bytes). Choose the saved image again.` });
       return;
     }
     const tooBig = images.find((file) => file.size > MAX_UPLOAD_BYTES);
@@ -420,9 +464,11 @@ function CardUploadPanel({
             <span className="text-xs font-medium text-ink">Finished portrait</span>
             <p className="mt-1 text-xs text-slate">
               {canDesignerUpload
-                ? latestSubmission
-                  ? "Add a new version before submitting to QC. Every version is kept, the newest is reviewed."
-                  : "Upload the finished portrait before moving this card to QC."
+                ? freshVersion
+                  ? "Ready for QC: the newest version is the one reviewed. Every version is kept, so add another first if you want to change it."
+                  : latestSubmission
+                    ? "This came back for changes: add a new version, then submit it for QC. Every version is kept."
+                    : "Upload the finished portrait, then submit it for QC."
                 : designerNote}
             </p>
           </div>
@@ -451,12 +497,33 @@ function CardUploadPanel({
             type="button"
             size="sm"
             variant="secondary"
+            className="max-md:h-11"
             loading={uploading}
             onClick={() => fileRef.current?.click()}
           >
             <Camera size={15} />
             {/* Versions are never overwritten: each upload adds one. */}
             {latestSubmission && designer ? "Add new version" : "Upload"}
+          </Button>
+        )}
+        {designer && canDesignerUpload && freshVersion && onSubmitForQc && (
+          <Button
+            type="button"
+            size="sm"
+            className="max-md:h-11"
+            loading={submitting}
+            disabled={uploading}
+            onClick={async () => {
+              setSubmitting(true);
+              try {
+                await onSubmitForQc();
+              } finally {
+                setSubmitting(false);
+              }
+            }}
+          >
+            <Check size={15} />
+            Submit for QC
           </Button>
         )}
         <input
@@ -485,13 +552,23 @@ function CardUploadPanel({
           )}
         >
           <Camera size={16} />
-          {uploading
-            ? "Uploading..."
-            : designer
-              ? latestSubmission
-                ? "Drop a new version here or click Add new version"
-                : "Drop finished portrait here or click Upload"
-              : "Drop images here or click Upload"}
+          {uploading ? (
+            "Uploading..."
+          ) : (
+            <>
+              {/* Nobody drags files on a phone: there it is simply a tap target. */}
+              <span className="md:hidden">
+                {designer ? (latestSubmission ? "Tap to add a new version" : "Tap to add the finished portrait") : "Tap to add images"}
+              </span>
+              <span className="hidden md:inline">
+                {designer
+                  ? latestSubmission
+                    ? "Drop a new version here or click Add new version"
+                    : "Drop finished portrait here or click Upload"
+                  : "Drop images here or click Upload"}
+              </span>
+            </>
+          )}
         </button>
       )}
       {progress.length > 0 && (
@@ -564,11 +641,23 @@ function uploadToR2(
   });
 }
 
-function DueLine({ dueAt, done = false }: { dueAt: string | null; done?: boolean }) {
+function DueLine({
+  dueAt,
+  done = false,
+  withCustomer = false,
+  timeZone,
+}: {
+  dueAt: string | null;
+  done?: boolean;
+  withCustomer?: boolean;
+  timeZone?: string;
+}) {
   return (
     <div className="flex flex-wrap items-center gap-x-2">
-      <Countdown dueAt={dueAt} done={done} />
-      {dueAt && <span className="text-xs text-slate">{dateFmt.format(new Date(dueAt))}</span>}
+      <Countdown dueAt={dueAt} done={done} withCustomer={withCustomer} />
+      {dueAt && !withCustomer && (
+        <span className="text-xs text-slate">{timeZone ? formatDeadline(dueAt, timeZone) : dateFmt.format(new Date(dueAt))}</span>
+      )}
     </div>
   );
 }

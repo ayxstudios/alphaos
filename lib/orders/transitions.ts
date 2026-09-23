@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 
 import {
   withUserContext,
@@ -24,6 +24,7 @@ import {
   type ItemResults,
 } from "@/lib/qc/checklist";
 import { runAutoAssign } from "./assign";
+import { SENT_BACK_FROM } from "./board-constants";
 import { prepareProofForApproval, queueStageEmail } from "@/lib/email/dispatch";
 import { createEarningForCompletion } from "@/lib/orders/earnings";
 import { sendQcFeedback } from "@/lib/notifications/designer-events";
@@ -351,14 +352,35 @@ async function assertFiguresResolved(tx: Tx, orderId: string, platformOrderId: s
 }
 
 async function assertHasSubmission(tx: Tx, orderId: string, platformOrderId: string): Promise<void> {
+  const [lastSendBack] = await tx
+    .select({ at: activityLog.createdAt })
+    .from(activityLog)
+    .where(
+      and(
+        eq(activityLog.orderId, orderId),
+        eq(activityLog.toState, "in_design"),
+        inArray(activityLog.fromState, [...SENT_BACK_FROM]),
+      ),
+    )
+    .orderBy(desc(activityLog.createdAt))
+    .limit(1);
   const [submission] = await tx
     .select({ id: assets.id })
     .from(assets)
-    .where(and(eq(assets.orderId, orderId), eq(assets.type, "submission"), isNull(assets.deletedAt)))
+    .where(
+      and(
+        eq(assets.orderId, orderId),
+        eq(assets.type, "submission"),
+        isNull(assets.deletedAt),
+        lastSendBack ? gt(assets.createdAt, lastSendBack.at) : undefined,
+      ),
+    )
     .limit(1);
   if (!submission) {
     throw new PreconditionError(
-      `Cannot submit order ${platformOrderId} to QC: upload at least one finished portrait first.`,
+      lastSendBack
+        ? `Cannot submit order ${platformOrderId} to QC: add a new version for this revision first.`
+        : `Cannot submit order ${platformOrderId} to QC: upload at least one finished portrait first.`,
     );
   }
 }

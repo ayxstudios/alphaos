@@ -28,6 +28,7 @@ import { resolveFigureCount, resolveProductType, type NormalizedVariation } from
 import { stageTimer } from "@/lib/orders/stage-timers";
 import { getEmailNeedsActionCounts } from "@/lib/email/outbox";
 import { liveOrderWhere } from "@/lib/orders/archive";
+import { DUE_STATUSES } from "@/lib/home/shared";
 
 export const dynamic = "force-dynamic";
 
@@ -139,7 +140,7 @@ function validDir(value: string | undefined): SortDir {
 
 function titleCase(value: string | null | undefined) {
   if (!value) return "Unknown";
-  return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase()).replace(/\bQc\b/g, "QC");
 }
 
 function operationalStatusLabel(input: {
@@ -157,7 +158,9 @@ function operationalStatusLabel(input: {
   if (input.status === "in_design" && input.revisionCount > 0) return "Awaiting Designer Revision";
   if (input.status === "approved" && input.physical && !input.hasPrintJob) return "Ready to Ship";
   if (input.hasPrintJob && !input.tracking) return "Shipped - Awaiting Tracking";
-  if (input.tracking) return "Completed With Tracking";
+  // A shipped (or delivered) order with tracking still reads as its own
+  // status; only a complete one is "Completed With Tracking".
+  if (input.tracking && input.status === "complete") return "Completed With Tracking";
 
   switch (input.status) {
     case "awaiting_details":
@@ -284,7 +287,9 @@ function viewWhere(view: ViewKey): SQL {
     case "active":
       return inArray(orders.status, [...ACTIVE_STATES]);
     case "overdue":
-      return and(inArray(orders.status, [...ACTIVE_STATES]), isNotNull(orders.dueAt), lt(orders.dueAt, sql`now()`))!;
+      // Same statuses as Home's overdue count: once an order has shipped the
+      // customer deadline has been met, so shipped and later are never overdue.
+      return and(inArray(orders.status, DUE_STATUSES), isNotNull(orders.dueAt), lt(orders.dueAt, sql`now()`))!;
     case "needs_details":
       return eq(orders.status, "awaiting_details");
     case "needs_photos":
@@ -654,16 +659,18 @@ export default async function OrdersPage({
         itemTitle: items[0]?.title ?? "No item details",
         itemSummary: [
           items.length > 1 ? `${items.length} items` : null,
-          items[0] && effectiveFigureCount(items[0]) != null ? `${effectiveFigureCount(items[0])} figures` : null,
+          items[0] && effectiveFigureCount(items[0]) != null
+            ? `${effectiveFigureCount(items[0])} figure${effectiveFigureCount(items[0]) === 1 ? "" : "s"}`
+            : null,
           items[0]?.style ?? null,
           physical ? "Physical" : items.some((item) => item.productType === "digital") ? "Digital" : null,
         ].filter(Boolean).join(" · "),
-        // Same rule as the Overdue view: a delivered, complete or cancelled
-        // order is never shown as overdue.
+        // Same rule as the Overdue view: a shipped, delivered, complete or
+        // cancelled order is never shown as overdue.
         isOverdue: Boolean(
           order.dueAt &&
             order.dueAt < new Date() &&
-            (ACTIVE_STATES as readonly string[]).includes(order.status),
+            (DUE_STATUSES as readonly string[]).includes(order.status),
         ),
         needsReview,
         revisionCount: order.revisionCount,

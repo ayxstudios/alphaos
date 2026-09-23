@@ -131,7 +131,9 @@ const DESIGNER_STEPS: TourStep[] = [
     href: "/board",
     nav: "nav:/board",
     tab: "tab:/board",
-    page: "col:inDesign,page:board",
+    // The phone board only renders columns that have cards: with nothing in
+    // design, light the next card the designer would open, not the header.
+    page: "col:inDesign,col:revisions,col:failedQc,col:myQueue,page:board",
   },
   {
     id: "fixes",

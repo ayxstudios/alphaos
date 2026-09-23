@@ -226,8 +226,14 @@ export function TodayQueueList({ groups }: { groups: Record<TodayBand, TodayItem
                     onClick={() => setShown((s) => ({ ...s, [band]: s[band] + PAGE * 2 }))}
                     className={cn("flex h-11 w-full items-center justify-center gap-1 rounded-b-card border-t border-line/70 text-sm font-medium text-pigment hover:bg-pigment-soft/50", focusRing)}
                   >
-                    Show {Math.min(hidden, PAGE * 2)} more
-                    <span className="text-slate">of {hidden}</span>
+                    {hidden <= PAGE * 2 ? (
+                      `Show ${hidden} more`
+                    ) : (
+                      <>
+                        Show {PAGE * 2} more
+                        <span className="text-slate">of {hidden}</span>
+                      </>
+                    )}
                   </button>
                 )}
               </>

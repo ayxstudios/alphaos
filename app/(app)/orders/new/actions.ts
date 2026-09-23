@@ -7,7 +7,7 @@ import { and, eq, sql } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser } from "@/lib/db";
-import { shops, orders, orderItems, customers, assets, activityLog } from "@/lib/db/schema";
+import { shops, orders, orderItems, customers, assets, activityLog, users } from "@/lib/db/schema";
 import { runAutoAssign } from "@/lib/orders/assign";
 import { parseFigureCount } from "@/lib/orders/manual-input";
 import { runTransition } from "@/lib/orders/transitions";
@@ -39,7 +39,8 @@ export type NewOrderInput = {
 };
 
 export type NewOrderResult =
-  | { ok: true; orderNumber: string; orderId: string }
+  /** assignedTo: the designer auto-assign picked; null = none had room; absent = not assignable yet. */
+  | { ok: true; orderNumber: string; orderId: string; assignedTo?: string | null }
   | { ok: false; message: string };
 
 async function requireVa(): Promise<RequestUser | { error: string }> {
@@ -252,14 +253,23 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
       });
 
       // Assign immediately when it's ready (falls to Unassigned if none eligible).
+      // The result goes back to the form, so the VA sees who got it or that
+      // nobody had room and it needs assigning by hand.
+      let assignedTo: string | null | undefined;
       if (status === "ready_to_assign") {
-        await runAutoAssign(tx, { orderId, businessId, assignedBy: user.id });
+        const { assigned } = await runAutoAssign(tx, { orderId, businessId, assignedBy: user.id });
+        if (assigned) {
+          const [d] = await tx.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, assigned));
+          assignedTo = d?.name ?? d?.email ?? "a designer";
+        } else {
+          assignedTo = null;
+        }
       }
 
       revalidatePath("/orders");
       revalidatePath("/board");
       revalidatePath("/orders");
-      return { ok: true as const, orderNumber: platformOrderName ?? "(no number)", orderId };
+      return { ok: true as const, orderNumber: platformOrderName ?? "(no number)", orderId, assignedTo };
     });
   } catch (e) {
     // Never echo a database error: drizzle's message carries the SQL and every

@@ -9,6 +9,9 @@ import { activityLog, customers, messages, orders, proofs } from "@/lib/db/schem
 import { notifyVaEmailFailure, sendMessage } from "@/lib/email/dispatch";
 import { transition, OrderTransitionError } from "@/lib/orders/transitions";
 import type { ItemResults } from "@/lib/qc/checklist";
+import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
+import { classifyProofReply } from "@/lib/email/reply-classifier";
+import { mergeReplyClassification } from "@/lib/integrations/gmail/inbound";
 
 export type OutboxActionResult = { ok: true; message?: string } | { ok: false; message: string };
 
@@ -226,14 +229,22 @@ export async function searchOrdersForLink(
 export async function linkReplyToOrder(messageId: string, orderId: string): Promise<OutboxActionResult> {
   const user = await requireStaff();
   if (!user) return { ok: false, message: "Not permitted" };
-  return withUserContext(user, async (tx) => {
+  const linked = await withUserContext(user, async (tx) => {
     const [m] = await tx
-      .select({ id: messages.id, businessId: messages.businessId, subject: messages.subject, address: messages.address })
+      .select({
+        id: messages.id,
+        businessId: messages.businessId,
+        subject: messages.subject,
+        address: messages.address,
+        body: messages.body,
+        metadata: messages.metadata,
+        suppressedAt: messages.suppressedAt,
+      })
       .from(messages)
       .where(and(eq(messages.id, messageId), eq(messages.direction, "inbound")));
     if (!m) return { ok: false as const, message: "Reply not found" };
     const [o] = await tx
-      .select({ id: orders.id, businessId: orders.businessId, customerId: orders.customerId })
+      .select({ id: orders.id, businessId: orders.businessId, customerId: orders.customerId, status: orders.status })
       .from(orders)
       .where(eq(orders.id, orderId));
     if (!o || o.businessId !== m.businessId) return { ok: false as const, message: "Order not found in this workspace" };
@@ -246,12 +257,35 @@ export async function linkReplyToOrder(messageId: string, orderId: string): Prom
       action: "message.received",
       metadata: { channel: "email", subject: m.subject, from: m.address, manuallyLinkedBy: user.id },
     });
-    revalidatePath("/orders");
-    revalidatePath("/emails");
-    revalidatePath("/dashboard");
-    revalidatePath(`/orders/${o.id}`);
-    return { ok: true as const, message: "Reply linked to order" };
+    return { ok: true as const, message: "Reply linked to order", message_: m, order: o };
   });
+  if (!linked.ok) return linked;
+
+  // A reply linked by hand gets the same read as one matched by the poller: on
+  // an order awaiting approval, suggest approve / revise on the order page.
+  const { message_: m, order: o } = linked;
+  if (!m.suppressedAt && o.status === "awaiting_approval" && anthropicFeaturesEnabled()) {
+    const classification = await classifyProofReply({ subject: m.subject, body: m.body ?? "" }).catch(() => null);
+    if (classification) {
+      const metadata = mergeReplyClassification(m.metadata, classification);
+      await withUserContext(user, async (tx) => {
+        await tx.update(messages).set({ metadata }).where(eq(messages.id, m.id));
+        await tx.insert(activityLog).values({
+          businessId: m.businessId,
+          orderId: o.id,
+          actorId: user.id,
+          action: "message.reply_classified",
+          metadata: { messageId: m.id, classification: metadata.replyClassification },
+        });
+      });
+    }
+  }
+
+  revalidatePath("/orders");
+  revalidatePath("/emails");
+  revalidatePath("/dashboard");
+  revalidatePath(`/orders/${o.id}`);
+  return { ok: true, message: "Reply linked to order" };
 }
 
 /** Archive an unmatched reply (spam / not a customer / handled), reason required. */
