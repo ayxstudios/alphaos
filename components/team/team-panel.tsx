@@ -181,7 +181,7 @@ export function TeamPanel({ members, currentUserId }: { members: TeamMember[]; c
         onClose={() => setDialog(null)}
       />
       <SignInLinkDrawer
-        member={dialog?.kind === "link" ? dialog.member : null}
+        member={dialog?.kind === "link" ? (members.find((x) => x.id === dialog.member.id) ?? dialog.member) : null}
         isYou={dialog?.member.id === currentUserId}
         onClose={() => setDialog(null)}
       />

@@ -110,7 +110,8 @@ export function SignInLinkDrawer({
           </div>
           <p className="text-sm text-slate">
             Shown only now. Anyone with this link signs in as {isYou ? "you" : member.name}, so send it to{" "}
-            {isYou ? "yourself" : "them"} directly and nowhere else. Any older link of theirs has stopped working.
+            {isYou ? "yourself" : "them"} directly and nowhere else. Any older link of{" "}
+            {isYou ? "yours" : "theirs"} has stopped working.
           </p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button type="button" variant="secondary" className={TAP} onClick={copy}>
