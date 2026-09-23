@@ -109,7 +109,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
               <Input
                 label="Keystring"
                 name="keystring"
-                placeholder={shop.hasKeystring ? "Set - enter to replace" : "Etsy app keystring"}
+                placeholder={shop.hasKeystring ? "Saved. Type a new one to replace it" : "Etsy app keystring"}
                 autoComplete="off"
                 required
               />
@@ -117,7 +117,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
                 label="Shared secret"
                 name="sharedSecret"
                 type="password"
-                placeholder={shop.hasKeystring ? "Set - enter to replace" : "Etsy app shared secret"}
+                placeholder={shop.hasKeystring ? "Saved. Type a new one to replace it" : "Etsy app shared secret"}
                 autoComplete="off"
                 required
               />

@@ -57,10 +57,10 @@ export function NotificationDryRunPanel() {
         {report && (
           <div className="mt-4 flex flex-col gap-4">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <Metric label="Candidates" value={report.candidates} />
-              <Metric label="Would fire" value={report.wouldFire} tone={report.wouldFire ? "warning" : "success"} />
+              <Metric label="Checked" value={report.candidates} />
+              <Metric label="Would send" value={report.wouldFire} tone={report.wouldFire ? "warning" : "success"} />
               <Metric label="Would notify" value={report.wouldCreateNotifications} />
-              <Metric label="Already fired" value={report.skippedDuplicate} />
+              <Metric label="Already sent" value={report.skippedDuplicate} />
               <Metric label="No recipients" value={report.noRecipients} />
             </div>
 
@@ -95,7 +95,7 @@ export function NotificationDryRunPanel() {
                 row.role,
                 n(row.wouldReceive),
               ])}
-              empty="No recipient fan-out would be created."
+              empty="Nobody would be notified."
             />
           </div>
         )}

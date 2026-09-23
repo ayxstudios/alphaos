@@ -27,7 +27,7 @@ export function SetupChecklist({
         <div>
           <h2 className="text-base font-semibold text-ink">{businessName} live setup</h2>
           <p className="text-sm text-slate">
-            {remaining === 0 ? "Ready to operate." : `${remaining} item${remaining === 1 ? "" : "s"} left.`}
+            {remaining === 0 ? "All set." : `${remaining} item${remaining === 1 ? "" : "s"} left.`}
           </p>
         </div>
         <Badge variant={remaining === 0 ? "success" : "warning"} dot>

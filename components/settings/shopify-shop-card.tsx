@@ -209,7 +209,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
                     name="clientId"
                     value={clientId}
                     onChange={(e) => setClientId(e.target.value)}
-                    placeholder={shop.hasClientId ? "Set - enter to replace" : "Client ID"}
+                    placeholder={shop.hasClientId ? "Saved. Type a new one to replace it" : "Client ID"}
                     autoComplete="off"
                     required={!shop.hasClientId}
                   />
@@ -219,7 +219,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
                     type="password"
                     value={clientSecret}
                     onChange={(e) => setClientSecret(e.target.value)}
-                    placeholder={shop.hasClientSecret ? "Set - leave blank to keep" : "Client secret"}
+                    placeholder={shop.hasClientSecret ? "Saved. Leave blank to keep it" : "Client secret"}
                     autoComplete="off"
                     required={!shop.hasClientSecret}
                   />
@@ -232,7 +232,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
                     type="password"
                     value={accessToken}
                     onChange={(e) => setAccessToken(e.target.value)}
-                    placeholder={shop.hasToken ? "Set - leave blank to keep" : "shpat_..."}
+                    placeholder={shop.hasToken ? "Saved. Leave blank to keep it" : "shpat_..."}
                     autoComplete="off"
                     required={!shop.hasToken}
                   />
@@ -242,7 +242,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
                     type="password"
                     value={webhookSecret}
                     onChange={(e) => setWebhookSecret(e.target.value)}
-                    placeholder={shop.hasWebhookSecret ? "Set - leave blank to keep" : "Webhook secret"}
+                    placeholder={shop.hasWebhookSecret ? "Saved. Leave blank to keep it" : "Webhook secret"}
                     autoComplete="off"
                     required={!shop.hasWebhookSecret}
                   />
