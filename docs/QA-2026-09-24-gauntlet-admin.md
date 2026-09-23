@@ -211,9 +211,29 @@ warning "a tree hydrated but some attributes ... didn't match" on /login (a
 at 20x CPU throttling, or on any of 17 admin pages at either size
 (`var/hydrate-login.mjs`, `var/hydration.mjs`). Production does not log it.
 
+## Final verification (after merging task/alpha-program 3366c16, merge f756214)
+
+Merge conflicts: the customer page (kept "Customer since" over the VA lane's
+"Spend: Not recorded"; took their wrapping QC and Files rows) and alpha-chat
+(kept the floating launcher removed; the VA lane had hidden it on /qc/ for the
+same overlap). The "?" menu keeps the VA lane's "Try it myself".
+
+All under `nice -n 15`, one dev server, one browser context at a time:
+
+- `npm run lint`: clean.
+- `npm run build`: green.
+- `bash scripts/ci-local.sh` (CI_DB=alphaos_ci_gauntlet_admin, proxy port
+  4471 so it could not collide with the other lanes): `test:all OK: 22/22`.
+- `npm run test:tour` (fresh `npm run db:local-tour`): 812 passed, 0 failed.
+  Two earlier full runs at load 60 to 190 each failed the admin "Now you
+  try" start (the check polls the sheet right after the press and stops if it
+  still reads the watch-end card or a page in flight); admin alone passed
+  300/0 and 160/0 in between, and the third full run at load 20 passed
+  812/0.
+
 ## Tour copy notes (for the tutorial lane; not edited here)
 
-- The "?" menu says "Show me around" for what the welcome card calls "Try it
+- (Done by the VA lane, merged) The "?" menu said "Show me around" for what the welcome card calls "Try it
   myself". One name for one thing; "Try it myself" is the clearer of the two.
 - Watch end card "That is the whole day." and done card "You are ready." read
   stiff; "That's the day." / "You're ready." would be warmer.
