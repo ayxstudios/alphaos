@@ -683,6 +683,9 @@ export default async function CustomerDetailPage({
                       >
                         {message.direction === "inbound" ? "Customer" : "Outbound"}
                       </Badge>
+                      {message.direction === "outbound" && (message.status === "draft" || message.status === "queued") && (
+                        <Badge variant="warning">{message.status === "draft" ? "Draft, not sent" : "Queued, not sent"}</Badge>
+                      )}
                       <span className="text-xs text-slate">
                         {fmtDateTime(message.sentAt ?? message.createdAt)}
                       </span>
