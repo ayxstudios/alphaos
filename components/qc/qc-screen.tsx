@@ -36,6 +36,8 @@ export function QcScreen({
   const router = useRouter();
   const toast = useToast();
   const [pending, start] = useTransition();
+  // Which button started the pending work, so only that one spins.
+  const [acting, setActing] = useState<"pass" | "fail" | null>(null);
 
   const items = ctx.checklist.items;
   const [checked, setChecked] = useState<ItemResults>({});
@@ -92,7 +94,7 @@ export function QcScreen({
   const goTo = useCallback((id: string) => router.push(`/qc/${id}`), [router]);
   const advance = useCallback(() => {
     if (nextId) router.push(`/qc/${nextId}`);
-    else router.push("/orders?view=awaiting_qc");
+    else router.push("/qc");
   }, [nextId, router]);
 
   const toggle = useCallback(
@@ -122,7 +124,7 @@ export function QcScreen({
         toast({ variant: "warning", title: "Already moved", description: res.message });
         router.refresh();
       } else {
-        toast({ variant: "danger", title: "Couldn't submit", description: res.message });
+        toast({ variant: "danger", title: res.code === "email_failed" ? "Email not sent" : "Couldn't save", description: res.message });
       }
     },
     [toast, advance, router],
@@ -130,6 +132,7 @@ export function QcScreen({
 
   const doPass = useCallback(() => {
     if (!ctx.isReviewable || !allChecked || !signed || pending) return;
+    setActing("pass");
     start(async () => {
       const res = await prepareQcEmailPreview({
         orderId: ctx.orderId,
@@ -152,6 +155,7 @@ export function QcScreen({
 
   const confirmSend = useCallback(() => {
     if (!emailPreview || pending) return;
+    setActing("pass");
     start(async () => {
       const res = await confirmQcPassAndSend({
         orderId: ctx.orderId,
@@ -168,12 +172,13 @@ export function QcScreen({
         signature,
       });
       if (res.ok) setEmailPreview(null);
-      handleResult(res, "Email sent, sent to approval");
+      handleResult(res, "Proof sent to the customer");
     });
   }, [checked, ctx, emailBody, emailPreview, handleResult, pending, signature]);
 
   const doFail = useCallback(
     (failedKeys: number[], reason: string) => {
+      setActing("fail");
       start(async () => {
         const res = await submitQcFail({
           orderId: ctx.orderId,
@@ -184,7 +189,7 @@ export function QcScreen({
           signature,
         });
         if (res.ok) setFailOpen(false);
-        handleResult(res, "Failed, returned to designer");
+        handleResult(res, "Sent back to the designer");
       });
     },
     [ctx, handleResult, signature],
@@ -320,6 +325,7 @@ export function QcScreen({
                 variant="danger"
                 className="flex-1"
                 onClick={() => setFailOpen(true)}
+                loading={pending && acting === "fail"}
                 disabled={!ctx.isReviewable || !signed || pending}
               >
                 <XCircle size={16} /> Fail{" "}
@@ -329,8 +335,8 @@ export function QcScreen({
                 variant="primary"
                 className="flex-1"
                 onClick={doPass}
-                loading={pending}
-                disabled={!ctx.isReviewable || !allChecked || !signed}
+                loading={pending && acting === "pass"}
+                disabled={!ctx.isReviewable || !allChecked || !signed || pending}
               >
                 <Check size={16} /> Pass{" "}
                 <kbd className="hidden rounded border border-surface/30 px-1 text-xs lg:inline">↵</kbd>
@@ -418,9 +424,12 @@ function EmailPreviewDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="qc-email-preview-title"
-        className="grid grid-cols-1 max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-modal bg-surface shadow-lg xl:grid-cols-[minmax(0,1fr)_28rem]"
+        className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-modal bg-surface shadow-lg"
       >
-        <div className="min-h-0 overflow-y-auto p-5">
+        {/* Body scrolls (as one on a phone, per pane from xl); the footer with
+            Send stays put, so the one thing to do is always on screen. */}
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto xl:grid-cols-[minmax(0,1fr)_28rem] xl:grid-rows-[minmax(0,1fr)] xl:overflow-hidden">
+        <div className="min-h-0 p-5 xl:overflow-y-auto">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 id="qc-email-preview-title" className="font-display text-xl font-semibold text-ink">Preview customer email</h2>
@@ -464,11 +473,11 @@ function EmailPreviewDialog({
           </div>
         </div>
 
-        <aside className="min-h-0 overflow-y-auto border-t border-line bg-canvas p-5 xl:border-l xl:border-t-0">
+        <aside className="min-h-0 border-t border-line bg-canvas p-5 xl:overflow-y-auto xl:border-l xl:border-t-0">
           <div className="rounded-card border border-line bg-surface p-3 text-sm">
             <p className="text-xs text-slate">To: <span className="text-ink">{preview.to}</span></p>
             <p className="mt-1 text-xs text-slate">Subject: <span className="font-medium text-ink">{preview.subject}</span></p>
-            <div className="mt-3 whitespace-pre-wrap rounded-input border border-line bg-canvas p-3 text-sm text-ink">
+            <div className="mt-3 whitespace-pre-wrap rounded-input [overflow-wrap:anywhere] border border-line bg-canvas p-3 text-sm text-ink">
               {body}
             </div>
           </div>
@@ -481,15 +490,17 @@ function EmailPreviewDialog({
             className="mt-4 font-mono text-xs"
           />
 
-          <div className="mt-4 flex flex-wrap justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={onCancel} disabled={pending}>
-              Cancel
-            </Button>
-            <Button type="button" onClick={onConfirm} loading={pending} disabled={!body.trim()}>
-              Send email & pass QC
-            </Button>
-          </div>
         </aside>
+        </div>
+
+        <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-line bg-surface px-5 py-3">
+          <Button type="button" variant="ghost" onClick={onCancel} disabled={pending}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={onConfirm} loading={pending} disabled={!body.trim()}>
+            Send email and pass QC
+          </Button>
+        </div>
       </div>
     </div>
   );

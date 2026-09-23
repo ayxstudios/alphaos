@@ -85,6 +85,7 @@ function deriveChip(order: PrintQueueItemVM): ChipInfo {
   if (state === "problem") return { label: "Problem at provider", variant: "danger" };
   if (state === "shipped" || state === "delivered") return { label: "Shipped", variant: "success" };
   if (order.status === "approved") return { label: "Needs sending", variant: "neutral" };
+  if (!job) return { label: "Printing", variant: "info" };
   return { label: "Sent, waiting", variant: "info" };
 }
 
@@ -94,9 +95,9 @@ export function PrintQueue({ orders }: { orders: PrintQueueItemVM[] }) {
       <DataPanel className="p-8">
         <div className="flex flex-col items-center gap-2 text-center">
           <Printer size={28} className="text-slate" />
-          <p className="font-medium text-ink">No physical orders are ready for print</p>
+          <p className="font-medium text-ink">Nothing to print right now</p>
           <p className="max-w-md text-sm text-slate">
-            Approved physical work will appear here when it needs a VA to trigger printing in Gelato or Luma Prints.
+            When a customer approves a printed portrait, it shows up here to send to the printer.
           </p>
         </div>
       </DataPanel>
@@ -131,8 +132,8 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
       const res = await createManualPrintJob(formData);
       toast({
         variant: res.ok ? "success" : "danger",
-        title: res.ok ? "Sent to print" : "Print signal not recorded",
-        description: res.message,
+        title: res.ok ? `Marked as sent to ${providerLabel(provider)}` : "Not saved",
+        description: res.ok ? "Add the tracking here when it ships." : res.message,
       });
       if (res.ok) router.refresh();
     });
@@ -140,8 +141,12 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
 
   const providerName = providerLabel(job?.provider ?? order.defaultProvider);
   const statusLine = job
-    ? `${providerName} · ${job.providerStatus ?? "not checked yet"}`
-    : `Not sent yet · will go to ${providerLabel(provider)}`;
+    ? `Sent to ${providerName}${job.providerStatus ? ` · ${job.providerStatus}` : ", no update yet"}`
+    : inPrint
+      ? "In print. Add the tracking when it ships."
+      : `Not sent yet. Order it in ${providerLabel(provider)}, then mark it here.`;
+  // What the age next to the chip counts from, said with it.
+  const ageText = age && job?.submittedAt ? `sent ${age} ago` : null;
 
   return (
     <DataPanel className="overflow-hidden">
@@ -153,14 +158,14 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
               {order.orderNumber}
             </Link>
             <Badge variant={chip.variant} dot={isTrouble}>{chip.label}</Badge>
-            {age && <span className="text-xs text-slate">{age}</span>}
+            {ageText && <span className="text-xs text-slate">{ageText}</span>}
           </div>
-          <p className="truncate text-sm text-slate">
+          <p className="break-words text-sm text-slate">
             {order.customerName} · {order.shopName} · ordered {fmtDate(order.placedAt)}
           </p>
           <p className={cn("flex items-center gap-1.5 text-sm", isTrouble ? "text-rose" : "text-ink")}>
             {isTrouble ? <AlertTriangle size={14} className="shrink-0" /> : inPrint ? <Truck size={14} className="shrink-0 text-slate" /> : <Printer size={14} className="shrink-0 text-slate" />}
-            <span className="truncate">{statusLine}</span>
+            <span className="min-w-0">{statusLine}</span>
           </p>
 
           {isTrouble && (
@@ -198,7 +203,7 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
               </div>
               <Button type="button" disabled={pending} loading={pending} onClick={runStart}>
                 <Printer size={15} />
-                Sent to print
+                Mark as sent
               </Button>
             </div>
           )}
@@ -210,7 +215,15 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
               </Button>
             </div>
           )}
-          {inPrint && trackingOpen && <TrackingCompleteForm orderId={order.id} source={order.source} provider={activeProvider} />}
+          {inPrint && trackingOpen && (
+            <TrackingCompleteForm
+              orderId={order.id}
+              source={order.source}
+              provider={activeProvider}
+              bare
+              onCancel={() => setTrackingOpen(false)}
+            />
+          )}
         </div>
       </div>
 
@@ -219,7 +232,7 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
           <Info label="Platform order" value={order.orderNumber} />
           <Info label="Shop" value={order.shopName} />
           <Info label="Customer" value={order.customerName} />
-          <Info label="Source" value={order.source} />
+          <Info label="Source" value={order.source.charAt(0).toUpperCase() + order.source.slice(1)} />
           <Info label="Provider" value={job ? providerLabel(job.provider) : providerLabel(provider)} />
           <Info label="Provider status" value={job?.providerStatus ?? "Not checked yet"} />
         </div>

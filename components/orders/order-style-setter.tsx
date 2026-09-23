@@ -85,15 +85,15 @@ export function OrderStyleSetter({ orderId, currentStyle: rawStyle, via, affecte
         </span>
         {defaulted ? (
           <span className="font-medium text-amber">
-            Defaulted to {currentStyle}, not matched, please confirm
+            Guessed {currentStyle}. Please check it.
           </span>
         ) : currentStyle ? (
           <span className="font-medium text-ink">{currentStyle}</span>
         ) : (
-          <span className="font-medium text-amber">No style matched</span>
+          <span className="font-medium text-amber">No style yet</span>
         )}
         <Button type="button" size="sm" variant="secondary" className="ml-auto" onClick={() => setOpen(true)}>
-          {defaulted ? "Confirm or correct" : currentStyle ? "Change" : "Set style"}
+          {defaulted ? "Check style" : currentStyle ? "Change" : "Set style"}
         </Button>
       </div>
     );

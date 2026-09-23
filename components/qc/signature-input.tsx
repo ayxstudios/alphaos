@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useId, useRef } from "react";
 
 import { cn } from "@/lib/utils";
 import { focusRing } from "@/components/ui/styles";
@@ -30,6 +30,10 @@ export function SignatureInput({
   disabled?: boolean;
 }) {
   const last = useRef(value);
+  // A per-mount name keeps password managers from offering a saved value; useId
+  // is the same on the server and in the browser (Math.random here was a
+  // hydration mismatch on every QC page).
+  const autofillGuard = useId().replace(/[^a-z0-9]/gi, "");
   const matches = value.length > 0 && normalizeSignature(value) === normalizeSignature(expectedName);
 
   return (
@@ -50,7 +54,7 @@ export function SignatureInput({
         data-lpignore="true"
         data-1p-ignore="true"
         data-form-type="other"
-        name={`qc-signature-${Math.random().toString(36).slice(2, 8)}`}
+        name={`qc-signature-${autofillGuard}`}
         placeholder="Your name, typed by hand"
         aria-describedby="qc-signature-hint"
         onPaste={(e) => e.preventDefault()}

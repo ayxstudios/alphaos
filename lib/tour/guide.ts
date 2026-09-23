@@ -15,7 +15,7 @@ const CUSTOMER_REPLIED: GuideAnswer = {
 
 const NEEDS_DETAILS: GuideAnswer = {
   q: "An order says Needs details",
-  a: "It came in from the shop without everything a designer needs. In Orders, open the Needs Details tab and press Details on the order. Fill in how many people or pets, the style and the photos, then save. With photos it goes to a designer straight away; without them it waits for the customer's photos.",
+  a: "It came in from the shop without everything a designer needs. In Orders, open the Needs details tab and press Details on the order. Fill in how many people or pets, the style and the photos, then save. With photos it goes to a designer straight away; without them it waits for the customer's photos.",
 };
 
 const PASS_FAIL: GuideAnswer = {

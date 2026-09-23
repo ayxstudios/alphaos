@@ -14,7 +14,7 @@
  *      overlap checks, phone tap targets >= 44px, one screenshot per step.
  *   3. Done card, completion saved, never shows again after a reload.
  *   4. "?" -> Watch how it works (Start to first movement < 300ms) -> Esc skips.
- *   5. "?" -> Show me around: Back works, Esc skips, skip saved.
+ *   5. "?" -> Try it myself: Back works, Esc skips, skip saved.
  *   6. Quick guide: one screen, a Show me per step that plays that one step.
  * Plus, once: Later hides it until the next sign-in and goes quiet after 3;
  * the lit element gets focus on your turn; the step line is announced.
@@ -418,9 +418,9 @@ async function walkRole(browser, role, vp) {
   await page.waitForTimeout(500);
   check(`${tag}: Esc stops the watch`, (await page.locator("[data-tour-sheet]").count()) === 0);
 
-  // 5. "?" -> Show me around: Back, then Esc skips (saved).
+  // 5. "?" -> Try it myself: Back, then Esc skips (saved).
   await page.getByRole("button", { name: "Help", exact: true }).click();
-  await page.getByRole("menuitem", { name: "Show me around" }).click();
+  await page.getByRole("menuitem", { name: "Try it myself" }).click();
   await page.locator('[data-tour-sheet][data-mode="try"][data-phase="turn"][data-step="0"]').waitFor({ timeout: 30000 });
   check(`${tag}: Show me around starts at step 1`, true);
   await page.locator("[data-tour-lit]").click();

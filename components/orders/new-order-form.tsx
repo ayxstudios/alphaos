@@ -74,10 +74,15 @@ function isOverdue(iso: string | null | undefined) {
   return due < today;
 }
 function dueSourceLabel(source: ExistingOrder["dueDateSource"]) {
-  if (source === "internal_sla") return "Our own deadline";
+  if (source === "internal_sla") return "From our turnaround time";
   if (source === "etsy_expected_ship_date") return "Etsy expected ship date";
   if (source === "manual") return "Manual";
   return "Unknown";
+}
+/** A style key as a person reads it: "line-art" -> "Line art". */
+function styleLabel(key: string) {
+  const words = key.replace(/[-_]+/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 function usefulVariations(tx: EtsyReceiptReview["transactions"][number]) {
   return tx.variations.filter((v) => v.label.toLowerCase() !== "personalization");
@@ -246,7 +251,12 @@ export function NewOrderForm({
           r2Keys,
           photoUrls,
         });
-        if (res.ok) setFlash(`Completed ${res.orderNumber} → ${photos.length ? "ready to assign" : "awaiting photos"} ✓`);
+        if (res.ok)
+          setFlash(
+            photos.length
+              ? `Saved. ${res.orderNumber} is ready for a designer.`
+              : `Saved. ${res.orderNumber} now waits for the customer's photos.`,
+          );
         else setError(res.message);
         return;
       }
@@ -268,10 +278,10 @@ export function NewOrderForm({
       if (res.ok) {
         setFlash(
           !photos.length
-            ? `Created ${res.orderNumber} · awaiting photos ✓`
+            ? `Created ${res.orderNumber}. It waits for the customer's photos.`
             : res.assignedTo
-              ? `Created ${res.orderNumber} · assigned to ${res.assignedTo} ✓`
-              : `Created ${res.orderNumber} · ready to assign. No designer${style ? ` with the ${style} style` : ""} has room right now, so assign it by hand from Orders.`,
+              ? `Created ${res.orderNumber} and gave it to ${res.assignedTo}.`
+              : `Created ${res.orderNumber}. No designer${style ? ` for ${styleLabel(style)}` : ""} has room, so assign one from Orders.`,
         );
         resetForNext();
       } else {
@@ -289,13 +299,14 @@ export function NewOrderForm({
 
   const done = mode === "complete" && flash;
   const totalPhotoCount = effectivePhotoCount;
-  const completeAction =
-    existing?.status === "awaiting_details"
+  const completeAction = done
+    ? "Saved"
+    : existing?.status === "awaiting_details"
       ? totalPhotoCount > 0
-        ? "Save & send to production"
-        : "Save details → Awaiting photos"
+        ? "Save and send to design"
+        : "Save details"
       : existing?.status === "awaiting_photos" && photos.length > 0
-        ? "Save & send to production"
+        ? "Save and send to design"
         : "Save changes";
   const hasImportedEtsySummary =
     existing?.source === "etsy" &&
@@ -342,7 +353,7 @@ export function NewOrderForm({
                     <div key={tx.id ?? i} className="rounded-input bg-surface p-3 shadow-card">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-medium text-ink">{tx.title ?? "Untitled listing"}</div>
+                          <div className="break-words text-sm font-medium text-ink">{tx.title ?? "Untitled listing"}</div>
                           <div className="mt-1 flex flex-wrap gap-1.5">
                             {tx.quantity != null && <Badge variant="neutral">Qty {tx.quantity}</Badge>}
                             {tx.fulfillment && <Badge variant={tx.fulfillment === "physical" ? "info" : "success"}>{tx.fulfillment === "physical" ? "Physical fulfilment" : "Digital fulfilment"}</Badge>}
@@ -450,7 +461,7 @@ export function NewOrderForm({
               <option value="">{styleOptions.length ? "Select style" : "No styles configured"}</option>
               {styleOptions.map((option) => (
                 <option key={option} value={option}>
-                  {option}
+                  {styleLabel(option)}
                 </option>
               ))}
             </Select>
@@ -489,15 +500,16 @@ export function NewOrderForm({
             </Button>
           ) : (
             <div className="flex items-end gap-2">
-              <Input
-                label="Image URLs (Etsy/CDN - not downloaded)"
-                value={urlInput}
-                onChange={(e) => setUrlInput(e.target.value)}
-                placeholder="https://i.etsystatic.com/..."
-                autoComplete="off"
-                className="flex-1"
-              />
-              <Button type="button" variant="secondary" size="sm" onClick={addUrls}>Add URL</Button>
+              <div className="min-w-0 flex-1">
+                <Input
+                  label="Photo link"
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  placeholder="https://i.etsystatic.com/..."
+                  autoComplete="off"
+                />
+              </div>
+              <Button type="button" variant="secondary" onClick={addUrls}>Add</Button>
             </div>
           )}
           {photos.length > 0 && (
@@ -520,19 +532,32 @@ export function NewOrderForm({
           <Button onClick={submit} loading={submitting} disabled={uploading || !shopId || !!done}>
             {mode === "complete" ? completeAction : "Create order"}
           </Button>
-          <span className="text-xs text-slate">
-            {photos.length > 0 ? "Lands in ready-to-assign & auto-assigns to a designer with room" : "No photos → lands in awaiting-photos"} · never emails the customer
-          </span>
-          {flash && <Badge variant="success" dot>{flash}</Badge>}
-          {error && <span className="text-sm text-rose">{error}</span>}
-          {done && (
-            <Link href="/orders" className="text-sm font-medium text-pigment underline">Back to orders →</Link>
+          {!done && (mode === "create" || existing?.status === "awaiting_details" || existing?.status === "awaiting_photos") && (
+            <span className="text-xs text-slate">
+              {(existing?.status === "awaiting_photos" ? photos.length > 0 : totalPhotoCount > 0)
+                ? "It goes to a designer with room. The customer is not emailed."
+                : "Without photos it waits in Awaiting photos. The customer is not emailed."}
+            </span>
           )}
+          {error && <span className="text-sm text-rose">{error}</span>}
         </div>
+        {flash && (
+          <div className="-mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-input bg-sage/10 px-3 py-2.5 text-sm">
+            <span className="flex items-center gap-2 font-medium text-sage">
+              <CheckCircle size={16} className="shrink-0" />
+              {flash}
+            </span>
+            {done && (
+              <Link href="/orders?view=needs_details" className="font-medium text-pigment hover:text-ink">
+                Back to Needs details
+              </Link>
+            )}
+          </div>
+        )}
 
         {mode === "complete" && existing && (
           <details className="border-t border-line/60 pt-3">
-            <summary className="cursor-pointer text-xs font-medium text-slate">Developer data</summary>
+            <summary className="cursor-pointer text-xs font-medium text-slate">Raw shop data</summary>
             <pre className="mt-2 max-h-64 overflow-auto rounded-input bg-canvas p-2 text-xs text-ink">
               {JSON.stringify(existing.rawImport, null, 2)}
             </pre>

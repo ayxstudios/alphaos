@@ -274,6 +274,7 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
       light,
       sample: showSample,
       reserveBottom,
+      say: setLine,
       stats: statsRef.current,
       // Watching is unhurried; a demonstration before your turn is brisk.
       dwell: modeRef.current === "watch" ? 450 : 150,

@@ -190,9 +190,13 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
 
   if (!mounted) return null;
 
+  // The QC review screen keeps its sign-off and Pass/Fail in the bottom right,
+  // exactly where the floating button sits; the top bar's Alpha AI stays there.
+  const hideFloating = pathname?.startsWith("/qc/") ?? false;
+
   return createPortal(
     <>
-      {!open && (
+      {!open && !hideFloating && (
         <button
           type="button"
           aria-label="Open Alpha AI"

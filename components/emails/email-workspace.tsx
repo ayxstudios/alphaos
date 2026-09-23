@@ -206,7 +206,7 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
         {item.skippedReason && <Badge variant="warning" dot>Skipped</Badge>}
         {item.orderFinished && <Badge variant="warning" dot>Order {item.orderFinished}</Badge>}
         <span className="min-w-0 truncate text-sm font-medium text-ink">{item.subject || "(no subject)"}</span>
-        <span className="ml-auto text-xs text-slate">
+        <span className="w-full text-xs text-slate sm:ml-auto sm:w-auto">
           {item.customerName ?? item.toAddress ?? "-"}
           {item.orderNumber ? ` · ${item.orderNumber}` : ""} · {fmtDateTime(item.createdAt)}
         </span>
@@ -229,7 +229,7 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
             </p>
           )}
           {queued ? (
-            <p className="mt-2 whitespace-pre-wrap rounded-input border border-line bg-canvas p-3 font-mono text-xs text-ink">
+            <p className="mt-2 whitespace-pre-wrap rounded-input [overflow-wrap:anywhere] border border-line bg-canvas p-3 font-mono text-xs text-ink">
               {item.body || "(empty)"}
             </p>
           ) : (
@@ -280,9 +280,10 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
   }
 
   return (
-    <div className="px-4 py-3">
+    <div className="relative px-4 py-3">
+      {/* The "waiting over a day" dot sits in the gutter, so every row's text lines up with the header. */}
+      {stale && <span className="absolute left-1.5 top-[1.35rem] size-1.5 rounded-full bg-rose" aria-hidden="true" title="Waiting over 24h" />}
       <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-3 text-left" aria-expanded={open}>
-        <span className={cn("size-2 shrink-0 rounded-full", stale ? "bg-rose" : "bg-transparent")} aria-hidden="true" title={stale ? "Waiting over 24h" : undefined} />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-ink">{reply.subject || "(no subject)"}</span>
           <span className="block truncate text-xs text-slate">{reply.fromAddress ?? "unknown sender"}</span>
@@ -292,7 +293,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
       </button>
       {open && (
         <div className="mt-3">
-          <p className="whitespace-pre-wrap rounded-input border border-line bg-canvas p-3 text-sm text-ink">{reply.body || "(empty)"}</p>
+          <p className="whitespace-pre-wrap rounded-input [overflow-wrap:anywhere] border border-line bg-canvas p-3 text-sm text-ink">{reply.body || "(empty)"}</p>
           {reply.suggestion && (
             <div className="mt-3 flex flex-wrap items-center gap-2 rounded-input border border-pigment/20 bg-pigment-soft/40 p-2.5 text-sm">
               <span className="text-ink">
@@ -304,7 +305,8 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
             </div>
           )}
           <div className="mt-3">
-            <Input value={q} onChange={(e) => search(e.target.value)} placeholder="Search order number" aria-label="Search order to link" className="h-9 max-w-xs" />
+            <p className="mb-1.5 text-xs font-medium text-ink">Which order is this about?</p>
+            <Input value={q} onChange={(e) => search(e.target.value)} placeholder="Type the order number" aria-label="Order number to link this message to" className="h-9 max-w-xs" />
             {searching && <p className="mt-1 text-xs text-slate">Searching…</p>}
             {results.length > 0 && (
               <div className="mt-2 flex flex-col divide-y divide-line rounded-input border border-line">
@@ -319,7 +321,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
             )}
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Archive reason" aria-label="Archive reason" className="h-8 w-56" />
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason, e.g. not a customer" aria-label="Why archive it" className="h-8 w-56" />
             <Button type="button" size="sm" variant="ghost" disabled={!reason.trim()} onClick={() => run(() => archiveReply(reply.messageId, reason))}>Archive</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => run(() => ignoreSenderFromMessage(reply.messageId))}>Ignore sender</Button>
           </div>
@@ -348,7 +350,7 @@ function MailRow({ item, businessId }: { item: MailHistoryItem; businessId: stri
         {item.customerName && <span>· {item.customerName}</span>}
         {item.orderNumber && <Link href={`/orders/${item.orderId}`} className="font-medium text-pigment hover:text-ink">· {item.orderNumber}</Link>}
       </div>
-      {item.body && <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm text-slate">{item.body}</p>}
+      {item.body && <p className="mt-2 line-clamp-3 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm text-slate">{item.body}</p>}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {inbound && item.address && (
           <ComposeButton
