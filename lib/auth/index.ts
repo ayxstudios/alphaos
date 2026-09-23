@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 
 import { authConfig, type Role } from "./config";
 import { authenticate } from "./login";
+import { recheckToken } from "./session-check";
 
 /**
  * Full Auth.js (NextAuth v5) config: the edge-safe base + the email/password
@@ -13,6 +14,18 @@ import { authenticate } from "./login";
  */
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
+  callbacks: {
+    ...authConfig.callbacks,
+    // Node only (the edge middleware keeps the DB-free base callback): on every
+    // auth() after sign-in, re-read the user's row and drop the session when
+    // they were deactivated, their role changed, or they signed out / had their
+    // password reset since this token was issued. See ./session-check.ts.
+    async jwt(params) {
+      const token = authConfig.callbacks.jwt(params);
+      if (params.user) return token; // fresh sign-in: authenticate() just checked the row
+      return recheckToken(token);
+    },
+  },
   providers: [
     Credentials({
       credentials: {

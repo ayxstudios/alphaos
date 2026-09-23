@@ -5,7 +5,12 @@ import { useState, useTransition } from "react";
 
 import { addDesigner } from "@/app/(app)/designers/actions";
 import type { BusinessOption } from "@/lib/shell/context";
-import { Button, Drawer, Input, Select, useToast } from "@/components/ui";
+import { Button, Drawer, Input, Select } from "@/components/ui";
+import { CredentialsOnce } from "@/components/team/credentials-once";
+import { PasswordField } from "@/components/team/team-panel";
+
+/** Phone tap targets are 44px; desktop keeps the standard 40px controls. */
+const TAP = "min-h-11 sm:min-h-0";
 
 /**
  * "Add designer" for the roster: a small drawer that mints the designer's
@@ -20,13 +25,13 @@ export function AddDesigner({
   variant?: "primary" | "secondary";
 }) {
   const router = useRouter();
-  const toast = useToast();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [businessId, setBusinessId] = useState(businesses[0]?.id ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<{ name: string; email: string; password: string } | null>(null);
   const [pending, startTransition] = useTransition();
 
   function reset() {
@@ -34,6 +39,16 @@ export function AddDesigner({
     setEmail("");
     setPassword("");
     setError(null);
+    setDone(null);
+  }
+
+  function close() {
+    const added = !!done;
+    reset();
+    setOpen(false);
+    // Refresh only after the details were seen: adding the first designer swaps
+    // the empty state (and this drawer with it) for the roster.
+    if (added) router.refresh();
   }
 
   function submit(event: React.FormEvent<HTMLFormElement>) {
@@ -50,26 +65,28 @@ export function AddDesigner({
         setError(res.message);
         return;
       }
-      toast({
-        variant: "success",
-        title: "Designer added",
-        description: `${name.trim()} can sign in with ${email.trim().toLowerCase()} and the temporary password.`,
-      });
-      reset();
-      setOpen(false);
-      router.refresh();
+      // Shown once: the admin copies the sign-in details and sends them on.
+      setDone({ name: name.trim(), email: email.trim().toLowerCase(), password });
     });
   }
 
   return (
     <>
-      <Button type="button" variant={variant} onClick={() => setOpen(true)}>
+      <Button type="button" variant={variant} className={TAP} onClick={() => setOpen(true)}>
         Add designer
       </Button>
-      <Drawer open={open} onClose={() => setOpen(false)} title="Add designer">
+      <Drawer open={open} onClose={close} title={done ? "Designer added" : "Add designer"}>
+        {done ? (
+          <CredentialsOnce
+            lead={`${done.name} is added. Their board, with the finished-portrait upload, is ready.`}
+            email={done.email}
+            password={done.password}
+            onDone={close}
+          />
+        ) : (
         <form onSubmit={submit} className="flex flex-col gap-4">
           <p className="text-sm text-slate">
-            The designer signs in with this email and temporary password, then sees only the
+            The designer signs in with this email and password, then sees only the
             orders assigned to them on their board. They start with a daily limit of 5 and no styles; set both in the roster.
           </p>
           <Input
@@ -79,6 +96,7 @@ export function AddDesigner({
             autoComplete="off"
             required
             disabled={pending}
+            className={TAP}
           />
           <Input
             label="Email"
@@ -86,26 +104,19 @@ export function AddDesigner({
             value={email}
             onChange={(e) => setEmail(e.currentTarget.value)}
             autoComplete="off"
+            autoCapitalize="off"
             required
             disabled={pending}
+            className={TAP}
           />
-          <Input
-            label="Temporary password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.currentTarget.value)}
-            hint="At least 8 characters. Share it with the designer directly."
-            autoComplete="new-password"
-            minLength={8}
-            required
-            disabled={pending}
-          />
+          <PasswordField value={password} onChange={setPassword} disabled={pending} label="Password" />
           {businesses.length > 1 && (
             <Select
               label="Business"
               value={businessId}
               onChange={(e) => setBusinessId(e.currentTarget.value)}
               disabled={pending}
+              className={TAP}
             >
               {businesses.map((b) => (
                 <option key={b.id} value={b.id}>
@@ -119,15 +130,16 @@ export function AddDesigner({
               {error}
             </p>
           )}
-          <div className="flex items-center justify-end gap-2 pt-2">
-            <Button type="button" variant="ghost" onClick={() => setOpen(false)} disabled={pending}>
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="ghost" className={TAP} onClick={close} disabled={pending}>
               Cancel
             </Button>
-            <Button type="submit" loading={pending}>
+            <Button type="submit" className={TAP} loading={pending}>
               Add designer
             </Button>
           </div>
         </form>
+        )}
       </Drawer>
     </>
   );

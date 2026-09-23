@@ -170,8 +170,8 @@ const ADMIN_STEPS: TourStep[] = [
   {
     id: "roster",
     title: "Designer Roster",
-    what: "Designer Roster is the list new orders are handed out from, top to bottom.",
-    how: "Set each designer's styles and daily limit here so work goes to the right person.",
+    what: "Designer Roster is the list new orders are handed out from, top to bottom, and where your team's sign-ins live.",
+    how: "Set each designer's styles and daily limit, add designers, VAs and admins, and deactivate anyone who leaves.",
     href: "/designers",
     nav: "nav:/designers",
     page: "page:roster",
