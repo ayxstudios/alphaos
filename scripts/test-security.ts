@@ -11,6 +11,8 @@
  *    break out of the href attribute (textToHtml)
  *  - manual order figure counts are bounded (lib/orders/manual-input.ts)
  *  - mocks never run on the production deployment (lib/mock/guard.ts)
+ *  - the Alpha chat widget forwards only an order the caller can see
+ *    (lib/alpha/chat-scope.ts)
  *
  * Runs against the seeded local database (scripts/ci-local.sh). Everything it
  * creates is removed at the end.
@@ -21,7 +23,8 @@ import { and, eq, inArray, like } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 
 import { withSystemContext } from "../lib/db";
-import { loginAttempts, messages, orders, proofs, rateLimits, users } from "../lib/db/schema";
+import { assignments, loginAttempts, messages, orders, proofs, rateLimits, users } from "../lib/db/schema";
+import { scopeChatOrder } from "../lib/alpha/chat-scope";
 import { AccountLockedError, IP_MAX_FAILED, authenticate, loginClientIp } from "../lib/auth/login";
 import { hashPassword } from "../lib/auth/password";
 import { PreconditionError, assertQcPassAllowed } from "../lib/orders/transitions";
@@ -260,8 +263,47 @@ function mocksNeverInProduction() {
   }
 }
 
+async function alphaChatScope() {
+  const pick = await withSystemContext(async (tx) => {
+    const [mine] = await tx
+      .select({ designerId: assignments.designerId, orderId: assignments.orderId })
+      .from(assignments)
+      .where(eq(assignments.active, true))
+      .limit(1);
+    if (!mine) return null;
+    const [other] = await tx
+      .select({ id: orders.id })
+      .from(orders)
+      .where(
+        sql`not exists (select 1 from assignments a where a.order_id = ${orders.id} and a.designer_id = ${mine.designerId} and a.active)`,
+      )
+      .limit(1);
+    const [va] = await tx.select({ id: users.id }).from(users).where(eq(users.role, "va")).limit(1);
+    return other && va ? { ...mine, otherId: other.id, vaId: va.id } : null;
+  });
+  if (!pick) {
+    report("Alpha chat scope has seed data", false, "no assigned + unassigned order pair");
+    return;
+  }
+  const designer = { id: pick.designerId, role: "designer" as const };
+  const own = await scopeChatOrder(designer, { orderId: pick.orderId, page: `/orders/${pick.otherId}` });
+  const foreign = await scopeChatOrder(designer, { orderId: pick.otherId, page: `/qc/${pick.otherId}` });
+  const staff = await scopeChatOrder({ id: pick.vaId, role: "va" }, { orderId: pick.otherId, page: `/orders/${pick.otherId}` });
+  report(
+    "Alpha chat: a designer's order id reaches the relay only for their own order, hidden ids leave the page path",
+    own.orderId === pick.orderId &&
+      own.page === "/orders" &&
+      foreign.orderId === null &&
+      foreign.page === "/qc" &&
+      staff.orderId === pick.otherId &&
+      staff.page === `/orders/${pick.otherId}`,
+    `own=${own.orderId === pick.orderId} foreign=${foreign.orderId} page=${foreign.page} va keeps=${staff.orderId === pick.otherId}`,
+  );
+}
+
 async function main() {
   await loginIpLimit();
+  await alphaChatScope();
   await qcSendGuard();
   emailHtmlEscaping();
   figureCounts();
