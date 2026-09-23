@@ -16,12 +16,12 @@ function useRunAction() {
   const toast = useToast();
   const [pending, start] = useTransition();
 
-  function run(action: () => Promise<ActionResult>) {
+  function run(action: () => Promise<ActionResult>, okTitle = "Updated") {
     start(async () => {
       const result = await action();
       toast({
         variant: result.ok ? "success" : "danger",
-        title: result.ok ? "Updated" : "Didn't update",
+        title: result.ok ? okTitle : "Didn't update",
         description: result.message,
       });
       if (result.ok) router.refresh();
@@ -78,7 +78,7 @@ export function MarkPeriodPaidButton({
       onClick={() => {
         // Paying is not undone from here, so say exactly who and how much.
         if (confirm(`Mark ${pendingLabel} for ${designerName} (${orders}, ${period}) as paid? Pay them first; this only records it.`)) {
-          run(() => markPeriodPaidAction(businessId, designerId, period));
+          run(() => markPeriodPaidAction(businessId, designerId, period), `Marked ${pendingLabel} paid`);
         }
       }}
     >

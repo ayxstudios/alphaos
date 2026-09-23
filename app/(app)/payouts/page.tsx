@@ -255,6 +255,8 @@ export default async function PayoutsPage({
                     >
                       View orders
                     </Link>
+                    {/* Nothing pending, nothing to pay: no Mark paid button. */}
+                    {summary.pendingCount > 0 && (
                     <MarkPeriodPaidButton
                       businessId={businessId}
                       designerId={summary.designerId}
@@ -263,6 +265,7 @@ export default async function PayoutsPage({
                       pendingLabel={money(summary.pendingTotal)}
                       pendingCount={summary.pendingCount}
                     />
+                    )}
                   </div>
                 </div>
               ))}
