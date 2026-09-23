@@ -1,7 +1,10 @@
 import { config } from "dotenv";
 import { neon } from "@neondatabase/serverless";
 
+import { applyLocalNeonProxy } from "../lib/db/local-proxy";
+
 config({ path: ".env.local" });
+applyLocalNeonProxy();
 
 async function main() {
   const url = process.env.DATABASE_URL;

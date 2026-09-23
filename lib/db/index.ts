@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/neon-serverless";
 import { sql } from "drizzle-orm";
 import ws from "ws";
 
+import { applyLocalNeonProxy } from "./local-proxy";
 import * as schema from "./schema";
 
 // The neon-http driver has NO transaction support, and per-request RLS needs a
@@ -16,6 +17,8 @@ neonConfig.webSocketConstructor = ws;
 // WebSocket, but this trims every one-shot query. The real latency win comes
 // from running the functions in the DB's region — see vercel.json `regions`.
 neonConfig.poolQueryViaFetch = true;
+// Local/CI only (NEON_LOCAL_PROXY); a no-op in every deployed environment.
+applyLocalNeonProxy();
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
 
