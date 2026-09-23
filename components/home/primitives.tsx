@@ -120,7 +120,9 @@ export function HomeSection({
           {description && <p className={cn("mt-0.5 text-slate", quiet ? "text-xs" : "text-sm")}>{description}</p>}
         </div>
         {action && (
-          <Link href={action.href} className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-pigment hover:underline">
+          // -my-3 keeps the header's height while the link gets a 44px tap
+          // area on touch screens (lg: back to the plain text link).
+          <Link href={action.href} className="-my-3 inline-flex min-h-11 shrink-0 items-center gap-1 text-sm font-medium text-pigment hover:underline lg:my-0 lg:min-h-0">
             {action.label}
             <ArrowRight size={14} />
           </Link>
