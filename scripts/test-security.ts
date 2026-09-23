@@ -7,6 +7,8 @@
  *  - "Pass QC and send": a second send for the same proof is refused while the
  *    first is in flight (lib/qc/send-guard.ts), and the sign-off + checklist
  *    gate runs before the email leaves (assertQcPassAllowed)
+ *  - outgoing email HTML escapes quotes, so customer text in a URL cannot
+ *    break out of the href attribute (textToHtml)
  *
  * Runs against the seeded local database (scripts/ci-local.sh). Everything it
  * creates is removed at the end.
@@ -22,6 +24,7 @@ import { AccountLockedError, IP_MAX_FAILED, authenticate, loginClientIp } from "
 import { hashPassword } from "../lib/auth/password";
 import { PreconditionError, assertQcPassAllowed } from "../lib/orders/transitions";
 import { QC_SEND_DEDUPE_MS, qcPassEmailInFlight } from "../lib/qc/send-guard";
+import { textToHtml } from "../lib/integrations/gmail/mime";
 
 let failures = 0;
 function report(name: string, pass: boolean, detail: string) {
@@ -191,9 +194,24 @@ async function qcSendGuard() {
   }
 }
 
+function emailHtmlEscaping() {
+  const html = textToHtml(`Hi <script>alert(1)</script> https://x.test/"onmouseover="alert(1)\n\nSee https://a.test/p?x=1&y=2 it's ready`);
+  const anchors = html.match(/<a [^>]*>/g) ?? [];
+  report(
+    "email HTML: tags escaped, a quote in a URL cannot leave the href attribute",
+    !html.includes("<script>") &&
+      anchors.length === 2 &&
+      anchors.every((a) => /^<a href="[^"]*">$/.test(a)) &&
+      !/"\s*onmouseover=/.test(html) &&
+      html.includes('href="https://a.test/p?x=1&amp;y=2"'),
+    anchors.join(" "),
+  );
+}
+
 async function main() {
   await loginIpLimit();
   await qcSendGuard();
+  emailHtmlEscaping();
   console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);
   process.exit(failures === 0 ? 0 : 1);
 }
