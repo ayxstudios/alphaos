@@ -336,6 +336,13 @@ export default async function SettingsPage({
     })
   ).map((s) => ({ id: s.id, name: s.name, platform: s.platform, styles: s.styles ?? [] }));
 
+  // Portrait Styles (/styles) names: what a shop with no own list offers.
+  const styleCatalog = (
+    await withUserContext(user, (tx) =>
+      tx.select({ name: styles.name }).from(styles).where(eq(styles.businessId, selected.id)).orderBy(styles.name),
+    )
+  ).map((s) => s.name);
+
   const [styleStats] = await withUserContext(user, (tx) =>
     tx
       .select({
@@ -505,7 +512,7 @@ export default async function SettingsPage({
               </DataPanel>
             ) : (
               <DataPanel className="px-4 py-1">
-                <ShopStylesPanel shops={styleShops} />
+                <ShopStylesPanel shops={styleShops} catalog={styleCatalog} />
               </DataPanel>
             )}
           </section>
