@@ -66,7 +66,13 @@ Settings > Customer email > Send test mails every template to the address you
 type, prefixed `[TEST]`, from the PixArt mailbox, with sample values (Sam
 (test), TEST-1001, a sample proof and upload link, a sample tracking number).
 It never touches a buyer and never writes to Messages. Test sends carry no
-attachment; real proof emails attach the portrait.
+attachment; real proof emails attach the portrait. Mail goes out as
+`PixArt <admin@pixartcreatives.co>` (the business name is the display name).
+
+Verified 2026-09-23: all 12 test emails arrived in the agent mailbox
+(almacorpchatgpt@gmail.com). Before this branch is deployed, the production
+"Send test" still shows a `/u/...` upload link (404) and a blank tracking line;
+both are test-only sample values and are fixed on this branch.
 
 ## Voice rules used
 

@@ -16,6 +16,17 @@ function encodeHeader(value: string): string {
   return `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`;
 }
 
+/**
+ * A From header value with the brand as display name, so buyers see
+ * "PixArt" rather than a bare mailbox. Falls back to the bare address.
+ */
+export function formatFromHeader(name: string | null | undefined, address: string): string {
+  const clean = (name ?? "").replace(/["\\\r\n<>]/g, "").trim();
+  if (!clean) return address;
+  const display = /[^\x20-\x7E]/.test(clean) ? encodeHeader(clean) : `"${clean}"`;
+  return `${display} <${address}>`;
+}
+
 export type OutgoingEmail = {
   from: string; // e.g. "Business Name <orders@business.com>" or bare address
   to: string;
@@ -118,7 +129,10 @@ export function textToHtml(text: string): string {
     s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const linkify = (s: string) =>
     s.replace(/(https?:\/\/[^\s<]+)/g, (url) => `<a href="${url}">${url}</a>`);
+  // Bodies saved from a browser textarea arrive with CRLF; normalise so blank
+  // lines still split paragraphs.
   const paras = text
+    .replace(/\r\n?/g, "\n")
     .split(/\n{2,}/)
     .map((p) => `<p>${linkify(esc(p)).replace(/\n/g, "<br>")}</p>`)
     .join("\n");

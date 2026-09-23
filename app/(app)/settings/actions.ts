@@ -678,7 +678,8 @@ export async function saveEmailTemplate(formData: FormData): Promise<void> {
   const businessId = String(formData.get("businessId") ?? "");
   const key = assertTemplateKey(String(formData.get("key") ?? ""));
   const subject = String(formData.get("subject") ?? "").trim();
-  const body = String(formData.get("body") ?? "").trim();
+  // Browsers submit textarea newlines as CRLF; store plain LF like the defaults.
+  const body = String(formData.get("body") ?? "").replace(/\r\n?/g, "\n").trim();
   if (!businessId || !subject || !body) throw new Error("Subject and body are required");
 
   await withUserContext(user, (tx) =>
