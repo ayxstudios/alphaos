@@ -407,8 +407,13 @@ export default async function OrdersPage({
 
   if (!selectedView) {
     const cookieView = validView(cookieStore.get(ORDERS_VIEW_COOKIE)?.value);
-    const fallback = cookieView ?? (countRow.overdue > 0 ? "overdue" : "active");
+    // A search from the top bar (/orders?q=...) looks through every open
+    // order, and keeps its query and filters through this redirect.
+    const fallback = q ? "active" : cookieView ?? (countRow.overdue > 0 ? "overdue" : "active");
     const next = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (typeof value === "string" && value && key !== "view") next.set(key, value);
+    }
     next.set("view", fallback);
     redirect(`/orders?${next.toString()}`);
   }
@@ -653,7 +658,13 @@ export default async function OrdersPage({
           items[0]?.style ?? null,
           physical ? "Physical" : items.some((item) => item.productType === "digital") ? "Digital" : null,
         ].filter(Boolean).join(" · "),
-        isOverdue: Boolean(order.dueAt && order.dueAt < new Date()),
+        // Same rule as the Overdue view: a delivered, complete or cancelled
+        // order is never shown as overdue.
+        isOverdue: Boolean(
+          order.dueAt &&
+            order.dueAt < new Date() &&
+            (ACTIVE_STATES as readonly string[]).includes(order.status),
+        ),
         needsReview,
         revisionCount: order.revisionCount,
         latestQcResult: qc?.result ?? null,
