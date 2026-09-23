@@ -22,7 +22,7 @@ export async function StaffHome({ user, businessId, role }: { user: RequestUser;
       {role === "admin" ? <AdminTiles h={h} /> : <VaTiles h={h} />}
 
       <div className="grid gap-4 sm:gap-5 lg:grid-cols-5">
-        <HomeSection title="Do first" description={h.attention.counts.total ? `${h.attention.counts.now} need you now, ${h.attention.counts.today} today, ${h.attention.counts.soon} soon` : undefined} action={h.attention.counts.total ? { label: "Full queue", href: "/today" } : undefined} className="lg:col-span-3">
+        <HomeSection title="Do first" description={h.attention.counts.total ? doFirstLine(h.attention.counts) : undefined} action={h.attention.counts.total ? { label: "Full queue", href: "/today" } : undefined} className="lg:col-span-3">
           <AttentionList items={h.attention.top} total={h.attention.counts.total} />
         </HomeSection>
         <HomeSection title="What is waiting" description="By kind, everything in the queue" className="lg:col-span-2">
@@ -136,7 +136,7 @@ function VaTiles({ h }: { h: StaffHome }) {
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <StatTile label="Needs you now" value={fmtInt(h.attention.counts.now)} hint="Someone is waiting" tone={h.attention.counts.now === 0 ? "good" : "bad"} href="/today" />
-      <StatTile label="For today" value={fmtInt(h.attention.counts.today)} hint={`${h.attention.counts.soon} coming up soon`} tone={h.attention.counts.today === 0 ? "good" : "warn"} href="/today" />
+      <StatTile label="For today" value={fmtInt(h.attention.counts.today)} hint={h.attention.counts.soon ? `${h.attention.counts.soon} for later` : "Nothing for later"} tone={h.attention.counts.today === 0 ? "good" : "warn"} href="/today" />
       <StatTile label="Replies to send" value={fmtInt(replies)} hint={h.messages.unmatched ? `${h.messages.unmatched} to link to an order` : "All linked to orders"} href="/emails" />
       <StatTile label="Overdue orders" value={fmtInt(h.overdue)} hint={qc ? `${qc} waiting for QC` : `${h.dueToday} due today`} tone={h.overdue === 0 ? "good" : "bad"} href="/orders?view=overdue" />
     </div>
@@ -178,4 +178,15 @@ function ShopRows({ shops }: { shops: StaffHome["shops"] }) {
       ))}
     </ul>
   );
+}
+
+/** "16 need you now, 30 today" with no "0 soon" parts. */
+function doFirstLine(c: { now: number; today: number; soon: number }): string {
+  return [
+    c.now ? `${c.now} need${c.now === 1 ? "s" : ""} you now` : null,
+    c.today ? `${c.today} today` : null,
+    c.soon ? `${c.soon} for later` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
 }
