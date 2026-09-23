@@ -1,13 +1,20 @@
+import Link from "next/link";
+
 import { DataPanel, EmptyState, StatCard } from "@/components/ui";
+import { focusRing } from "@/components/ui/styles";
 import { Calendar } from "@/components/ui/icons";
 import { Countdown } from "@/components/board/countdown";
-import { stateLabel } from "@/components/board/card-meta";
+import { designerStateLabel } from "@/components/board/card-meta";
+import { cn } from "@/lib/utils";
 import type { OrderStatus } from "@/lib/orders/transitions";
 import type { DesignerWeek } from "@/lib/designers/my-week";
 
 function money(n: number): string {
   return `$${n.toFixed(2)}`;
 }
+
+/** Contact channels by their proper names ("WhatsApp", not "Whatsapp"). */
+const CHANNEL: Record<string, string> = { whatsapp: "WhatsApp", email: "Email", sms: "SMS", telegram: "Telegram" };
 
 function pct(n: number | null): string {
   return n == null ? "-" : `${Math.round(n * 100)}%`;
@@ -17,8 +24,12 @@ function pct(n: number | null): string {
  * "My week" — phone-first, one column, big numbers. Shared by /me (a designer
  * looking at themselves) and /designers/[id] (staff looking at one designer).
  */
-export function DesignerWeekView({ week }: { week: DesignerWeek }) {
+export function DesignerWeekView({ week, self = false }: { week: DesignerWeek; self?: boolean }) {
   const c = week.contact;
+  // A deadline row opens that card on the board: the designer's own board, or
+  // (staff) this designer's.
+  const cardHref = (orderId: string) =>
+    self ? `/board?open=${orderId}` : `/board?designer=${week.designerId}&open=${orderId}`;
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3">
@@ -37,26 +48,33 @@ export function DesignerWeekView({ week }: { week: DesignerWeek }) {
         <div className="border-b border-line px-4 py-3">
           <h2 className="text-sm font-semibold text-ink">Next deadlines</h2>
           <p className="text-xs text-slate">
-            Week starting {week.weekStartLabel} · {week.activeOrders} order{week.activeOrders === 1 ? "" : "s"} in flight
+            Week of {week.weekStartLabel} · {week.activeOrders} in progress
             {week.withCustomer > 0 ? ` · ${week.withCustomer} with the customer` : ""}
           </p>
         </div>
         {week.upcoming.length === 0 ? (
-          <EmptyState icon={Calendar} headline="Nothing on deck" body="No active orders right now." />
+          <EmptyState icon={Calendar} headline="Nothing due" body="No orders in progress right now." />
         ) : (
           <ul className="divide-y divide-line">
             {week.upcoming.map((u) => (
-              <li key={u.orderId} className="flex items-center justify-between gap-3 px-4 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-ink">{u.orderNumber}</p>
-                  <p className="text-xs text-slate">
-                    {/* A queued card is assigned and waiting on the designer to
-                        start it: "Ready to assign" is the staff-side name. */}
-                    {u.status === "ready_to_assign" ? "In your queue" : stateLabel(u.status as OrderStatus)}
-                    {u.dueAtLocal ? ` · due ${u.dueAtLocal}` : ""}
-                  </p>
-                </div>
-                <Countdown dueAt={u.dueAt} />
+              <li key={u.orderId}>
+                <Link
+                  href={cardHref(u.orderId)}
+                  className={cn("flex min-h-11 items-center justify-between gap-3 px-4 py-3 hover:bg-canvas/60", focusRing)}
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-ink">{u.orderNumber}</p>
+                    <p className="text-xs text-slate">
+                      {/* A queued card is assigned and waiting on the designer to
+                          start it: "Ready to assign" is the staff-side name. */}
+                      {designerStateLabel(u.status as OrderStatus)}
+                      {u.dueAtLocal ? ` · due ${u.dueAtLocal}` : ""}
+                    </p>
+                  </div>
+                  <span className="shrink-0 whitespace-nowrap">
+                    <Countdown dueAt={u.dueAt} />
+                  </span>
+                </Link>
               </li>
             ))}
           </ul>
@@ -74,11 +92,15 @@ export function DesignerWeekView({ week }: { week: DesignerWeek }) {
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate">Channel</p>
-            <p className="capitalize text-ink">{c?.preferredChannel ?? "whatsapp"}</p>
+            <p className="text-ink">{CHANNEL[c?.preferredChannel ?? "whatsapp"] ?? c?.preferredChannel}</p>
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate">Timezone</p>
-            <p className="text-ink">{c?.timezoneRaw ?? (c ? `Not set (${c.timezone} used)` : "Not set")}</p>
+            {/* Underscores out ("Asia/Kuala Lumpur"); an unset zone says it is the default. */}
+            <p className="break-words text-ink">
+              {(c?.timezoneRaw ?? c?.timezone ?? "Not set").replace(/_/g, " ")}
+              {c && !c.timezoneRaw ? <span className="text-slate"> (default)</span> : null}
+            </p>
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate">Quiet hours</p>
@@ -86,7 +108,7 @@ export function DesignerWeekView({ week }: { week: DesignerWeek }) {
           </div>
         </div>
         <p className="border-t border-line px-4 py-2.5 text-xs text-slate">
-          An admin or VA sets these on the Designers page.
+          {self ? "Need a change? Ask your VA or admin." : "An admin or VA sets these on the Designers page."}
         </p>
       </DataPanel>
     </div>
