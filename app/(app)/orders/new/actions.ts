@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { shops, orders, orderItems, customers, assets, activityLog } from "@/lib/db/schema";
 import { runAutoAssign } from "@/lib/orders/assign";
+import { parseFigureCount } from "@/lib/orders/manual-input";
 import { runTransition } from "@/lib/orders/transitions";
 import { normalizeOrderNumber } from "@/lib/orders/reconcile";
 import { shopStyleChoices } from "@/lib/designers/styles";
@@ -129,8 +130,9 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
   }
   const orderId = input.orderId?.trim() || randomUUID();
   const orderNumber = input.orderNumber?.trim() || null;
-  const figureCount =
-    typeof input.figureCount === "number" && input.figureCount > 0 ? Math.floor(input.figureCount) : null;
+  const figures = parseFigureCount(input.figureCount);
+  if (!figures.ok) return { ok: false, message: figures.message };
+  const figureCount = figures.value;
   const r2Keys = (input.r2Keys ?? []).filter(Boolean);
   const photoUrls = (input.photoUrls ?? []).map((u) => u.trim()).filter(Boolean);
 
@@ -257,7 +259,10 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
       return { ok: true as const, orderNumber: platformOrderName ?? "(no number)", orderId };
     });
   } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Could not create order" };
+    // Never echo a database error: drizzle's message carries the SQL and every
+    // bound value (security QA round 2 saw "Failed query: insert into ...").
+    console.error("[orders/new] createManualOrder failed", e);
+    return { ok: false, message: "Could not create the order. Check the details and try again." };
   }
 }
 
@@ -286,8 +291,9 @@ export async function completeOrderDetails(input: {
   if (input.productType !== "digital" && input.productType !== "physical") {
     return { ok: false, message: "Choose a product type" };
   }
-  const figureCount =
-    typeof input.figureCount === "number" && input.figureCount > 0 ? Math.floor(input.figureCount) : null;
+  const figures = parseFigureCount(input.figureCount);
+  if (!figures.ok) return { ok: false, message: figures.message };
+  const figureCount = figures.value;
   const r2Keys = (input.r2Keys ?? []).filter(Boolean);
   const photoUrls = (input.photoUrls ?? []).map((u) => u.trim()).filter(Boolean);
 
@@ -423,7 +429,8 @@ export async function completeOrderDetails(input: {
       return { ok: true as const, orderNumber: order.platformOrderName ?? "(no number)", orderId: order.id };
     });
   } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Could not complete order" };
+    console.error("[orders/new] completeOrderDetails failed", e);
+    return { ok: false, message: "Could not save the order details. Check them and try again." };
   }
 }
 

@@ -9,6 +9,7 @@
  *    gate runs before the email leaves (assertQcPassAllowed)
  *  - outgoing email HTML escapes quotes, so customer text in a URL cannot
  *    break out of the href attribute (textToHtml)
+ *  - manual order figure counts are bounded (lib/orders/manual-input.ts)
  *
  * Runs against the seeded local database (scripts/ci-local.sh). Everything it
  * creates is removed at the end.
@@ -25,6 +26,7 @@ import { hashPassword } from "../lib/auth/password";
 import { PreconditionError, assertQcPassAllowed } from "../lib/orders/transitions";
 import { QC_SEND_DEDUPE_MS, qcPassEmailInFlight } from "../lib/qc/send-guard";
 import { textToHtml } from "../lib/integrations/gmail/mime";
+import { MAX_FIGURES, parseFigureCount } from "../lib/orders/manual-input";
 
 let failures = 0;
 function report(name: string, pass: boolean, detail: string) {
@@ -208,10 +210,28 @@ function emailHtmlEscaping() {
   );
 }
 
+function figureCounts() {
+  const v = (raw: unknown) => {
+    const r = parseFigureCount(raw);
+    return r.ok ? r.value : "refused";
+  };
+  const cases: [unknown, number | null | "refused"][] = [
+    [2, 2], [2.7, 2], [MAX_FIGURES, MAX_FIGURES], [0, null], [-5, null], [null, null], ["3", null],
+    [MAX_FIGURES + 1, "refused"], [1_000_000, "refused"], [2_147_483_647, "refused"], [1e10, "refused"], [Infinity, "refused"],
+  ];
+  const bad = cases.filter(([raw, want]) => v(raw) !== want);
+  report(
+    `manual order figure count: 1..${MAX_FIGURES} kept, blank/negative = not set, larger refused`,
+    bad.length === 0,
+    bad.length ? `wrong: ${bad.map(([r]) => String(r)).join(", ")}` : `${cases.length} cases`,
+  );
+}
+
 async function main() {
   await loginIpLimit();
   await qcSendGuard();
   emailHtmlEscaping();
+  figureCounts();
   console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);
   process.exit(failures === 0 ? 0 : 1);
 }
