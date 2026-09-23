@@ -413,7 +413,7 @@ function CardUploadPanel({
   }
 
   return (
-    <section className="rounded-card bg-canvas/60 p-3">
+    <section className="rounded-card bg-canvas/60 p-3" data-tour="card:upload">
       <div className="flex flex-wrap items-end gap-2">
         {designer ? (
           <div className="min-w-40 flex-1">
@@ -473,6 +473,7 @@ function CardUploadPanel({
           type="button"
           disabled={uploading}
           onClick={() => fileRef.current?.click()}
+          data-tour="card:drop"
           onDragOver={(event) => event.preventDefault()}
           onDrop={(event) => {
             event.preventDefault();
