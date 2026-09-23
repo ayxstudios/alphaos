@@ -648,7 +648,13 @@ export default async function OrdersPage({
           items[0]?.style ?? null,
           physical ? "Physical" : items.some((item) => item.productType === "digital") ? "Digital" : null,
         ].filter(Boolean).join(" · "),
-        isOverdue: Boolean(order.dueAt && order.dueAt < new Date()),
+        // Same rule as the Overdue view: a delivered, complete or cancelled
+        // order is never shown as overdue.
+        isOverdue: Boolean(
+          order.dueAt &&
+            order.dueAt < new Date() &&
+            (ACTIVE_STATES as readonly string[]).includes(order.status),
+        ),
         needsReview,
         revisionCount: order.revisionCount,
         latestQcResult: qc?.result ?? null,
