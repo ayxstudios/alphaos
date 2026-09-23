@@ -252,7 +252,7 @@ const ADMIN_STEPS: TourStep[] = [
         target: ['main a[href="/health?scope=all"]'],
         undo: "back",
         reset: "/health",
-        say: "Choose All Businesses to check every shop at once.",
+        say: "Choose All businesses to check every shop at once.",
       },
     ],
     nav: { kind: "nav", say: "Open System Health when numbers look wrong." },
