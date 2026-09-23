@@ -208,13 +208,16 @@ function ProductRow({
           on a phone instead of being cut short. */}
       <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
         {onToggle && (
-          <input
-            type="checkbox"
-            checked={!!checked}
-            onChange={onToggle}
-            aria-label={`Select ${product.title ?? "product"}`}
-            className="mt-0.5 size-4 shrink-0 rounded border-line text-pigment focus:ring-pigment sm:mt-0"
-          />
+          // The label pads the 16px box to a 44px tap area on a phone.
+          <label className="-m-3.5 flex shrink-0 cursor-pointer p-3.5 sm:m-0 sm:p-0">
+            <input
+              type="checkbox"
+              checked={!!checked}
+              onChange={onToggle}
+              aria-label={`Select ${product.title ?? "product"}`}
+              className="mt-0.5 size-4 shrink-0 rounded border-line text-pigment focus:ring-pigment sm:mt-0"
+            />
+          </label>
         )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-ink sm:truncate">{product.title ?? "Untitled product"}</p>
