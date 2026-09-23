@@ -487,12 +487,13 @@ function EmailPreviewDialog({
             className="mt-4 font-mono text-xs"
           />
 
-          <div className="mt-4 flex flex-wrap justify-end gap-2">
+          {/* Always in view: the send is the point of this dialog. */}
+          <div className="sticky -bottom-5 -mx-5 -mb-5 mt-4 flex flex-wrap justify-end gap-2 border-t border-line bg-canvas px-5 py-3">
             <Button type="button" variant="ghost" onClick={onCancel} disabled={pending}>
               Cancel
             </Button>
             <Button type="button" onClick={onConfirm} loading={pending} disabled={!body.trim()}>
-              Send email & pass QC
+              Send email and pass QC
             </Button>
           </div>
         </aside>

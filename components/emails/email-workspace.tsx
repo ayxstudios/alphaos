@@ -206,7 +206,7 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
         {item.skippedReason && <Badge variant="warning" dot>Skipped</Badge>}
         {item.orderFinished && <Badge variant="warning" dot>Order {item.orderFinished}</Badge>}
         <span className="min-w-0 truncate text-sm font-medium text-ink">{item.subject || "(no subject)"}</span>
-        <span className="ml-auto text-xs text-slate">
+        <span className="w-full text-xs text-slate sm:ml-auto sm:w-auto">
           {item.customerName ?? item.toAddress ?? "-"}
           {item.orderNumber ? ` · ${item.orderNumber}` : ""} · {fmtDateTime(item.createdAt)}
         </span>
@@ -304,7 +304,8 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
             </div>
           )}
           <div className="mt-3">
-            <Input value={q} onChange={(e) => search(e.target.value)} placeholder="Search order number" aria-label="Search order to link" className="h-9 max-w-xs" />
+            <p className="mb-1.5 text-xs font-medium text-ink">Which order is this about?</p>
+            <Input value={q} onChange={(e) => search(e.target.value)} placeholder="Type the order number" aria-label="Order number to link this message to" className="h-9 max-w-xs" />
             {searching && <p className="mt-1 text-xs text-slate">Searching…</p>}
             {results.length > 0 && (
               <div className="mt-2 flex flex-col divide-y divide-line rounded-input border border-line">
@@ -319,7 +320,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
             )}
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Archive reason" aria-label="Archive reason" className="h-8 w-56" />
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason, e.g. not a customer" aria-label="Why archive it" className="h-8 w-56" />
             <Button type="button" size="sm" variant="ghost" disabled={!reason.trim()} onClick={() => run(() => archiveReply(reply.messageId, reason))}>Archive</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => run(() => ignoreSenderFromMessage(reply.messageId))}>Ignore sender</Button>
           </div>
