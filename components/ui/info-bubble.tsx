@@ -78,7 +78,7 @@ export function InfoBubble({
           setOpen((o) => !o);
         }}
         className={cn(
-          "inline-flex size-5 shrink-0 items-center justify-center rounded-full text-slate transition-colors hover:bg-pigment-soft hover:text-pigment",
+          "-m-3 inline-flex size-11 shrink-0 items-center justify-center rounded-full text-slate transition-colors hover:bg-pigment-soft hover:text-pigment sm:m-0 sm:size-5",
           open && "bg-pigment-soft text-pigment",
           focusRing,
           className,

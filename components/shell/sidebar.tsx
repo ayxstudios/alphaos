@@ -190,7 +190,7 @@ export function Sidebar({
           href={homeHref}
           onClick={onNavigate}
           aria-label="AlphaOS home"
-          className={cn("flex min-w-0 items-center gap-2 rounded-input", focusRing)}
+          className={cn("flex min-h-11 min-w-0 items-center gap-2 rounded-input", focusRing)}
         >
           {collapsed && !mobile ? (
             <span className="font-display text-lg font-semibold leading-5 text-pigment">α</span>
