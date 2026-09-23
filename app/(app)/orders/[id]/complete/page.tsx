@@ -12,6 +12,7 @@ import {
   assets,
 } from "@/lib/db/schema";
 import { isR2Configured } from "@/lib/storage/r2";
+import { shopStyleChoices } from "@/lib/designers/styles";
 import { NewOrderForm, type ExistingOrder } from "@/components/orders/new-order-form";
 import { Page, PageHeader, StatusChip } from "@/components/ui";
 import type { OrderStatus } from "@/components/ui";
@@ -34,6 +35,7 @@ export default async function CompleteOrderPage({
       .select({
         id: orders.id,
         shopId: orders.shopId,
+        businessId: orders.businessId,
         status: orders.status,
         source: orders.source,
         platformOrderName: orders.platformOrderName,
@@ -90,6 +92,7 @@ export default async function CompleteOrderPage({
       .from(assets)
       .where(eq(assets.orderId, order.id)),
   );
+  const styleOptions = await withUserContext(user, (tx) => shopStyleChoices(tx, order.businessId, order.styles));
 
   const existing: ExistingOrder = {
     orderId: order.id,
@@ -107,7 +110,7 @@ export default async function CompleteOrderPage({
     savedProductTitle: item?.title ?? "",
     savedFigureCount: item?.figureCount ?? null,
     savedStyle: item?.style ?? "",
-    styleOptions: order.styles ?? [],
+    styleOptions,
     savedProductType: item?.productType ?? null,
     savedNotes: order.notes ?? "",
     photoCount: photoCountRow?.count ?? 0,
