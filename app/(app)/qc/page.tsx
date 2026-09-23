@@ -10,7 +10,7 @@ import { Badge, DataPanel, EmptyState, Page, PageHeader } from "@/components/ui"
 import { ShopBadge } from "@/components/ui/shop-badge";
 import { focusRing } from "@/components/ui/styles";
 import { ArrowRight, ChevronRight, Eye, CheckCircle } from "@/components/ui/icons";
-import { cn } from "@/lib/utils";
+import { cn, styleLabel } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -131,7 +131,7 @@ export default async function QcQueuePage() {
                         {r.designerName ?? "Unassigned"}
                         {" · "}
                         {r.figureCount} figure{r.figureCount === 1 ? "" : "s"}
-                        {r.style ? ` · ${r.style}` : ""}
+                        {r.style ? ` · ${styleLabel(r.style)}` : ""}
                       </p>
                     </div>
                     <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-slate">

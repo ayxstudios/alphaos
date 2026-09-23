@@ -39,6 +39,7 @@ import { ComposeButton } from "@/components/emails/compose-button";
 import { formatAt } from "@/lib/time";
 import { DUE_STATUSES } from "@/lib/home/shared";
 import { activityLabel } from "@/lib/orders/activity-label";
+import { styleLabel } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -541,7 +542,7 @@ export default async function CustomerDetailPage({
                                       </Badge>
                                     )}
                                     {item.style && (
-                                      <Badge variant="neutral">{item.style}</Badge>
+                                      <Badge variant="neutral">{styleLabel(item.style)}</Badge>
                                     )}
                                     {/* Skip a variation that only repeats the figure chip ("1 figure"). */}
                                     {item.variation &&

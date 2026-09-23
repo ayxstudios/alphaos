@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 
-import { cn } from "@/lib/utils";
+import { cn, styleLabel } from "@/lib/utils";
 import { Avatar, Button, Input, Select, useToast } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
 import { ChevronDown, Check } from "@/components/ui/icons";
@@ -209,7 +209,7 @@ function Row({
           <div className="flex flex-wrap gap-1">
             {d.styles.map((s) => (
               <span key={s} className="rounded bg-sage/10 px-1.5 py-0.5 text-xs text-sage">
-                {s}
+                {styleLabel(s)}
               </span>
             ))}
           </div>
@@ -474,7 +474,7 @@ function StyleSelect({
           {selected.length ? (
             selected.map((s) => (
               <span key={s} className="rounded bg-sage/10 px-1.5 py-0.5 text-xs text-sage">
-                {s}
+                {styleLabel(s)}
               </span>
             ))
           ) : (

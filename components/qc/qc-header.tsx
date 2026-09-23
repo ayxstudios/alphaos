@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { cn } from "@/lib/utils";
+import { cn, styleLabel } from "@/lib/utils";
 import { Badge, Button, StatusChip } from "@/components/ui";
 import type { OrderStatus } from "@/components/ui";
 import type { QcContext } from "@/lib/qc/data";
@@ -72,7 +72,7 @@ export function QcHeader({
             <Badge variant="warning">Not set</Badge>
           )}
         </Fact>
-        <Fact label="Style">{ctx.style ?? "Not set"}</Fact>
+        <Fact label="Style">{ctx.style ? styleLabel(ctx.style) : "Not set"}</Fact>
         <Fact label="Designer">{ctx.designerName ?? "Unassigned"}</Fact>
       </div>
 

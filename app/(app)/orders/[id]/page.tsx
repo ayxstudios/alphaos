@@ -43,7 +43,7 @@ import {
   User,
   type IconProps,
 } from "@/components/ui/icons";
-import { cn } from "@/lib/utils";
+import { cn, styleLabel } from "@/lib/utils";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
 import { getShopCredentials } from "@/lib/db/credentials";
 import {
@@ -460,7 +460,7 @@ export default async function OrderDetailPage({
   const styles = Array.from(
     new Set(items.map((item) => item.style).filter((style): style is string => Boolean(style))),
   );
-  const styleLabel = styles.length ? styles.join(", ") : "Not set";
+  const styleText = styles.length ? styles.map(styleLabel).join(", ") : "Not set";
   const latestQc = qcRows[0] ?? null;
   const references = detail.images.filter((image) => image.type === "reference");
   const hasPhysicalItem = items.some((item) => item.productType === "physical");
@@ -609,7 +609,7 @@ export default async function OrderDetailPage({
         >
           <Fact icon={User} label="Customer" value={customerName} />
           {editable && <Fact icon={Mail} label="Email" value={order.customerEmail ?? "No email yet"} muted={!order.customerEmail} />}
-          {!styleSetter && <Fact icon={Brush} label="Style" value={styleLabel} muted={styles.length === 0} />}
+          {!styleSetter && <Fact icon={Brush} label="Style" value={styleText} muted={styles.length === 0} />}
           <Fact icon={Palette} label="Designer" value={assignee} muted={assignee === "Unassigned"} />
           <Fact icon={Calendar} label="Due" value={fmtDate(order.dueAt)} />
         </div>
@@ -694,7 +694,7 @@ export default async function OrderDetailPage({
                                 {item.figureCount} figure{item.figureCount === 1 ? "" : "s"}
                               </Badge>
                             )}
-                            {item.style && <Badge variant="neutral">{item.style}</Badge>}
+                            {item.style && <Badge variant="neutral">{styleLabel(item.style)}</Badge>}
                           </div>
                         </div>
                         {Array.isArray(item.options) && item.options.length > 0 ? (

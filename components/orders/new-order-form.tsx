@@ -18,6 +18,7 @@ import {
   type EtsyReceiptReview,
 } from "@/lib/integrations/etsy/receipt-review";
 import { dateInputValue, formatAt } from "@/lib/time";
+import { styleLabel } from "@/lib/utils";
 
 export type ShopOption = {
   id: string;
@@ -78,11 +79,6 @@ function dueSourceLabel(source: ExistingOrder["dueDateSource"]) {
   if (source === "etsy_expected_ship_date") return "Etsy expected ship date";
   if (source === "manual") return "Manual";
   return "Unknown";
-}
-/** A style key as a person reads it: "line-art" -> "Line art". */
-function styleLabel(key: string) {
-  const words = key.replace(/[-_]+/g, " ").trim();
-  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 function usefulVariations(tx: EtsyReceiptReview["transactions"][number]) {
   return tx.variations.filter((v) => v.label.toLowerCase() !== "personalization");

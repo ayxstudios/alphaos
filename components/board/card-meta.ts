@@ -2,6 +2,7 @@ import type { BoardCard } from "@/lib/orders/board-data";
 import type { CardEvent } from "@/lib/orders/card-detail";
 import type { OrderStatus } from "@/lib/orders/transitions";
 import { formatAt } from "@/lib/time";
+import { styleLabel } from "@/lib/utils";
 
 /** Label tones map onto the design tokens — no colour outside the palette. */
 export type LabelTone = "neutral" | "pigment" | "amber" | "rose" | "sage";
@@ -25,7 +26,7 @@ export function cardLabels(card: BoardCard): CardLabel[] {
 
   if (card.customerRevision) labels.push({ text: "Revision", tone: "pigment" });
   if (card.qcFail) labels.push({ text: "QC failed", tone: "rose" });
-  if (card.style) labels.push({ text: card.style, tone: "sage" });
+  if (card.style) labels.push({ text: styleLabel(card.style), tone: "sage" });
   if (!card.figuresResolved) labels.push({ text: "Figures ?", tone: "amber" });
   return labels;
 }

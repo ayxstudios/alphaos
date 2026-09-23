@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 
-import { cn } from "@/lib/utils";
+import { cn, styleLabel } from "@/lib/utils";
 import { Avatar, Button, Disclosure, StatusChip, useToast } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
 import { AlertTriangle, Brush, Camera, Check, X } from "@/components/ui/icons";
@@ -344,7 +344,7 @@ export function CardModal({
           <Meta label="Figures">
             <span className="text-sm text-ink">
               {card.figuresResolved ? card.figureCount : "Not set yet"}
-              {card.style ? ` · ${card.style}` : ""}
+              {card.style ? ` · ${styleLabel(card.style)}` : ""}
             </span>
           </Meta>
           <Meta label="Source">

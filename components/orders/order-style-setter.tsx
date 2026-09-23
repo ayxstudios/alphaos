@@ -11,6 +11,7 @@ import {
   teachOrderStyleNew,
   type StyleActionResult,
 } from "@/app/(app)/orders/actions";
+import { styleLabel } from "@/lib/utils";
 
 const NEW = "__new__";
 
@@ -85,10 +86,10 @@ export function OrderStyleSetter({ orderId, currentStyle: rawStyle, via, affecte
         </span>
         {defaulted ? (
           <span className="font-medium text-amber">
-            Guessed {currentStyle}. Please check it.
+            Guessed {styleLabel(currentStyle)}. Please check it.
           </span>
         ) : currentStyle ? (
-          <span className="font-medium text-ink">{currentStyle}</span>
+          <span className="font-medium text-ink">{styleLabel(currentStyle)}</span>
         ) : (
           <span className="font-medium text-amber">No style yet</span>
         )}
@@ -109,7 +110,7 @@ export function OrderStyleSetter({ orderId, currentStyle: rawStyle, via, affecte
         <Select value={choice} onChange={(e) => setChoice(e.currentTarget.value)} aria-label="Choose style" className="h-9 w-44">
           <option value="">Choose style…</option>
           {styles.map((s) => (
-            <option key={s.id} value={s.id}>{s.name}</option>
+            <option key={s.id} value={s.id}>{styleLabel(s.name)}</option>
           ))}
           <option value={NEW}>+ New style…</option>
         </Select>
@@ -130,16 +131,16 @@ export function OrderStyleSetter({ orderId, currentStyle: rawStyle, via, affecte
       {defaulted && defaultStyleId && (
         <div className="flex w-full flex-wrap items-center gap-2 rounded-input bg-canvas px-3 py-2">
           <span className="text-xs text-slate">
-            Defaulted to <strong className="text-ink">{currentStyle}</strong>. Keep it as the rule for this product, or change it above.
+            Defaulted to <strong className="text-ink">{styleLabel(currentStyle)}</strong>. Keep it as the rule for this product, or change it above.
           </span>
           <Button
             type="button"
             size="sm"
             className="ml-auto"
             loading={pending}
-            onClick={() => run(() => teachOrderStyle(orderId, defaultStyleId), `Confirmed as ${currentStyle}`)}
+            onClick={() => run(() => teachOrderStyle(orderId, defaultStyleId), `Confirmed as ${styleLabel(currentStyle)}`)}
           >
-            Confirm and keep {currentStyle}
+            Confirm and keep {styleLabel(currentStyle)}
           </Button>
         </div>
       )}
@@ -150,7 +151,7 @@ export function OrderStyleSetter({ orderId, currentStyle: rawStyle, via, affecte
             <div className="mb-2 flex items-start gap-2 rounded-input border border-amber/30 bg-amber/5 p-2.5 text-xs text-ink">
               <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber" />
               <span>
-                This product is currently learned as <strong>{currentStyle}</strong>. Changing the rule remaps{" "}
+                This product is currently learned as <strong>{styleLabel(currentStyle)}</strong>. Changing the rule remaps{" "}
                 <strong>{affected}</strong> order{affected === 1 ? "" : "s"} to <strong>{targetName}</strong>.
               </span>
             </div>

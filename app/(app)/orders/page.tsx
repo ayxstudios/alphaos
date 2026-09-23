@@ -22,7 +22,7 @@ import { ArrowRight, ChevronDown, Mail, Package, Plus, Search, Sliders, X } from
 import { OrdersOperationsTable, type OrdersDashboardRow } from "@/components/orders/orders-operations-table";
 import { OrdersFilterSelect } from "@/components/orders/orders-filter-select";
 import { OrdersViewPreference } from "@/components/orders/orders-view-preference";
-import { cn, plural } from "@/lib/utils";
+import { cn, plural, styleLabel } from "@/lib/utils";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
 import { resolveFigureCount, resolveProductType, type NormalizedVariation } from "@/lib/integrations/figures";
 import { stageTimer } from "@/lib/orders/stage-timers";
@@ -662,7 +662,7 @@ export default async function OrdersPage({
           items[0] && effectiveFigureCount(items[0]) != null
             ? `${effectiveFigureCount(items[0])} figure${effectiveFigureCount(items[0]) === 1 ? "" : "s"}`
             : null,
-          items[0]?.style ?? null,
+          items[0]?.style ? styleLabel(items[0].style) : null,
           physical ? "Physical" : items.some((item) => item.productType === "digital") ? "Digital" : null,
         ].filter(Boolean).join(" · "),
         // Same rule as the Overdue view: a shipped, delivered, complete or

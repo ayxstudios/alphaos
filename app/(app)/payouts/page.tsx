@@ -7,7 +7,7 @@ import { withUserContext } from "@/lib/db";
 import { loadShellData } from "@/lib/shell/context";
 import { earnings, orders, users, type EarningBreakdown } from "@/lib/db/schema";
 import { Badge, Button, DataPanel, EmptyState, Input, Page, PageHeader, Select, TableShell } from "@/components/ui";
-import { cn } from "@/lib/utils";
+import { cn, styleLabel } from "@/lib/utils";
 import { AlertTriangle, Wallet } from "@/components/ui/icons";
 import {
   MarkPeriodPaidButton,
@@ -52,7 +52,7 @@ function formatDate(date: Date | null): string {
 
 function styleSummary(breakdown: EarningBreakdown[] | null): string {
   if (!breakdown?.length) return "Unspecified";
-  const styles = [...new Set(breakdown.map((row) => row.style).filter(Boolean))];
+  const styles = [...new Set(breakdown.map((row) => row.style).filter((s): s is string => Boolean(s)).map(styleLabel))];
   return styles.length ? styles.join(", ") : "Unspecified";
 }
 
@@ -60,7 +60,7 @@ function details(breakdown: EarningBreakdown[] | null): string {
   if (!breakdown?.length) return "No style details";
   return breakdown
     .map((row) => {
-      const style = row.style ?? "No style";
+      const style = row.style ? styleLabel(row.style) : "No style";
       const figures = `${row.figureCount} figure${row.figureCount === 1 ? "" : "s"}`;
       return row.rate
         ? `${figures}, ${style}, $${Number(row.rate).toFixed(2)} each`
