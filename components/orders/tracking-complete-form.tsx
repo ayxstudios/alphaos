@@ -17,11 +17,17 @@ export function TrackingCompleteForm({
   source,
   provider,
   disabled = false,
+  bare = false,
+  onCancel,
 }: {
   orderId: string;
   source: "etsy" | "shopify" | "manual";
   provider?: PrintProvider;
   disabled?: boolean;
+  /** No top rule or margin: the caller already frames the form (the Print card). */
+  bare?: boolean;
+  /** Shows a Cancel button that closes the form without saving. */
+  onCancel?: () => void;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -64,7 +70,7 @@ export function TrackingCompleteForm({
   }
 
   return (
-    <div className="mt-4 border-t border-line/60 pt-4">
+    <div className={bare ? undefined : "mt-4 border-t border-line/60 pt-4"}>
       <div className="flex items-center gap-2 text-sm font-medium text-ink">
         <Truck size={16} />
         Add shipping tracking
@@ -129,20 +135,26 @@ export function TrackingCompleteForm({
               disabled={disabled || pending}
               onChange={(event) => setNotifyCustomer(event.currentTarget.checked)}
             />
-            <span>Send Shopify fulfillment notification to the customer</span>
+            <span>Email the customer their tracking from Shopify</span>
           </label>
         )}
-        <Button
-          type="button"
-          size="sm"
-          className="w-fit"
-          loading={pending}
-          disabled={disabled || !trackingNumber.trim()}
-          onClick={submit}
-        >
-          <CheckCircle size={15} />
-          {isShopify ? "Add tracking & fulfill in Shopify" : "Add tracking & mark shipped"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            loading={pending}
+            disabled={disabled || !trackingNumber.trim()}
+            onClick={submit}
+          >
+            <CheckCircle size={15} />
+            Save tracking and mark shipped
+          </Button>
+          {onCancel && (
+            <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={onCancel}>
+              Cancel
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

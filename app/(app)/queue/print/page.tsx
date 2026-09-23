@@ -207,8 +207,9 @@ export default async function PrintQueuePage() {
   return (
     <Page>
       <PageHeader
+        eyebrow={selected.name}
         title="Print"
-        description="Approved physical orders, oldest first."
+        description="Approved prints to send and track, oldest first."
         tourId="page:print"
       />
       <PrintQueue orders={vm} />
