@@ -74,6 +74,39 @@ export async function getShopSkusAndTitles(
   });
 }
 
+/**
+ * getShopOptionNames + getShopSkusAndTitles in ONE read of the same 500 most
+ * recent items (the settings shop card needs all three). Same rules, same
+ * limits; one transaction instead of two per shop (docs/PERF.md).
+ */
+export async function getShopEditorSuggestions(
+  user: RequestUser,
+  shopId: string,
+): Promise<{ optionNames: string[]; skus: string[]; titles: string[] }> {
+  return withUserContext(user, async (tx) => {
+    const rows = await tx
+      .select({ raw: orderItems.rawVariations, sku: orderItems.sku, title: orderItems.title })
+      .from(orderItems)
+      .innerJoin(orders, eq(orders.id, orderItems.orderId))
+      .where(eq(orders.shopId, shopId))
+      .orderBy(desc(orders.createdAt))
+      .limit(500);
+    const names = new Set<string>();
+    const skus = new Set<string>();
+    const titles = new Set<string>();
+    for (const r of rows) {
+      for (const v of (Array.isArray(r.raw) ? r.raw : []) as NormalizedVariation[]) {
+        // Skip the synthetic "Variant" pair and photo-ish keys.
+        if (v?.name && v.name !== "Variant") names.add(v.name);
+      }
+      if (r.sku) skus.add(r.sku);
+      if (r.title) titles.add(r.title);
+    }
+    const sort = (s: Set<string>) => [...s].sort((a, b) => a.localeCompare(b)).slice(0, 60);
+    return { optionNames: sort(names), skus: sort(skus), titles: sort(titles) };
+  });
+}
+
 export type ReresolveSummary = {
   ordersProcessed: number;
   itemsResolved: number;

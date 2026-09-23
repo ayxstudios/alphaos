@@ -237,7 +237,10 @@ export default async function OrderDetailPage({
 
   const staffView = user.role === "admin" || user.role === "va";
 
-  const [row] = await withUserContext(user, (tx) =>
+  // Speed (docs/PERF.md): every read keyed only by the order id starts at once,
+  // beside the order row, instead of waiting for it. RLS scopes each one the
+  // same way; if the order is not visible the row is empty and we 404 below.
+  const rowP = withUserContext(user, (tx) =>
     tx
       .select({
         id: orders.id,
@@ -264,6 +267,106 @@ export default async function OrderDetailPage({
       .leftJoin(customers, eq(customers.id, orders.customerId))
       .where(eq(orders.id, id)),
   );
+  const itemsP = withUserContext(user, (tx) =>
+    tx
+      .select({
+        id: orderItems.id,
+        title: orderItems.title,
+        sku: orderItems.sku,
+        variation: orderItems.variation,
+        options: orderItems.options,
+        figureCount: orderItems.figureCount,
+        figureCountSource: orderItems.figureCountSource,
+        style: orderItems.style,
+        styleLocked: orderItems.styleLocked,
+        productType: orderItems.productType,
+      })
+      .from(orderItems)
+      .where(eq(orderItems.orderId, id)),
+  );
+  const assignmentP = withUserContext(user, (tx) =>
+    tx
+      .select({ name: users.name, email: users.email, dueAt: assignments.dueAt, assignedAt: assignments.assignedAt })
+      .from(assignments)
+      .innerJoin(users, eq(users.id, assignments.designerId))
+      .where(and(eq(assignments.orderId, id), eq(assignments.active, true)))
+      .limit(1),
+  );
+  const qcP = withUserContext(user, (tx) =>
+    tx
+      .select({
+        result: qcChecks.result,
+        reason: qcChecks.reason,
+        createdAt: qcChecks.createdAt,
+      })
+      .from(qcChecks)
+      .where(eq(qcChecks.orderId, id))
+      .orderBy(desc(qcChecks.createdAt))
+      .limit(5),
+  );
+  const printP = withUserContext(user, (tx) =>
+    tx
+      .select({
+        provider: printJobs.provider,
+        method: printJobs.method,
+        status: printJobs.status,
+        trackingNumber: printJobs.trackingNumber,
+        trackingCompany: printJobs.trackingCompany,
+        trackingUrl: printJobs.trackingUrl,
+        shopifyFulfillmentId: printJobs.shopifyFulfillmentId,
+        shopifySyncedAt: printJobs.shopifySyncedAt,
+        platformSyncedAt: printJobs.platformSyncedAt,
+        platformSyncError: printJobs.platformSyncError,
+        createdAt: printJobs.createdAt,
+      })
+      .from(printJobs)
+      .where(eq(printJobs.orderId, id))
+      .orderBy(desc(printJobs.createdAt)),
+  );
+  // The customer thread is staff-only (it is dropped for designers below), so a
+  // designer's page does not read it at all.
+  const timelineP = staffView
+    ? withUserContext(user, (tx) =>
+        tx
+          .select({
+            id: messages.id,
+            direction: messages.direction,
+            status: messages.status,
+            subject: messages.subject,
+            body: messages.body,
+            address: messages.address,
+            metadata: messages.metadata,
+            sentAt: messages.sentAt,
+            createdAt: messages.createdAt,
+          })
+          .from(messages)
+          .where(eq(messages.orderId, id))
+          .orderBy(desc(messages.createdAt))
+          .limit(50),
+      )
+    : Promise.resolve([]);
+  const detailP = getCardDetail(user, id);
+  const proofP = withUserContext(user, (tx) =>
+    tx
+      .select({
+        decision: proofs.decision,
+        sentAt: proofs.sentAt,
+        firstViewedAt: proofs.firstViewedAt,
+        viewedAt: proofs.viewedAt,
+        decidedAt: proofs.decidedAt,
+        revisionNotes: proofs.revisionNotes,
+        createdAt: proofs.createdAt,
+      })
+      .from(proofs)
+      .where(eq(proofs.orderId, id))
+      .orderBy(desc(proofs.createdAt))
+      .limit(1),
+  );
+  const pending = [itemsP, assignmentP, qcP, printP, timelineP, detailP, proofP];
+  // A hidden or missing order 404s before these are awaited; never leave them unhandled.
+  for (const promise of pending) promise.catch(() => {});
+
+  const [row] = await rowP;
 
   if (!row) notFound();
   // Designers see the customer's first name only: never the email, the last
@@ -271,115 +374,23 @@ export default async function OrderDetailPage({
   // `customers` from them; this also holds on a connection that bypasses RLS.
   const order = staffView ? row : { ...row, customerEmail: null, customerLast: null };
 
-  const [items, assignment, qcRows, printRows, timelineRows, detail, designers, proofRows] = await Promise.all([
-    withUserContext(user, (tx) =>
-      tx
-        .select({
-          id: orderItems.id,
-          title: orderItems.title,
-          sku: orderItems.sku,
-          variation: orderItems.variation,
-          options: orderItems.options,
-          figureCount: orderItems.figureCount,
-          figureCountSource: orderItems.figureCountSource,
-          style: orderItems.style,
-          styleLocked: orderItems.styleLocked,
-          productType: orderItems.productType,
-        })
-        .from(orderItems)
-        .where(eq(orderItems.orderId, id)),
-    ),
-    withUserContext(user, (tx) =>
-      tx
-        .select({ name: users.name, email: users.email, dueAt: assignments.dueAt, assignedAt: assignments.assignedAt })
-        .from(assignments)
-        .innerJoin(users, eq(users.id, assignments.designerId))
-        .where(and(eq(assignments.orderId, id), eq(assignments.active, true)))
-        .limit(1),
-    ),
-    withUserContext(user, (tx) =>
-      tx
-        .select({
-          result: qcChecks.result,
-          reason: qcChecks.reason,
-          createdAt: qcChecks.createdAt,
-        })
-        .from(qcChecks)
-        .where(eq(qcChecks.orderId, id))
-        .orderBy(desc(qcChecks.createdAt))
-        .limit(5),
-    ),
-    withUserContext(user, (tx) =>
-      tx
-        .select({
-          provider: printJobs.provider,
-          method: printJobs.method,
-          status: printJobs.status,
-          trackingNumber: printJobs.trackingNumber,
-          trackingCompany: printJobs.trackingCompany,
-          trackingUrl: printJobs.trackingUrl,
-          shopifyFulfillmentId: printJobs.shopifyFulfillmentId,
-          shopifySyncedAt: printJobs.shopifySyncedAt,
-          platformSyncedAt: printJobs.platformSyncedAt,
-          platformSyncError: printJobs.platformSyncError,
-          createdAt: printJobs.createdAt,
-        })
-        .from(printJobs)
-        .where(eq(printJobs.orderId, id))
-        .orderBy(desc(printJobs.createdAt)),
-    ),
-    withUserContext(user, (tx) =>
-      tx
-        .select({
-          id: messages.id,
-          direction: messages.direction,
-          status: messages.status,
-          subject: messages.subject,
-          body: messages.body,
-          address: messages.address,
-          metadata: messages.metadata,
-          sentAt: messages.sentAt,
-          createdAt: messages.createdAt,
-        })
-        .from(messages)
-        .where(eq(messages.orderId, id))
-        .orderBy(desc(messages.createdAt))
-        .limit(50),
-    ),
-    getCardDetail(user, id),
-    withUserContext(user, (tx) =>
-      tx
-        .select({ id: users.id, name: users.name, email: users.email })
-        .from(users)
-        .innerJoin(designerBusinesses, eq(designerBusinesses.userId, users.id))
-        .where(and(
-          eq(users.role, "designer"),
-          eq(users.active, true),
-          eq(designerBusinesses.businessId, order.businessId),
-        ))
-        .orderBy(asc(users.name), asc(users.email)),
-    ),
-    withUserContext(user, (tx) =>
-      tx
-        .select({
-          decision: proofs.decision,
-          sentAt: proofs.sentAt,
-          firstViewedAt: proofs.firstViewedAt,
-          viewedAt: proofs.viewedAt,
-          decidedAt: proofs.decidedAt,
-          revisionNotes: proofs.revisionNotes,
-          createdAt: proofs.createdAt,
-        })
-        .from(proofs)
-        .where(eq(proofs.orderId, id))
-        .orderBy(desc(proofs.createdAt))
-        .limit(1),
-    ),
-  ]);
-
-  const shopifyMedia =
+  // Reads that need the order row (its business, its shop) start now, and the
+  // whole page waits once for the slowest read instead of for a chain of them.
+  const designersP = withUserContext(user, (tx) =>
+    tx
+      .select({ id: users.id, name: users.name, email: users.email })
+      .from(users)
+      .innerJoin(designerBusinesses, eq(designerBusinesses.userId, users.id))
+      .where(and(
+        eq(users.role, "designer"),
+        eq(users.active, true),
+        eq(designerBusinesses.businessId, order.businessId),
+      ))
+      .orderBy(asc(users.name), asc(users.email)),
+  );
+  const shopifyMediaP: Promise<ShopifyProductMedia[]> =
     order.source === "shopify"
-      ? await withUserContext(user, (tx) => getShopCredentials(tx, order.shopId))
+      ? withUserContext(user, (tx) => getShopCredentials(tx, order.shopId))
           .then((creds) => freshShopifyCredentials(creds as ShopifyCredentials))
           .then((creds) => fetchShopifyOrderProductMedia(order.shopId, order.platformOrderId, creds))
           .catch((e) => {
@@ -396,7 +407,33 @@ export default async function OrderDetailPage({
             );
             return [] as ShopifyProductMedia[];
           })
-      : [];
+      : Promise.resolve([]);
+  // Style setter data — the order's first product, its current rule match, and
+  // how many orders a rule change would touch. Powers the inline "Set style".
+  const styleSetterP = itemsP.then((items) => {
+    const primaryProduct = items[0] ? { title: items[0].title, sku: items[0].sku } : null;
+    return staffView && primaryProduct
+      ? withUserContext(user, async (tx) => {
+          const list = await tx
+            .select({ id: stylesTable.id, name: stylesTable.name })
+            .from(stylesTable)
+            .where(eq(stylesTable.businessId, order.businessId))
+            .orderBy(asc(stylesTable.name));
+          const match = await currentMatchForProduct(tx, order.businessId, primaryProduct);
+          const affected = await countOrdersForProduct(tx, order.businessId, primaryProduct);
+          return {
+            styles: list,
+            currentStyle: items[0]!.style ?? null,
+            via: match.via,
+            affected,
+            locked: !!items[0]!.styleLocked,
+          };
+        })
+      : null;
+  });
+
+  const [items, assignment, qcRows, printRows, timelineRows, detail, designers, proofRows, shopifyMedia, styleSetter] =
+    await Promise.all([itemsP, assignmentP, qcP, printP, timelineP, detailP, designersP, proofP, shopifyMediaP, styleSetterP]);
 
   const timeline = staffView ? timelineRows : [];
   const customerName = staffView
@@ -467,28 +504,6 @@ export default async function OrderDetailPage({
             ? `Sent, not opened yet (${formatAge(now.getTime() - latestProof.sentAt.getTime())})`
             : "Waiting to send";
 
-  // Style setter data — the order's first product, its current rule match, and
-  // how many orders a rule change would touch. Powers the inline "Set style".
-  const primaryProduct = items[0] ? { title: items[0].title, sku: items[0].sku } : null;
-  const styleSetter =
-    editable && primaryProduct
-      ? await withUserContext(user, async (tx) => {
-          const list = await tx
-            .select({ id: stylesTable.id, name: stylesTable.name })
-            .from(stylesTable)
-            .where(eq(stylesTable.businessId, order.businessId))
-            .orderBy(asc(stylesTable.name));
-          const match = await currentMatchForProduct(tx, order.businessId, primaryProduct);
-          const affected = await countOrdersForProduct(tx, order.businessId, primaryProduct);
-          return {
-            styles: list,
-            currentStyle: items[0]!.style ?? null,
-            via: match.via,
-            affected,
-            locked: !!items[0]!.styleLocked,
-          };
-        })
-      : null;
 
   return (
     <Page className="max-w-6xl">
