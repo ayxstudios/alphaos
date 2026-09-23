@@ -38,8 +38,9 @@ export function TeamPanel({ members, currentUserId }: { members: TeamMember[]; c
     designers: members.filter((m) => m.active && m.role === "designer"),
     inactive: members.filter((m) => !m.active),
   };
-  const tabs: { id: Filter; label: string }[] = [
-    { id: "staff", label: "Admins and VAs" },
+  // `short` keeps the three tabs on one line on a phone.
+  const tabs: { id: Filter; label: string; short?: string }[] = [
+    { id: "staff", label: "Admins and VAs", short: "Staff" },
     { id: "designers", label: "Designers" },
     { id: "inactive", label: "Deactivated" },
   ];
@@ -89,7 +90,14 @@ export function TeamPanel({ members, currentUserId }: { members: TeamMember[]; c
                 focusRing,
               )}
             >
-              {t.label}
+              {t.short ? (
+                <>
+                  <span className="sm:hidden">{t.short}</span>
+                  <span className="hidden sm:inline">{t.label}</span>
+                </>
+              ) : (
+                t.label
+              )}
               <span className="text-xs tabular-nums opacity-80">{groups[t.id].length}</span>
             </button>
           ))}
@@ -306,6 +314,7 @@ function ResetPasswordDrawer({
           email={done.email}
           password={done.password}
           onDone={close}
+          inactive={!member.active}
         />
       ) : member ? (
         <form onSubmit={submit} className="flex flex-col gap-4">

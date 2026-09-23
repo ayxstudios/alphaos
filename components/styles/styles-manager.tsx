@@ -23,6 +23,8 @@ export type StyleVM = {
   titleMatches: string[];
   isDefault: boolean;
   designerIds: string[];
+  /** Unfinished orders tagged with this style (deleting it blocks their pay). */
+  openOrders: number;
 };
 
 export type DesignerOption = { id: string; name: string; styles: string[] };
@@ -154,7 +156,13 @@ function StyleCard({
       setNameDraft(style.name);
       return;
     }
-    onRun(() => renameStyle(style.id, n), "Style renamed");
+    // A refused name or rate goes back to the saved value, so the field never
+    // shows something that did not save.
+    onRun(async () => {
+      const res = await renameStyle(style.id, n);
+      if (!res.ok) setNameDraft(style.name);
+      return res;
+    }, "Style renamed");
   }
 
   function addMatch() {
@@ -174,7 +182,11 @@ function StyleCard({
       setRateDraft(style.perFigureRate ?? "");
       return;
     }
-    onRun(() => setStyleRate(style.id, r), "Rate saved");
+    onRun(async () => {
+      const res = await setStyleRate(style.id, r);
+      if (!res.ok) setRateDraft(style.perFigureRate ?? "");
+      return res;
+    }, "Rate saved");
   }
 
   function removeMatch(m: string) {
@@ -225,7 +237,11 @@ function StyleCard({
             variant="ghost"
             size="sm"
             onClick={() => {
-              if (confirm(`Delete the "${style.name}" style? Designers will keep their other styles.`)) {
+              const tagged =
+                style.openOrders > 0
+                  ? ` ${style.openOrders} unfinished order${style.openOrders === 1 ? " is" : "s are"} tagged with it: their designer${style.openOrders === 1 ? "" : "s"} cannot be paid for ${style.openOrders === 1 ? "it" : "them"} until you give ${style.openOrders === 1 ? "it" : "them"} another style.`
+                  : " No unfinished orders use it.";
+              if (confirm(`Delete the "${style.name}" style?${tagged} Designers will keep their other styles.`)) {
                 onRun(() => deleteStyle(style.id), "Style deleted");
               }
             }}

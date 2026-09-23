@@ -108,3 +108,14 @@ first, then laptop 1280x800. Screenshots: `var/e2e-shots/designer-r2/`
 PC32169 and PC32151 complete (earnings 16.00 pending, one blocked); style
 `r2-norate` (rate null) exists for the blocked case; PC32165 assigned to
 R2D Designer B (active); PC32148 in design for staging-designer.
+
+## Decisions
+
+Polish pass 2026-09-24: every other P3 above is fixed on this branch (see git log). Not changed:
+
+- A customer revision keeps the original assignment deadline: how long a revision round gets, and whether a late revision counts against on-time and pay, is a business rule for Yousif, not a defect.
+- Designer /orders/[id] ("DUE" is the customer SLA, CUSTOMER reads "Customer"): that page lives in app/(app)/orders, the VA/admin lane's files in this pass.
+- The denied /orders/[id] 404 body with HTTP 200: same page, same lane.
+- /api/alpha/chat forwarding any orderId: already fixed on this branch (0916088, security r2).
+- /styles cannot clear a rate or add a style without one: a deliberate guard (a missing rate blocks payouts); legacy nulls are handled by the blocked-earning flow.
+- Out of lane (VA /orders search scope, /qc hydration #418): for the VA/admin lane.

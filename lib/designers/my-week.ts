@@ -10,8 +10,10 @@ import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
 import { activityLog, assignments, earnings, orders, users } from "@/lib/db/schema";
 import { liveOrderWhere } from "@/lib/orders/archive";
+import { WITH_CUSTOMER_STATUSES } from "@/lib/orders/board-constants";
 import { loadDesignerContact, type DesignerContact } from "@/lib/designers/profile";
-import { startOfWeekInTimezone, formatInTimezone } from "@/lib/designers/quiet-hours";
+import { DEFAULT_TIMEZONE, startOfWeekInTimezone, formatInTimezone } from "@/lib/designers/quiet-hours";
+import { formatDeadline } from "@/lib/time";
 
 export type UpcomingDeadline = {
   orderId: string;
@@ -33,6 +35,8 @@ export type DesignerWeek = {
   earningsToday: number;
   earningsThisMonth: number;
   activeOrders: number;
+  /** Passed QC, not complete yet: with the customer (approval, print, delivery). */
+  withCustomer: number;
   upcoming: UpcomingDeadline[];
 };
 
@@ -107,6 +111,12 @@ async function loadWeek(tx: Tx, target: string): Promise<DesignerWeek> {
     .where(and(inArray(orders.status, ["ready_to_assign", "in_design", "awaiting_qc"]), liveOrderWhere()))
     .orderBy(sql`${myDue} asc nulls last`);
 
+  const [withCustomerRow] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(orders)
+    .innerJoin(assignments, and(eq(assignments.orderId, orders.id), eq(assignments.active, true), eq(assignments.designerId, target)))
+    .where(and(inArray(orders.status, [...WITH_CUSTOMER_STATUSES]), liveOrderWhere()));
+
   const judged = Number(completedThisWeek?.judged ?? 0);
   const onTime = Number(completedThisWeek?.onTime ?? 0);
 
@@ -122,12 +132,13 @@ async function loadWeek(tx: Tx, target: string): Promise<DesignerWeek> {
     earningsToday: Number(dayTotal?.total ?? 0),
     earningsThisMonth: Number(monthTotal?.total ?? 0),
     activeOrders: activeRows.length,
+    withCustomer: Number(withCustomerRow?.n ?? 0),
     upcoming: activeRows.slice(0, 6).map((r) => ({
       orderId: r.orderId,
       orderNumber: r.orderNumber ?? r.fallbackNumber,
       status: r.status,
       dueAt: r.dueAt?.toISOString() ?? null,
-      dueAtLocal: r.dueAt ? formatInTimezone(r.dueAt, contact?.timezone) : null,
+      dueAtLocal: r.dueAt ? formatDeadline(r.dueAt, contact?.timezone ?? DEFAULT_TIMEZONE) : null,
     })),
   };
 }

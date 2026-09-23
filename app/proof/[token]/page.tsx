@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 
 import { getProofView } from "@/lib/proofs/data";
 import { ProofClient } from "./proof-client";
@@ -18,7 +19,9 @@ export default async function ProofPage({
   const { token } = await params;
   const proof = await getProofView(token);
 
-  if (!proof) return <InvalidLink />;
+  // A real 404 status (not a 200 with a "not found" body); the calm page
+  // is ./not-found.tsx.
+  if (!proof) notFound();
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-8 sm:py-12">
@@ -51,23 +54,12 @@ export default async function ProofPage({
         hasPreview={proof.hasPreview}
         actionable={proof.actionable}
         initialDecision={proof.decision}
+        superseded={proof.superseded}
       />
 
       <footer className="pt-2 text-center text-xs text-slate">
         {proof.businessName}
       </footer>
-    </main>
-  );
-}
-
-function InvalidLink() {
-  return (
-    <main className="mx-auto flex min-h-[60vh] w-full max-w-md flex-col items-center justify-center gap-3 px-4 text-center">
-      <h1 className="text-2xl font-semibold text-ink">Link not found</h1>
-      <p className="text-sm text-slate">
-        This proof link is invalid or has expired. If you think this is a
-        mistake, please reply to the email we sent you.
-      </p>
     </main>
   );
 }

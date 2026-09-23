@@ -87,3 +87,11 @@ Screenshots: `var/e2e-shots/designer/` (gitignored).
   production infra and was not changed.
 - Email sending is off on staging, so QC Pass ("Send email & pass QC") always
   fails and the order stays in Awaiting QC.
+
+## Decisions
+
+Polish pass 2026-09-24: the P2s above were fixed before round 2 (re-verified in docs/QA-2026-09-23-designer-r2.md); every other P3 is fixed on this branch. Not changed:
+
+- Designer /orders/[id] shows "Unknown customer" and a "Review QC" next step: the page is app/(app)/orders plus components/orders, the VA/admin lane's files in this pass.
+- Out of lane (empty /orders/[id]/complete for Shopify imports, /qc hydration #418, QC fail dialog pre-selection): for the VA/admin lane.
+- Environment (R2 CORS for alphaos-staging, email sending off on staging): infrastructure settings, not code.

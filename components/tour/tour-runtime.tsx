@@ -66,6 +66,15 @@ function overlap(a: Box, b: Box) {
   return w > 0 && h > 0 ? w * h : 0;
 }
 
+/** The lit ring around a target: 4px of air, never past the screen edge (the 2px outline is outside). */
+function ringBox(r: DOMRect): Box {
+  const top = Math.max(2, r.top - 4);
+  const left = Math.max(2, r.left - 4);
+  const bottom = Math.min(window.innerHeight - 2, r.bottom + 4);
+  const right = Math.min(window.innerWidth - 2, r.right + 4);
+  return { top, left, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
+}
+
 /** A small framed portrait, drawn in the palette: the upload demo's sample file. */
 function SamplePortrait({ className }: { className?: string }) {
   return (
@@ -503,7 +512,8 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
       const lit = litRef.current;
       const ring = ringRef.current;
       const r = lit && lit.isConnected ? lit.getBoundingClientRect() : null;
-      const box = r && r.width > 0 && r.height > 0 ? { top: r.top - 4, left: r.left - 4, width: r.width + 8, height: r.height + 8 } : null;
+      // Padded ring, kept inside the viewport (a phone tab sits flush with the edge).
+      const box = r && r.width > 0 && r.height > 0 ? ringBox(r) : null;
       const turn = phaseRef.current !== "demo";
       if (ring) {
         const key = box ? `${Math.round(box.left)},${Math.round(box.top)},${Math.round(box.width)},${Math.round(box.height)},${phaseRef.current}` : "none";

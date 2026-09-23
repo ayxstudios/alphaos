@@ -12,12 +12,14 @@ import {
   earnings,
   qcChecks,
   proofs,
+  designerProfiles,
 } from "@/lib/db/schema";
+import { DEFAULT_TIMEZONE, isValidTimezone } from "@/lib/designers/quiet-hours";
 import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
 import { issueLabels } from "@/lib/proofs/issues";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { liveOrderWhere } from "@/lib/orders/archive";
-import { COMPLETE_COLUMN_MAX, COMPLETE_COLUMN_WINDOW_DAYS } from "@/lib/orders/board-constants";
+import { COMPLETE_COLUMN_MAX, COMPLETE_COLUMN_WINDOW_DAYS, WITH_CUSTOMER_STATUSES } from "@/lib/orders/board-constants";
 import type { OrderStatus } from "./transitions";
 import type { ProofAnnotation } from "@/lib/db/schema";
 
@@ -298,11 +300,15 @@ export type DesignerBoard = {
     failedQc: BoardCard[];
     awaitingQc: BoardCard[];
     revisions: BoardCard[];
+    /** Passed QC, now with the customer (approval, print, delivery): read only. */
+    withCustomer: BoardCard[];
     complete: BoardCard[];
   };
   dailyEarnings: number;
   periodEarnings: number;
   earningHistory: DesignerEarningHistory[];
+  /** The board owner's own timezone (their deadlines are shown in it). */
+  timeZone: string;
 };
 
 export type DesignerEarningHistory = {
@@ -356,7 +362,7 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
     // The live columns (queue/in-design/QC) and the capped Complete column are
     // independent queries — same with the earnings figures below — so they all
     // go over the wire together instead of one round trip after another.
-    const [activeRows, completeRows, [daily], [period], earningRows] = await Promise.all([
+    const [activeRows, completeRows, [daily], [period], earningRows, [profile]] = await Promise.all([
       tx
         .select(BOARD_ROW_SELECT)
         .from(orders)
@@ -364,7 +370,7 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
           assignments,
           and(eq(assignments.orderId, orders.id), eq(assignments.active, true), eq(assignments.designerId, target)),
         )
-        .where(assignedToTarget(["ready_to_assign", "in_design", "awaiting_qc"])) as Promise<OrderRow[]>,
+        .where(assignedToTarget(["ready_to_assign", "in_design", "awaiting_qc", ...WITH_CUSTOMER_STATUSES])) as Promise<OrderRow[]>,
       tx
         .select(BOARD_ROW_SELECT)
         .from(orders)
@@ -406,6 +412,11 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
         .where(eq(earnings.designerId, target))
         .orderBy(desc(earnings.createdAt))
         .limit(20),
+      tx
+        .select({ timezone: designerProfiles.timezone })
+        .from(designerProfiles)
+        .where(eq(designerProfiles.userId, target))
+        .limit(1),
     ]);
 
     const rows = [...activeRows, ...completeRows];
@@ -427,8 +438,13 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
           const card = cards.find((c) => c.orderId === r.id);
           return r.status === "in_design" && r.revisionCount > 0 && !card?.qcFail;
         }),
+        // After a QC pass the order is out of the designer's hands until it
+        // completes; it stays visible here (quiet, no countdown) so a pass
+        // never looks like the card vanished.
+        withCustomer: pick((r) => (WITH_CUSTOMER_STATUSES as readonly string[]).includes(r.status)),
         complete: cards.filter((c) => meta.get(c.orderId)!.status === "complete"),
       },
+      timeZone: isValidTimezone(profile?.timezone ?? null) ? (profile?.timezone as string) : DEFAULT_TIMEZONE,
       dailyEarnings: Number(daily?.total ?? 0),
       periodEarnings: Number(period?.total ?? 0),
       earningHistory: earningRows.map((earning) => ({

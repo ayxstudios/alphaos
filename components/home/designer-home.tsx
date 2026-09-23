@@ -6,6 +6,8 @@ import { ArrowRight, Calendar, Columns } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import type { RequestUser } from "@/lib/db";
 import { getDesignerHome } from "@/lib/home/designer";
+import { DEFAULT_TIMEZONE } from "@/lib/designers/quiet-hours";
+import { formatDeadline } from "@/lib/time";
 import { pctDelta } from "@/lib/home/shared";
 import { DayLine, HomeSection, RowLabel, StatTile } from "./primitives";
 
@@ -17,9 +19,9 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
   const h = await getDesignerHome(user);
   const active = h.board.queue + h.board.inDesign + h.board.revisions + h.board.awaitingQc;
   const next = h.week.upcoming.slice(0, 5);
-  const tz = h.week.contact?.timezone || "Australia/Melbourne";
-  const fmtDue = (iso: string | null) =>
-    iso ? new Intl.DateTimeFormat("en-AU", { timeZone: tz, weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(new Date(iso)).replace(",", "") : "No date";
+  // The designer's own zone (same as the board card and My Week), zone named.
+  const tz = h.week.contact?.timezone || DEFAULT_TIMEZONE;
+  const fmtDue = (iso: string | null) => formatDeadline(iso, tz, "No date");
   const sentence = [
     h.overdue ? `${h.overdue} order${h.overdue === 1 ? " is" : "s are"} late` : h.dueToday ? `${h.dueToday} due today` : "Nothing due today",
     `${active} on your board`,
@@ -70,7 +72,7 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
             </Link>
           </div>
         </HomeSection>
-        <HomeSection title="My board" description={`${active} live orders`} className="lg:col-span-2">
+        <HomeSection title="My board" description={`${active} live order${active === 1 ? "" : "s"}`} className="lg:col-span-2">
           <StackedBar
             segments={[
               { key: "queue", label: "Queue", value: h.board.queue, color: "c3" },
@@ -81,6 +83,11 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
             height={22}
             ariaLabel="My board by column"
           />
+          {h.board.withCustomer > 0 && (
+            <p className="text-sm text-slate">
+              {h.board.withCustomer} passed QC and {h.board.withCustomer === 1 ? "is" : "are"} with the customer.
+            </p>
+          )}
           {h.limits.maxActive > 0 && <Meter label="Active orders" value={active} max={h.limits.maxActive} />}
           {h.limits.dailyCapacity > 0 && <Meter label="Assigned today" value={h.assignedToday} max={h.limits.dailyCapacity} />}
         </HomeSection>

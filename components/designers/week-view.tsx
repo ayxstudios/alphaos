@@ -36,7 +36,10 @@ export function DesignerWeekView({ week }: { week: DesignerWeek }) {
       <DataPanel>
         <div className="border-b border-line px-4 py-3">
           <h2 className="text-sm font-semibold text-ink">Next deadlines</h2>
-          <p className="text-xs text-slate">Week starting {week.weekStartLabel} · {week.activeOrders} order{week.activeOrders === 1 ? "" : "s"} in flight</p>
+          <p className="text-xs text-slate">
+            Week starting {week.weekStartLabel} · {week.activeOrders} order{week.activeOrders === 1 ? "" : "s"} in flight
+            {week.withCustomer > 0 ? ` · ${week.withCustomer} with the customer` : ""}
+          </p>
         </div>
         {week.upcoming.length === 0 ? (
           <EmptyState icon={Calendar} headline="Nothing on deck" body="No active orders right now." />
@@ -47,7 +50,9 @@ export function DesignerWeekView({ week }: { week: DesignerWeek }) {
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-ink">{u.orderNumber}</p>
                   <p className="text-xs text-slate">
-                    {stateLabel(u.status as OrderStatus)}
+                    {/* A queued card is assigned and waiting on the designer to
+                        start it: "Ready to assign" is the staff-side name. */}
+                    {u.status === "ready_to_assign" ? "In your queue" : stateLabel(u.status as OrderStatus)}
                     {u.dueAtLocal ? ` · due ${u.dueAtLocal}` : ""}
                   </p>
                 </div>
@@ -73,7 +78,7 @@ export function DesignerWeekView({ week }: { week: DesignerWeek }) {
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate">Timezone</p>
-            <p className="text-ink">{c?.timezoneRaw ?? "Not set"}</p>
+            <p className="text-ink">{c?.timezoneRaw ?? (c ? `Not set (${c.timezone} used)` : "Not set")}</p>
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate">Quiet hours</p>

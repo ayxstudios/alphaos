@@ -17,6 +17,7 @@ const SECTIONS: { key: ColKey; title: string; empty: string }[] = [
   { key: "failedQc", title: "Failed QC, fix these first", empty: "Nothing failed." },
   { key: "revisions", title: "Revisions", empty: "No revisions." },
   { key: "awaitingQc", title: "Awaiting QC", empty: "Nothing sent for QC yet." },
+  { key: "withCustomer", title: "With the customer", empty: "Nothing with customers." },
   { key: "complete", title: `Complete (last ${COMPLETE_COLUMN_WINDOW_DAYS} days)`, empty: "Nothing finished yet." },
 ];
 
@@ -25,8 +26,8 @@ const SECTIONS: { key: ColKey; title: string; empty: string }[] = [
  * big tap button for the one thing a designer actually does next — "Start"
  * moves a queued order into design, "Submit for QC" sends a designed order on
  * (the server still enforces a submission exists first; a rejection just
- * shows the same toast the desktop board shows). Awaiting QC and Complete are
- * read-only — there is nothing left for the designer to do there.
+ * shows the same toast the desktop board shows). Awaiting QC, With the
+ * customer and Complete are read-only: there is nothing left for the designer to do there.
  */
 export function MobileDesignerBoard({
   cols,

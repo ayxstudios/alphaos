@@ -23,11 +23,14 @@ export function CredentialsOnce({
   email,
   password,
   onDone,
+  inactive = false,
 }: {
   lead: string;
   email: string;
   password: string;
   onDone: () => void;
+  /** A deactivated account: the password works only once they are reactivated. */
+  inactive?: boolean;
 }) {
   const toast = useToast();
   const [copied, setCopied] = useState(false);
@@ -56,7 +59,9 @@ export function CredentialsOnce({
         </div>
       </dl>
       <p className="text-sm text-slate">
-        This password is shown only now. Send it to them directly; they can sign in straight away.
+        {inactive
+          ? "This password is shown only now. They are deactivated, so it works only after you reactivate them."
+          : "This password is shown only now. Send it to them directly; they can sign in straight away."}
       </p>
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button type="button" variant="secondary" className="min-h-11 sm:min-h-0" onClick={copy}>

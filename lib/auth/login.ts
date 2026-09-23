@@ -37,7 +37,8 @@ export type AuthedUser = {
  * Verify credentials with database-backed rate limiting.
  *
  * Uses the raw `db` handle deliberately: this runs before any session exists,
- * against tables with no RLS (`user`, `login_attempts`). Returns the user on
+ * against `user` (SELECT open to every context, 0040) and `login_attempts`
+ * (no RLS). Returns the user on
  * success, `null` on bad credentials, and throws AccountLockedError when the
  * email is locked out (10 failures → 15-minute lock).
  */

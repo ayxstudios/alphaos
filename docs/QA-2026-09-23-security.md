@@ -87,3 +87,12 @@ detail, comments, uploads) can reach any order and the `customers` table. The
 app behaved correctly under enforced RLS on staging. Before or with the
 switch: merge the P1 order-page fix, and fix session revocation soon after.
 The migration review is still open, so run 0036 on a branch first.
+
+## Decisions
+
+Polish pass 2026-09-24: revocation, the per-IP login limit and the designer RLS P2s were fixed in round 2 (f32e55f, afda2aa, d6b2136, plus 0040 in this pass); the other P3s not listed here are fixed on this branch. Not changed:
+
+- Proof and upload tokens never expire: customers reopen old links for revisions and tracking, so an expiry window is a product decision for Yousif.
+- The presigned PUT does not bind the size: signing Content-Length could not be verified against R2 locally, oversize objects are already refused at save, and a bucket lifecycle rule for unreferenced objects is the better fix.
+- Manual order `r2Keys` are not prefix-checked: staff only, and the action is app/(app)/orders/new, the VA/admin lane's files in this pass.
+- Invisible orders render soft 404s on /orders/[id]: same lane (wrong proof and upload tokens now answer HTTP 404).

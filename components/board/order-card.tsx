@@ -3,6 +3,7 @@ import { AlertTriangle, Camera } from "@/components/ui/icons";
 import { Countdown } from "./countdown";
 import { cardLabels, LABEL_CLASS } from "./card-meta";
 import type { BoardCard } from "@/lib/orders/board-data";
+import { isWithCustomer } from "@/lib/orders/board-constants";
 
 /**
  * Presentational order card — Trello-style with a cover photo, colour labels
@@ -78,7 +79,7 @@ export function OrderCard({
           <span className="min-w-0 truncate text-sm font-semibold text-ink">
             {card.orderNumber}
           </span>
-          <Countdown dueAt={card.dueAt} done={card.status === "complete"} />
+          <Countdown dueAt={card.dueAt} done={card.status === "complete"} withCustomer={isWithCustomer(card.status)} />
         </div>
 
         {card.title && (

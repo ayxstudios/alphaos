@@ -86,52 +86,56 @@ export function TopBar({
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-line bg-surface/95 px-4 backdrop-blur-none sm:px-5">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
+      <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
         {mobileMenuButton}
-        <Popover
-          align="start"
-          ariaLabel="Switch workspace"
-          triggerClassName={cn(
-            "inline-flex h-10 max-w-[13rem] items-center gap-2 rounded-input border border-line bg-surface px-2.5 text-sm font-medium text-ink",
-            "transition-colors duration-150 ease-standard motion-hover hover:bg-canvas",
-            pending && "opacity-60",
-          )}
-          trigger={
-            <>
-              <Building size={16} className="shrink-0 text-pigment" />
-              <span className="truncate">{selected.name}</span>
-              <ChevronDown size={15} className="shrink-0 text-slate" />
-            </>
-          }
-        >
-          {(close) => (
-            <div className="flex flex-col">
-              <p className="px-2 py-1.5 text-xs font-medium uppercase text-slate">
-                Workspace
-              </p>
-              {options.map((o) => {
-                const active = o.id === selected.id;
-                return (
-                  <button
-                    key={o.id}
-                    type="button"
-                    role="menuitem"
-                    onClick={() => choose(o.id, close)}
-                    className={cn(
-                      "flex items-center justify-between gap-3 rounded-input px-2 py-1.5 text-left text-sm",
-                      "transition-colors motion-hover hover:bg-canvas",
-                      focusRing,
-                      active ? "text-pigment" : "text-ink",
-                    )}
-                  >
-                    <span className="truncate">{o.name}</span>
-                    {active && <Check size={15} className="shrink-0" />}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </Popover>
+        {/* min-w-0: on a narrow phone the workspace name truncates instead of
+            pushing into the 44px tap targets on the right. */}
+        <div className="min-w-0">
+          <Popover
+            align="start"
+            ariaLabel="Switch workspace"
+            triggerClassName={cn(
+              "inline-flex h-10 max-w-[min(13rem,100%)] items-center gap-2 rounded-input border border-line bg-surface px-2.5 text-sm font-medium text-ink",
+              "transition-colors duration-150 ease-standard motion-hover hover:bg-canvas",
+              pending && "opacity-60",
+            )}
+            trigger={
+              <>
+                <Building size={16} className="shrink-0 text-pigment" />
+                <span className="truncate">{selected.name}</span>
+                <ChevronDown size={15} className="shrink-0 text-slate" />
+              </>
+            }
+          >
+            {(close) => (
+              <div className="flex flex-col">
+                <p className="px-2 py-1.5 text-xs font-medium uppercase text-slate">
+                  Workspace
+                </p>
+                {options.map((o) => {
+                  const active = o.id === selected.id;
+                  return (
+                    <button
+                      key={o.id}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => choose(o.id, close)}
+                      className={cn(
+                        "flex items-center justify-between gap-3 rounded-input px-2 py-1.5 text-left text-sm",
+                        "transition-colors motion-hover hover:bg-canvas",
+                        focusRing,
+                        active ? "text-pigment" : "text-ink",
+                      )}
+                    >
+                      <span className="truncate">{o.name}</span>
+                      {active && <Check size={15} className="shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </Popover>
+        </div>
 
         <form
           role="search"
@@ -156,7 +160,7 @@ export function TopBar({
         </form>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
         {/* Phone: staff jump to the orders list and its search. A designer's
             phone board is one short list with nothing to search from here. */}
         {!designer && (
@@ -165,7 +169,7 @@ export function TopBar({
             aria-label="Open order search"
             onClick={() => router.push("/orders")}
             className={cn(
-              "inline-flex size-9 items-center justify-center rounded-input text-slate transition-colors hover:bg-canvas hover:text-ink sm:hidden",
+              "inline-flex h-11 w-10 shrink-0 items-center justify-center rounded-input text-slate transition-colors hover:bg-canvas hover:text-ink sm:hidden",
               focusRing,
             )}
           >
@@ -178,7 +182,7 @@ export function TopBar({
           aria-label="Open Alpha AI"
           onClick={() => window.dispatchEvent(new CustomEvent("alphaos:chat-open"))}
           className={cn(
-            "inline-flex h-9 items-center gap-2 rounded-input border border-pigment/20 bg-pigment-soft px-2.5 text-sm font-semibold text-pigment sm:px-3",
+            "inline-flex h-11 min-w-10 shrink-0 items-center justify-center gap-2 rounded-input border border-pigment/20 bg-pigment-soft px-2.5 text-sm font-semibold text-pigment sm:px-3 lg:h-9",
             "transition-colors motion-hover hover:bg-pigment hover:text-surface",
             focusRing,
           )}
@@ -191,7 +195,7 @@ export function TopBar({
           <Popover
             ariaLabel="Help"
             triggerClassName={cn(
-              "inline-flex size-11 lg:size-9 items-center justify-center rounded-input text-slate",
+              "inline-flex h-11 w-10 lg:size-9 items-center justify-center rounded-input text-slate",
               "transition-colors motion-hover hover:bg-canvas hover:text-ink",
             )}
             trigger={<HelpCircle size={19} />}
@@ -250,7 +254,8 @@ export function TopBar({
         <Popover
           ariaLabel={`Notifications${unread ? `, ${unread} unread` : ""}`}
           triggerClassName={cn(
-            "relative inline-flex size-9 items-center justify-center rounded-input text-slate",
+            // 44px tap target on a phone, like the help button beside it.
+            "relative inline-flex size-11 lg:size-9 items-center justify-center rounded-input text-slate",
             "transition-colors motion-hover hover:bg-canvas hover:text-ink",
           )}
           trigger={
@@ -291,7 +296,10 @@ export function TopBar({
                       type="button"
                       onClick={() => {
                         close();
-                        if (notification.href) router.push(notification.href);
+                        // Only an in-app path: never another origin ("//x",
+                        // "https://x") or a javascript: URL, whatever wrote the row.
+                        const href = notification.href;
+                        if (href && /^\/(?![/\\])/.test(href)) router.push(href);
                       }}
                       className={cn(
                         "rounded-input px-2 py-2 text-left transition-colors hover:bg-canvas",
@@ -319,7 +327,7 @@ export function TopBar({
         <Popover
           ariaLabel="Account menu"
           triggerClassName={cn(
-            "inline-flex items-center gap-2 rounded-input py-1 pl-1 pr-2",
+            "inline-flex min-h-11 items-center gap-2 rounded-input py-1 pl-1 pr-2 lg:min-h-9",
             "transition-colors motion-hover hover:bg-canvas",
           )}
           trigger={

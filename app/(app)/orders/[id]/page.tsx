@@ -60,6 +60,7 @@ import { OrderRevisionForm } from "@/components/orders/order-revision-form";
 import { OrderReassignForm } from "@/components/orders/order-reassign-form";
 import { OrderStyleSetter } from "@/components/orders/order-style-setter";
 import { TrackingCompleteForm } from "@/components/orders/tracking-complete-form";
+import { OrderCompleteButton } from "@/components/orders/order-complete-button";
 import { ReplyClassificationSuggestion } from "@/components/orders/reply-classification-suggestion";
 import { ReplyDraft } from "@/components/orders/reply-draft";
 import { AskAlpha } from "@/components/alpha/ask-alpha";
@@ -67,6 +68,7 @@ import { ComposeButton } from "@/components/emails/compose-button";
 import { styles as stylesTable } from "@/lib/db/schema";
 import { currentMatchForProduct, countOrdersForProduct } from "@/lib/orders/style-learning";
 import { formatAt } from "@/lib/time";
+import { activityLabel } from "@/lib/orders/activity-label";
 
 export const dynamic = "force-dynamic";
 
@@ -132,7 +134,7 @@ function replySuggestion(message: {
 
 function titleCase(value: string | null | undefined) {
   if (!value) return "Unknown";
-  return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase()).replace(/\bQc\b/g, "QC");
 }
 
 function mediaForItem(
@@ -163,6 +165,7 @@ function mediaForItem(
 type NextAction =
   | { kind: "assign"; label: string }
   | { kind: "link"; label: string; cta: string; href: string }
+  | { kind: "complete"; label: string }
   | { kind: "info"; label: string };
 
 function nextSuggestedAction(input: {
@@ -199,10 +202,10 @@ function nextSuggestedAction(input: {
       return { kind: "info", label: "Printing, waiting for it to ship" };
     case "shipped":
       return input.hasTracking
-        ? { kind: "info", label: "Waiting for delivery" }
+        ? { kind: "complete", label: "Shipped. Mark it complete once it has arrived" }
         : { kind: "info", label: "Add the tracking number below" };
     case "delivered":
-      return { kind: "info", label: "Close the order once everything is done" };
+      return { kind: "complete", label: "Close the order once everything is done" };
     case "complete":
       return { kind: "info", label: "Done, nothing to do" };
     case "on_hold":
@@ -443,7 +446,10 @@ export default async function OrderDetailPage({
   // customer SLA), in plain English.
   const now = new Date();
   const designerDeadline = assignment[0]?.dueAt ?? null;
-  const designerCountdown = !hasDesigner
+  // The designer's clock only runs while the work is with them; once the order
+  // has gone to QC, the customer or print, a countdown would only mislead.
+  const designerWorking = order.status === "ready_to_assign" || order.status === "in_design";
+  const designerCountdown = !hasDesigner || !designerWorking
     ? null
     : designerDeadline
       ? designerDeadline.getTime() < now.getTime()
@@ -546,6 +552,7 @@ export default async function OrderDetailPage({
             />
           </div>
         )}
+        {nextAction.kind === "complete" && editable && <OrderCompleteButton orderId={order.id} />}
         {nextAction.kind === "link" && (
           <Link
             href={nextAction.href}
@@ -654,7 +661,11 @@ export default async function OrderDetailPage({
                             <Badge variant={item.productType === "physical" ? "info" : "success"}>
                               {titleCase(item.productType)}
                             </Badge>
-                            {item.figureCount != null && <Badge variant="neutral">{item.figureCount} figures</Badge>}
+                            {item.figureCount != null && (
+                              <Badge variant="neutral">
+                                {item.figureCount} figure{item.figureCount === 1 ? "" : "s"}
+                              </Badge>
+                            )}
                             {item.style && <Badge variant="neutral">{item.style}</Badge>}
                           </div>
                         </div>
@@ -729,7 +740,11 @@ export default async function OrderDetailPage({
             <DataPanel id="reply" className="p-4">
               <SectionHeader
                 title="Draft reply"
-                description="Copy this, paste it into the Etsy conversation, then tap Mark as sent."
+                description={
+                  order.source === "etsy"
+                    ? "Copy this, paste it into the Etsy conversation, then tap Mark as sent."
+                    : "Copy this, paste it into your email to the customer, then tap Mark as sent."
+                }
               />
               <div className="mt-3">
                 <ReplyDraft orderId={order.id} defaultTemplate={defaultReplyTemplate(order.status as OrderStatus)} />
@@ -965,7 +980,7 @@ export default async function OrderDetailPage({
                       <li key={event.id} className="py-3">
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge variant={event.action === "comment" ? "info" : "neutral"} dot>
-                            {event.action === "comment" ? "Note" : titleCase(event.action.replace(/^order\./, ""))}
+                            {activityLabel(event.action)}
                           </Badge>
                           <span className="text-xs text-slate">
                             {event.actorName ?? "System"} · {fmtDateTime(event.createdAt)}

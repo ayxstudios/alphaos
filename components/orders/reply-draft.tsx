@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 
 import { generateReplyDraft, markReplySent } from "@/app/(app)/orders/[id]/reply-actions";
-import { REPLY_TEMPLATE_OPTIONS, type ReplyTemplateChoice } from "@/lib/orders/reply-draft";
+import { REPLY_TEMPLATE_OPTIONS, type ReplyTemplateChoice } from "@/lib/orders/reply-templates";
 import { Button, Select, Textarea, useToast } from "@/components/ui";
 import { Copy } from "@/components/ui/icons";
 
