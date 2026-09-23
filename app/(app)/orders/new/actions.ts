@@ -214,6 +214,8 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
         figureCount,
         figureCountSource: figureCount != null ? "manual" : null,
           style: input.style?.trim() || null,
+          // A style the VA picked by hand is a hand-set, not a fallback default.
+          styleLocked: !!input.style?.trim(),
         productType: input.productType,
       });
 
@@ -346,6 +348,9 @@ export async function completeOrderDetails(input: {
         figureCount,
         figureCountSource: figureCount != null ? ("manual" as const) : null,
         style: input.style?.trim() || null,
+        // A style the VA picked by hand is a hand-set: the order page shows it
+        // as chosen (not "Defaulted ... please confirm") and a re-resolve keeps it.
+        styleLocked: !!input.style?.trim(),
         productType: input.productType,
       };
       if (existingItem) {
