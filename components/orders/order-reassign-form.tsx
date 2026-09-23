@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 
 import { bulkReassignOrders } from "@/app/(app)/orders/actions";
 import { Button, Select, useToast } from "@/components/ui";
@@ -20,7 +19,6 @@ export function OrderReassignForm({
   /** Compact horizontal layout (dropdown + button in a row, no field label). */
   inline?: boolean;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const [designerId, setDesignerId] = useState("");
   const [pending, start] = useTransition();
@@ -39,7 +37,6 @@ export function OrderReassignForm({
         title: skipped ? `Not ${verb.toLowerCase()}ed` : `Order ${verb.toLowerCase()}ed`,
         description: skipped ?? undefined,
       });
-      router.refresh();
     });
   }
 

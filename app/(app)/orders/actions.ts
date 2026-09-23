@@ -285,7 +285,7 @@ export async function bulkReassignOrders(
       }
       const number = order.number ?? order.fallbackNumber;
       if (!REASSIGNABLE_STATUSES.has(order.status)) {
-        skipped.push({ orderId: id, orderNumber: number, reason: `Cannot assign while ${order.status}.` });
+        skipped.push({ orderId: id, orderNumber: number, reason: `Cannot assign while it is ${order.status.replace(/_/g, " ")}.` });
         continue;
       }
       if (!designerBusinessesSet.has(order.businessId)) {
@@ -321,7 +321,9 @@ export async function bulkReassignOrders(
   });
 
   if (!result.ok) return result;
-  revalidatePath("/orders");
+  // "layout" also refreshes each order's own page, so the page that asked
+  // shows the new designer in the same response as the toast.
+  revalidatePath("/orders", "layout");
   revalidatePath("/board");
   return result;
 }
