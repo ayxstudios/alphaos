@@ -9,3 +9,12 @@ export function cleanSearchTerm(raw: string | null | undefined, max = 200): stri
   // eslint-disable-next-line no-control-regex
   return raw.replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, max);
 }
+
+/**
+ * `%term%` for an ILIKE "contains" match with the term taken literally: a
+ * typed `%` or `_` (LIKE wildcards) matches only itself, so a lone `%` no
+ * longer lists everything. Backslash is Postgres's default LIKE escape.
+ */
+export function likeContains(term: string): string {
+  return `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}

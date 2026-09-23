@@ -9,7 +9,7 @@ import { loadShellData } from "@/lib/shell/context";
 import { EmptyState, Page, PageHeader, TableShell } from "@/components/ui";
 import { Search, Users } from "@/components/ui/icons";
 import { formatAt } from "@/lib/time";
-import { cleanSearchTerm } from "@/lib/search";
+import { cleanSearchTerm, likeContains } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +64,7 @@ export default async function CustomersPage({
   const requestedPage = parsePositiveInt(params.page, 1);
   const businessFilter = eq(customers.businessId, selected.id);
   const queryFilter = q
-    ? sql`(${customers.email} ilike ${`%${q}%`} or concat_ws(' ', ${customers.firstName}, ${customers.lastName}) ilike ${`%${q}%`})`
+    ? sql`(${customers.email} ilike ${likeContains(q)} or concat_ws(' ', ${customers.firstName}, ${customers.lastName}) ilike ${likeContains(q)})`
     : sql`true`;
   const where = and(businessFilter, queryFilter);
 
