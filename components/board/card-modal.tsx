@@ -498,7 +498,9 @@ function CardUploadPanel({
     <section className="rounded-card bg-canvas/60 p-3" data-tour="card:upload">
       <div className="flex flex-wrap items-end gap-2">
         {designer ? (
-          <div className="min-w-40 flex-1">
+          // Two buttons (Submit for QC, Add new version) get a row of their
+          // own under the text instead of one wrapping on its own.
+          <div className={cn("min-w-40 flex-1", canDesignerUpload && freshVersion && "basis-full")}>
             <span className="text-sm font-medium text-ink">Finished portrait</span>
             <p className="mt-0.5 text-sm text-slate">{designerHint}</p>
           </div>
@@ -550,7 +552,8 @@ function CardUploadPanel({
             type="button"
             size="sm"
             variant="secondary"
-            className={cn("max-md:h-11", designer && "max-md:hidden")}
+            // After Submit for QC when both show (the main action first).
+            className={cn("max-md:h-11", designer && "order-last max-md:hidden")}
             loading={uploading}
             onClick={() => fileRef.current?.click()}
           >
