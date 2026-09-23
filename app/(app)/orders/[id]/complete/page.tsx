@@ -1,3 +1,4 @@
+import { dateInputValue } from "@/lib/time";
 import { notFound, redirect } from "next/navigation";
 import { eq, sql } from "drizzle-orm";
 
@@ -103,7 +104,7 @@ export default async function CompleteOrderPage({
     source: order.source,
     customerName,
     customerEmail,
-    dueAt: order.dueAt ? order.dueAt.toISOString().slice(0, 10) : "",
+    dueAt: dateInputValue(order.dueAt),
     dueAtIso: order.dueAt?.toISOString() ?? null,
     dueDateSource: "internal_sla",
     placedAtIso: order.placedAt?.toISOString() ?? null,

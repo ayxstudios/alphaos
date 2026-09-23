@@ -1,5 +1,6 @@
 "use server";
 
+import { parseDueDate } from "@/lib/time";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { and, eq, sql } from "drizzle-orm";
@@ -189,7 +190,7 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
         typeof (shop.slaConfig as { turnaroundDays?: number } | null)?.turnaroundDays === "number"
           ? (shop.slaConfig as { turnaroundDays: number }).turnaroundDays
           : 3;
-      const dueAt = input.dueAt ? new Date(input.dueAt) : new Date(Date.now() + days * 86_400_000);
+      const dueAt = input.dueAt ? parseDueDate(input.dueAt) : new Date(Date.now() + days * 86_400_000);
       const platformOrderName = orderNumber;
       const platformOrderId = orderNumber ? `manual:${normalizeOrderNumber(orderNumber)}` : `manual:${orderId}`;
 
@@ -395,7 +396,7 @@ export async function completeOrderDetails(input: {
         .set({
           customerId,
           notes: input.notes?.trim() || null,
-          ...(input.dueAt ? { dueAt: new Date(input.dueAt) } : {}),
+          ...(input.dueAt ? { dueAt: parseDueDate(input.dueAt) } : {}),
         })
         .where(eq(orders.id, order.id));
 

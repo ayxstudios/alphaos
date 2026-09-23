@@ -31,3 +31,53 @@ export function formatAt(value: When, options: Intl.DateTimeFormatOptions, fallb
     ...(showsTime ? { timeZoneName: "short" as const } : {}),
   }).format(d);
 }
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Melbourne wall clock offset from UTC (ms) at the given instant. */
+function zoneOffsetMs(at: Date): number {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: APP_TIME_ZONE,
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    })
+      .formatToParts(at)
+      .map((p) => [p.type, p.value]),
+  );
+  const wall = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour % 24, +parts.minute, +parts.second);
+  return wall - at.getTime();
+}
+
+/**
+ * The value for an <input type="date"> (yyyy-mm-dd) showing the Melbourne
+ * calendar day of `value`. Pairs with parseDueDate so a saved date never
+ * drifts: the day the person sees is the day that gets stored.
+ */
+export function dateInputValue(value: When): string {
+  const d = toDate(value);
+  if (!d) return "";
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: APP_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+/**
+ * A due date typed as yyyy-mm-dd means "by the end of that day in Melbourne",
+ * so it is stored as 23:59:59 Melbourne time on that day. Anything else (a
+ * full ISO timestamp) is taken as is.
+ */
+export function parseDueDate(input: string): Date {
+  if (!DATE_ONLY.test(input)) return new Date(input);
+  const [y, m, d] = input.split("-").map(Number);
+  const wall = Date.UTC(y, m - 1, d, 23, 59, 59);
+  return new Date(wall - zoneOffsetMs(new Date(wall)));
+}

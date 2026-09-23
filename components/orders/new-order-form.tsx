@@ -17,7 +17,7 @@ import {
   reviewDefaults,
   type EtsyReceiptReview,
 } from "@/lib/integrations/etsy/receipt-review";
-import { formatAt } from "@/lib/time";
+import { dateInputValue, formatAt } from "@/lib/time";
 
 export type ShopOption = {
   id: string;
@@ -58,7 +58,7 @@ function newId() {
   return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 }
 function dueDefault(days: number) {
-  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+  return dateInputValue(new Date(Date.now() + days * 86_400_000));
 }
 function formatDate(iso: string | null | undefined) {
   return formatAt(iso, { day: "2-digit", month: "short", year: "numeric" }, "Unknown");
