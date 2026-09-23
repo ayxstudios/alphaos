@@ -448,6 +448,22 @@ async function assertQc(
   return { result, checklist, itemResults, reason, signature };
 }
 
+/**
+ * The QC pass gate (sign-off + authoritative checklist) without any write, for
+ * callers that act BEFORE the transition: the proof email is sent first and the
+ * order moves after, so the gate must hold before the email leaves (security QA
+ * round 2: a wrong sign-off used to send the proof, then refuse the move, and
+ * every retry sent the customer another copy). Throws PreconditionError.
+ */
+export async function assertQcPassAllowed(
+  tx: Tx,
+  actor: Actor,
+  order: { shopId: string },
+  metadata: { itemResults: unknown; signature: unknown },
+): Promise<void> {
+  await assertQc(tx, order, "pass", metadata, actor);
+}
+
 async function insertQc(
   tx: Tx,
   order: { id: string; businessId: string },

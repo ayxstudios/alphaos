@@ -4,19 +4,24 @@
  *  - per-IP failed-login limit next to the per-email lockout (lib/auth/login.ts):
  *    a password spray from one IP across many emails locks that IP, other IPs
  *    and header-less callers are unaffected, the window rolls over
+ *  - "Pass QC and send": a second send for the same proof is refused while the
+ *    first is in flight (lib/qc/send-guard.ts), and the sign-off + checklist
+ *    gate runs before the email leaves (assertQcPassAllowed)
  *
  * Runs against the seeded local database (scripts/ci-local.sh). Everything it
  * creates is removed at the end.
  */
 import "./load-env";
 import { randomUUID } from "node:crypto";
-import { eq, inArray, like } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 
 import { withSystemContext } from "../lib/db";
-import { loginAttempts, rateLimits, users } from "../lib/db/schema";
+import { loginAttempts, messages, orders, proofs, rateLimits, users } from "../lib/db/schema";
 import { AccountLockedError, IP_MAX_FAILED, authenticate, loginClientIp } from "../lib/auth/login";
 import { hashPassword } from "../lib/auth/password";
+import { PreconditionError, assertQcPassAllowed } from "../lib/orders/transitions";
+import { QC_SEND_DEDUPE_MS, qcPassEmailInFlight } from "../lib/qc/send-guard";
 
 let failures = 0;
 function report(name: string, pass: boolean, detail: string) {
@@ -104,8 +109,91 @@ async function loginIpLimit() {
   }
 }
 
+async function qcSendGuard() {
+  const ctx = await withSystemContext(async (tx) => {
+    const [order] = await tx
+      .select({ id: orders.id, businessId: orders.businessId, shopId: orders.shopId })
+      .from(orders)
+      .limit(1);
+    const [va] = await tx
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(and(eq(users.role, "va"), eq(users.active, true)))
+      .limit(1);
+    return { order, va };
+  });
+  if (!ctx.order || !ctx.va) {
+    report("QC send guard has seed data", false, "no order or VA in the seed");
+    return;
+  }
+  const proofId = randomUUID();
+  const msgIds: string[] = [];
+  const addMessage = (status: "draft" | "sent" | "failed", createdAt: Date, qcPass = true) =>
+    withSystemContext(async (tx) => {
+      const id = randomUUID();
+      msgIds.push(id);
+      await tx.insert(messages).values({
+        id,
+        businessId: ctx.order.businessId,
+        orderId: ctx.order.id,
+        direction: "outbound",
+        channel: "email",
+        status,
+        proofId,
+        subject: "SECR2 proof",
+        body: "SECR2",
+        createdAt,
+        metadata: qcPass ? { qcPass: { signature: "x" } } : { other: true },
+      });
+    });
+  const inFlight = () =>
+    withSystemContext((tx) => qcPassEmailInFlight(tx, { orderId: ctx.order.id, proofId }));
+  await withSystemContext((tx) =>
+    tx.insert(proofs).values({ id: proofId, businessId: ctx.order.businessId, orderId: ctx.order.id, token: `secr2-${stamp}` }),
+  );
+  try {
+    report("no QC-pass email yet: a send may go", (await inFlight()) === false, "empty");
+    await addMessage("failed", new Date());
+    await addMessage("sent", new Date(Date.now() - QC_SEND_DEDUPE_MS - 60_000));
+    await addMessage("sent", new Date(), false);
+    report(
+      "a failed send, an old send and a non-QC email do not block a retry",
+      (await inFlight()) === false,
+      "failed now, sent 11 min ago, non-qcPass sent now",
+    );
+    await addMessage("draft", new Date());
+    report("a QC-pass email drafted just now blocks a second send", (await inFlight()) === true, "draft now");
+
+    const gate = (signature: string, ticked: boolean) =>
+      withSystemContext(async (tx) => {
+        try {
+          await assertQcPassAllowed(tx, { id: ctx.va.id, role: "va" }, { shopId: ctx.order.shopId }, {
+            itemResults: Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((k) => [k, ticked])),
+            signature,
+          });
+          return "ok";
+        } catch (e) {
+          return e instanceof PreconditionError ? "refused" : String(e);
+        }
+      });
+    report(
+      "pre-send gate: wrong sign-off and unticked checklist are refused, the right ones pass",
+      (await gate("Someone Else", true)) === "refused" &&
+        (await gate(ctx.va.name ?? "", false)) === "refused" &&
+        (await gate(ctx.va.name ?? "", true)) === "ok",
+      `va name=${ctx.va.name}`,
+    );
+  } finally {
+    await withSystemContext(async (tx) => {
+      if (msgIds.length) await tx.delete(messages).where(inArray(messages.id, msgIds));
+      await tx.delete(proofs).where(eq(proofs.id, proofId));
+    });
+  }
+}
+
 async function main() {
   await loginIpLimit();
+  await qcSendGuard();
   console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);
   process.exit(failures === 0 ? 0 : 1);
 }

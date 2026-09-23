@@ -25,11 +25,13 @@ import {
 } from "@/lib/email/templates";
 import { textToHtml } from "@/lib/integrations/gmail/mime";
 import {
+  assertQcPassAllowed,
   transition,
   OrderTransitionError,
   type OrderStatus,
 } from "@/lib/orders/transitions";
 import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
+import { qcPassEmailInFlight } from "@/lib/qc/send-guard";
 import { generateProofToken } from "@/lib/proofs/tokens";
 import { proofUrl } from "@/lib/urls";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
@@ -183,10 +185,28 @@ export async function confirmQcPassAndSend(input: {
   if (!ticked.ok) return ticked;
 
   const prepared = await withUserContext(user, async (tx) => {
+    // Row lock: a second "Pass and send" for this order waits here until the
+    // first one's draft is committed, then qcPassEmailInFlight sees it.
+    const [locked] = await tx
+      .select({ shopId: orders.shopId })
+      .from(orders)
+      .where(eq(orders.id, input.orderId))
+      .for("update");
     const ctx = await readQcEmailContext(tx, input.orderId);
     if (!ctx.ok) return ctx;
     if (ctx.order.status !== input.expectedFrom || ctx.order.status !== "awaiting_qc") {
       return { ok: false as const, code: "stale", message: "This order is no longer awaiting QC." };
+    }
+    // The transition's own gate (sign-off, authoritative checklist) runs after
+    // the send, so check it now: a refused pass must never email the customer.
+    try {
+      await assertQcPassAllowed(tx, user, { shopId: locked.shopId }, {
+        itemResults: input.itemResults,
+        signature: input.signature,
+      });
+    } catch (err) {
+      if (err instanceof OrderTransitionError) return { ok: false as const, code: err.code, message: err.message };
+      throw err;
     }
     if (ctx.asset.id !== input.attachmentAssetId) {
       return {
@@ -206,6 +226,13 @@ export async function confirmQcPassAndSend(input: {
         ok: false as const,
         code: "stale_asset",
         message: "The portrait file changed after the preview opened. Refresh QC and review the current file.",
+      };
+    }
+    if (await qcPassEmailInFlight(tx, { orderId: ctx.order.id, proofId: proof.id })) {
+      return {
+        ok: false as const,
+        code: "already_sent",
+        message: "This proof email was just sent. Refresh QC to see where the order is now.",
       };
     }
 
