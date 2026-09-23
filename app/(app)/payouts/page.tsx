@@ -176,6 +176,7 @@ export default async function PayoutsPage({
         actions={
           <a
             href={`/payouts/export?${qs.toString()}`}
+            download
             className="inline-flex h-10 items-center justify-center rounded-input bg-surface px-4 text-sm font-medium text-ink shadow-card transition-colors hover:bg-canvas"
           >
             Export CSV
@@ -258,7 +259,7 @@ export default async function PayoutsPage({
                     <Link
                       href={`/payouts?business=${businessId}&period=${period}&designer=${summary.designerId}`}
                       className={cn(
-                        "inline-flex h-8 items-center justify-center rounded-input px-3 text-sm font-medium transition-colors hover:bg-pigment-soft",
+                        "inline-flex h-11 items-center justify-center rounded-input px-3 text-sm font-medium transition-colors hover:bg-pigment-soft sm:h-8",
                         selectedDesigner === summary.designerId ? "bg-pigment-soft text-pigment" : "text-ink",
                       )}
                     >

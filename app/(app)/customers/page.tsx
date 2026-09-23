@@ -168,8 +168,8 @@ export default async function CustomersPage({
                   aria-current={pageSize === size ? "true" : undefined}
                   className={
                     pageSize === size
-                      ? "inline-flex h-8 min-w-8 items-center justify-center rounded-input bg-ink px-1.5 text-xs font-medium tabular-nums text-surface"
-                      : "inline-flex h-8 min-w-8 items-center justify-center rounded-input px-1.5 text-xs font-medium tabular-nums text-slate transition-colors hover:bg-canvas hover:text-ink"
+                      ? "inline-flex h-11 min-w-11 items-center justify-center rounded-input bg-ink px-1.5 text-xs font-medium tabular-nums text-surface sm:h-8 sm:min-w-8"
+                      : "inline-flex h-11 min-w-11 items-center justify-center rounded-input px-1.5 text-xs font-medium tabular-nums text-slate transition-colors hover:bg-canvas hover:text-ink sm:h-8 sm:min-w-8"
                   }
                 >
                   {size}
@@ -200,8 +200,8 @@ function Pagination({
         aria-disabled={page <= 1}
         className={
           page <= 1
-            ? "pointer-events-none inline-flex h-8 items-center rounded-input px-2 text-sm font-medium text-slate/40"
-            : "inline-flex h-8 items-center rounded-input px-2 text-sm font-medium text-pigment transition-colors hover:bg-pigment-soft"
+            ? "pointer-events-none inline-flex h-11 items-center rounded-input px-2 text-sm font-medium sm:h-8 text-slate/40"
+            : "inline-flex h-11 items-center rounded-input px-2 text-sm font-medium sm:h-8 text-pigment transition-colors hover:bg-pigment-soft"
         }
       >
         Previous
@@ -214,8 +214,8 @@ function Pagination({
         aria-disabled={page >= totalPages}
         className={
           page >= totalPages
-            ? "pointer-events-none inline-flex h-8 items-center rounded-input px-2 text-sm font-medium text-slate/40"
-            : "inline-flex h-8 items-center rounded-input px-2 text-sm font-medium text-pigment transition-colors hover:bg-pigment-soft"
+            ? "pointer-events-none inline-flex h-11 items-center rounded-input px-2 text-sm font-medium sm:h-8 text-slate/40"
+            : "inline-flex h-11 items-center rounded-input px-2 text-sm font-medium sm:h-8 text-pigment transition-colors hover:bg-pigment-soft"
         }
       >
         Next

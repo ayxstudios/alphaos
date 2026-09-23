@@ -35,12 +35,12 @@ export function SetupChecklist({
         </Badge>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
+      <div className="mt-3 flex flex-wrap gap-x-5 sm:gap-y-2">
         {items.map((item) => (
           <Link
             key={item.key}
             href={item.href}
-            className="flex min-w-0 items-center gap-1.5 rounded-input py-1 text-sm transition-colors hover:text-pigment"
+            className="flex min-h-11 min-w-0 items-center gap-1.5 rounded-input py-1 text-sm transition-colors hover:text-pigment sm:min-h-0"
           >
             {item.ok ? (
               <CheckCircle size={15} className="shrink-0 text-sage" />
