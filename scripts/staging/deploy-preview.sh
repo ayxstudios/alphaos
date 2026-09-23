@@ -26,7 +26,13 @@ OUT=$(vercel deploy --yes --token "$VERCEL_TOKEN" --scope "$SCOPE" \
   -e ALPHA_HOOK_SECRET="" \
   -e ALPHA_ACTIONS_ENABLED=false \
   -e NOTIFICATIONS_ENABLED=false \
+  -e MOCK_INTEGRATIONS=1 \
   -e STAGING=1)
+# MOCK_INTEGRATIONS=1: instrumentation.ts installs lib/mock/transport.ts at
+# server start, so calls made with the mock credentials that
+# scripts/staging/arm-mocks.ts writes are answered in-process. It mocks by
+# CREDENTIAL, never globally: with the database disarmed (prepare.ts) there is
+# simply nothing for it to answer.
 # The CLI prints a bare URL for humans and a JSON object when it detects an agent.
 URL=$(printf '%s' "$OUT" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{s=s.trim();try{const j=JSON.parse(s);console.log(j.deployment.url)}catch{console.log(s.split(/\s+/).pop())}})')
 echo "deployment: $URL"
