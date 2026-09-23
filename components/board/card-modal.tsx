@@ -501,8 +501,10 @@ function CardUploadPanel({
           <div className="flex gap-2 overflow-x-auto pb-1">
             {submissions.map((image, index) => (
               <div key={image.id} className="w-20 shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={image.url} alt="" className="size-20 rounded-input border border-line object-cover" />
+                <a href={image.url} target="_blank" rel="noopener noreferrer" aria-label="Open this version full size">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={image.url} alt="" className="size-20 rounded-input border border-line object-cover" />
+                </a>
                 <p className="mt-1 truncate text-xs text-slate">
                   {index === submissions.length - 1 ? "Latest" : `v${index + 1}`}
                 </p>
@@ -563,22 +565,21 @@ function Gallery({ images, cover }: { images: CardImage[] | null; cover: string 
   const [hero, ...rest] = list;
   return (
     <div className="space-y-2">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={hero.url}
-        alt=""
-        className="max-h-72 w-full rounded-card border border-line object-cover"
-      />
+      <a href={hero.url} target="_blank" rel="noopener noreferrer" aria-label="Open photo full size" className="block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={hero.url}
+          alt=""
+          className="max-h-72 w-full rounded-card border border-line bg-canvas object-contain"
+        />
+      </a>
       {rest.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {rest.map((img) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              key={img.id}
-              src={img.url}
-              alt={img.type}
-              className="size-16 rounded-input border border-line object-cover"
-            />
+            <a key={img.id} href={img.url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${img.type} photo full size`}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={img.url} alt={img.type} className="size-16 rounded-input border border-line object-cover" />
+            </a>
           ))}
         </div>
       )}

@@ -39,6 +39,30 @@ export type CardDetail = {
   images: CardImage[];
 };
 
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+
+/**
+ * Designers never see a customer email. Activity metadata can carry one
+ * (email.sent / email.send_failed log `to`), and the modal payload goes to the
+ * browser, so drop address keys and scrub any address left in string values.
+ */
+function designerSafeMetadata(meta: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!meta) return meta;
+  const scrub = (v: unknown): unknown =>
+    typeof v === "string"
+      ? v.replace(EMAIL_RE, "[hidden]")
+      : Array.isArray(v)
+        ? v.map(scrub)
+        : v && typeof v === "object"
+          ? Object.fromEntries(
+              Object.entries(v as Record<string, unknown>)
+                .filter(([k]) => !/^(to|from|cc|bcc|address|email|customerEmail)$/i.test(k))
+                .map(([k, x]) => [k, scrub(x)]),
+            )
+          : v;
+  return scrub(meta) as Record<string, unknown>;
+}
+
 /**
  * Full modal payload for a single card: its history feed and all resolvable
  * images. Loaded lazily when a card is opened (not with the board), so the
@@ -75,7 +99,7 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
         fromState: r.fromState as OrderStatus | null,
         toState: r.toState as OrderStatus | null,
         body,
-        metadata: meta,
+        metadata: user.role === "designer" ? designerSafeMetadata(meta) : meta,
         createdAt: r.createdAt.toISOString(),
       };
     });
