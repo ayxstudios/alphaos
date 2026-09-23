@@ -12,6 +12,8 @@ import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
 import { BottomTabs } from "./bottom-tabs";
 import { AlphaChat } from "@/components/alpha/alpha-chat";
+import { Tour } from "@/components/tour/tour";
+import type { OnboardingState } from "@/lib/tour/state";
 
 /** Cookie the sidebar collapse preference persists in (read by the layout). */
 export const SIDEBAR_COOKIE = "sidebar_collapsed";
@@ -24,6 +26,8 @@ type AppShellProps = {
   unread: number;
   recentNotifications: ShellData["recentNotifications"];
   initialCollapsed?: boolean;
+  /** First-run tour: who is signed in and how far they got. */
+  tour: { firstName: string; onboarding: OnboardingState | null; signedInAt: number };
 };
 
 export function AppShell({
@@ -34,6 +38,7 @@ export function AppShell({
   unread,
   recentNotifications,
   initialCollapsed = false,
+  tour,
 }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(initialCollapsed);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -113,6 +118,7 @@ export function AppShell({
         <BottomTabs role={user.role} onMore={() => setMobileOpen(true)} />
       </div>
       <AlphaChat user={user} />
+      <Tour role={user.role} firstName={tour.firstName} onboarding={tour.onboarding} signedInAt={tour.signedInAt} />
     </div>
   );
 }

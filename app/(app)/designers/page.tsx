@@ -27,6 +27,7 @@ export default async function DesignersPage() {
     <Page>
       <PageHeader
         title="Designers"
+        tourId="page:roster"
         description="Auto-assign works down this list, matching styles and never past a daily limit."
       />
 

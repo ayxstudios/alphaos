@@ -33,7 +33,9 @@
     "test:etsy-mail": "tsx scripts/test-etsy-mail.ts",
     "test:reminders": "tsx scripts/test-reminders.ts",
     "test:designer-lane": "tsx scripts/test-designer-lane.ts",
-    "seed:qc": "tsx scripts/seed-qc.ts"
+    "seed:qc": "tsx scripts/seed-qc.ts",
+    "test:tour": "node scripts/tour-check.mjs",
+    "db:local-tour": "scripts/local-db/setup-tour-db.sh"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1102.0",

@@ -134,6 +134,7 @@ export function Sidebar({
         href={item.href}
         onClick={onNavigate}
         aria-current={active ? "page" : undefined}
+        data-tour={`nav:${item.href}`}
         className={cn(
           "group relative flex h-10 items-center gap-3 rounded-input px-3 text-sm font-medium",
           "transition-colors duration-150 ease-standard motion-hover",

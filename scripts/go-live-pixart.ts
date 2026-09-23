@@ -25,7 +25,7 @@ const apply = process.argv.includes("--apply");
 const cutoffIso = process.env.PIXART_CUTOFF ?? "2026-09-10T00:00:00.000Z";
 
 async function count(label: string, q: ReturnType<typeof sql>) {
-  const r: any = await withSystemContext((tx) => tx.execute(q));
+  const r = (await withSystemContext((tx) => tx.execute(q))) as { rows?: { n?: unknown }[] };
   const n = Number(r.rows?.[0]?.n ?? 0);
   console.log(`${label.padEnd(44)} ${n}`);
   return n;
@@ -33,7 +33,7 @@ async function count(label: string, q: ReturnType<typeof sql>) {
 
 async function run(label: string, q: ReturnType<typeof sql>) {
   if (!apply) return;
-  const r: any = await withSystemContext((tx) => tx.execute(q));
+  const r = (await withSystemContext((tx) => tx.execute(q))) as { rowCount?: number | null };
   console.log(`  applied ${label}: ${r.rowCount ?? ""}`);
 }
 

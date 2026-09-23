@@ -729,6 +729,7 @@ export default async function OrdersPage({
             count={countRow[view.key]}
             title={view.description}
             tone={view.key === "overdue" ? "danger" : view.key === "active" ? "info" : "warning"}
+            tourId={view.key === "needs_details" ? "page:orders" : undefined}
           />
         ))}
         <details className="relative shrink-0">
@@ -921,6 +922,7 @@ function ViewPill({
   count,
   title,
   tone,
+  tourId,
 }: {
   href: string;
   active: boolean;
@@ -928,6 +930,7 @@ function ViewPill({
   count: number;
   title: string;
   tone: "info" | "warning" | "danger";
+  tourId?: string;
 }) {
   const dot = { info: "bg-pigment", warning: "bg-amber", danger: "bg-rose" }[tone];
   return (
@@ -935,6 +938,7 @@ function ViewPill({
       href={href}
       title={title}
       aria-current={active ? "page" : undefined}
+      data-tour={tourId}
       className={cn(
         "inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-3.5 text-sm font-medium transition-colors",
         active ? "bg-ink text-surface" : "bg-surface text-slate shadow-card hover:text-ink",

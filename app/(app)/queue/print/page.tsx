@@ -209,6 +209,7 @@ export default async function PrintQueuePage() {
       <PageHeader
         title="Print"
         description="Approved physical orders, oldest first."
+        tourId="page:print"
       />
       <PrintQueue orders={vm} />
     </Page>

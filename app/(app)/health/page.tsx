@@ -70,6 +70,7 @@ export default async function HealthPage({
     <Page>
       <PageHeader
         title="System Health"
+        tourId="page:health"
         description="What needs a look, then everything that is fine."
         eyebrow={metrics.scopeLabel}
         actions={

@@ -7,6 +7,7 @@ import { withUserContext, type RequestUser } from "@/lib/db";
 import { businesses as businessesTable, notifications, users as usersTable } from "@/lib/db/schema";
 import { BUSINESS_COOKIE } from "@/lib/shell/constants";
 import { fallbackNotificationTitle, type NotificationVM } from "@/lib/notifications/types";
+import type { OnboardingState } from "@/lib/tour/state";
 
 export type BusinessOption = { id: string; name: string };
 
@@ -24,6 +25,8 @@ export type ShellData = {
    */
   displayName: string | null;
   recentNotifications: NotificationVM[];
+  /** First-run tour progress for this user (null = never seen it). */
+  onboarding: OnboardingState | null;
 };
 
 /**
@@ -47,9 +50,9 @@ const loadShellCached = cache(
       isNull(notifications.readAt),
       ...(!anthropicFeaturesEnabled() ? [sql`${notifications.type} <> 'message.reply_suggestion'`] : []),
     ];
-    const { businesses, unread, recentNotifications, displayName } = await withUserContext(user, async (tx) => {
+    const { businesses, unread, recentNotifications, displayName, onboarding } = await withUserContext(user, async (tx) => {
       const [me] = await tx
-        .select({ name: usersTable.name, email: usersTable.email })
+        .select({ name: usersTable.name, email: usersTable.email, onboarding: usersTable.onboarding })
         .from(usersTable)
         .where(eq(usersTable.id, userId))
         .limit(1);
@@ -78,6 +81,7 @@ const loadShellCached = cache(
       return {
         businesses,
         displayName: me?.name ?? me?.email ?? null,
+        onboarding: me?.onboarding ?? null,
         unread: unreadRow?.n ?? 0,
         recentNotifications: recentRows.map((n) => ({
           id: n.id,
@@ -97,6 +101,6 @@ const loadShellCached = cache(
       options.find((o) => o.id === cookieVal) ??
       options[0] ?? { id: "", name: "No workspace" };
 
-    return { options, selected, unread, recentNotifications, displayName };
+    return { options, selected, unread, recentNotifications, displayName, onboarding };
   },
 );

@@ -46,6 +46,7 @@ export default async function QcQueuePage() {
       <PageHeader
         eyebrow={selected.name}
         title="QC"
+        tourId="page:qc"
         description={rows.length ? `${rows.length} portrait${rows.length === 1 ? "" : "s"} waiting, soonest due first.` : undefined}
         actions={
           rows.length > 0 ? (

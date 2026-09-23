@@ -16,16 +16,17 @@ export default async function AppLayout({
   if (!session?.user) redirect("/login");
 
   const user = { id: session.user.id, role: session.user.role };
-  const [{ options, selected, unread, recentNotifications, displayName }, cookieStore] = await Promise.all([
+  const [{ options, selected, unread, recentNotifications, displayName, onboarding }, cookieStore] = await Promise.all([
     loadShellData(user),
     cookies(),
   ]);
   const initialCollapsed = cookieStore.get(SIDEBAR_COOKIE)?.value === "1";
+  const name = displayName ?? session.user.name ?? session.user.email ?? "User";
 
   return (
     <AppShell
       user={{
-        name: displayName ?? session.user.name ?? session.user.email ?? "User",
+        name,
         email: session.user.email ?? "",
         role: user.role,
       }}
@@ -34,6 +35,11 @@ export default async function AppLayout({
       unread={unread}
       recentNotifications={recentNotifications}
       initialCollapsed={initialCollapsed}
+      tour={{
+        firstName: name.split(/[\s@]+/)[0] || "there",
+        onboarding,
+        signedInAt: session.user.signedInAt ?? 0,
+      }}
     >
       {children}
     </AppShell>

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -14,7 +15,11 @@ import {
   LogOut,
   Search,
   Bot,
+  HelpCircle,
+  Compass,
+  BookOpen,
 } from "@/components/ui/icons";
+import { TOUR_START_EVENT } from "@/components/tour/tour";
 import type { Role } from "@/lib/auth/config";
 import type { BusinessOption } from "@/lib/shell/context";
 import { Popover } from "./popover";
@@ -169,6 +174,51 @@ export function TopBar({
           <Bot size={18} />
           <span className="hidden sm:inline">Alpha AI</span>
         </button>
+        {/* Help: restart the first-run tour, or open the one-page guide. */}
+        <div data-tour="help">
+          <Popover
+            ariaLabel="Help"
+            triggerClassName={cn(
+              "inline-flex size-11 lg:size-9 items-center justify-center rounded-input text-slate",
+              "transition-colors motion-hover hover:bg-canvas hover:text-ink",
+            )}
+            trigger={<HelpCircle size={19} />}
+          >
+            {(close) => (
+              <div className="flex flex-col">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    close();
+                    window.dispatchEvent(new CustomEvent(TOUR_START_EVENT));
+                  }}
+                  className={cn(
+                    "flex min-h-11 items-center gap-2 rounded-input px-2 text-left text-sm text-ink lg:min-h-9",
+                    "transition-colors motion-hover hover:bg-canvas",
+                    focusRing,
+                  )}
+                >
+                  <Compass size={16} className="text-slate" />
+                  Show me around
+                </button>
+                <Link
+                  href="/help"
+                  role="menuitem"
+                  onClick={close}
+                  className={cn(
+                    "flex min-h-11 items-center gap-2 rounded-input px-2 text-left text-sm text-ink lg:min-h-9",
+                    "transition-colors motion-hover hover:bg-canvas",
+                    focusRing,
+                  )}
+                >
+                  <BookOpen size={16} className="text-slate" />
+                  Quick guide
+                </Link>
+              </div>
+            )}
+          </Popover>
+        </div>
         <Popover
           ariaLabel={`Notifications${unread ? `, ${unread} unread` : ""}`}
           triggerClassName={cn(

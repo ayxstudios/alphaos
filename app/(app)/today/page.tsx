@@ -31,7 +31,7 @@ export default async function TodayPage() {
 
   return (
     <Page className="max-w-4xl">
-      <PageHeader eyebrow={selected.name} title="Today" />
+      <PageHeader eyebrow={selected.name} title="Today" tourId="page:today" />
       <Suspense fallback={<Skeleton className="h-5 w-64" />}>
         <Summary user={user} businessId={selected.id} />
       </Suspense>

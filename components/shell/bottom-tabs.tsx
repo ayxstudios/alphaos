@@ -52,6 +52,7 @@ export function BottomTabs({ role, onMore }: { role: Role; onMore: () => void })
               active ? "text-pigment" : "text-slate",
             )}
             aria-current={active ? "page" : undefined}
+            data-tour={`tab:${tab.href}`}
           >
             <Glyph size={20} />
             {tab.label}
@@ -61,6 +62,7 @@ export function BottomTabs({ role, onMore }: { role: Role; onMore: () => void })
       <button
         type="button"
         onClick={onMore}
+        data-tour="tab:more"
         className={cn(
           "flex min-h-11 flex-1 flex-col items-center justify-center gap-1 text-xs font-medium text-slate",
           focusRing,

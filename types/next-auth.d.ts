@@ -7,6 +7,8 @@ declare module "next-auth" {
     user: {
       id: string;
       role: Role;
+      /** Epoch ms of this session's sign-in; 0 for sessions minted before it was recorded. */
+      signedInAt?: number;
     } & DefaultSession["user"];
   }
 
@@ -19,5 +21,6 @@ declare module "next-auth/jwt" {
   interface JWT {
     id?: string;
     role?: Role;
+    signedInAt?: number;
   }
 }

@@ -42,7 +42,7 @@ export function BoardColumn({
 
   return (
     <div className="flex w-[min(86vw,22rem)] shrink-0 flex-col overflow-hidden rounded-card bg-line/40">
-      <div className="sticky top-0 z-10 flex items-center justify-between px-3 py-2.5">
+      <div className="sticky top-0 z-10 flex items-center justify-between px-3 py-2.5" data-tour={`col:${id}`}>
         <span className="text-sm font-semibold text-ink">{title}</span>
         <span className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium tabular-nums text-slate">
           {cards.length}

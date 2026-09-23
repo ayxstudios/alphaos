@@ -168,6 +168,7 @@ export default async function PayoutsPage({
     <Page>
       <PageHeader
         title="Payouts"
+        tourId="page:money"
         description="What each designer has earned, captured as orders complete."
         actions={
           <a
