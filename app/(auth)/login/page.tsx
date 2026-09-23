@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useRef } from "react";
 
 import { Button } from "@/components/ui";
 import { Input } from "@/components/ui";
@@ -12,6 +12,12 @@ const initialState: LoginState = {};
 
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState(loginAction, initialState);
+  const passwordRef = useRef<HTMLInputElement>(null);
+
+  // A wrong password keeps the email and puts the cursor back in Password.
+  useEffect(() => {
+    if (state.error && state.email) passwordRef.current?.focus();
+  }, [state]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -43,6 +49,7 @@ export default function LoginPage() {
             type="email"
             autoComplete="email"
             placeholder="you@company.com"
+            defaultValue={state.email}
             required
             autoFocus
           />
@@ -53,6 +60,7 @@ export default function LoginPage() {
             autoComplete="current-password"
             placeholder="••••••••"
             required
+            ref={passwordRef}
           />
 
           <Button type="submit" size="lg" loading={pending} className="w-full">
@@ -60,7 +68,7 @@ export default function LoginPage() {
           </Button>
         </form>
       </Card>
-      <p className="text-center text-sm text-slate">Forgot your password? Your admin can send a new one.</p>
+      <p className="text-center text-sm text-slate">Forgot your password? Ask your admin.</p>
     </div>
   );
 }
