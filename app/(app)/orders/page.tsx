@@ -750,7 +750,7 @@ export default async function OrdersPage({
 
       {/* One row of clickable counts: the views that matter day to day. The
           other saved views live under "More views", never removed. */}
-      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
+      <div data-orders-views className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] sm:flex-wrap sm:overflow-visible">
         {primaryViews.map((view) => (
           <ViewPill
             key={view.key}

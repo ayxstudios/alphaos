@@ -174,7 +174,7 @@ const ORDER_COLUMNS: ColumnDef[] = [
     key: "status",
     label: "Status",
     sort: "status",
-    width: "minmax(7rem,0.9fr)",
+    width: "minmax(10.5rem,1fr)",
     priority: "core",
     render: (row) => (
       <div className="flex min-w-0 flex-col gap-1">
@@ -482,7 +482,7 @@ export function OrdersOperationsTable({
     [visibleColumns, isWide],
   );
   const gridTemplateColumns = useMemo(
-    () => ["1.75rem", ...effectiveColumns.map((column) => column.width), "6.5rem"].join(" "),
+    () => ["1.75rem", ...effectiveColumns.map((column) => column.width), "7.5rem"].join(" "),
     [effectiveColumns],
   );
 
