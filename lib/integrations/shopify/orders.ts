@@ -6,7 +6,7 @@ import { withSystemContext } from "@/lib/db";
 import { getShopCredentials } from "@/lib/db/credentials";
 import { shops, orders, orderItems, customers, assets, activityLog } from "@/lib/db/schema";
 import { queuePhotoRequest, queueStageEmail, flushQueued } from "@/lib/email/dispatch";
-import type { NormalizedVariation } from "../figures";
+import { resolveProductType, type NormalizedVariation, type ProductTypeResolution } from "../figures";
 import { ShopifyClient } from "./client";
 import { isShopifyConnected } from "./auth";
 import { resolveFigureCount } from "./figures";
@@ -67,6 +67,9 @@ export type NormalizedLineItem = {
   sku: string | null;
   title: string | null; // product title (what the designer is making)
   variantTitle: string | null;
+  // Shopify's shipping flag only (true = the variant requires no shipping). NOT
+  // the product type: PixArt's "Digital File Only" variant still ships by
+  // default. The stored type comes from lineProductType().
   digital: boolean;
   quantity: number;
   hasVariant: boolean; // false + no sku => an add-on line (tip/fee), not a product
@@ -101,6 +104,15 @@ export function resolverInput(li: NormalizedLineItem): NormalizedVariation[] {
     ...li.properties,
     ...(li.variantTitle ? [{ name: "Variant", value: li.variantTitle }] : []),
   ];
+}
+
+/**
+ * Digital vs physical for one line: option values and the variant title first
+ * ("Print On: Digital File Only"), then the requiresShipping flag. Conflicting
+ * signals come back with conflict = true and send the order to review.
+ */
+export function lineProductType(li: NormalizedLineItem): ProductTypeResolution {
+  return resolveProductType(resolverInput(li), li.digital);
 }
 
 /** An add-on line (Shopify tip / fee): no variant and no sku. Never a portrait. */
@@ -365,7 +377,7 @@ export async function importShopifyOrder(args: {
   const items = realLines.map((li) => {
     const input = resolverInput(li);
     const fig = resolveFigureCount(input, shop.config);
-    return { li, input, count: fig.count, source: fig.source, note: fig.note };
+    return { li, input, count: fig.count, source: fig.source, note: fig.note, kind: lineProductType(li) };
   });
   const anyPhotos = order.lineItems.some((li) => li.photoUrls.length > 0);
 
@@ -392,8 +404,11 @@ export async function importShopifyOrder(args: {
           : ("awaiting_photos" as const);
 
   // Figure count only matters for portrait work; non-portrait never blocks review
-  // on an unresolved count (it never pays a designer).
-  const needsReview = !email || (klass === "portrait" && items.some((i) => i.source === "unresolved"));
+  // on an unresolved count (it never pays a designer). A digital-vs-physical
+  // conflict always needs a VA: it decides print + ship and the proof email.
+  const fulfilmentConflict = items.some((i) => i.kind.conflict);
+  const needsReview =
+    !email || fulfilmentConflict || (klass === "portrait" && items.some((i) => i.source === "unresolved"));
   const dueAt = computeDueAt(order.createdAt, shop.slaConfig);
   const uploadToken = randomUUID();
   const archived = isBeforeBackfillCutoff(order.createdAt, shop.config);
@@ -467,7 +482,7 @@ export async function importShopifyOrder(args: {
               figureCountSource: i.source,
               rawVariations: i.input,
               style: matchStyle(i.li.title, i.li.sku, businessStyles),
-              productType: i.li.digital ? ("digital" as const) : ("physical" as const),
+              productType: i.kind.productType,
             })),
           )
           .returning({ id: orderItems.id })
@@ -532,6 +547,8 @@ export async function importShopifyOrder(args: {
         assignedTo,
         autoAssigned: assignedTo != null,
         figures: items.map((i) => ({ count: i.count, source: i.source, note: i.note, style: matchStyle(i.li.title, i.li.sku, businessStyles) })),
+        productTypes: items.map((i) => ({ type: i.kind.productType, source: i.kind.source, note: i.kind.note })),
+        ...(fulfilmentConflict ? { fulfilmentConflict: true } : {}),
         // Add-on lines (tips/fees) deliberately not imported as order_items, logged
         // here so a real product that unexpectedly lacks a variant is auditable.
         ...(skippedAddOns.length ? { skippedAddOns } : {}),

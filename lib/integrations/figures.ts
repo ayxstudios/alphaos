@@ -278,3 +278,82 @@ function heuristicCounts(variations: NormalizedVariation[]): Set<number> {
   counts.delete(0);
   return counts;
 }
+
+/* --- product type (digital vs physical) --------------------------------- */
+
+export type ProductTypeResolution = {
+  productType: "digital" | "physical";
+  /**
+   * option = an option value or the variant title named the format;
+   * platform = only the platform flag spoke (Shopify requiresShipping, Etsy
+   * is_digital); conflict = the signals disagree and a VA must check.
+   */
+  source: "option" | "platform" | "conflict";
+  conflict: boolean;
+  note: string;
+};
+
+// Words in an option VALUE that name a digital delivery ("Digital File Only",
+// "Instant Download", "Printable PDF"). Option NAMES are never read: PixArt's
+// "Need Your Order Within 72 Hours? (For Digital Portraits...)" sits on every
+// line, printed or not.
+const DIGITAL_VALUE = /\b(digital|downloads?|downloadable|printable|jpe?g|png|pdf)\b/i;
+// Words in an option VALUE that name a made, shipped thing.
+const PHYSICAL_VALUE =
+  /\b(canvas(es)?|framed?|frames|posters?|prints?|printed|mugs?|pillows?|cushions?|blankets?|puzzles?|t-?shirts?|shirts?|tees?|hoodies?|acrylic|metal|ornaments?|stickers?|totes?|keyrings?|keychains?)\b/i;
+// Customer-typed free text (names, notes, photos) says nothing about the format:
+// "please send the digital file too" must not turn a canvas into a download.
+const FREE_TEXT_NAME =
+  /(name|note|message|personali[sz]|instruction|request|comment|email|phone|photo|image|upload|wording|dedication|inscription|caption|quote)/i;
+
+/**
+ * Decide whether a line item is digital or physical. Pure; shared by the
+ * Shopify import, the re-resolve action and the Etsy receipt review.
+ *
+ * - An option value (or the variant title) naming a digital format wins over
+ *   the platform flag: PixArt's "Print On: Digital File Only" variant keeps
+ *   Shopify's default requiresShipping = true.
+ * - `platformDigital` true (Shopify: the variant requires no shipping; Etsy:
+ *   is_digital, a download listing) is digital unless an option says otherwise.
+ * - Values naming BOTH a digital and a physical format, or a physical option on
+ *   a line the platform calls digital, are a conflict and never guessed: the
+ *   platform flag decides the stored type and the order goes to review.
+ */
+export function resolveProductType(
+  variations: NormalizedVariation[],
+  platformDigital: boolean,
+): ProductTypeResolution {
+  let digitalHit: string | null = null;
+  let physicalHit: string | null = null;
+  for (const v of variations ?? []) {
+    if (!v?.value || (v.name && FREE_TEXT_NAME.test(v.name))) continue;
+    if (!digitalHit && DIGITAL_VALUE.test(v.value)) digitalHit = `${v.name}: ${v.value}`;
+    if (!physicalHit && PHYSICAL_VALUE.test(v.value)) physicalHit = `${v.name}: ${v.value}`;
+  }
+  const platformType = platformDigital ? ("digital" as const) : ("physical" as const);
+  const flag = platformDigital ? "platform: no shipping" : "platform: ships";
+
+  if (digitalHit && physicalHit) {
+    return {
+      productType: platformType,
+      source: "conflict",
+      conflict: true,
+      note: `options name both a digital and a physical format ("${digitalHit}", "${physicalHit}")`,
+    };
+  }
+  if (digitalHit) {
+    return { productType: "digital", source: "option", conflict: false, note: `"${digitalHit}" (${flag})` };
+  }
+  if (physicalHit && platformDigital) {
+    return {
+      productType: "digital",
+      source: "conflict",
+      conflict: true,
+      note: `"${physicalHit}" names a physical format but the ${flag}`,
+    };
+  }
+  if (physicalHit) {
+    return { productType: "physical", source: "option", conflict: false, note: `"${physicalHit}"` };
+  }
+  return { productType: platformType, source: "platform", conflict: false, note: flag };
+}

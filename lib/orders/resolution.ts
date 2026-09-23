@@ -2,10 +2,11 @@ import { and, desc, eq } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { getShopCredentials } from "@/lib/db/credentials";
-import { orders, orderItems, shops, activityLog, assets, assignments } from "@/lib/db/schema";
+import { orders, orderItems, shops, activityLog, assets, assignments, printJobs } from "@/lib/db/schema";
 import { runAutoAssign } from "./assign";
 import {
   resolveFigureCount,
+  resolveProductType,
   type FigureConfig,
   type NormalizedVariation,
 } from "@/lib/integrations/figures";
@@ -16,6 +17,7 @@ import {
   isShopifyConnected,
   fetchShopifyOrder,
   resolverInput,
+  lineProductType,
   isAddOnLine,
   type NormalizedOrder,
   type NormalizedLineItem,
@@ -81,6 +83,8 @@ export type ReresolveSummary = {
   refetched: number;
   reclassified: number; // moved to a different portrait/non-portrait lifecycle
   reclassifySkipped: number; // would move, but a designer already touched it
+  productTypesFixed: number; // items moved between digital and physical
+  productTypeConflicts: number; // items whose digital/physical signals disagree (review)
 };
 
 /** Coarse lifecycle bucket, for deciding whether re-classification may move an order. */
@@ -156,6 +160,8 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
     refetched: 0,
     reclassified: 0,
     reclassifySkipped: 0,
+    productTypesFixed: 0,
+    productTypeConflicts: 0,
   };
 
   for (const o of orderList) {
@@ -177,6 +183,31 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
       const sourceName = fresh?.sourceName ?? null;
       // Portrait styles are business-level; resolve each item's style by title.
       const businessStyles: BusinessStyle[] = await listBusinessStyles(tx, o.businessId);
+      // Digital vs physical heals too, except once a print job exists: flipping
+      // a line that is already at the printer would pull it out of reconcile.
+      // Such a change is logged (order.product_type_skipped) for a VA instead.
+      const [printed] = await tx
+        .select({ id: printJobs.id })
+        .from(printJobs)
+        .where(eq(printJobs.orderId, o.id))
+        .limit(1);
+      let fulfilmentConflict = false;
+      const typeChanges: { item: string | null; from: string; to: string; note: string }[] = [];
+      const pickType = (
+        prior: "digital" | "physical" | undefined,
+        kind: { productType: "digital" | "physical"; conflict: boolean; note: string },
+        item: string | null,
+      ): "digital" | "physical" => {
+        if (kind.conflict) {
+          fulfilmentConflict = true;
+          summary.productTypeConflicts++;
+        }
+        if (!prior || prior === kind.productType) return kind.productType;
+        typeChanges.push({ item, from: prior, to: kind.productType, note: kind.note });
+        if (printed) return prior;
+        summary.productTypesFixed++;
+        return kind.productType;
+      };
 
       if (fresh) {
         summary.refetched++;
@@ -192,9 +223,17 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
         // SKU (or title when there's no SKU), so a manual "just this order" set
         // survives a re-fetch that recreates the rows.
         const priorLocked = await tx
-          .select({ sku: orderItems.sku, title: orderItems.title, style: orderItems.style, styleLocked: orderItems.styleLocked })
+          .select({
+            sku: orderItems.sku,
+            title: orderItems.title,
+            style: orderItems.style,
+            styleLocked: orderItems.styleLocked,
+            productType: orderItems.productType,
+          })
           .from(orderItems)
           .where(eq(orderItems.orderId, o.id));
+        const priorType = new Map<string, "digital" | "physical">();
+        for (const p of priorLocked) priorType.set(p.sku ?? p.title ?? "", p.productType);
         const lockedBySku = new Map<string, string | null>();
         const lockedByTitle = new Map<string, string | null>();
         for (const p of priorLocked) {
@@ -227,7 +266,7 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
             rawVariations: input,
             style,
             styleLocked: !!locked,
-            productType: li.digital ? ("digital" as const) : ("physical" as const),
+            productType: pickType(priorType.get(li.sku ?? li.title ?? ""), lineProductType(li), li.sku ?? li.title),
           });
         }
       } else {
@@ -247,9 +286,17 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
           classLines.push({ sku: it.sku, title: it.title });
           // A VA-locked style is left exactly as set; otherwise recompute.
           const style = it.styleLocked ? it.style : matchStyle(it.title, it.sku, businessStyles);
+          // Offline there is no requiresShipping: the stored type stands in for
+          // the platform flag, so only an option value can move it. Rows with no
+          // raw variations (VA-entered, Etsy details) never change.
+          const productType = pickType(
+            it.productType,
+            resolveProductType(raw, it.productType === "digital"),
+            it.sku ?? it.title,
+          );
           await tx
             .update(orderItems)
-            .set({ figureCount: fig.count, figureCountSource: fig.source, style })
+            .set({ figureCount: fig.count, figureCountSource: fig.source, style, productType })
             .where(eq(orderItems.id, it.id));
         }
       }
@@ -312,7 +359,18 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
         .from(orderItems)
         .where(eq(orderItems.orderId, o.id));
       const needsReview =
-        o.customerId == null || (intended === "portrait" && remaining.some((r) => r.figureCount == null));
+        o.customerId == null ||
+        fulfilmentConflict ||
+        (intended === "portrait" && remaining.some((r) => r.figureCount == null));
+      if (typeChanges.length) {
+        await tx.insert(activityLog).values({
+          businessId: o.businessId,
+          orderId: o.id,
+          actorId: user.id,
+          action: printed ? "order.product_type_skipped" : "order.product_type_fixed",
+          metadata: { changes: typeChanges, ...(printed ? { reason: "a print job already exists" } : {}) },
+        });
+      }
       await tx.update(orders).set({ needsReview }).where(eq(orders.id, o.id));
 
       // Heal routing too: an order that is now assignable (ready_to_assign, no
@@ -339,7 +397,7 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
         orderId: o.id,
         actorId: user.id,
         action: "order.reresolved",
-        metadata: { refetched: !!fresh, needsReview, intended, reclassified, assignedTo },
+        metadata: { refetched: !!fresh, needsReview, intended, reclassified, assignedTo, fulfilmentConflict },
       });
     });
   }

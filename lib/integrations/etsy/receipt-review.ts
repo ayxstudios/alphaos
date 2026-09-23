@@ -1,3 +1,5 @@
+import { resolveProductType } from "../figures";
+
 export type EtsyVariationPair = {
   label: string;
   value: string;
@@ -8,6 +10,9 @@ export type EtsyReviewTransaction = {
   title: string | null;
   quantity: number | null;
   fulfillment: "physical" | "digital" | null;
+  // is_digital and the variations disagree (e.g. a download listing whose
+  // option says "Canvas"): fulfillment is null and the VA picks.
+  fulfillmentConflict: boolean;
   expectedShipDateIso: string | null;
   variations: EtsyVariationPair[];
   personalization: string | null;
@@ -159,11 +164,17 @@ export function parseEtsyReceiptReview(rawImport: unknown): EtsyReceiptReview {
     if (!isRecord(rawTx)) return [];
     const title = asString(rawTx.title);
     const quantity = asNumber(rawTx.quantity);
-    const fulfillment =
-      typeof rawTx.is_digital === "boolean"
-        ? rawTx.is_digital ? "digital" : "physical"
-        : null;
     const variations = parseVariations(rawTx.variations);
+    // Same rule as the Shopify import: a download listing (is_digital) or an
+    // option value like "Digital File Only" is digital; disagreement is never
+    // guessed.
+    const isDigital = typeof rawTx.is_digital === "boolean" ? rawTx.is_digital : null;
+    const kind = resolveProductType(
+      variations.map((v) => ({ name: v.label, value: v.value })),
+      isDigital === true,
+    );
+    const fulfillment =
+      kind.conflict || (kind.source === "platform" && isDigital == null) ? null : kind.productType;
     const personalization =
       variations.find((v) => v.label.toLowerCase() === "personalization")?.value ?? null;
     const figureCount = extractFigureCount(variations);
@@ -172,6 +183,7 @@ export function parseEtsyReceiptReview(rawImport: unknown): EtsyReceiptReview {
       title,
       quantity: quantity == null ? null : Math.floor(quantity),
       fulfillment,
+      fulfillmentConflict: kind.conflict,
       expectedShipDateIso: unixToIso(rawTx.expected_ship_date),
       variations,
       personalization,
@@ -206,7 +218,9 @@ export function parseEtsyReceiptReview(rawImport: unknown): EtsyReceiptReview {
     transactions,
     inferredFigureCount: figureCounts.length === 1 ? figureCounts[0] : null,
     inferredFulfillment:
-      fulfillments.length > 0 && fulfillments.every((f) => f === "digital")
+      transactions.some((t) => t.fulfillmentConflict)
+        ? null
+        : fulfillments.length > 0 && fulfillments.every((f) => f === "digital")
         ? "digital"
         : fulfillments.length > 0
           ? "physical"
