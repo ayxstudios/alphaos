@@ -14,6 +14,7 @@ import { Pool, neonConfig } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { migrate } from "drizzle-orm/neon-serverless/migrator";
 import ws from "ws";
+import { isProdHost } from "./prod-endpoints";
 
 neonConfig.webSocketConstructor = ws;
 
@@ -35,7 +36,7 @@ async function main() {
   if (src.hostname.replace("-pooler", "") === dst.hostname.replace("-pooler", "")) {
     throw new Error("SOURCE_URL and TARGET_URL are the same database host; refusing.");
   }
-  if (dst.hostname.includes("ep-spring-dawn-audsesft")) {
+  if (isProdHost(dst.hostname)) {
     throw new Error("TARGET_URL is the production database; refusing.");
   }
   if (!process.argv.includes("--yes")) {

@@ -6,7 +6,8 @@ A copy of production for end-to-end testing. Made 2026-09-23.
   `alphaos` project, aliased; production stays alphaos-kappa.vercel.app)
 - Database: Neon project `shiny-pine-75328217`, resource
   `alphaos-staging-2026-09-23` in the alphaos Vercel team's Neon
-  installation (Free plan, region iad1, same as production)
+  installation (Free plan, region iad1; production moved to Singapore on
+  2026-09-24, see docs/REGION-MOVE-2026-09-24.md)
 - Logins: `staging-admin@alphaos.test`, `staging-va@alphaos.test`,
   `staging-designer@alphaos.test`. Passwords and the staging database URLs
   live ONLY in `~/Documents/ai-employee-agent/.local/alphaos-staging.env`
@@ -14,7 +15,8 @@ A copy of production for end-to-end testing. Made 2026-09-23.
 
 ## Why a copied project and not a Neon branch
 
-Production's database (Neon project `raspy-surf-15386736`) sits in a
+Production's database (Neon project `floral-truth-37733980`, Singapore,
+since 2026-09-24; before that `raspy-surf-15386736`, us-east-1) sits in a
 Vercel-managed Neon organization. Our `NEON_API_KEY` belongs to another Neon
 organization and gets `project not found`, and a key for the Vercel-managed
 org can only be minted in the Neon console through Vercel SSO (a browser
@@ -37,9 +39,9 @@ so it never replaces a production variable.
 ## Roles
 
 `DATABASE_URL` = `app_user` (no BYPASSRLS, RLS enforced), `DIRECT_URL` =
-`neondb_owner` (migrations, scripts). Note: production's own
-`DATABASE_URL` currently connects as `neondb_owner`, which has BYPASSRLS,
-so RLS is defined but not enforced in production. Staging enforces it.
+`neondb_owner` (migrations, scripts). Production uses the same split
+(since 2026-09-23 its `DATABASE_URL` is `app_user`, so RLS is enforced there
+too).
 
 ## What is disarmed
 
@@ -144,7 +146,8 @@ deployment protection on this project; no bypass header is needed.
 
 ```
 set -a; . ~/Documents/ai-employee-agent/.local/alphaos-staging.env; set +a
-SOURCE_URL=<production DIRECT_URL, from vercel env pull --environment production> \
+SOURCE_URL=<production DIRECT_URL, from vercel env pull --environment production;
+            since 2026-09-24 that is the Singapore host ep-sweet-king-azfnjij5> \
 TARGET_URL="$STAGING_DIRECT_URL" npx tsx scripts/staging/clone-prod.ts --yes
 TARGET_URL="$STAGING_DIRECT_URL" APP_USER_PASSWORD="$STAGING_APP_USER_PASSWORD" \
   npx tsx scripts/staging/prepare.ts
@@ -153,7 +156,14 @@ TARGET_URL="$STAGING_DIRECT_URL" APP_USER_PASSWORD="$STAGING_APP_USER_PASSWORD" 
 `prepare.ts` must run after every clone: the clone brings production's
 credentials and email switches with it. Run `arm-mocks.ts` after it when the
 full journey is to be tested (see "Mock mode"). All three scripts refuse to
-write to the production endpoint.
+write to a production endpoint: the list is `scripts/staging/prod-endpoints.ts`
+(the Singapore production host AND the old us-east-1 host, kept as the
+rollback copy). Add any future production host there.
+
+Postgres versions: production (Singapore) and staging both run Postgres 18
+(the old us-east-1 copy is 17). `clone-prod.ts` copies row by row through the
+app's drizzle migrations, so versions do not matter to it; a `pg_dump` of
+production needs a version 18 client.
 
 ## Remove staging
 
