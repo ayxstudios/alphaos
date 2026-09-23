@@ -32,6 +32,7 @@ import { QC_SEND_DEDUPE_MS, qcPassEmailInFlight } from "../lib/qc/send-guard";
 import { textToHtml } from "../lib/integrations/gmail/mime";
 import { MAX_FIGURES, parseFigureCount } from "../lib/orders/manual-input";
 import { mocksAllowed } from "../lib/mock/guard";
+import { secretsMatch } from "../lib/secret-compare";
 import { installMockTransport } from "../lib/mock/transport";
 import { isMockMode as gelatoMockMode } from "../lib/integrations/gelato/client";
 import { isMockMode as lumaMockMode } from "../lib/integrations/lumaprints/client";
@@ -301,7 +302,23 @@ async function alphaChatScope() {
   );
 }
 
+/** Security QA r1 (P3): cron and Alpha secrets compared in constant time. */
+function machineSecrets() {
+  const secret = "ci-cron-secret";
+  report(
+    "machine secrets: exact match only (constant-time compare)",
+    secretsMatch(`Bearer ${secret}`, `Bearer ${secret}`) &&
+      !secretsMatch(`Bearer ${secret}x`, `Bearer ${secret}`) &&
+      !secretsMatch(`Bearer ${secret.slice(0, -1)}`, `Bearer ${secret}`) &&
+      !secretsMatch("", `Bearer ${secret}`) &&
+      !secretsMatch(null, `Bearer ${secret}`) &&
+      !secretsMatch(`Bearer ${secret}`, ""),
+    "right secret passes; longer, shorter, empty and missing values fail",
+  );
+}
+
 async function main() {
+  machineSecrets();
   await loginIpLimit();
   await alphaChatScope();
   await qcSendGuard();
