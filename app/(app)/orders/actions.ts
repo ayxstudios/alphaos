@@ -165,12 +165,18 @@ export async function bulkChangeOrderStatus(
     }
 
     try {
-      await transition(user, {
-        orderId: order.id,
-        to,
-        expectedFrom: order.status,
-        metadata: { via: "bulk_orders_dashboard" },
-      });
+      if (to === "complete" && order.status === "shipped") {
+        // Shipped -> Complete is one step for the VA: it passes through
+        // Delivered (both moves logged) in one transaction.
+        await completeShippedOrDelivered(user, order.id, order.status, "bulk_orders_dashboard");
+      } else {
+        await transition(user, {
+          orderId: order.id,
+          to,
+          expectedFrom: order.status,
+          metadata: { via: "bulk_orders_dashboard" },
+        });
+      }
       changed += 1;
     } catch (err) {
       if (err instanceof OrderTransitionError) {
@@ -188,6 +194,49 @@ export async function bulkChangeOrderStatus(
   revalidatePath("/orders");
   revalidatePath("/board");
   return { ok: true, changed, skipped };
+}
+
+/**
+ * Close a shipped or delivered order. A shipped order passes through Delivered
+ * first (the graph has no shipped -> complete edge), both moves in one
+ * transaction so it never stops half way.
+ */
+async function completeShippedOrDelivered(
+  user: RequestUser,
+  orderId: string,
+  from: OrderStatus,
+  via: string,
+): Promise<void> {
+  await withUserContext(user, async (tx) => {
+    if (from === "shipped") {
+      await runTransition(tx, user, { orderId, to: "delivered", expectedFrom: "shipped", metadata: { via } });
+    }
+    await runTransition(tx, user, { orderId, to: "complete", expectedFrom: "delivered", metadata: { via } });
+  });
+}
+
+export type CompleteOrderResult = { ok: true; message: string } | { ok: false; message: string };
+
+/** Order page "Mark complete": a shipped or delivered order, in one click. */
+export async function markOrderComplete(orderId: string): Promise<CompleteOrderResult> {
+  const user = await requireStaff();
+  if ("error" in user) return { ok: false, message: user.error };
+  const [order] = await withUserContext(user, (tx) =>
+    tx.select({ status: orders.status }).from(orders).where(eq(orders.id, orderId)).limit(1),
+  );
+  if (!order) return { ok: false, message: "Order not found." };
+  if (order.status !== "shipped" && order.status !== "delivered") {
+    return { ok: false, message: "Only a shipped or delivered order can be marked complete here." };
+  }
+  try {
+    await completeShippedOrDelivered(user, orderId, order.status, "order_page");
+  } catch (err) {
+    if (err instanceof OrderTransitionError) return { ok: false, message: err.message };
+    throw err;
+  }
+  revalidatePath(`/orders/${orderId}`);
+  revalidatePath("/orders");
+  return { ok: true, message: "The order is complete." };
 }
 
 export async function bulkReassignOrders(

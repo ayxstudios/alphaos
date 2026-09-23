@@ -60,6 +60,7 @@ import { OrderRevisionForm } from "@/components/orders/order-revision-form";
 import { OrderReassignForm } from "@/components/orders/order-reassign-form";
 import { OrderStyleSetter } from "@/components/orders/order-style-setter";
 import { TrackingCompleteForm } from "@/components/orders/tracking-complete-form";
+import { OrderCompleteButton } from "@/components/orders/order-complete-button";
 import { ReplyClassificationSuggestion } from "@/components/orders/reply-classification-suggestion";
 import { ReplyDraft } from "@/components/orders/reply-draft";
 import { AskAlpha } from "@/components/alpha/ask-alpha";
@@ -163,6 +164,7 @@ function mediaForItem(
 type NextAction =
   | { kind: "assign"; label: string }
   | { kind: "link"; label: string; cta: string; href: string }
+  | { kind: "complete"; label: string }
   | { kind: "info"; label: string };
 
 function nextSuggestedAction(input: {
@@ -199,10 +201,10 @@ function nextSuggestedAction(input: {
       return { kind: "info", label: "Printing, waiting for it to ship" };
     case "shipped":
       return input.hasTracking
-        ? { kind: "info", label: "Waiting for delivery" }
+        ? { kind: "complete", label: "Shipped. Mark it complete once it has arrived" }
         : { kind: "info", label: "Add the tracking number below" };
     case "delivered":
-      return { kind: "info", label: "Close the order once everything is done" };
+      return { kind: "complete", label: "Close the order once everything is done" };
     case "complete":
       return { kind: "info", label: "Done, nothing to do" };
     case "on_hold":
@@ -546,6 +548,7 @@ export default async function OrderDetailPage({
             />
           </div>
         )}
+        {nextAction.kind === "complete" && editable && <OrderCompleteButton orderId={order.id} />}
         {nextAction.kind === "link" && (
           <Link
             href={nextAction.href}

@@ -333,7 +333,7 @@ const STATUS_HELP: Record<string, { means: string; todo: string }> = {
   },
   Shipped: {
     means: "The order is on its way to the customer.",
-    todo: "Nothing to do. Wait for delivery.",
+    todo: "Mark it complete on the order page once it has arrived.",
   },
   "Completed With Tracking": {
     means: "Shipped with a tracking number saved.",
