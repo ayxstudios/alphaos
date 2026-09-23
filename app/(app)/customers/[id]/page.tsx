@@ -489,7 +489,8 @@ export default async function CustomerDetailPage({
                   const latestQc = qcsForOrder[0] ?? null;
                   const latestOrderMessage = messagesForOrder[0] ?? null;
                   const latestActivity = activityForOrder[0] ?? null;
-                  const overdue = order.dueAt ? order.dueAt < now : false;
+                  // A delivered, complete or cancelled order is never overdue.
+                  const overdue = order.dueAt && activeStatuses(order) ? order.dueAt < now : false;
 
                   return (
                     <article key={order.id} className="px-4 py-4">
