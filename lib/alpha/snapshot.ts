@@ -11,6 +11,7 @@ import { withUserContext, type RequestUser } from "@/lib/db";
 import { assignments, businesses, orders, printJobs, users, designerProfiles } from "@/lib/db/schema";
 import { getTodayQueue } from "@/lib/orders/today-queue";
 import { getMyWeek } from "@/lib/designers/my-week";
+import { DUE_STATUSES } from "@/lib/home/shared";
 
 const DAY = 24 * 3_600_000;
 
@@ -107,7 +108,9 @@ async function buildAdminSnapshot(user: RequestUser, businessId: string): Promis
         tx
           .select({ n: count() })
           .from(orders)
-          .where(and(eq(orders.businessId, businessId), isNull(orders.archivedAt), lt(orders.dueAt, now), inArray(orders.status, OPEN_ORDER_STATUSES))),
+          // Same rule as Home and the Orders Overdue tab: a shipped order is
+          // never late, so the counts always agree.
+          .where(and(eq(orders.businessId, businessId), isNull(orders.archivedAt), lt(orders.dueAt, now), inArray(orders.status, DUE_STATUSES))),
         tx.select({ status: printJobs.status, n: count() }).from(printJobs).where(eq(printJobs.businessId, businessId)).groupBy(printJobs.status),
         tx.select({ name: businesses.name }).from(businesses).where(eq(businesses.id, businessId)).limit(1),
       ]);

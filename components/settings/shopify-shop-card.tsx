@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 
 import {
   Button,
+  ConfirmDrawer,
   Input,
   Select,
   Badge,
@@ -107,8 +108,8 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
     });
   }
 
+  const [backfillOpen, setBackfillOpen] = useState(false);
   function onBackfill() {
-    if (!confirm("Backfill re-scans the last 60 days. Orders before the cutoff import as archived and no customer emails are sent. Continue?")) return;
     setSyncError(null);
     setSummary(null);
     startBackfill(async () => {
@@ -133,7 +134,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
 
   const health = syncHealth(shop.lastSyncAt);
   const lastSync = formatSyncTime(shop.lastSyncAt);
-  const cursor = formatAt(shop.lastSyncCursor, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }, "none");
+  const cursor = formatAt(shop.lastSyncCursor, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }, "nothing yet");
   const cutoffDate = shop.backfillCutoffAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
   const webhookUris = webhookStatus.subscriptions
     .map((sub) => sub.uri)
@@ -208,7 +209,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
                     name="clientId"
                     value={clientId}
                     onChange={(e) => setClientId(e.target.value)}
-                    placeholder={shop.hasClientId ? "Set - enter to replace" : "Client ID"}
+                    placeholder={shop.hasClientId ? "Saved. Type a new one to replace it" : "Client ID"}
                     autoComplete="off"
                     required={!shop.hasClientId}
                   />
@@ -218,7 +219,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
                     type="password"
                     value={clientSecret}
                     onChange={(e) => setClientSecret(e.target.value)}
-                    placeholder={shop.hasClientSecret ? "Set - leave blank to keep" : "Client secret"}
+                    placeholder={shop.hasClientSecret ? "Saved. Leave blank to keep it" : "Client secret"}
                     autoComplete="off"
                     required={!shop.hasClientSecret}
                   />
@@ -231,7 +232,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
                     type="password"
                     value={accessToken}
                     onChange={(e) => setAccessToken(e.target.value)}
-                    placeholder={shop.hasToken ? "Set - leave blank to keep" : "shpat_..."}
+                    placeholder={shop.hasToken ? "Saved. Leave blank to keep it" : "shpat_..."}
                     autoComplete="off"
                     required={!shop.hasToken}
                   />
@@ -241,7 +242,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
                     type="password"
                     value={webhookSecret}
                     onChange={(e) => setWebhookSecret(e.target.value)}
-                    placeholder={shop.hasWebhookSecret ? "Set - leave blank to keep" : "Webhook secret"}
+                    placeholder={shop.hasWebhookSecret ? "Saved. Leave blank to keep it" : "Webhook secret"}
                     autoComplete="off"
                     required={!shop.hasWebhookSecret}
                   />
@@ -303,15 +304,27 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
                 Sync now
               </Button>
               <Button
-                variant="ghost"
+                variant="secondary"
                 size="sm"
-                onClick={onBackfill}
+                onClick={() => setBackfillOpen(true)}
                 loading={backfilling}
                 disabled={shop.status !== "connected"}
               >
-                Backfill 60d
+                Re-import 60 days
               </Button>
-              <span className="text-xs text-slate">{shop.shopDomain ?? "No domain"} · cursor {cursor}</span>
+              <ConfirmDrawer
+                open={backfillOpen}
+                onClose={() => setBackfillOpen(false)}
+                onConfirm={onBackfill}
+                title="Re-import 60 days"
+                confirmLabel="Re-import"
+              >
+                <p className="text-sm text-slate">
+                  This checks the shop for every order from the last 60 days and adds any that are missing. Orders from
+                  before the cutoff come in as archived. No customer emails are sent.
+                </p>
+              </ConfirmDrawer>
+              <span className="text-xs text-slate">{shop.shopDomain ?? "No domain"} · last order seen {cursor}</span>
             </div>
             {syncError && <p className="text-sm text-rose">{syncError}</p>}
             {summary && (

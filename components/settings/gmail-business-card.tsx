@@ -102,13 +102,14 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
       try {
         setPoll(await triggerGmailPoll(gmail.businessId));
       } catch (e) {
-        setPollError(e instanceof Error ? e.message : "Poll failed");
+        setPollError(e instanceof Error ? e.message : "Could not check replies");
       }
     });
   }
 
   return (
-    <details className="group rounded-card bg-surface shadow-card">
+    // Open by default: the two sending switches are what people come here for.
+    <details className="group rounded-card bg-surface shadow-card" open>
       <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -135,7 +136,7 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
         >
           <span className="text-sm font-medium text-ink">Customer email sending</span>
           <Badge variant={gmail.sendingEnabled ? "success" : "warning"} dot>
-            {gmail.sendingEnabled ? "ON" : "OFF"}
+            {gmail.sendingEnabled ? "On" : "Off"}
           </Badge>
           <Button
             type="button"
@@ -149,15 +150,15 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
           </Button>
           <p className="w-full text-xs text-slate">
             {gmail.sendingEnabled
-              ? "The master switch. On: approved emails and the automatic ones (photo request, photo reminder) go to customers. Off: nothing reaches a customer."
-              : `The master switch. Off: nothing reaches a customer. Turning on skips unsent emails for finished orders or anything older than ${STALE_AFTER_DAYS} days; they stay in Emails to send or discard by hand.`}
+              ? "Customers get approved emails and the automatic ones (photo request, photo reminder). Turn off to stop every customer email."
+              : `No email reaches a customer. When you turn it on, unsent emails for finished orders or older than ${STALE_AFTER_DAYS} days are held back; send or discard them in Messages.`}
           </p>
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-input border border-line bg-canvas/70 px-3 py-2.5">
-          <span className="text-sm font-medium text-ink">Stage emails send by themselves</span>
+          <span className="text-sm font-medium text-ink">Order updates send by themselves</span>
           <Badge variant={gmail.stageAutoSend ? "success" : "neutral"} dot>
-            {gmail.stageAutoSend ? "ON" : "OFF"}
+            {gmail.stageAutoSend ? "On" : "Off"}
           </Badge>
           <Button
             type="button"
@@ -172,8 +173,8 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
           <p className="w-full text-xs text-slate">
             Order received, in the artist&apos;s hands, printing, shipped and the proof reminder.{" "}
             {gmail.stageAutoSend
-              ? "On: they send without approval (still only while sending is on)."
-              : "Off (recommended to start): they wait in Emails for a VA to approve."}
+              ? "They send without waiting for a VA (only while customer email is on)."
+              : "They wait in Messages for a VA to approve. Best to start this way."}
           </p>
         </div>
 
@@ -185,7 +186,7 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
               name="clientId"
               value={clientId}
               onChange={(e) => setClientId(e.target.value)}
-              placeholder={gmail.hasClient ? "Set - enter to replace" : "xxxxx.apps.googleusercontent.com"}
+              placeholder={gmail.hasClient ? "Saved. Type a new one to replace it" : "xxxxx.apps.googleusercontent.com"}
               autoComplete="off"
               required={!gmail.hasClient}
             />
@@ -193,7 +194,7 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
               label="OAuth client secret"
               name="clientSecret"
               type="password"
-              placeholder={gmail.hasSecret ? "Set - leave blank to keep" : "GOCSPX-..."}
+              placeholder={gmail.hasSecret ? "Saved. Leave blank to keep it" : "GOCSPX-..."}
               autoComplete="off"
               required={!gmail.hasSecret}
             />
@@ -216,8 +217,8 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
                 aria-disabled={!gmail.hasClient}
                 className={
                   gmail.hasClient
-                    ? "inline-flex h-8 items-center rounded-input border border-line bg-surface px-3 text-sm font-medium text-ink hover:bg-canvas"
-                    : "inline-flex h-8 items-center rounded-input border border-line bg-surface px-3 text-sm font-medium text-slate opacity-50 pointer-events-none"
+                    ? "inline-flex h-11 items-center rounded-input border border-line bg-surface px-3 text-sm font-medium sm:h-8 text-ink hover:bg-canvas"
+                    : "inline-flex h-11 items-center rounded-input border border-line bg-surface px-3 text-sm font-medium sm:h-8 text-slate opacity-50 pointer-events-none"
                 }
               >
                 {gmail.status === "connected" ? "Reconnect Gmail" : "Connect Gmail"}

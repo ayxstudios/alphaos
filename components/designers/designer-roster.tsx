@@ -71,7 +71,7 @@ export function DesignerRoster({
 
   return (
     <div className="rounded-card bg-surface shadow-card">
-      <div className="hidden grid-cols-[5rem_1fr_1.6fr_7rem_11rem] gap-3 border-b border-line px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-slate lg:grid">
+      <div className="hidden grid-cols-[4rem_1fr_1.6fr_7rem_11rem] gap-3 border-b border-line px-4 py-2.5 text-xs font-medium text-slate lg:grid">
         <span>Rank</span>
         <span>Designer</span>
         <span>Styles</span>
@@ -163,18 +163,18 @@ function Row({
       <div className="flex items-center gap-1">
         <span className="w-5 text-sm font-semibold tabular-nums text-ink">{position}</span>
         {canEdit && (
-          <div className="flex flex-row opacity-60 transition-opacity hover:opacity-100 lg:flex-col">
+          <div className="flex flex-row lg:flex-col">
             <button
               type="button"
               aria-label="Move up"
               disabled={first}
               onClick={() => onReorder(d.userId, "up")}
               className={cn(
-                "flex size-7 items-center justify-center rounded text-slate hover:bg-canvas hover:text-ink disabled:opacity-30",
+                "flex size-11 items-center justify-center rounded text-slate hover:bg-canvas hover:text-ink disabled:opacity-30 lg:size-7",
                 focusRing,
               )}
             >
-              <ChevronDown size={13} className="rotate-180" />
+              <ChevronDown size={16} className="rotate-180" />
             </button>
             <button
               type="button"
@@ -182,11 +182,11 @@ function Row({
               disabled={last}
               onClick={() => onReorder(d.userId, "down")}
               className={cn(
-                "flex size-7 items-center justify-center rounded text-slate hover:bg-canvas hover:text-ink disabled:opacity-30",
+                "flex size-11 items-center justify-center rounded text-slate hover:bg-canvas hover:text-ink disabled:opacity-30 lg:size-7",
                 focusRing,
               )}
             >
-              <ChevronDown size={13} />
+              <ChevronDown size={16} />
             </button>
           </div>
         )}
@@ -233,7 +233,7 @@ function Row({
               if (e.key === "Enter") e.currentTarget.blur();
             }}
             className={cn(
-              "h-9 w-20 rounded-input border border-line bg-surface px-2.5 text-sm tabular-nums text-ink",
+              "h-11 w-20 rounded-input sm:h-9 border border-line bg-surface px-2.5 text-sm tabular-nums text-ink",
               focusRing,
             )}
           />
@@ -248,7 +248,7 @@ function Row({
           <span className={cn("tabular-nums", atLimit ? "font-medium text-rose" : "text-ink")}>
             {d.assignedToday} / {d.dailyCapacity}
           </span>
-          <span className="text-slate">{d.wipCount} in flight</span>
+          <span className="text-slate">{d.wipCount} in progress</span>
         </div>
         <div className="h-1 w-full overflow-hidden rounded-full bg-chart-track">
           <div
@@ -263,7 +263,7 @@ function Row({
         type="button"
         onClick={() => setExpanded((v) => !v)}
         className={cn(
-          "flex h-8 w-fit items-center gap-1.5 rounded-input px-1 text-xs font-medium text-slate hover:text-ink",
+          "flex h-11 w-fit items-center gap-1.5 rounded-input px-1 text-xs font-medium text-slate hover:text-ink lg:h-8",
           focusRing,
         )}
         aria-expanded={expanded}
@@ -396,7 +396,7 @@ function ContactPanel({
               focusRing,
             )}
           />
-          <p className="text-xs text-slate">0 = no cap on work in flight</p>
+          <p className="text-xs text-slate">0 = no limit</p>
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3 sm:max-w-xs">
@@ -466,7 +466,7 @@ function StyleSelect({
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          "flex min-h-9 w-full items-center gap-1 rounded-input border border-line bg-surface px-2 py-1 text-left",
+          "flex min-h-11 w-full items-center gap-1 rounded-input border border-line bg-surface px-2 py-1 text-left sm:min-h-9",
           focusRing,
         )}
       >

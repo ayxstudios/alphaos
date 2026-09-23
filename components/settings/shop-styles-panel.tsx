@@ -119,7 +119,7 @@ function ShopRow({ shop, catalog }: { shop: ShopStylesVM; catalog: string[] }) {
             placeholder="Limit to a style..."
             aria-label={`Limit ${shop.name} to a style`}
             className={cn(
-              "h-9 min-w-0 flex-1 rounded-input border border-line bg-canvas px-2.5 text-sm text-ink placeholder:text-slate",
+              "h-11 min-w-0 flex-1 rounded-input sm:h-9 border border-line bg-canvas px-2.5 text-sm text-ink placeholder:text-slate",
               focusRing,
             )}
           />
@@ -134,7 +134,7 @@ function ShopRow({ shop, catalog }: { shop: ShopStylesVM; catalog: string[] }) {
             onClick={add}
             disabled={!draft.trim()}
             className={cn(
-              "inline-flex h-9 items-center rounded-input bg-ink px-3 text-sm font-medium text-surface transition-opacity disabled:pointer-events-none disabled:opacity-40",
+              "inline-flex h-11 items-center rounded-input bg-ink px-3 sm:h-9 text-sm font-medium text-surface transition-opacity disabled:pointer-events-none disabled:opacity-40",
               focusRing,
             )}
           >

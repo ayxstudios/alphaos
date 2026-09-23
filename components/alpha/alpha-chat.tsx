@@ -49,7 +49,7 @@ function SendGlyph({ size = 16 }: { size?: number }) {
 }
 
 /**
- * Alpha's floating chat widget -- the same AI manager that answers on
+ * Alpha's chat panel (opened from the top bar) -- the same AI manager that answers on
  * WhatsApp, now live inside AlphaOS. Mounted once in AppShell for every
  * role. Persists its thread per user in localStorage; falls back to a calm
  * snapshot-built answer whenever the daemon can't be reached (never an
@@ -190,31 +190,10 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
 
   if (!mounted) return null;
 
-  // The QC review screen keeps its sign-off and Pass/Fail in the bottom right,
-  // exactly where the floating button sits; the top bar's Alpha AI stays there.
-  const hideFloating = pathname?.startsWith("/qc/") ?? false;
-
   return createPortal(
     <>
-      {!open && !hideFloating && (
-        <button
-          type="button"
-          aria-label="Open Alpha AI"
-          onClick={() => setOpen(true)}
-          className={cn(
-            "fixed z-40 flex items-center gap-2 rounded-full bg-pigment px-4 py-3 text-surface shadow-lg",
-            "transition-transform motion-hover hover:opacity-90 active:scale-95",
-            // Phone: the top bar's Alpha AI button is the way in; this one
-            // floated over cards, rows and buttons above the tab bar.
-            "bottom-20 right-4 max-sm:hidden sm:bottom-6 sm:right-6",
-            focusRing,
-          )}
-        >
-          <Bot size={20} />
-          <span className="hidden text-sm font-medium sm:inline">Alpha AI</span>
-        </button>
-      )}
-
+      {/* No floating launcher: Alpha AI opens from its tab in the top bar (and
+          the menu), so nothing floats over the last row of a page. */}
       {open && (
         <div
           role="dialog"
@@ -245,7 +224,7 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
                   aria-expanded={menuOpen}
                   onClick={() => setMenuOpen((v) => !v)}
                   className={cn(
-                    "inline-flex size-8 items-center justify-center rounded-input text-slate",
+                    "inline-flex size-11 items-center justify-center rounded-input text-slate sm:size-8",
                     "transition-colors motion-hover hover:bg-canvas hover:text-ink",
                     focusRing,
                   )}
@@ -261,7 +240,7 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
                       role="menuitem"
                       onClick={clearChat}
                       className={cn(
-                        "w-full rounded-input px-2 py-1.5 text-left text-sm text-ink",
+                        "min-h-11 w-full rounded-input px-2 py-1.5 text-left text-sm text-ink sm:min-h-0",
                         "transition-colors motion-hover hover:bg-canvas",
                         focusRing,
                       )}
@@ -276,7 +255,7 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
                 aria-label="Close Alpha AI"
                 onClick={() => setOpen(false)}
                 className={cn(
-                  "inline-flex size-8 items-center justify-center rounded-input text-slate",
+                  "inline-flex size-11 items-center justify-center rounded-input text-slate sm:size-8",
                   "transition-colors motion-hover hover:bg-canvas hover:text-ink",
                   focusRing,
                 )}
@@ -300,7 +279,7 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
                       type="button"
                       onClick={() => void send(s)}
                       className={cn(
-                        "rounded-full border border-line bg-canvas px-3 py-1.5 text-xs text-ink",
+                        "min-h-11 rounded-full border border-line bg-canvas px-3 py-1.5 text-sm text-ink sm:min-h-0 sm:text-xs",
                         "transition-colors motion-hover hover:bg-pigment-soft hover:border-pigment/30",
                         focusRing,
                       )}

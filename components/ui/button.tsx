@@ -21,7 +21,8 @@ const variants: Record<ButtonVariant, string> = {
 };
 
 const sizes: Record<ButtonSize, string> = {
-  sm: "h-8 px-3 text-sm gap-1.5",
+  // Phone: never under a 44px tap target; laptop keeps the compact 32px.
+  sm: "h-8 min-h-11 px-3 text-sm gap-1.5 sm:min-h-0",
   md: "h-10 px-4 text-sm gap-2",
   lg: "h-12 px-5 text-base gap-2",
 };

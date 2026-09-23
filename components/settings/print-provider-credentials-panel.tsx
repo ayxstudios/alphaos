@@ -37,7 +37,7 @@ function GelatoCard({ creds }: { creds: PrintProviderCredentialsVM }) {
         toast({ variant: "success", title: "Gelato credentials saved" });
         router.refresh();
       } catch (error) {
-        toast({ variant: "danger", title: "Not saved", description: error instanceof Error ? error.message : "Failed to save." });
+        toast({ variant: "danger", title: "Not saved", description: error instanceof Error ? error.message : "Try again." });
       }
     });
   }
@@ -66,14 +66,14 @@ function GelatoCard({ creds }: { creds: PrintProviderCredentialsVM }) {
           label="API key (X-API-KEY)"
           name="apiKey"
           type="password"
-          placeholder={creds.gelato.hasApiKey ? "Set - leave blank to keep" : "Paste the key from the Gelato dashboard"}
+          placeholder={creds.gelato.hasApiKey ? "Saved. Leave blank to keep it" : "Paste the key from the Gelato dashboard"}
           autoComplete="off"
         />
         <Input
           label="Webhook secret"
           name="webhookSecret"
           type="password"
-          placeholder={creds.gelato.hasWebhookSecret ? "Set - leave blank to keep" : "A secret you choose"}
+          placeholder={creds.gelato.hasWebhookSecret ? "Saved. Leave blank to keep it" : "A secret you choose"}
           autoComplete="off"
         />
         <div className="rounded-input bg-canvas/70 px-3 py-2 text-xs text-slate">
@@ -110,7 +110,7 @@ function LumaCard({ creds }: { creds: PrintProviderCredentialsVM }) {
         toast({ variant: "success", title: "Luma Prints credentials saved" });
         router.refresh();
       } catch (error) {
-        toast({ variant: "danger", title: "Not saved", description: error instanceof Error ? error.message : "Failed to save." });
+        toast({ variant: "danger", title: "Not saved", description: error instanceof Error ? error.message : "Try again." });
       }
     });
   }
@@ -138,14 +138,14 @@ function LumaCard({ creds }: { creds: PrintProviderCredentialsVM }) {
         <Input
           label="Username"
           name="username"
-          placeholder={creds.lumaprints.hasUsername ? "Set - leave blank to keep" : "Provided after registration"}
+          placeholder={creds.lumaprints.hasUsername ? "Saved. Leave blank to keep it" : "Provided after registration"}
           autoComplete="off"
         />
         <Input
           label="Password"
           name="password"
           type="password"
-          placeholder={creds.lumaprints.hasPassword ? "Set - leave blank to keep" : ""}
+          placeholder={creds.lumaprints.hasPassword ? "Saved. Leave blank to keep it" : ""}
           autoComplete="off"
         />
         <Input

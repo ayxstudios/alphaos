@@ -51,7 +51,7 @@ function TemplateCard({ businessId, template }: { businessId: string; template: 
     startSave(async () => {
       try {
         await saveEmailTemplate(form);
-        toast({ variant: "success", title: "Template saved", description: `${template.label} now uses your text.` });
+        toast({ variant: "success", title: "Template saved", description: `Customers get this ${template.label.toLowerCase()} email from now on.` });
       } catch {
         toast({ variant: "danger", title: "Didn't save", description: "The subject and body both need some text." });
       }

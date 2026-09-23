@@ -24,6 +24,7 @@ import {
   Eye,
   type IconProps,
   Bot,
+  Wallet,
 } from "@/components/ui/icons";
 
 // Next 15.5 Link: full prefetch (page data, not only the skeleton) on pointer
@@ -45,7 +46,7 @@ const ADMIN_NAV: NavItem[] = [
   { label: "Messages", href: "/emails", icon: Mail },
   { label: "Designers", href: "/board", icon: Columns },
   { label: "Print", href: "/queue/print", icon: Truck },
-  { label: "Money", href: "/payouts", icon: ListChecks },
+  { label: "Money", href: "/payouts", icon: Wallet },
   { label: "Settings", href: "/settings", icon: Settings },
 ];
 
@@ -175,7 +176,8 @@ export function Sidebar({
     <aside
       className={cn(
         "flex h-screen shrink-0 flex-col border-r border-line bg-surface transition-[width] duration-150 ease-standard",
-        collapsed && !mobile ? "w-[4.5rem]" : "w-60",
+        // In the phone drawer the panel sets the width: fill it, no blank strip.
+        mobile ? "w-full" : collapsed ? "w-[4.5rem]" : "w-60",
       )}
     >
       <div
@@ -188,7 +190,7 @@ export function Sidebar({
           href={homeHref}
           onClick={onNavigate}
           aria-label="AlphaOS home"
-          className={cn("flex min-w-0 items-center gap-2 rounded-input", focusRing)}
+          className={cn("flex min-h-11 min-w-0 items-center gap-2 rounded-input", focusRing)}
         >
           {collapsed && !mobile ? (
             <span className="font-display text-lg font-semibold leading-5 text-pigment">α</span>
@@ -213,8 +215,8 @@ export function Sidebar({
         )}
       </nav>
 
-      <div className="border-t border-line p-2">
-        {onToggle && !mobile && (
+      {onToggle && !mobile && (
+        <div className="border-t border-line p-2">
           <button
             type="button"
             onClick={onToggle}
@@ -229,8 +231,8 @@ export function Sidebar({
             <Columns size={17} className={cn(collapsed && "rotate-180")} />
             {!collapsed && <span className="ml-2">Collapse</span>}
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </aside>
   );
 }

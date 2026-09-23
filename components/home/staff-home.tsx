@@ -55,7 +55,7 @@ export async function StaffHome({ user, businessId, role }: { user: RequestUser;
       </div>
 
       <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
-        <HomeSection quiet title="Designer load" description="Work in flight against each limit" action={{ label: "Boards", href: "/board" }}>
+        <HomeSection quiet title="Designer load" description="Work in progress against each daily limit" action={{ label: "Boards", href: "/board" }}>
           {h.designers.length === 0 ? (
             <p className="text-sm text-slate">No designers on the roster yet.</p>
           ) : (
@@ -164,8 +164,9 @@ function ShopRows({ shops }: { shops: StaffHome["shops"] }) {
   return (
     <ul className="flex flex-col gap-2 border-t border-line/70 pt-3">
       {shops.map((s) => (
-        <li key={s.id} className="flex items-center gap-3 text-sm">
-          <span className="w-24 shrink-0 truncate text-ink sm:w-36" title={s.name}>
+        // Phone: the shop name gets its own line so it is never cut short.
+        <li key={s.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 text-sm sm:flex">
+          <span className="col-span-2 truncate text-ink sm:w-36 sm:shrink-0" title={s.name}>
             {s.name}
           </span>
           <span className="h-2 flex-1 overflow-hidden rounded-full" style={{ background: "var(--color-chart-track)" }}>

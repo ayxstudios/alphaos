@@ -73,8 +73,8 @@ export function UnrecognisedPanel({
         <AlertTriangle size={16} className={products.length ? "text-amber" : "text-slate"} />
         <span className="text-sm font-semibold text-ink">Products to confirm</span>
         {products.length > 0 ? <Badge variant="warning">{products.length}</Badge> : <span className="text-xs text-slate">All recognised</span>}
-        <span className="ml-auto hidden text-xs text-slate sm:inline">Confirm once, recognised forever</span>
-        <ChevronDown size={16} className="shrink-0 text-slate transition-transform group-open:rotate-180" />
+        <span className="ml-auto hidden text-xs text-slate sm:inline">Confirm once and it is remembered</span>
+        <ChevronDown size={16} className="ml-auto shrink-0 text-slate transition-transform group-open:rotate-180 sm:ml-0" />
       </summary>
       <div className="border-t border-line/70 px-4 pb-4">
 
@@ -91,7 +91,7 @@ export function UnrecognisedPanel({
                 }
                 className="size-4 rounded border-line text-pigment focus:ring-pigment"
               />
-              Defaulted to {defaultStyleName ?? "default"} · {defaulted.length}
+              Went to {defaultStyleName ?? "the default style"} by default · {defaulted.length}
             </label>
             <Button
               type="button"
@@ -148,7 +148,7 @@ export function UnrecognisedPanel({
             {ignored.map((p) => (
               <div key={p.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5 text-sm">
                 <span className="min-w-0 truncate text-ink">{p.title ?? "Untitled product"}</span>
-                {p.sku && <span className="text-xs text-slate">SKU {p.sku}</span>}
+                {p.sku && <span className="text-xs text-slate">{skuLabel(p.sku)}</span>}
                 <Button
                   type="button"
                   size="sm"
@@ -204,22 +204,29 @@ function ProductRow({
 
   return (
     <div className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center">
-      {onToggle && (
-        <input
-          type="checkbox"
-          checked={!!checked}
-          onChange={onToggle}
-          aria-label={`Select ${product.title ?? "product"}`}
-          className="size-4 shrink-0 rounded border-line text-pigment focus:ring-pigment"
-        />
-      )}
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-ink">{product.title ?? "Untitled product"}</p>
-        <p className="text-xs text-slate">
-          {product.sku ? `SKU ${product.sku} · ` : ""}
-          {product.orders} order{product.orders === 1 ? "" : "s"}
-          {product.via === "default" && product.defaultStyle ? ` · defaulted to ${product.defaultStyle}` : ""}
-        </p>
+      {/* Checkbox and product side by side at every size; the title wraps
+          on a phone instead of being cut short. */}
+      <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
+        {onToggle && (
+          // The label pads the 16px box to a 44px tap area on a phone.
+          <label className="-m-3.5 flex shrink-0 cursor-pointer p-3.5 sm:m-0 sm:p-0">
+            <input
+              type="checkbox"
+              checked={!!checked}
+              onChange={onToggle}
+              aria-label={`Select ${product.title ?? "product"}`}
+              className="mt-0.5 size-4 shrink-0 rounded border-line text-pigment focus:ring-pigment sm:mt-0"
+            />
+          </label>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-ink sm:truncate">{product.title ?? "Untitled product"}</p>
+          <p className="text-xs text-slate">
+            {product.sku ? `${skuLabel(product.sku)} · ` : ""}
+            {product.orders} order{product.orders === 1 ? "" : "s"}
+            {product.via === "default" && product.defaultStyle ? ` · went to ${product.defaultStyle} by default` : ""}
+          </p>
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Select
@@ -276,4 +283,9 @@ function ProductRow({
       </div>
     </div>
   );
+}
+
+/** "SKU 1249", but never "SKU SKU-1018-1". */
+function skuLabel(sku: string): string {
+  return /^sku\b/i.test(sku.trim()) ? sku.trim() : `SKU ${sku}`;
 }

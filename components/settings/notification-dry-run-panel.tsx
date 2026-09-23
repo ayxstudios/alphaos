@@ -57,10 +57,10 @@ export function NotificationDryRunPanel() {
         {report && (
           <div className="mt-4 flex flex-col gap-4">
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              <Metric label="Candidates" value={report.candidates} />
-              <Metric label="Would fire" value={report.wouldFire} tone={report.wouldFire ? "warning" : "success"} />
+              <Metric label="Checked" value={report.candidates} />
+              <Metric label="Would send" value={report.wouldFire} tone={report.wouldFire ? "warning" : "success"} />
               <Metric label="Would notify" value={report.wouldCreateNotifications} />
-              <Metric label="Already fired" value={report.skippedDuplicate} />
+              <Metric label="Already sent" value={report.skippedDuplicate} />
               <Metric label="No recipients" value={report.noRecipients} />
             </div>
 
@@ -95,7 +95,7 @@ export function NotificationDryRunPanel() {
                 row.role,
                 n(row.wouldReceive),
               ])}
-              empty="No recipient fan-out would be created."
+              empty="Nobody would be notified."
             />
           </div>
         )}
@@ -115,7 +115,7 @@ function Metric({
 }) {
   return (
     <div className="rounded-input bg-canvas/70 px-3 py-2">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate">{label}</div>
+      <div className="text-xs font-medium text-slate">{label}</div>
       <div className={tone === "warning" ? "mt-1 text-xl font-semibold text-amber" : tone === "success" ? "mt-1 text-xl font-semibold text-sage" : "mt-1 text-xl font-semibold text-ink"}>
         {n(value)}
       </div>
@@ -142,7 +142,7 @@ function SummaryTable({
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[28rem] text-left text-sm">
-            <thead className="bg-canvas text-xs font-semibold uppercase tracking-wide text-slate">
+            <thead className="bg-canvas text-xs font-medium text-slate">
               <tr>
                 {columns.map((column) => (
                   <th key={column} className="px-3 py-2">

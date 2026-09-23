@@ -24,8 +24,8 @@ function formatDateTime(value: string | null) {
 }
 
 function formatGenerated(value: string | null) {
-  if (!value) return "Metrics current";
-  return `Narrative cached ${formatDateTime(value)}`;
+  if (!value) return "Up to date";
+  return `Written ${formatDateTime(value)}`;
 }
 
 const TONE_DOT: Record<CountLink["tone"], string> = {
@@ -65,23 +65,23 @@ export default async function HealthPage({
       <PageHeader
         title="System Health"
         tourId="page:health"
-        description="What needs a look, then everything that is fine."
+        description="Anything that needs a look comes first."
         eyebrow={scope.kind === "all" ? "All Businesses" : scope.businessName}
         actions={
           <div className="inline-flex rounded-input bg-surface p-1 text-sm shadow-card">
             <Link
               href="/health"
               className={cn(
-                "rounded-[6px] px-3 py-1.5 font-medium text-slate",
+                "inline-flex min-h-11 items-center rounded-[6px] px-3 py-1.5 font-medium text-slate sm:min-h-0",
                 !allBusinesses && "bg-pigment-soft text-pigment",
               )}
             >
-              Selected
+              {selected.name}
             </Link>
             <Link
               href="/health?scope=all"
               className={cn(
-                "rounded-[6px] px-3 py-1.5 font-medium text-slate",
+                "inline-flex min-h-11 items-center rounded-[6px] px-3 py-1.5 font-medium text-slate sm:min-h-0",
                 allBusinesses && "bg-pigment-soft text-pigment",
               )}
             >
@@ -118,34 +118,34 @@ async function HealthBody({ user, scope, showAiFeatures }: { user: SessionUser; 
 
       <RowSection
         id="background-jobs"
-        title="Background jobs"
-        noun="job"
+        title="Automatic tasks"
+        noun="task"
         items={metrics.pipeline.jobs.map((job) => ({ key: job.key, ok: jobBadge(job).variant === "success", node: <JobRunRow job={job} /> }))}
         empty={null}
       />
 
       <RowSection
-        title="Shop syncs"
+        title="Shops"
         noun="shop"
         items={metrics.pipeline.shops.map((shop) => ({ key: shop.id, ok: !shop.stale, node: <ShopSyncRow shop={shop} /> }))}
         empty={
           <EmptyState
             icon={Grid}
             headline="No connected shops"
-            body="Connected Etsy and Shopify shops will appear here with their last successful sync time."
+            body="Connected Etsy and Shopify shops show here with when they last synced."
           />
         }
       />
 
       <RowSection
-        title="Mailbox polls"
+        title="Mailboxes"
         noun="mailbox"
         items={metrics.pipeline.gmailMailboxes.map((mailbox) => ({ key: mailbox.businessId, ok: !mailbox.stalled, node: <MailboxPollRow mailbox={mailbox} /> }))}
         empty={
           <EmptyState
             icon={Grid}
             headline="No connected mailboxes"
-            body="Connected Gmail mailboxes will appear here with their last successful poll time."
+            body="Connected Gmail mailboxes show here with when they were last checked."
           />
         }
       />
@@ -193,7 +193,7 @@ function PipelineSignals({ metrics }: { metrics: CountLink[] }) {
     <div className="flex flex-col gap-3">
       {attention.length > 0 && (
         <DataPanel className="p-4">
-          <SectionHeader title="Needs a look" description={`${attention.length} signal${attention.length === 1 ? "" : "s"} outside the normal range`} />
+          <SectionHeader title="Needs a look" description={`${attention.length} thing${attention.length === 1 ? "" : "s"} to check`} />
           <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {attention.map((metric) => (
               <MetricCard key={metric.label} metric={metric} />
@@ -209,7 +209,7 @@ function PipelineSignals({ metrics }: { metrics: CountLink[] }) {
               {attention.length === 0 ? "Everything is clear" : `${clear.length} check${clear.length === 1 ? "" : "s"} clear`}
             </span>
           }
-          hint={attention.length === 0 ? `${clear.length} pipeline signals in range` : undefined}
+          hint={attention.length === 0 ? `${clear.length} checks, all fine` : undefined}
         >
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {clear.map((metric) => (
@@ -265,7 +265,7 @@ function RowSection({
         <h2 className="text-base font-semibold text-ink">{title}</h2>
         {items.length > 0 && (
           <Badge variant={bad.length ? "danger" : "success"} dot>
-            {bad.length ? `${bad.length} need${bad.length === 1 ? "s" : ""} a look` : "All healthy"}
+            {bad.length ? `${bad.length} need${bad.length === 1 ? "s" : ""} a look` : "All fine"}
           </Badge>
         )}
       </div>
@@ -284,7 +284,7 @@ function RowSection({
             <details className="group border-t border-line/70">
               <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-sm text-slate hover:text-ink [&::-webkit-details-marker]:hidden">
                 <span className="size-1.5 rounded-full bg-sage" />
-                {good.length} {noun}{good.length === 1 ? "" : "s"} healthy
+                {good.length} {noun}{good.length === 1 ? "" : "s"} fine
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="ml-auto transition-transform group-open:rotate-90">
                   <path d="M9 6l6 6-6 6" />
                 </svg>
@@ -303,12 +303,12 @@ function RowSection({
 }
 
 function jobBadge(job: JobRunHealth) {
-  if (job.status === "missing") return { variant: "danger" as const, label: "Missing" };
-  if (job.stale) return { variant: "danger" as const, label: "Stale" };
+  if (job.status === "missing") return { variant: "danger" as const, label: "Never ran" };
+  if (job.stale) return { variant: "danger" as const, label: "Late" };
   if (job.status === "failed") return { variant: "danger" as const, label: "Failed" };
-  if (job.status === "partial") return { variant: "warning" as const, label: "Partial" };
+  if (job.status === "partial") return { variant: "warning" as const, label: "Some failed" };
   if (job.status === "running") return { variant: "warning" as const, label: "Running" };
-  return { variant: "success" as const, label: "Healthy" };
+  return { variant: "success" as const, label: "Fine" };
 }
 
 function failureDetail(job: JobRunHealth) {
@@ -335,14 +335,14 @@ function JobRunRow({ job }: { job: JobRunHealth }) {
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold text-ink">{job.label}</p>
         <p className="text-xs text-slate">
-          Last run {formatDateTime(job.lastRunAt)}
-          {job.expectedIntervalMinutes ? ` · expected every ${job.expectedIntervalMinutes >= 1440 ? "24h" : `${job.expectedIntervalMinutes}m`}` : ""}
-          {job.itemsProcessed || job.itemsFailed ? ` · ${job.itemsProcessed} processed, ${job.itemsFailed} failed` : ""}
+          {job.lastRunAt ? `Last ran ${formatDateTime(job.lastRunAt)}` : "Has not run yet"}
+          {job.expectedIntervalMinutes ? ` · runs every ${job.expectedIntervalMinutes >= 1440 ? "day" : `${job.expectedIntervalMinutes} min`}` : ""}
+          {job.itemsProcessed || job.itemsFailed ? ` · ${job.itemsProcessed} done, ${job.itemsFailed} failed` : ""}
         </p>
         {job.error && <p className="mt-1 text-xs text-rose">{job.error}</p>}
-        {failedIds && <p className="mt-1 text-xs text-slate">Failed IDs: {failedIds}</p>}
+        {failedIds && <p className="mt-1 text-xs text-slate">Failed orders: {failedIds}</p>}
       </div>
-      <Badge variant={badge.variant} dot>
+      <Badge variant={badge.variant} dot className="w-fit">
         {badge.label}
       </Badge>
     </div>
@@ -355,12 +355,12 @@ function ShopSyncRow({ shop }: { shop: ShopSyncHealth }) {
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold text-ink">{shop.name}</p>
         <p className="text-xs text-slate">
-          {shop.businessName} · {shop.platform === "shopify" ? "Shopify" : "Etsy"} · last successful sync{" "}
-          {formatDateTime(shop.lastSyncAt)}
+          {shop.businessName} · {shop.platform === "shopify" ? "Shopify" : "Etsy"} ·{" "}
+          {shop.lastSyncAt ? `last synced ${formatDateTime(shop.lastSyncAt)}` : "not synced yet"}
         </p>
       </div>
-      <Badge variant={shop.stale ? "danger" : "success"} dot>
-        {shop.stale ? "Stale" : "Healthy"}
+      <Badge variant={shop.stale ? "danger" : "success"} dot className="w-fit">
+        {shop.stale ? "Not syncing" : "Fine"}
       </Badge>
     </Link>
   );
@@ -372,16 +372,14 @@ function MailboxPollRow({ mailbox }: { mailbox: GmailMailboxHealth }) {
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold text-ink">{mailbox.businessName}</p>
         <p className="text-xs text-slate">
-          {mailbox.gmailAddress ?? "Gmail mailbox"} · last successful poll {formatDateTime(mailbox.lastPolledAt)}
+          {mailbox.gmailAddress ?? "Gmail mailbox"} · {mailbox.lastPolledAt ? `last checked ${formatDateTime(mailbox.lastPolledAt)}` : "not checked yet"}
         </p>
         {mailbox.stalled && (
-          <p className="mt-1 text-xs text-slate">
-            AlphaOS cursor {mailbox.dbHistoryId}; Gmail current {mailbox.gmailHistoryId}
-          </p>
+          <p className="mt-1 text-xs text-slate">Gmail has newer mail than AlphaOS has read.</p>
         )}
       </div>
-      <Badge variant={mailbox.stalled ? "danger" : "success"} dot>
-        {mailbox.stalled ? `Stalled${mailbox.ageHours != null ? ` ${mailbox.ageHours}h` : ""}` : "Healthy"}
+      <Badge variant={mailbox.stalled ? "danger" : "success"} dot className="w-fit">
+        {mailbox.stalled ? `Stuck${mailbox.ageHours != null ? ` ${Math.round(mailbox.ageHours)} h` : ""}` : "Fine"}
       </Badge>
     </div>
   );

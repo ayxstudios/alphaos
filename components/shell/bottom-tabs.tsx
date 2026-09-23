@@ -33,8 +33,8 @@ const DESIGNER_TABS: Tab[] = [
  * Phone-only sticky bottom navigation, for every role: admin/va get the
  * four places they live day to day (Home is the charts overview, the full
  * queue moved to /today); designers get their own three pages. "More" opens
- * the same mobile sidebar drawer for everything else. The floating Alpha
- * launcher sits above this bar (see components/alpha/alpha-chat.tsx).
+ * the same mobile sidebar drawer for everything else. Alpha AI opens from
+ * its tab in the top bar.
  */
 export function BottomTabs({ role, onMore }: { role: Role; onMore: () => void }) {
   const pathname = usePathname();

@@ -348,3 +348,10 @@ export const Clock = (p: IconProps) => (
     <path d="M12 7v5l3.5 2" />
   </Icon>
 );
+export const Wallet = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H18a1 1 0 0 1 1 1v2" />
+    <path d="M3 7.5v10A2.5 2.5 0 0 0 5.5 20H20a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1H5.5A2.5 2.5 0 0 1 3 7.5z" />
+    <circle cx="16.5" cy="14.5" r="1" fill="currentColor" stroke="none" />
+  </Icon>
+);

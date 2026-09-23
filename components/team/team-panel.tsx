@@ -71,7 +71,7 @@ export function TeamPanel({ members, currentUserId }: { members: TeamMember[]; c
     <section className="flex flex-col gap-3" data-tour="team">
       <SectionHeader
         title="Team and sign-ins"
-        description="Everyone who can sign in. Deactivate someone who leaves: they cannot sign in or get new orders, and their orders and history stay."
+        description="Everyone who can sign in. Deactivate someone who leaves; their history stays."
         actions={<AddTeammate />}
       />
       <DataPanel>
@@ -155,7 +155,7 @@ export function TeamPanel({ members, currentUserId }: { members: TeamMember[]; c
                       ) : (
                         <Button
                           variant="secondary"
-                          className={TAP}
+                          className={cn(TAP, "sm:w-28")}
                           onClick={() => setDialog({ kind: "deactivate", member: m })}
                         >
                           Deactivate
@@ -164,7 +164,7 @@ export function TeamPanel({ members, currentUserId }: { members: TeamMember[]; c
                     ) : (
                       <Button
                         variant="secondary"
-                        className={TAP}
+                        className={cn(TAP, "sm:w-28")}
                         loading={pendingId === m.id}
                         onClick={() => reactivate(m)}
                       >

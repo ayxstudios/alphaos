@@ -86,19 +86,22 @@ function StringList({
         </div>
       )}
       <div className="flex items-center gap-2">
-        <Input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              add(input);
-              setInput("");
-            }
-          }}
-          placeholder={placeholder}
-          className="flex-1"
-        />
+        {/* The wrapper grows, not the input: flex-1 on the input inside the
+            field's column wrapper collapsed the box to a 19px sliver. */}
+        <div className="min-w-0 flex-1">
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                add(input);
+                setInput("");
+              }
+            }}
+            placeholder={placeholder}
+          />
+        </div>
         <Button
           type="button"
           variant="secondary"
@@ -116,7 +119,8 @@ function StringList({
           <Input
             value={search}
             onChange={(event) => setSearch(event.currentTarget.value)}
-            placeholder={`Find imported ${label.toLowerCase()}...`}
+            placeholder="Search past orders"
+            aria-label={`Search past orders for ${label.toLowerCase()}`}
             className="h-9"
           />
           {search.trim() && (
@@ -221,7 +225,7 @@ export function ResolutionRulesEditor({
       try {
         setSummary(await reresolveShopOrders(shopId));
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Re-resolve failed");
+        setError(e instanceof Error ? e.message : "Could not update existing orders");
       }
     });
   }
@@ -268,27 +272,28 @@ export function ResolutionRulesEditor({
         {figure.length === 0 && <p className="text-xs text-slate">No figure rules yet.</p>}
         {figure.map((r, i) => (
           <div key={i} className="flex flex-col gap-2 rounded-input bg-canvas/70 p-2">
-            <div className="flex items-end gap-2">
-              <Input
-                label="Option name contains"
-                value={r.match}
-                onChange={(e) => setFig(i, { match: e.target.value })}
-                placeholder="Number of Pets"
-                className="flex-1"
-              />
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-[12rem] flex-1">
+                <Input
+                  label="Option name contains"
+                  value={r.match}
+                  onChange={(e) => setFig(i, { match: e.target.value })}
+                  placeholder="Number of Pets"
+                />
+              </div>
               <Select
                 label="Type"
                 value={r.type}
                 onChange={(e) => setFig(i, { type: e.target.value as "integer" | "map" })}
                 className="w-32"
               >
-                <option value="integer">Integer</option>
-                <option value="map">Value map</option>
+                <option value="integer">A number</option>
+                <option value="map">Words to numbers</option>
               </Select>
               <button
                 type="button"
                 onClick={() => setFigure((rs) => rs.filter((_, j) => j !== i))}
-                className="mb-1 text-slate hover:text-rose"
+                className="flex size-10 shrink-0 items-center justify-center rounded-input text-slate hover:text-rose"
                 aria-label="Remove rule"
               >
                 <XCircle size={18} />
@@ -352,7 +357,7 @@ export function ResolutionRulesEditor({
             </InfoBubble>
           </span>
           <span className="ml-1 rounded bg-canvas px-1 text-xs text-slate">
-            {photoReq ? "ON" : "OFF (default)"}
+            {photoReq ? "On" : "Off (default)"}
           </span>
         </span>
       </label>
@@ -362,21 +367,29 @@ export function ResolutionRulesEditor({
           Save rules
         </Button>
         <Button type="button" variant="secondary" size="sm" onClick={onReresolve} loading={reresolving}>
-          Re-resolve existing orders
+          Apply to existing orders
         </Button>
         {saved && <span className="text-sm text-sage">{saved}</span>}
         {error && <span className="text-sm text-rose">{error}</span>}
       </div>
       {summary && (
         <p className="text-sm text-slate">
-          Re-resolved {summary.ordersProcessed} order{summary.ordersProcessed === 1 ? "" : "s"}:{" "}
-          {summary.itemsResolved} resolved, {summary.stillUnresolved} still unresolved,{" "}
-          {summary.addOnsRemoved} add-on line{summary.addOnsRemoved === 1 ? "" : "s"} removed,{" "}
-          {summary.namesBackfilled} order number{summary.namesBackfilled === 1 ? "" : "s"} backfilled,{" "}
-          {summary.reclassified} re-classified, {summary.reclassifySkipped} skipped (designer
-          already working), {summary.productTypesFixed} digital/physical fixed
-          {summary.productTypeConflicts > 0 ? `, ${summary.productTypeConflicts} digital/physical to check` : ""}
-          {summary.refetched > 0 ? ` · ${summary.refetched} re-fetched from Shopify.` : "."}
+          {/* Only the numbers that happened, in plain words. */}
+          {[
+            `Checked ${summary.ordersProcessed} order${summary.ordersProcessed === 1 ? "" : "s"}`,
+            summary.itemsResolved > 0 ? `${summary.itemsResolved} filled in` : null,
+            summary.stillUnresolved > 0 ? `${summary.stillUnresolved} still need details` : null,
+            summary.addOnsRemoved > 0 ? `${summary.addOnsRemoved} add-on${summary.addOnsRemoved === 1 ? "" : "s"} taken off` : null,
+            summary.namesBackfilled > 0 ? `${summary.namesBackfilled} order number${summary.namesBackfilled === 1 ? "" : "s"} added` : null,
+            summary.reclassified > 0 ? `${summary.reclassified} re-sorted` : null,
+            summary.reclassifySkipped > 0 ? `${summary.reclassifySkipped} left alone (a designer has started)` : null,
+            summary.productTypesFixed > 0 ? `${summary.productTypesFixed} digital or printed fixed` : null,
+            summary.productTypeConflicts > 0 ? `${summary.productTypeConflicts} digital or printed to check` : null,
+            summary.refetched > 0 ? `${summary.refetched} fetched again from Shopify` : null,
+          ]
+            .filter(Boolean)
+            .join(", ")}
+          .
         </p>
       )}
     </div>

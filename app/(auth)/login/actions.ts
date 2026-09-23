@@ -4,7 +4,8 @@ import { AuthError, CredentialsSignin } from "next-auth";
 
 import { signIn } from "@/lib/auth";
 
-export type LoginState = { error?: string };
+/** `email` comes back on an error so the form keeps it (React resets a form after its action). */
+export type LoginState = { error?: string; email?: string };
 
 export async function loginAction(
   _prev: LoginState,
@@ -14,7 +15,7 @@ export async function loginAction(
   const password = String(formData.get("password") ?? "");
 
   if (!email || !password) {
-    return { error: "Enter your email and password." };
+    return { error: "Enter your email and password.", email };
   }
 
   try {
@@ -23,16 +24,17 @@ export async function loginAction(
   } catch (err) {
     if (err instanceof CredentialsSignin) {
       return {
+        email,
         error:
           err.code === "locked"
-            ? "Too many failed attempts. Try again in 15 minutes."
+            ? "Too many tries. Wait 15 minutes, then try again."
             : // Also what a deactivated account sees: calm, and it never says
               // whether the account exists.
-              "That email and password did not sign you in. Check them, or ask your admin if your account was deactivated.",
+              "Wrong email or password. Try again, or ask your admin.",
       };
     }
     if (err instanceof AuthError) {
-      return { error: "Something went wrong. Please try again." };
+      return { error: "Could not sign in just now. Try again.", email };
     }
     // Re-throw redirects (and anything else) so navigation happens.
     throw err;

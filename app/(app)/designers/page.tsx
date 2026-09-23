@@ -31,9 +31,9 @@ export default async function DesignersPage() {
   return (
     <Page>
       <PageHeader
-        title="Designers"
+        title="Designer Roster"
         tourId="page:roster"
-        description="Auto-assign works down this list, matching styles and never past a daily limit."
+        description="New orders go to the first designer on this list who draws the style and is under their daily limit."
         actions={isAdmin && designers.length > 0 ? <AddDesigner businesses={options} variant="secondary" /> : undefined}
       />
 

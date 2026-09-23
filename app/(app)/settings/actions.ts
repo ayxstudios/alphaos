@@ -756,15 +756,28 @@ export async function saveEmailTemplate(formData: FormData): Promise<void> {
   const body = String(formData.get("body") ?? "").replace(/\r\n?/g, "\n").trim();
   if (!businessId || !subject || !body) throw new Error("Subject and body are required");
 
-  await withUserContext(user, (tx) =>
-    tx
+  await withUserContext(user, async (tx) => {
+    // Saving the built-in text unchanged is not a customisation: keep it on
+    // the default (so it still says Default, and follows future default edits).
+    const [biz] = await tx
+      .select({ name: businesses.name, slug: businesses.slug })
+      .from(businesses)
+      .where(eq(businesses.id, businessId));
+    const fallback = defaultTemplateForBusiness(biz ?? {}, key);
+    if (subject === fallback.subject.trim() && body === fallback.body.replace(/\r\n?/g, "\n").trim()) {
+      await tx
+        .delete(emailTemplates)
+        .where(and(eq(emailTemplates.businessId, businessId), eq(emailTemplates.key, key)));
+      return;
+    }
+    await tx
       .insert(emailTemplates)
       .values({ businessId, key, subject, body, updatedBy: user.id })
       .onConflictDoUpdate({
         target: [emailTemplates.businessId, emailTemplates.key],
         set: { subject, body, updatedBy: user.id, updatedAt: new Date() },
-      }),
-  );
+      });
+  });
   revalidatePath("/settings");
 }
 

@@ -98,21 +98,21 @@ export function TopBar({
             align="start"
             ariaLabel="Switch workspace"
             triggerClassName={cn(
-              "inline-flex h-10 max-w-[min(13rem,100%)] items-center gap-2 rounded-input border border-line bg-surface px-2.5 text-sm font-medium text-ink",
+              "inline-flex h-11 max-w-[min(13rem,100%)] sm:h-10 items-center gap-2 rounded-input border border-line bg-surface px-2.5 text-sm font-medium text-ink",
               "transition-colors duration-150 ease-standard motion-hover hover:bg-canvas",
               pending && "opacity-60",
             )}
             trigger={
               <>
-                <Building size={16} className="shrink-0 text-pigment" />
-                <span className="truncate">{selected.name}</span>
+                <Building size={16} className="hidden shrink-0 text-pigment sm:block" />
+                <span className="min-w-[3.5rem] truncate">{selected.name}</span>
                 <ChevronDown size={15} className="shrink-0 text-slate" />
               </>
             }
           >
             {(close) => (
               <div className="flex flex-col">
-                <p className="px-2 py-1.5 text-xs font-medium uppercase text-slate">
+                <p className="px-2 py-1.5 text-xs font-medium text-slate">
                   Workspace
                 </p>
                 {options.map((o) => {
@@ -124,7 +124,7 @@ export function TopBar({
                       role="menuitem"
                       onClick={() => choose(o.id, close)}
                       className={cn(
-                        "flex items-center justify-between gap-3 rounded-input px-2 py-1.5 text-left text-sm",
+                        "flex min-h-11 items-center justify-between gap-3 rounded-input px-2 py-1.5 text-left text-sm lg:min-h-9",
                         "transition-colors motion-hover hover:bg-canvas",
                         focusRing,
                         active ? "text-pigment" : "text-ink",
@@ -163,7 +163,7 @@ export function TopBar({
         </form>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+      <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
         {/* Phone: staff jump to the orders list and its search. A designer's
             phone board is one short list with nothing to search from here. */}
         {!designer && (
@@ -330,7 +330,7 @@ export function TopBar({
         <Popover
           ariaLabel="Account menu"
           triggerClassName={cn(
-            "inline-flex min-h-11 items-center gap-2 rounded-input py-1 pl-1 pr-2 lg:min-h-9",
+            "inline-flex min-h-11 items-center gap-2 rounded-input px-1 py-1 sm:pr-2 lg:min-h-9",
             "transition-colors motion-hover hover:bg-canvas",
           )}
           trigger={
@@ -339,7 +339,7 @@ export function TopBar({
               <span className="hidden max-w-28 truncate text-sm font-medium text-ink md:inline">
                 {user.name}
               </span>
-              <ChevronDown size={15} className="text-slate" />
+              <ChevronDown size={15} className="hidden text-slate sm:block" />
             </>
           }
         >
@@ -362,7 +362,7 @@ export function TopBar({
                   type="submit"
                   role="menuitem"
                   className={cn(
-                    "flex w-full items-center gap-2 rounded-input px-2 py-1.5 text-left text-sm text-ink",
+                    "flex min-h-11 w-full items-center gap-2 rounded-input px-2 py-1.5 text-left text-sm text-ink lg:min-h-9",
                     "transition-colors motion-hover hover:bg-canvas",
                     focusRing,
                   )}
