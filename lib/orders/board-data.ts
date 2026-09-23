@@ -17,6 +17,7 @@ import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
 import { issueLabels } from "@/lib/proofs/issues";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { liveOrderWhere } from "@/lib/orders/archive";
+import { sizedImageUrl } from "@/lib/images";
 import { COMPLETE_COLUMN_MAX, COMPLETE_COLUMN_WINDOW_DAYS } from "@/lib/orders/board-constants";
 import type { OrderStatus } from "./transitions";
 import type { ProofAnnotation } from "@/lib/db/schema";
@@ -82,14 +83,15 @@ type OrderRow = {
 type Tx = Parameters<Parameters<typeof withUserContext>[1]>[0];
 
 /**
- * Small board-card variant of a reference photo. Only the mock seed's picsum
- * URLs get downsized (900x900 -> 400x400 in the path, still a real picsum
- * size so the image exists); a real R2 presigned URL or CDN URL is returned
- * untouched — the full-size original is what the card modal/detail view
- * needs, only the board thumbnail wants the small one.
+ * Small board-card variant of a reference photo. The mock seed's picsum URLs
+ * get downsized (900x900 -> 400x400 in the path, still a real picsum size so
+ * the image exists); Shopify CDN photos ask the CDN for a 640 px wide copy
+ * (a customer's 2.2 MB phone photo becomes ~90 KB, docs/PERF.md). R2
+ * presigned URLs are returned untouched. The full-size original is what the
+ * card modal/detail view loads; only the board thumbnail wants the small one.
  */
 function boardThumbnailUrl(url: string): string {
-  return url.includes("picsum.photos") ? url.replace(/\/900\/900$/, "/400/400") : url;
+  return url.includes("picsum.photos") ? url.replace(/\/900\/900$/, "/400/400") : sizedImageUrl(url, 640);
 }
 
 async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<BoardCard[]> {

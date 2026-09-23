@@ -67,6 +67,7 @@ import { ComposeButton } from "@/components/emails/compose-button";
 import { styles as stylesTable } from "@/lib/db/schema";
 import { currentMatchForProduct, countOrdersForProduct } from "@/lib/orders/style-learning";
 import { formatAt } from "@/lib/time";
+import { sizedImageUrl } from "@/lib/images";
 
 export const dynamic = "force-dynamic";
 
@@ -645,8 +646,10 @@ export default async function OrderDetailPage({
                       {media?.imageUrl && (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
-                          src={media.imageUrl}
+                          src={sizedImageUrl(media.imageUrl, 240)}
                           alt={media.imageAlt ?? item.title ?? "Shopify product"}
+                          loading="lazy"
+                          decoding="async"
                           className="size-20 shrink-0 rounded-input object-cover shadow-card"
                         />
                       )}
@@ -734,7 +737,7 @@ export default async function OrderDetailPage({
               <div className="mt-3 grid grid-cols-3 gap-2">
                 {references.map((image) => (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img key={image.id} src={image.url} alt="" className="aspect-square rounded-input object-cover shadow-card" />
+                  <img key={image.id} src={sizedImageUrl(image.url, 480)} alt="" loading="lazy" decoding="async" className="aspect-square rounded-input object-cover shadow-card" />
                 ))}
               </div>
             )}
