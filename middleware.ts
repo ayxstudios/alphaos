@@ -81,5 +81,19 @@ export default auth((req) => {
 
 export const config = {
   // Run on everything except API routes, Next internals, and static files.
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.*\\.).*)"],
+  //
+  // Speed (docs/PERF.md): on Vercel this middleware executes in the function
+  // region (iad1), not at the edge next to the user, so every request it
+  // matches pays one extra round trip to Virginia and back (~250 ms from
+  // Australia) before the page function even starts. Client navigations and
+  // prefetches carry the `RSC` header; they skip the middleware and rely on
+  // each page's own session and role checks (every page under app/(app) runs
+  // auth() and redirects by role before it reads any data). Full document
+  // loads, where a clean 307 matters, still pass through here unchanged.
+  matcher: [
+    {
+      source: "/((?!api|_next/static|_next/image|favicon.ico|.*\\.).*)",
+      missing: [{ type: "header", key: "rsc" }],
+    },
+  ],
 };

@@ -33,7 +33,11 @@ if (process.env.NEON_LOCAL_WS_PROXY) {
   neonConfig.poolQueryViaFetch = false;
 }
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
+// max 20 (default 10): a page now starts its independent reads together (the
+// order page ~10 transactions, settings more with many shops), and with 10
+// slots the rest queued for a free connection (docs/PERF.md). DATABASE_URL is
+// Neon's pooled (PgBouncer) endpoint, which takes thousands of clients.
+const pool = new Pool({ connectionString: process.env.DATABASE_URL!, max: 20 });
 
 /**
  * Raw database handle. Connects as `app_user`, so RLS is in force but NO tenant

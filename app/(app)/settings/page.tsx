@@ -39,7 +39,7 @@ import {
   EDITABLE_TEMPLATE_KEYS,
   TEMPLATE_META,
 } from "@/lib/email/templates";
-import { getShopOptionNames, getShopSkusAndTitles } from "@/lib/orders/resolution";
+import { getShopEditorSuggestions } from "@/lib/orders/resolution";
 import { photoRequestEnabled as resolvePhotoRequestEnabled } from "@/lib/integrations/classify";
 import { appUrl } from "@/lib/urls";
 import type {
@@ -110,125 +110,130 @@ export default async function SettingsPage({
 
   const { selected } = await loadShellData(user);
 
-  const etsyShops = await withUserContext(user, (tx) => {
-    const cols = {
-      id: shops.id,
-      name: shops.name,
-      integrationConfig: shops.integrationConfig,
-    };
-    return tx
-      .select(cols)
-      .from(shops)
-      .where(
-        and(eq(shops.platform, "etsy"), eq(shops.businessId, selected.id)),
-      );
-  });
+  // Speed (docs/PERF.md): each section below used to wait for the one above
+  // it. They read different things, so they now all start at once and the page
+  // waits a single time, for the slowest.
 
-  const cards: EtsyShopVM[] = await Promise.all(
-    etsyShops.map(async (s) => {
-      const creds = (await withUserContext(user, (tx) =>
-        getShopCredentials(tx, s.id),
-      )) as EtsyCredentials;
-      const cfg = (s.integrationConfig ?? {}) as EtsyIntegrationConfig;
-      return {
-        id: s.id,
-        name: s.name,
-        hasKeystring: !!creds.keystring,
-        status: creds.status ?? "not_connected",
-        etsyShopId: creds.etsyShopId ?? null,
-        lastSyncCursor: cfg.syncCursor ?? null,
-        lastSyncAt: cfg.lastSyncAt ?? null,
-        backfillCutoffAt: cfg.backfillCutoffAt ?? null,
-        allowHeuristic: !!cfg.allowHeuristicFigureCount,
-        ruleCount: cfg.figureRules?.length ?? 0,
-        figureRules: cfg.figureRules ?? [],
-        optionNames: await getShopOptionNames(user, s.id),
-        nonPortraitSkus: cfg.nonPortraitSkus ?? [],
-        nonPortraitTitles: cfg.nonPortraitTitles ?? [],
-        photoRequestEnabled: resolvePhotoRequestEnabled(cfg),
-        ...(await getShopSkusAndTitles(user, s.id).then((r) => ({
-          skuSuggestions: r.skus,
-          titleSuggestions: r.titles,
-        }))),
+  const cardsP: Promise<EtsyShopVM[]> = (async () => {
+    const etsyShops = await withUserContext(user, (tx) => {
+      const cols = {
+        id: shops.id,
+        name: shops.name,
+        integrationConfig: shops.integrationConfig,
       };
-    }),
-  );
+      return tx
+        .select(cols)
+        .from(shops)
+        .where(
+          and(eq(shops.platform, "etsy"), eq(shops.businessId, selected.id)),
+        );
+    });
 
-  const shopifyShops = await withUserContext(user, (tx) => {
-    const cols = {
-      id: shops.id,
-      name: shops.name,
-      integrationConfig: shops.integrationConfig,
-    };
-    return tx
-      .select(cols)
-      .from(shops)
-      .where(
-        and(eq(shops.platform, "shopify"), eq(shops.businessId, selected.id)),
-      );
-  });
+    return Promise.all(
+      etsyShops.map(async (s) => {
+        const suggestionsP = getShopEditorSuggestions(user, s.id);
+        const creds = (await withUserContext(user, (tx) =>
+          getShopCredentials(tx, s.id),
+        )) as EtsyCredentials;
+        const cfg = (s.integrationConfig ?? {}) as EtsyIntegrationConfig;
+        return {
+          id: s.id,
+          name: s.name,
+          hasKeystring: !!creds.keystring,
+          status: creds.status ?? "not_connected",
+          etsyShopId: creds.etsyShopId ?? null,
+          lastSyncCursor: cfg.syncCursor ?? null,
+          lastSyncAt: cfg.lastSyncAt ?? null,
+          backfillCutoffAt: cfg.backfillCutoffAt ?? null,
+          allowHeuristic: !!cfg.allowHeuristicFigureCount,
+          ruleCount: cfg.figureRules?.length ?? 0,
+          figureRules: cfg.figureRules ?? [],
+          optionNames: (await suggestionsP).optionNames,
+          nonPortraitSkus: cfg.nonPortraitSkus ?? [],
+          nonPortraitTitles: cfg.nonPortraitTitles ?? [],
+          photoRequestEnabled: resolvePhotoRequestEnabled(cfg),
+          ...(await suggestionsP.then((r) => ({
+            skuSuggestions: r.skus,
+            titleSuggestions: r.titles,
+          }))),
+        };
+      }),
+    );
+  })();
 
-  const shopifyCards: ShopifyShopVM[] = await Promise.all(
-    shopifyShops.map(async (s) => {
-      const creds = (await withUserContext(user, (tx) =>
-        getShopCredentials(tx, s.id),
-      )) as ShopifyCredentials;
-      const cfg = (s.integrationConfig ?? {}) as ShopifyIntegrationConfig;
-      const staffSession = resolveShopifyAuthType(creds) === "staff_session";
-      const connected = isShopifyConnected(creds);
-      const liveCreds = connected ? await freshShopifyCredentials(creds) : creds;
-      const webhookStatus = connected
-        ? await getShopifyOrdersCreateWebhookStatus(s.id, liveCreds).catch((e) => ({
-            expectedUrl: shopifyOrdersCreateWebhookUrl(),
-            registered: false,
-            pointingCorrectly: false,
-            subscriptions: [],
-            error: e instanceof Error ? e.message : String(e),
-          }))
-        : {
-            expectedUrl: shopifyOrdersCreateWebhookUrl(),
-            registered: false,
-            pointingCorrectly: false,
-            subscriptions: [],
-          };
-      return {
-        id: s.id,
-        name: s.name,
-        authType: staffSession ? "legacy" : (resolveShopifyAuthType(creds) as "legacy" | "client_credentials"),
-        staffSession,
-        status: connected || staffSession ? "connected" : "not_connected",
-        shopDomain: creds.shopDomain ?? null,
-        hasClientId: !!creds.clientId,
-        hasClientSecret: !!creds.clientSecret,
-        hasToken: !!creds.accessToken,
-        hasWebhookSecret: !!creds.webhookSecret,
-        lastSyncCursor: cfg.syncCursor ?? null,
-        lastSyncAt: cfg.lastSyncAt ?? null,
-        backfillCutoffAt: cfg.backfillCutoffAt ?? null,
-        webhookStatus,
-        allowHeuristic: !!cfg.allowHeuristicFigureCount,
-        ruleCount: cfg.figureRules?.length ?? 0,
-        figureRules: cfg.figureRules ?? [],
-        optionNames: await getShopOptionNames(user, s.id),
-        nonPortraitSkus: cfg.nonPortraitSkus ?? [],
-        nonPortraitTitles: cfg.nonPortraitTitles ?? [],
-        photoRequestEnabled: resolvePhotoRequestEnabled(cfg),
-        ...(await getShopSkusAndTitles(user, s.id).then((r) => ({
-          skuSuggestions: r.skus,
-          titleSuggestions: r.titles,
-        }))),
+  const shopifyCardsP: Promise<ShopifyShopVM[]> = (async () => {
+    const shopifyShops = await withUserContext(user, (tx) => {
+      const cols = {
+        id: shops.id,
+        name: shops.name,
+        integrationConfig: shops.integrationConfig,
       };
-    }),
-  );
+      return tx
+        .select(cols)
+        .from(shops)
+        .where(
+          and(eq(shops.platform, "shopify"), eq(shops.businessId, selected.id)),
+        );
+    });
+
+    return Promise.all(
+      shopifyShops.map(async (s) => {
+        const suggestionsP = getShopEditorSuggestions(user, s.id);
+        const creds = (await withUserContext(user, (tx) =>
+          getShopCredentials(tx, s.id),
+        )) as ShopifyCredentials;
+        const cfg = (s.integrationConfig ?? {}) as ShopifyIntegrationConfig;
+        const staffSession = resolveShopifyAuthType(creds) === "staff_session";
+        const connected = isShopifyConnected(creds);
+        const liveCreds = connected ? await freshShopifyCredentials(creds) : creds;
+        const webhookStatus = connected
+          ? await getShopifyOrdersCreateWebhookStatus(s.id, liveCreds).catch((e) => ({
+              expectedUrl: shopifyOrdersCreateWebhookUrl(),
+              registered: false,
+              pointingCorrectly: false,
+              subscriptions: [],
+              error: e instanceof Error ? e.message : String(e),
+            }))
+          : {
+              expectedUrl: shopifyOrdersCreateWebhookUrl(),
+              registered: false,
+              pointingCorrectly: false,
+              subscriptions: [],
+            };
+        return {
+          id: s.id,
+          name: s.name,
+          authType: staffSession ? "legacy" : (resolveShopifyAuthType(creds) as "legacy" | "client_credentials"),
+          staffSession,
+          status: connected || staffSession ? "connected" : "not_connected",
+          shopDomain: creds.shopDomain ?? null,
+          hasClientId: !!creds.clientId,
+          hasClientSecret: !!creds.clientSecret,
+          hasToken: !!creds.accessToken,
+          hasWebhookSecret: !!creds.webhookSecret,
+          lastSyncCursor: cfg.syncCursor ?? null,
+          lastSyncAt: cfg.lastSyncAt ?? null,
+          backfillCutoffAt: cfg.backfillCutoffAt ?? null,
+          webhookStatus,
+          allowHeuristic: !!cfg.allowHeuristicFigureCount,
+          ruleCount: cfg.figureRules?.length ?? 0,
+          figureRules: cfg.figureRules ?? [],
+          optionNames: (await suggestionsP).optionNames,
+          nonPortraitSkus: cfg.nonPortraitSkus ?? [],
+          nonPortraitTitles: cfg.nonPortraitTitles ?? [],
+          photoRequestEnabled: resolvePhotoRequestEnabled(cfg),
+          ...(await suggestionsP.then((r) => ({
+            skuSuggestions: r.skus,
+            titleSuggestions: r.titles,
+          }))),
+        };
+      }),
+    );
+  })();
 
   // --- Customer email (Gmail + templates), per business -------------------
   // Each business has its own OAuth client and mailbox.
-  let gmailVM: GmailBusinessVM | null = null;
-  let templateVMs: TemplateVM[] = [];
-  const creds = (await withUserContext(user, (tx) =>
-    getBusinessGmailCredentials(tx, selected.id),
-  )) as GmailCredentials | null;
-  const [biz] = await withUserContext(user, (tx) =>
+  const bizP = withUserContext(user, (tx) =>
     tx
       .select({
         address: businesses.gmailAddress,
@@ -240,82 +245,94 @@ export default async function SettingsPage({
       .from(businesses)
       .where(eq(businesses.id, selected.id)),
   );
-  gmailVM = {
-    businessId: selected.id,
-    name: selected.name,
-    hasClient: !!creds?.clientId,
-    hasSecret: !!creds?.clientSecret,
-    status: creds?.status ?? "not_connected",
-    address: creds?.address ?? biz?.address ?? null,
-    redirectUri: appUrl("/api/gmail/callback"),
-    sendingEnabled: !!biz?.sendingEnabled,
-    stageAutoSend: !!biz?.stageAutoSend,
-  };
+  const gmailVMP: Promise<GmailBusinessVM> = (async () => {
+    const [creds, [biz]] = await Promise.all([
+      withUserContext(user, (tx) => getBusinessGmailCredentials(tx, selected.id)) as Promise<GmailCredentials | null>,
+      bizP,
+    ]);
+    return {
+      businessId: selected.id,
+      name: selected.name,
+      hasClient: !!creds?.clientId,
+      hasSecret: !!creds?.clientSecret,
+      status: creds?.status ?? "not_connected",
+      address: creds?.address ?? biz?.address ?? null,
+      redirectUri: appUrl("/api/gmail/callback"),
+      sendingEnabled: !!biz?.sendingEnabled,
+      stageAutoSend: !!biz?.stageAutoSend,
+    };
+  })();
 
   // --- Print provider credentials (Gelato / Luma Prints), per business ----
-  const printCreds = (await withUserContext(user, (tx) =>
-    getBusinessPrintCredentials(tx, selected.id),
-  )) as { gelato?: { apiKey?: string; webhookSecret?: string | null }; lumaprints?: { username?: string; password?: string; storeId?: string; sandbox?: boolean } } | null;
-  const printCredsVM: PrintProviderCredentialsVM = {
-    businessId: selected.id,
-    gelato: {
-      hasApiKey: !!printCreds?.gelato?.apiKey,
-      hasWebhookSecret: !!printCreds?.gelato?.webhookSecret,
-    },
-    lumaprints: {
-      hasUsername: !!printCreds?.lumaprints?.username,
-      hasPassword: !!printCreds?.lumaprints?.password,
-      storeId: printCreds?.lumaprints?.storeId ?? null,
-      sandbox: !!printCreds?.lumaprints?.sandbox,
-    },
-    gelatoWebhookUrl: appUrl(`/api/webhooks/gelato?business=${selected.id}`),
-  };
-
-  const overrides = await withUserContext(user, (tx) =>
-    tx
-      .select({
-        key: emailTemplates.key,
-        subject: emailTemplates.subject,
-        body: emailTemplates.body,
-      })
-      .from(emailTemplates)
-      .where(eq(emailTemplates.businessId, selected.id)),
-  );
-  const overrideMap = new Map(overrides.map((o) => [o.key, o]));
-  templateVMs = EDITABLE_TEMPLATE_KEYS.map((key) => {
-    const o = overrideMap.get(key);
-    const meta = TEMPLATE_META[key];
-    const fallback = defaultTemplateForBusiness(selected, key);
+  const printCredsVMP: Promise<PrintProviderCredentialsVM> = (async () => {
+    const printCreds = (await withUserContext(user, (tx) =>
+      getBusinessPrintCredentials(tx, selected.id),
+    )) as { gelato?: { apiKey?: string; webhookSecret?: string | null }; lumaprints?: { username?: string; password?: string; storeId?: string; sandbox?: boolean } } | null;
     return {
-      key,
-      label: meta.label,
-      description: meta.description,
-      variables: meta.variables,
-      subject: o?.subject ?? fallback.subject,
-      body: o?.body ?? fallback.body,
-      customized: !!o,
+      businessId: selected.id,
+      gelato: {
+        hasApiKey: !!printCreds?.gelato?.apiKey,
+        hasWebhookSecret: !!printCreds?.gelato?.webhookSecret,
+      },
+      lumaprints: {
+        hasUsername: !!printCreds?.lumaprints?.username,
+        hasPassword: !!printCreds?.lumaprints?.password,
+        storeId: printCreds?.lumaprints?.storeId ?? null,
+        sandbox: !!printCreds?.lumaprints?.sandbox,
+      },
+      gelatoWebhookUrl: appUrl(`/api/webhooks/gelato?business=${selected.id}`),
     };
-  });
+  })();
 
-  const [dailyHealthBusiness] = await withUserContext(user, (tx) =>
-    tx
-      .select({
-        businessId: businesses.id,
-        businessName: businesses.name,
-        enabled: businesses.dailyHealthEmailEnabled,
-        recipientIds: businesses.dailyHealthEmailRecipientIds,
-      })
-      .from(businesses)
-      .where(eq(businesses.id, selected.id))
-      .limit(1),
-  );
-  const dailyHealthSettings: DailyHealthEmailSettingsVM = {
-    businessId: dailyHealthBusiness?.businessId ?? selected.id,
-    businessName: dailyHealthBusiness?.businessName ?? selected.name,
-    enabled: !!dailyHealthBusiness?.enabled,
-    recipientIds: dailyHealthBusiness?.recipientIds ?? [],
-  };
-  const dailyHealthAdmins: DailyHealthAdminVM[] = await withUserContext(user, (tx) =>
+  const templateVMsP: Promise<TemplateVM[]> = (async () => {
+    const overrides = await withUserContext(user, (tx) =>
+      tx
+        .select({
+          key: emailTemplates.key,
+          subject: emailTemplates.subject,
+          body: emailTemplates.body,
+        })
+        .from(emailTemplates)
+        .where(eq(emailTemplates.businessId, selected.id)),
+    );
+    const overrideMap = new Map(overrides.map((o) => [o.key, o]));
+    return EDITABLE_TEMPLATE_KEYS.map((key) => {
+      const o = overrideMap.get(key);
+      const meta = TEMPLATE_META[key];
+      const fallback = defaultTemplateForBusiness(selected, key);
+      return {
+        key,
+        label: meta.label,
+        description: meta.description,
+        variables: meta.variables,
+        subject: o?.subject ?? fallback.subject,
+        body: o?.body ?? fallback.body,
+        customized: !!o,
+      };
+    });
+  })();
+
+  const dailyHealthSettingsP: Promise<DailyHealthEmailSettingsVM> = (async () => {
+    const [dailyHealthBusiness] = await withUserContext(user, (tx) =>
+      tx
+        .select({
+          businessId: businesses.id,
+          businessName: businesses.name,
+          enabled: businesses.dailyHealthEmailEnabled,
+          recipientIds: businesses.dailyHealthEmailRecipientIds,
+        })
+        .from(businesses)
+        .where(eq(businesses.id, selected.id))
+        .limit(1),
+    );
+    return {
+      businessId: dailyHealthBusiness?.businessId ?? selected.id,
+      businessName: dailyHealthBusiness?.businessName ?? selected.name,
+      enabled: !!dailyHealthBusiness?.enabled,
+      recipientIds: dailyHealthBusiness?.recipientIds ?? [],
+    };
+  })();
+  const dailyHealthAdminsP: Promise<DailyHealthAdminVM[]> = withUserContext(user, (tx) =>
     tx
       .select({ id: users.id, name: users.name, email: users.email })
       .from(users)
@@ -324,8 +341,7 @@ export default async function SettingsPage({
   );
 
   // Portrait styles each shop offers — the catalog designer styles are drawn from.
-  const styleShops: ShopStylesVM[] = (
-    await withUserContext(user, (tx) => {
+  const styleShopsP: Promise<ShopStylesVM[]> = withUserContext(user, (tx) => {
       const cols = {
         id: shops.id,
         name: shops.name,
@@ -333,17 +349,14 @@ export default async function SettingsPage({
         styles: shops.styles,
       };
       return tx.select(cols).from(shops).where(eq(shops.businessId, selected.id)).orderBy(shops.name);
-    })
-  ).map((s) => ({ id: s.id, name: s.name, platform: s.platform, styles: s.styles ?? [] }));
+    }).then((rows) => rows.map((s) => ({ id: s.id, name: s.name, platform: s.platform, styles: s.styles ?? [] })));
 
   // Portrait Styles (/styles) names: what a shop with no own list offers.
-  const styleCatalog = (
-    await withUserContext(user, (tx) =>
+  const styleCatalogP = withUserContext(user, (tx) =>
       tx.select({ name: styles.name }).from(styles).where(eq(styles.businessId, selected.id)).orderBy(styles.name),
-    )
-  ).map((s) => s.name);
+    ).then((rows) => rows.map((s) => s.name));
 
-  const [styleStats] = await withUserContext(user, (tx) =>
+  const styleStatsP = withUserContext(user, (tx) =>
     tx
       .select({
         total: sql<number>`count(*)::int`,
@@ -352,6 +365,32 @@ export default async function SettingsPage({
       .from(styles)
       .where(eq(styles.businessId, selected.id)),
   );
+
+  const [
+    cards,
+    shopifyCards,
+    gmailVM,
+    printCredsVM,
+    templateVMs,
+    dailyHealthSettings,
+    dailyHealthAdmins,
+    styleShops,
+    styleCatalog,
+    [styleStats],
+    [biz],
+  ] = await Promise.all([
+    cardsP,
+    shopifyCardsP,
+    gmailVMP,
+    printCredsVMP,
+    templateVMsP,
+    dailyHealthSettingsP,
+    dailyHealthAdminsP,
+    styleShopsP,
+    styleCatalogP,
+    styleStatsP,
+    bizP,
+  ]);
 
   const allShopCards = [
     ...cards.map((shop) => ({

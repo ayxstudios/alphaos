@@ -19,7 +19,7 @@ import {
   Compass,
   BookOpen,
 } from "@/components/ui/icons";
-import { TOUR_START_EVENT } from "@/components/tour/tour";
+import { TOUR_START_EVENT } from "./lazy-extras";
 import type { Role } from "@/lib/auth/config";
 import type { BusinessOption } from "@/lib/shell/context";
 import { Popover } from "./popover";

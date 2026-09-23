@@ -5,7 +5,8 @@
  * driver): a "use client" component imports it by value, so everything it
  * pulls in ships to the browser.
  */
-import { EDITABLE_TEMPLATE_KEYS, TEMPLATE_META, type TemplateKey } from "@/lib/email/templates";
+// template-meta, not templates: templates.ts also imports the db schema.
+import { EDITABLE_TEMPLATE_KEYS, TEMPLATE_META, type TemplateKey } from "@/lib/email/template-meta";
 
 /** A blank starting point, not one of the business's saved templates. */
 export const BLANK_TEMPLATE_KEY = "blank" as const;

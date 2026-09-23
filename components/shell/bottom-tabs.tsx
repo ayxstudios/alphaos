@@ -9,6 +9,11 @@ import { Grid, ListChecks, Package, Mail, Columns, Calendar, Menu, type IconProp
 import type { ComponentType } from "react";
 import type { Role } from "@/lib/auth/config";
 
+// Next 15.5 Link: full prefetch (page data, not only the skeleton) on pointer
+// hover or touch start. The prop exists at runtime but is missing from the
+// public next/link types, hence the spread (docs/PERF.md).
+const HOVER_PREFETCH = { unstable_dynamicOnHover: true } as object;
+
 type Tab = { label: string; href: string; icon: ComponentType<IconProps> };
 
 const ADMIN_VA_TABS: Tab[] = [
@@ -46,6 +51,8 @@ export function BottomTabs({ role, onMore }: { role: Role; onMore: () => void })
           <Link
             key={tab.href}
             href={tab.href}
+            // Touch start fetches the page data, so the tap lands on a ready page (docs/PERF.md).
+            {...HOVER_PREFETCH}
             className={cn(
               "flex min-h-11 flex-1 flex-col items-center justify-center gap-1 text-xs font-medium",
               focusRing,

@@ -8,10 +8,15 @@ const inter = Inter({
   display: "swap",
 });
 
+// Headings only. Not preloaded (docs/PERF.md): on a slow phone connection the
+// preload competed with the CSS and JavaScript the first paint needs; with
+// swap and next/font's size-matched fallback the titles paint at once and
+// switch face when the file lands (from the device cache after the first visit).
 const instrumentSans = Instrument_Sans({
   subsets: ["latin"],
   variable: "--font-instrument-sans",
   display: "swap",
+  preload: false,
 });
 
 export const metadata: Metadata = {

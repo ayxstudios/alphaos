@@ -11,8 +11,8 @@ import { focusRing } from "@/components/ui/styles";
 import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
 import { BottomTabs } from "./bottom-tabs";
-import { AlphaChat } from "@/components/alpha/alpha-chat";
-import { Tour } from "@/components/tour/tour";
+import { LazyAlphaChat, LazyTour } from "./lazy-extras";
+import { ServiceWorkerRegister } from "./sw-register";
 import type { OnboardingState } from "@/lib/tour/state";
 
 /** Cookie the sidebar collapse preference persists in (read by the layout). */
@@ -119,8 +119,10 @@ export function AppShell({
         </main>
         <BottomTabs role={user.role} onMore={() => setMobileOpen(true)} />
       </div>
-      <AlphaChat user={user} />
-      <Tour role={user.role} firstName={tour.firstName} onboarding={tour.onboarding} signedInAt={tour.signedInAt} />
+      {/* Loaded on demand, not in the first-load bundle (docs/PERF.md). */}
+      <LazyAlphaChat user={user} />
+      <LazyTour role={user.role} firstName={tour.firstName} onboarding={tour.onboarding} signedInAt={tour.signedInAt} />
+      <ServiceWorkerRegister />
     </div>
   );
 }

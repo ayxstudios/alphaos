@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { preconnect } from "react-dom";
 
 import { auth } from "@/lib/auth";
 import { loadShellData } from "@/lib/shell/context";
@@ -7,11 +8,27 @@ import { AppShell, SIDEBAR_COOKIE } from "@/components/shell/app-shell";
 
 export const dynamic = "force-dynamic";
 
+// Photo hosts: open the connection while the page streams, so the first
+// customer photo or product image does not pay DNS + TLS first (docs/PERF.md).
+const IMAGE_ORIGINS = [
+  "https://cdn.shopify.com",
+  ...(process.env.R2_ENDPOINT ? [safeOrigin(process.env.R2_ENDPOINT)] : []),
+].filter((o): o is string => !!o);
+
+function safeOrigin(url: string): string | null {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+}
+
 export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  for (const origin of IMAGE_ORIGINS) preconnect(origin);
   const session = await auth();
   if (!session?.user) redirect("/login");
 
