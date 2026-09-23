@@ -72,7 +72,7 @@ export function TeamPanel({ members, currentUserId }: { members: TeamMember[]; c
         actions={<AddTeammate />}
       />
       <DataPanel>
-        <div role="tablist" aria-label="Show" className="flex gap-1 overflow-x-auto border-b border-line p-2">
+        <div role="tablist" aria-label="Show" className="flex flex-wrap gap-1 border-b border-line p-2">
           {tabs.map((t) => (
             <button
               key={t.id}
@@ -81,7 +81,7 @@ export function TeamPanel({ members, currentUserId }: { members: TeamMember[]; c
               aria-selected={filter === t.id}
               onClick={() => setFilter(t.id)}
               className={cn(
-                "inline-flex h-11 shrink-0 items-center gap-1.5 rounded-input px-3 text-sm font-medium sm:h-9",
+                "inline-flex h-11 shrink-0 items-center gap-1.5 rounded-input px-2 text-sm font-medium sm:h-9 sm:px-3",
                 "transition-colors motion-hover",
                 filter === t.id ? "bg-pigment-soft text-pigment" : "text-slate hover:bg-canvas hover:text-ink",
                 focusRing,
