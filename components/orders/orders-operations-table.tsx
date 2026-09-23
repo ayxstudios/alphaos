@@ -159,7 +159,7 @@ const ORDER_COLUMNS: ColumnDef[] = [
     key: "source",
     label: "Source",
     sort: "source",
-    width: "7rem",
+    width: "6.5rem",
     priority: "wide",
     render: (row) => (
       <div className="min-w-0">
@@ -172,11 +172,11 @@ const ORDER_COLUMNS: ColumnDef[] = [
     key: "status",
     label: "Status",
     sort: "status",
-    width: "minmax(10.5rem,1fr)",
+    width: "minmax(9.5rem,1fr)",
     priority: "core",
     render: (row) => (
       <div className="flex min-w-0 flex-col gap-1">
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <Badge variant={statusTone(row)} dot className="whitespace-nowrap">{statusLabel(row)}</Badge>
           <InfoBubble label={`What "${statusLabel(row)}" means`}>
             <StatusHelp status={row.derivedStatus} label={statusLabel(row)} reason={row.reviewReason} />
@@ -192,7 +192,7 @@ const ORDER_COLUMNS: ColumnDef[] = [
     key: "owner",
     label: "Designer",
     sort: "owner",
-    width: "7rem",
+    width: "6.5rem",
     priority: "wide",
     render: (row) => <p className="break-words text-sm text-slate">{row.assignee}</p>,
   },
