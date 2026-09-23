@@ -14,6 +14,8 @@ type Props = {
   hasPreview: boolean;
   actionable: boolean;
   initialDecision: ProofDecision | null;
+  /** A newer proof went out after this one (this link is an older email's). */
+  superseded?: boolean;
 };
 
 type Mode = "idle" | "confirmApprove" | "revise";
@@ -24,6 +26,7 @@ export function ProofClient({
   hasPreview,
   actionable,
   initialDecision,
+  superseded = false,
 }: Props) {
   const [outcome, setOutcome] = useState<ProofDecision | null>(initialDecision);
   const [mode, setMode] = useState<Mode>("idle");
@@ -113,7 +116,7 @@ export function ProofClient({
 
       {/* Outcome (read-only once decided) ------------------------------ */}
       {outcome ? (
-        <Confirmation decision={outcome} />
+        <Confirmation decision={outcome} superseded={superseded} />
       ) : !actionable ? (
         <p className="rounded-card border border-line bg-surface p-4 text-center text-sm text-slate">
           This proof isn&rsquo;t awaiting your review right now.
@@ -250,7 +253,7 @@ export function ProofClient({
   );
 }
 
-function Confirmation({ decision }: { decision: ProofDecision }) {
+function Confirmation({ decision, superseded }: { decision: ProofDecision; superseded: boolean }) {
   if (decision === "approved") {
     return (
       <div className="flex flex-col items-center gap-2 rounded-card border border-sage/30 bg-sage/10 p-6 text-center">
@@ -271,10 +274,17 @@ function Confirmation({ decision }: { decision: ProofDecision }) {
         <CheckIcon />
       </span>
       <h2 className="text-lg font-semibold text-ink">Changes requested</h2>
-      <p className="text-sm text-slate">
-        Thanks. Your notes are with our design team. We&rsquo;ll send an updated
-        proof soon.
-      </p>
+      {superseded ? (
+        <p className="text-sm text-slate">
+          We&rsquo;ve since sent you an updated proof. Please open the link in
+          our most recent email.
+        </p>
+      ) : (
+        <p className="text-sm text-slate">
+          Thanks. Your notes are with our design team. We&rsquo;ll send an updated
+          proof soon.
+        </p>
+      )}
     </div>
   );
 }

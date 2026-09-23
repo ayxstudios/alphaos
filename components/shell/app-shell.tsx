@@ -112,7 +112,9 @@ export function AppShell({
             </button>
           }
         />
-        <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 pb-20 sm:px-6 lg:px-8 lg:pb-5">
+        {/* Bottom padding clears the floating Alpha AI button (and the phone
+            tab bar), so the last row's buttons can always scroll into reach. */}
+        <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 pb-32 sm:px-6 lg:px-8 lg:pb-24">
           <ToastProvider>{children}</ToastProvider>
         </main>
         <BottomTabs role={user.role} onMore={() => setMobileOpen(true)} />

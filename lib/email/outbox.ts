@@ -27,8 +27,12 @@ export type OutboxItem = {
   error: string | null;
   /** Set when turning sending on marked this stale email as skipped (lib/email/backlog-guard.ts). */
   skippedReason: string | null;
+  /** The order is already delivered, complete or cancelled: a stage email here is out of date. */
+  orderFinished: string | null;
   createdAt: string; // ISO
 };
+
+const FINISHED_STATUSES = new Set(["delivered", "complete", "cancelled"]);
 
 /**
  * The VA outbox: outbound customer emails awaiting approval (`draft`), system-
@@ -61,6 +65,7 @@ export async function getOutbox(
         customerId: messages.customerId,
         platformOrderId: orders.platformOrderId,
         platformOrderName: orders.platformOrderName,
+        orderStatus: orders.status,
       })
       .from(messages)
       .leftJoin(orders, eq(orders.id, messages.orderId))
@@ -101,6 +106,7 @@ export async function getOutbox(
       error: r.error,
       skippedReason:
         ((r.metadata as { skippedOnEnable?: { reason?: string } } | null)?.skippedOnEnable?.reason) ?? null,
+      orderFinished: r.orderStatus && FINISHED_STATUSES.has(r.orderStatus) ? r.orderStatus : null,
       createdAt: r.createdAt.toISOString(),
     }));
   });

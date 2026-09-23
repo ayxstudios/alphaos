@@ -403,13 +403,27 @@ function EmailPreviewDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  // Escape closes, like the fail dialog (not while a send is in flight).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !pending) onCancel();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pending, onCancel]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-4">
-      <div className="grid grid-cols-1 max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-modal bg-surface shadow-lg xl:grid-cols-[minmax(0,1fr)_28rem]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="qc-email-preview-title"
+        className="grid grid-cols-1 max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-modal bg-surface shadow-lg xl:grid-cols-[minmax(0,1fr)_28rem]"
+      >
         <div className="min-h-0 overflow-y-auto p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="font-display text-xl font-semibold text-ink">Preview customer email</h2>
+              <h2 id="qc-email-preview-title" className="font-display text-xl font-semibold text-ink">Preview customer email</h2>
               <p className="mt-1 text-sm text-slate">
                 Template: <span className="font-medium text-ink">{preview.templateLabel}</span> · {preview.templateReason}
               </p>

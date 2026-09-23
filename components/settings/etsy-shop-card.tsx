@@ -9,8 +9,9 @@ import {
   Badge,
 } from "@/components/ui";
 import { ChevronDown } from "@/components/ui/icons";
-import { saveEtsyCredentials, triggerSync, backfillEtsyShop, saveShopBackfillCutoff } from "@/app/(app)/settings/actions";
+import { saveEtsyCredentials, triggerSync, backfillEtsyShop } from "@/app/(app)/settings/actions";
 import { ResolutionRulesEditor } from "@/components/settings/resolution-rules-editor";
+import { CutoffForm } from "@/components/settings/cutoff-form";
 import { formatSyncTime, syncHealth } from "@/lib/integrations/sync-health";
 import type { SyncSummary } from "@/lib/integrations/etsy";
 import type { FigureRule } from "@/lib/integrations/figures";
@@ -137,21 +138,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
               </div>
             </form>
 
-            <form action={saveShopBackfillCutoff} className="rounded-input bg-canvas/70 p-3">
-              <input type="hidden" name="shopId" value={shop.id} />
-              <div className="flex flex-wrap items-end gap-3">
-                <Input
-                  label="Live-order cutoff"
-                  name="backfillCutoffDate"
-                  type="date"
-                  defaultValue={cutoffDate}
-                  required
-                />
-                <Button type="submit" variant="secondary" size="sm">
-                  Save cutoff
-                </Button>
-              </div>
-            </form>
+            <CutoffForm shopId={shop.id} cutoffDate={cutoffDate} />
 
             <div className="flex flex-wrap items-center gap-2">
               <Button
