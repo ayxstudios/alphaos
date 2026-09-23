@@ -240,7 +240,9 @@ export default async function OrderDetailPage({
   const user = { id: session.user.id, role: session.user.role };
   const { id } = await params;
 
-  const [order] = await withUserContext(user, (tx) =>
+  const staffView = user.role === "admin" || user.role === "va";
+
+  const [row] = await withUserContext(user, (tx) =>
     tx
       .select({
         id: orders.id,
@@ -268,9 +270,13 @@ export default async function OrderDetailPage({
       .where(eq(orders.id, id)),
   );
 
-  if (!order) notFound();
+  if (!row) notFound();
+  // Designers see the customer's first name only: never the email, the last
+  // name or the customer's email thread (CLAUDE.md Roles). RLS already hides
+  // `customers` from them; this also holds on a connection that bypasses RLS.
+  const order = staffView ? row : { ...row, customerEmail: null, customerLast: null };
 
-  const [items, assignment, qcRows, printRows, timeline, detail, designers, proofRows] = await Promise.all([
+  const [items, assignment, qcRows, printRows, timelineRows, detail, designers, proofRows] = await Promise.all([
     withUserContext(user, (tx) =>
       tx
         .select({
@@ -397,12 +403,16 @@ export default async function OrderDetailPage({
           })
       : [];
 
-  const customerName = customerDisplay({
-    firstName: order.customerFirst,
-    lastName: order.customerLast,
-    email: order.customerEmail,
-    rawImport: order.rawImport,
-  });
+  const timeline = staffView ? timelineRows : [];
+  const customerName = staffView
+    ? customerDisplay({
+        firstName: order.customerFirst,
+        lastName: order.customerLast,
+        email: order.customerEmail,
+        rawImport: order.rawImport,
+      })
+    : (order.customerFirst || parseEtsyReceiptReview(order.rawImport).buyerName || "").trim().split(/\s+/)[0] ||
+      "Customer";
   const hasDesigner = Boolean(assignment[0]);
   const assignee = assignment[0] ? (assignment[0].name ?? assignment[0].email) : "Unassigned";
   const styles = Array.from(
@@ -422,7 +432,7 @@ export default async function OrderDetailPage({
     hasPhysical: hasPhysicalItem,
   });
   const sourceLabel = `${order.shopName} · ${titleCase(order.shopPlatform ?? order.source)}`;
-  const editable = user.role === "admin" || user.role === "va";
+  const editable = staffView;
   const showAiFeatures = anthropicFeaturesEnabled();
   const canCreateRevision = editable && REVISION_FROM_STATUSES.has(order.status as OrderStatus);
   const revisionStarter =
@@ -564,13 +574,13 @@ export default async function OrderDetailPage({
             // breakpoint, so there is never a leftover blank cell. The 5-fact
             // case (no style bar below) is odd on the 2-col phone grid, so its
             // last cell spans both columns instead of leaving one blank.
-            styleSetter
+            styleSetter || !editable
               ? "sm:grid-cols-4"
               : "max-sm:[&>*:last-child:nth-child(odd)]:col-span-2 sm:grid-cols-5",
           )}
         >
           <Fact icon={User} label="Customer" value={customerName} />
-          <Fact icon={Mail} label="Email" value={order.customerEmail ?? "No email yet"} muted={!order.customerEmail} />
+          {editable && <Fact icon={Mail} label="Email" value={order.customerEmail ?? "No email yet"} muted={!order.customerEmail} />}
           {!styleSetter && <Fact icon={Brush} label="Style" value={styleLabel} muted={styles.length === 0} />}
           <Fact icon={Palette} label="Designer" value={assignee} muted={assignee === "Unassigned"} />
           <Fact icon={Calendar} label="Due" value={fmtDate(order.dueAt)} />
@@ -732,59 +742,61 @@ export default async function OrderDetailPage({
             </DataPanel>
           )}
 
-          <DataPanel className="overflow-hidden">
-            <div className="border-b border-line/60 px-4 py-3">
-              <SectionHeader title="Messages" />
-            </div>
-            {timeline.length === 0 ? (
-              <EmptyState
-                icon={Inbox}
-                headline="No messages yet"
-                body="Customer email history for this order will appear here."
-              />
-            ) : (
-              <ul className="divide-y divide-line/60">
-                {timeline.map((m) => {
-                  const inbound = m.direction === "inbound";
-                  const when = m.sentAt ?? m.createdAt;
-                  const suggestion = showAiFeatures && inbound ? replySuggestion(m) : null;
-                  return (
-                    <li key={m.id} className="px-4 py-3">
-                      <div className="mb-1 flex flex-wrap items-center gap-2">
-                        <Badge variant={inbound ? "info" : "neutral"} dot>
-                          {inbound ? "Customer reply" : "Sent"}
-                        </Badge>
-                        {!inbound && m.status !== "sent" && (
-                          <Badge variant={m.status === "failed" ? "danger" : "warning"} dot>
-                            {m.status}
+          {editable && (
+            <DataPanel className="overflow-hidden">
+              <div className="border-b border-line/60 px-4 py-3">
+                <SectionHeader title="Messages" />
+              </div>
+              {timeline.length === 0 ? (
+                <EmptyState
+                  icon={Inbox}
+                  headline="No messages yet"
+                  body="Customer email history for this order will appear here."
+                />
+              ) : (
+                <ul className="divide-y divide-line/60">
+                  {timeline.map((m) => {
+                    const inbound = m.direction === "inbound";
+                    const when = m.sentAt ?? m.createdAt;
+                    const suggestion = showAiFeatures && inbound ? replySuggestion(m) : null;
+                    return (
+                      <li key={m.id} className="px-4 py-3">
+                        <div className="mb-1 flex flex-wrap items-center gap-2">
+                          <Badge variant={inbound ? "info" : "neutral"} dot>
+                            {inbound ? "Customer reply" : "Sent"}
                           </Badge>
+                          {!inbound && m.status !== "sent" && (
+                            <Badge variant={m.status === "failed" ? "danger" : "warning"} dot>
+                              {m.status}
+                            </Badge>
+                          )}
+                          <span className="text-xs text-slate">{fmtDateTime(when)}</span>
+                        </div>
+                        {m.subject && <p className="text-sm font-medium text-ink">{m.subject}</p>}
+                        {m.body && <p className="mt-1 whitespace-pre-wrap text-sm text-slate line-clamp-5">{m.body}</p>}
+                        {editable && suggestion && <ReplyClassificationSuggestion suggestion={suggestion} />}
+                        {editable && inbound && m.body && (
+                          <details className="mt-3 rounded-input bg-canvas p-2">
+                            <summary className="cursor-pointer text-xs font-medium text-pigment">
+                              Create revision from this email
+                            </summary>
+                            <div className="mt-2">
+                              <OrderRevisionForm
+                                orderId={order.id}
+                                initialNote={m.body}
+                                buttonLabel="Create revision"
+                                disabled={!canCreateRevision}
+                              />
+                            </div>
+                          </details>
                         )}
-                        <span className="text-xs text-slate">{fmtDateTime(when)}</span>
-                      </div>
-                      {m.subject && <p className="text-sm font-medium text-ink">{m.subject}</p>}
-                      {m.body && <p className="mt-1 whitespace-pre-wrap text-sm text-slate line-clamp-5">{m.body}</p>}
-                      {editable && suggestion && <ReplyClassificationSuggestion suggestion={suggestion} />}
-                      {editable && inbound && m.body && (
-                        <details className="mt-3 rounded-input bg-canvas p-2">
-                          <summary className="cursor-pointer text-xs font-medium text-pigment">
-                            Create revision from this email
-                          </summary>
-                          <div className="mt-2">
-                            <OrderRevisionForm
-                              orderId={order.id}
-                              initialNote={m.body}
-                              buttonLabel="Create revision"
-                              disabled={!canCreateRevision}
-                            />
-                          </div>
-                        </details>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </DataPanel>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </DataPanel>
+          )}
         </div>
 
         {/* Right: everything else is waiting on — who has it, when it's due,
