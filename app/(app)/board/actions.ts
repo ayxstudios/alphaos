@@ -55,7 +55,10 @@ export async function moveOrder(
     return { ok: true, status };
   } catch (err) {
     if (err instanceof OrderTransitionError) {
-      return { ok: false, code: err.code, message: err.message };
+      // The internal not-found text carries the order UUID and RLS wording;
+      // the person gets the plain version.
+      const message = err.code === "not_found" ? "Order not found. It may have been moved or reassigned." : err.message;
+      return { ok: false, code: err.code, message };
     }
     throw err;
   }
