@@ -129,6 +129,9 @@ export async function setUserActive(
   active: boolean,
 ): Promise<TeamResult<{ openOrders: number }>> {
   if (!isAdmin(actor)) return { ok: false, message: "Only an admin can do this" };
+  // Server actions take hand-edited JSON: a string like "no" skipped the
+  // last-admin guard (!"no" is false) and Postgres still read it as false.
+  if (typeof active !== "boolean") return { ok: false, message: "Choose active or inactive" };
   try {
     const openOrders = await withUserContext(actor, async (tx) => {
       const [target] = await tx
@@ -150,7 +153,12 @@ export async function setUserActive(
       }
 
       if (target.active !== active) {
-        await tx.update(users).set({ active }).where(eq(users.id, target.id));
+        // Deactivating also ends every session they hold, so a later
+        // reactivation never brings an old (possibly copied) cookie back to life.
+        await tx
+          .update(users)
+          .set(active ? { active } : { active, sessionsValidAfter: new Date() })
+          .where(eq(users.id, target.id));
       }
 
       if (target.role !== "designer") return 0;
