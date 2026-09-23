@@ -18,6 +18,8 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
  * references and never copied here — only real uploads consume storage.
  *
  * Env: R2_ENDPOINT, R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
+ * The bucket's CORS rules must list the app origin or browser PUTs fail their
+ * preflight: `npx tsx scripts/r2-cors.ts` (see that file).
  */
 
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
