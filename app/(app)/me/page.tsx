@@ -19,8 +19,8 @@ export default async function MyWeekPage() {
 
   return (
     <Page className="max-w-xl">
-      <PageHeader title="My week" tourId="page:week" description={`Hi ${week.designerName.split(" ")[0]}.`} />
-      <DesignerWeekView week={week} />
+      <PageHeader title="My Week" tourId="page:week" description="What you earned and what is due next." />
+      <DesignerWeekView week={week} self />
     </Page>
   );
 }

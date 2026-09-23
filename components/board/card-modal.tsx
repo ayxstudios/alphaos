@@ -2,17 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 import { Avatar, Button, Disclosure, StatusChip, useToast } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
-import { AlertTriangle, Camera, Check, X } from "@/components/ui/icons";
+import { AlertTriangle, Brush, Camera, Check, X } from "@/components/ui/icons";
 import { Countdown } from "./countdown";
 import {
   cardLabels,
   describeEvent,
+  designerStateLabel,
+  eventActor,
   LABEL_CLASS,
+  optionName,
   relativeTime,
+  revisionNote,
 } from "./card-meta";
 import {
   loadCard,
@@ -46,6 +51,7 @@ export function CardModal({
   timeZone,
   onClose,
   onSubmitForQc,
+  onStart,
 }: {
   card: BoardCard;
   viewerRole: ViewerRole;
@@ -54,8 +60,11 @@ export function CardModal({
   onClose: () => void;
   /** Designer only: send the card to Awaiting QC from here (true = moved). */
   onSubmitForQc?: () => Promise<boolean>;
+  /** Designer only: start a queued card from here (true = moved). */
+  onStart?: () => Promise<boolean>;
 }) {
   const toast = useToast();
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
   const [detail, setDetail] = useState<CardDetail | null>(null);
@@ -118,6 +127,11 @@ export function CardModal({
 
   const labels = cardLabels(card);
   const revision = card.qcFail ?? card.customerRevision;
+  const designerView = viewerRole === "designer";
+  // A designer reads their own words for a queued card ("In your queue").
+  const chipLabel = designerView ? designerStateLabel(card.status) : undefined;
+  // Passed QC or complete: nothing left on the designer's clock.
+  const designerDone = designerView && (card.status === "complete" || isWithCustomer(card.status));
 
   if (!mounted) return null;
 
@@ -166,12 +180,15 @@ export function CardModal({
                 {card.title ?? "Custom portrait"}
               </h2>
               <div className="flex flex-wrap items-center gap-2 pt-1 md:hidden">
-                <StatusChip status={card.status} />
-                <Countdown
-                  dueAt={viewerRole === "designer" ? card.dueAt : card.orderDueAt}
-                  done={card.status === "complete"}
-                  withCustomer={viewerRole === "designer" && isWithCustomer(card.status)}
-                />
+                <StatusChip status={card.status} label={chipLabel} />
+                {/* A designer's finished part has no clock: the chip says where it is. */}
+                {!designerDone && (
+                  <Countdown
+                    dueAt={viewerRole === "designer" ? card.dueAt : card.orderDueAt}
+                    done={card.status === "complete"}
+                    withCustomer={viewerRole === "designer" && isWithCustomer(card.status)}
+                  />
+                )}
               </div>
             </div>
             <CardUploadPanel
@@ -181,6 +198,8 @@ export function CardModal({
               onSaved={(next) => {
                 setDetail(next);
                 setEvents(next.events);
+                // The board card behind learns it now has a version to submit.
+                router.refresh();
               }}
               onSubmitForQc={
                 onSubmitForQc
@@ -189,7 +208,21 @@ export function CardModal({
                     }
                   : undefined
               }
+              onStart={onStart}
             />
+
+            {/* What to fix sits right under the upload, before the photos:
+                it is the first thing a designer back on this card needs. */}
+            {revision && (
+              <RevisionBlock
+                kind={card.qcFail ? "qc" : "customer"}
+                reason={revision.reason}
+                failedItems={revision.failedItems}
+                annotations={revision.annotations ?? []}
+                pinImageUrl={pinnedVersionUrl(detail, events)}
+              />
+            )}
+
             <Gallery images={detail?.images ?? null} cover={card.thumbnailUrl} />
 
             {card.options.length > 0 && (
@@ -199,7 +232,7 @@ export function CardModal({
                     key={i}
                     className="rounded bg-canvas px-2 py-1 text-xs text-slate"
                   >
-                    <span className="text-ink">{o.name}:</span> {o.value}
+                    <span className="text-ink">{optionName(o.name)}:</span> {o.value}
                   </li>
                 ))}
               </ul>
@@ -209,18 +242,6 @@ export function CardModal({
               <Disclosure summary="Notes and special requests" defaultOpen className="bg-amber/5 shadow-none">
                 <p className="whitespace-pre-wrap text-sm text-ink">{card.notes}</p>
               </Disclosure>
-            )}
-
-            {revision && (
-              <RevisionBlock
-                kind={card.qcFail ? "qc" : "customer"}
-                reason={revision.reason}
-                failedItems={revision.failedItems}
-                annotations={revision.annotations ?? []}
-                pinImageUrl={
-                  [...(detail?.images ?? [])].reverse().find((img) => img.type === "submission")?.url ?? null
-                }
-              />
             )}
 
             <Disclosure
@@ -235,7 +256,7 @@ export function CardModal({
                 ) : events.length === 0 ? (
                   <p className="text-sm text-slate">No activity yet.</p>
                 ) : (
-                  events.map((e) => <FeedItem key={e.id} event={e} />)
+                  events.map((e) => <FeedItem key={e.id} event={e} viewerRole={viewerRole} />)
                 )}
               </div>
             </Disclosure>
@@ -264,18 +285,20 @@ export function CardModal({
                 Send
               </Button>
             </div>
-            <p className="mt-1 px-1 text-xs text-slate">⌘/Ctrl + Enter to send</p>
+            {/* A keyboard shortcut means nothing on a phone. */}
+            <p className="mt-1 hidden px-1 text-xs text-slate md:block">⌘/Ctrl + Enter to send</p>
           </div>
         </div>
 
         {/* Sidebar */}
         <aside className="shrink-0 space-y-4 border-t border-line bg-canvas/40 p-4 md:w-64 md:border-t-0 md:border-l">
           <Meta label="Status">
-            <StatusChip status={card.status} />
+            <StatusChip status={card.status} label={chipLabel} />
           </Meta>
           {viewerRole === "designer" ? (
-            // The designer's own deadline (their assignment), never the customer SLA.
-            <Meta label="Your deadline">
+            // The designer's own deadline (their assignment), never the
+            // customer SLA; gone once their part is done (the status says so).
+            !designerDone && <Meta label="Your deadline">
               <DueLine
                 dueAt={card.dueAt}
                 done={card.status === "complete"}
@@ -320,7 +343,7 @@ export function CardModal({
           </Meta>
           <Meta label="Figures">
             <span className="text-sm text-ink">
-              {card.figuresResolved ? card.figureCount : "Unresolved"}
+              {card.figuresResolved ? card.figureCount : "Not set yet"}
               {card.style ? ` · ${card.style}` : ""}
             </span>
           </Meta>
@@ -340,12 +363,14 @@ function CardUploadPanel({
   detail,
   onSaved,
   onSubmitForQc,
+  onStart,
 }: {
   card: BoardCard;
   viewerRole: ViewerRole;
   detail: CardDetail | null;
   onSaved: (detail: CardDetail) => void;
   onSubmitForQc?: () => Promise<void>;
+  onStart?: () => Promise<boolean>;
 }) {
   const toast = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -354,6 +379,7 @@ function CardUploadPanel({
   const [type, setType] = useState<CardAssetType>(designer ? "submission" : "reference");
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [progress, setProgress] = useState<UploadProgress[]>([]);
   const submissions = (detail?.images ?? []).filter((image) => image.type === "submission");
   const latestSubmission = submissions.at(-1) ?? null;
@@ -369,10 +395,19 @@ function CardUploadPanel({
   // that hasn't been started is NOT locked, it just needs starting first.
   const designerNote =
     card.status === "ready_to_assign"
-      ? "Start this card first (tap Start, or drag it to In Design), then upload the finished portrait here."
+      ? "Start this card, then add the finished portrait here."
       : card.status === "awaiting_qc"
-        ? "Submitted for QC. Uploads open again if QC sends it back."
-        : "Uploads are locked after QC.";
+        ? "Sent for QC. If it comes back, add a new version here."
+        : card.status === "complete"
+          ? "Finished. Nothing more to do here."
+          : "Passed QC. Nothing more to do here.";
+  const designerHint = !canDesignerUpload
+    ? designerNote
+    : freshVersion
+      ? "Ready for QC. To change it first, add a new version."
+      : latestSubmission
+        ? "Add a new version with the changes, then submit it for QC."
+        : "Add the finished portrait, then submit it for QC.";
 
   useEffect(() => {
     if (designer) setType("submission");
@@ -432,6 +467,9 @@ function CardUploadPanel({
       });
       if (!saved.ok) throw new Error(saved.message);
       onSaved(saved.detail);
+      // The new version now shows in the strip below; the finished progress
+      // bar would only repeat it.
+      setProgress([]);
       toast({
         variant: "success",
         title:
@@ -460,17 +498,11 @@ function CardUploadPanel({
     <section className="rounded-card bg-canvas/60 p-3" data-tour="card:upload">
       <div className="flex flex-wrap items-end gap-2">
         {designer ? (
-          <div className="min-w-40 flex-1">
-            <span className="text-xs font-medium text-ink">Finished portrait</span>
-            <p className="mt-1 text-xs text-slate">
-              {canDesignerUpload
-                ? freshVersion
-                  ? "Ready for QC: the newest version is the one reviewed. Every version is kept, so add another first if you want to change it."
-                  : latestSubmission
-                    ? "This came back for changes: add a new version, then submit it for QC. Every version is kept."
-                    : "Upload the finished portrait, then submit it for QC."
-                : designerNote}
-            </p>
+          // Two buttons (Submit for QC, Add new version) get a row of their
+          // own under the text instead of one wrapping on its own.
+          <div className={cn("min-w-40 flex-1", canDesignerUpload && freshVersion && "basis-full")}>
+            <span className="text-sm font-medium text-ink">Finished portrait</span>
+            <p className="mt-0.5 text-sm text-slate">{designerHint}</p>
           </div>
         ) : (
           <label className="flex min-w-40 flex-1 flex-col gap-1.5">
@@ -492,12 +524,36 @@ function CardUploadPanel({
         )}
         {/* No upload control at all while a designer can't upload: the note
             above says what to do instead. */}
+        {/* A designer's queued card starts right here (no need to close the
+            card and find the board button, or drag on a laptop). */}
+        {designer && card.status === "ready_to_assign" && onStart && (
+          <Button
+            type="button"
+            size="sm"
+            className="max-md:h-11 max-md:w-full"
+            loading={starting}
+            onClick={async () => {
+              setStarting(true);
+              try {
+                await onStart();
+              } finally {
+                setStarting(false);
+              }
+            }}
+          >
+            <Brush size={15} />
+            Start
+          </Button>
+        )}
+        {/* On a phone the big tap area below is the upload control, so the
+            same action is not offered twice; a laptop keeps the button. */}
         {canUpload && (
           <Button
             type="button"
             size="sm"
             variant="secondary"
-            className="max-md:h-11"
+            // After Submit for QC when both show (the main action first).
+            className={cn("max-md:h-11", designer && "order-last max-md:hidden")}
             loading={uploading}
             onClick={() => fileRef.current?.click()}
           >
@@ -510,7 +566,7 @@ function CardUploadPanel({
           <Button
             type="button"
             size="sm"
-            className="max-md:h-11"
+            className="max-md:h-11 max-md:w-full"
             loading={submitting}
             disabled={uploading}
             onClick={async () => {
@@ -674,7 +730,11 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
 
 function Gallery({ images, cover }: { images: CardImage[] | null; cover: string | null }) {
   // Before detail loads, show the cover we already have from the card.
-  const list = images ?? (cover ? [{ id: "cover", type: "reference" as const, url: cover, uploadedBy: null, createdAt: "" }] : []);
+  // Portrait versions live in the Finished portrait strip above, so they are
+  // not repeated here: this is what the customer sent.
+  const list = (images ?? (cover ? [{ id: "cover", type: "reference" as const, url: cover, uploadedBy: null, createdAt: "" }] : [])).filter(
+    (img) => img.type !== "submission",
+  );
   if (list.length === 0) {
     return (
       <div className="flex h-40 items-center justify-center gap-2 rounded-card border border-dashed border-line bg-canvas text-slate">
@@ -686,6 +746,7 @@ function Gallery({ images, cover }: { images: CardImage[] | null; cover: string 
   const [hero, ...rest] = list;
   return (
     <div className="space-y-2">
+      <p className="text-sm font-medium text-ink">{list.every((img) => img.type === "reference") ? "Customer photos" : "Photos"}</p>
       <a href={hero.url} target="_blank" rel="noopener noreferrer" aria-label="Open photo full size" className="block">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -708,6 +769,20 @@ function Gallery({ images, cover }: { images: CardImage[] | null; cover: string 
   );
 }
 
+/**
+ * The version the customer put their pins on: the newest one from before the
+ * latest revision request. Once a fixed version is added, the pins still sit
+ * on the proof they were dropped on, not on the fix.
+ */
+function pinnedVersionUrl(detail: CardDetail | null, events: CardEvent[]): string | null {
+  const versions = (detail?.images ?? []).filter((img) => img.type === "submission");
+  const asked = events
+    .filter((e) => e.toState === "in_design" && e.fromState === "awaiting_approval")
+    .reduce<number>((max, e) => Math.max(max, Date.parse(e.createdAt)), 0);
+  const before = asked ? versions.filter((v) => Date.parse(v.createdAt) <= asked) : versions;
+  return (before.at(-1) ?? versions.at(-1))?.url ?? null;
+}
+
 function RevisionBlock({
   kind,
   reason,
@@ -722,6 +797,7 @@ function RevisionBlock({
   pinImageUrl: string | null;
 }) {
   const qc = kind === "qc";
+  const note = revisionNote(reason, failedItems);
   return (
     <div
       className={cn(
@@ -738,14 +814,16 @@ function RevisionBlock({
         <AlertTriangle size={14} className="shrink-0" />
         {qc ? "QC failed" : "Revision requested"}
       </span>
+      {/* The person's own words first: they say what to change. The ticked
+          checks follow as the detail. */}
+      {note && <p className="text-sm text-ink">&ldquo;{note}&rdquo;</p>}
       {failedItems.length > 0 && (
-        <ul className="ml-1 list-inside list-disc text-sm text-ink">
+        <ul className="ml-5 list-outside list-disc space-y-0.5 text-sm text-slate">
           {failedItems.map((f, i) => (
             <li key={i}>{f}</li>
           ))}
         </ul>
       )}
-      {reason && <p className="text-sm italic text-slate">&ldquo;{reason}&rdquo;</p>}
       {annotations.length > 0 && (
         <div className="space-y-1">
           <p className="text-xs font-medium text-ink">
@@ -774,8 +852,8 @@ function RevisionBlock({
   );
 }
 
-function FeedItem({ event }: { event: CardEvent }) {
-  const actor = event.actorName ?? "System";
+function FeedItem({ event, viewerRole }: { event: CardEvent; viewerRole: ViewerRole }) {
+  const actor = eventActor(event);
   const when = relativeTime(event.createdAt);
 
   if (event.action === "comment") {
@@ -795,7 +873,7 @@ function FeedItem({ event }: { event: CardEvent }) {
     );
   }
 
-  const desc = describeEvent(event);
+  const desc = describeEvent(event, viewerRole);
   const reason = typeof event.metadata?.reason === "string" ? event.metadata.reason : null;
   const failed = Array.isArray(event.metadata?.failedItems)
     ? (event.metadata!.failedItems as string[])

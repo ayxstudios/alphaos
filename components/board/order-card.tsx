@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { AlertTriangle, Camera } from "@/components/ui/icons";
 import { Countdown } from "./countdown";
-import { cardLabels, LABEL_CLASS } from "./card-meta";
+import { cardLabels, LABEL_CLASS, optionName, revisionNote } from "./card-meta";
 import type { BoardCard } from "@/lib/orders/board-data";
 import { isWithCustomer } from "@/lib/orders/board-constants";
 
@@ -27,6 +27,7 @@ export function OrderCard({
   const labels = cardLabels(card);
   const revision = card.qcFail ?? card.customerRevision;
   const revisionTone = card.qcFail ? "rose" : "pigment";
+  const note = revision ? revisionNote(revision.reason, revision.failedItems) : null;
 
   return (
     <div
@@ -91,9 +92,11 @@ export function OrderCard({
             {card.options.slice(0, 3).map((o, i) => (
               <li
                 key={i}
-                className="max-w-full truncate rounded bg-canvas px-1.5 py-0.5 text-xs text-slate"
+                // Wraps instead of truncating: the answer ("No Thanks") sits
+                // at the end of a long shop question and must stay visible.
+                className="max-w-full break-words rounded bg-canvas px-1.5 py-0.5 text-xs text-slate"
               >
-                <span className="text-ink">{o.name}:</span> {o.value}
+                <span className="text-ink">{optionName(o.name)}:</span> {o.value}
               </li>
             ))}
           </ul>
@@ -116,21 +119,17 @@ export function OrderCard({
               <span className="font-semibold">
                 {card.qcFail ? "QC failed" : "Revision requested"}
               </span>
-              {revision.failedItems.length > 0 && (
-                <ul className="ml-3 list-outside list-disc font-normal text-ink">
-                  {revision.failedItems.slice(0, 2).map((f, i) => (
-                    <li key={i} className="line-clamp-1">
-                      {f}
-                    </li>
-                  ))}
-                  {revision.failedItems.length > 2 && (
-                    <li className="text-slate">+{revision.failedItems.length - 2} more</li>
-                  )}
-                </ul>
+              {/* The person's words first (same order as inside the card),
+                  then just the name of each failed check ("Likeness",
+                  "Count"): the full wording is one tap away in the card. */}
+              {note && (
+                <span className="line-clamp-3 font-normal text-ink">
+                  &ldquo;{note}&rdquo;
+                </span>
               )}
-              {revision.reason && (
-                <span className="line-clamp-2 font-normal italic text-slate">
-                  &ldquo;{revision.reason}&rdquo;
+              {revision.failedItems.length > 0 && (
+                <span className="block font-normal text-slate">
+                  {revision.failedItems.map((f) => f.split(":")[0].trim()).join(", ")}
                 </span>
               )}
               {!!revision.annotations?.length && (
@@ -147,7 +146,7 @@ export function OrderCard({
           <span className="shrink-0 tabular-nums">
             {card.figuresResolved
               ? `${card.figureCount} figure${card.figureCount === 1 ? "" : "s"}`
-              : "figures: ?"}
+              : "Figures ?"}
           </span>
         </div>
       </div>

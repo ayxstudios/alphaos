@@ -96,7 +96,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     <ToastContext.Provider value={toast}>
       {children}
       <div
-        className="pointer-events-none fixed bottom-4 right-4 z-[60] flex w-full max-w-sm flex-col gap-2"
+        // Below lg the bottom tab bar (h-16) is there: toasts sit above it,
+        // inset 16px on both sides (w-full plus right-4 ran off the left edge
+        // of a phone). lg and up: bottom right, as before.
+        className="pointer-events-none fixed inset-x-4 bottom-20 z-[60] flex flex-col gap-2 sm:left-auto sm:w-full sm:max-w-sm lg:bottom-4 lg:right-4"
         role="region"
         aria-label="Notifications"
       >
@@ -139,7 +142,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 onClick={() => dismiss(t.id)}
                 aria-label="Dismiss"
                 className={cn(
-                  "-mr-1 -mt-1 inline-flex size-7 shrink-0 items-center justify-center rounded-input text-slate",
+                  // 44px to a finger (negative margins keep the toast's size),
+                  // the original 28px with a pointer.
+                  "-my-2.5 -mr-3 inline-flex size-11 shrink-0 items-center justify-center rounded-input text-slate lg:-mr-1 lg:-mt-1 lg:mb-0 lg:size-7",
                   "transition-colors motion-hover hover:bg-canvas hover:text-ink",
                   focusRing,
                 )}

@@ -36,43 +36,57 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
         <StatTile
           label="Figures this week"
           value={fmtInt(h.figures7d)}
-          delta={{ pct: pctDelta(h.figures7d, h.figuresPrev7d), good: "up", window: "vs last week", base: h.figuresPrev7d, fallback: "Last 7 days" }}
+          // Nothing last week to compare with: say what the number covers
+          // instead of a "new" pill.
+          delta={
+            h.figuresPrev7d > 0
+              ? { pct: pctDelta(h.figures7d, h.figuresPrev7d), good: "up", window: "vs last week", base: h.figuresPrev7d, fallback: "Last 7 days" }
+              : undefined
+          }
+          hint={h.figuresPrev7d > 0 ? undefined : "Last 7 days"}
           spark={{ points: h.figures.values, labels: h.figures.labels, color: "c2" }}
         />
         <StatTile label="Earned this week" value={fmtMoney(h.week.earningsThisWeek)} hint={`${fmtMoney(h.week.earningsThisMonth)} this month`} tone="good" href="/me" />
       </div>
 
       <div className="grid gap-4 sm:gap-5 lg:grid-cols-5">
-        <HomeSection title="Due first" description="Your next deadlines" action={{ label: "My board", href: "/board" }} className="lg:col-span-3">
+        <HomeSection title="Due first" description="Your next deadlines" className="lg:col-span-3">
           {next.length === 0 ? (
             <p className="text-sm text-slate">No deadlines coming up.</p>
           ) : (
-            <ul className="divide-y divide-line">
+            <ul className="-mx-2 divide-y divide-line">
               {next.map((d) => {
                 const due = d.dueAt ? new Date(d.dueAt) : null;
                 const late = due ? due.getTime() < Date.now() : false;
                 return (
-                  <li key={d.orderId} className="flex items-center gap-3 py-2.5 text-sm">
-                    <span className={cn("hidden w-20 shrink-0 rounded-chip px-2 py-0.5 text-center text-xs font-medium sm:block", late ? "bg-rose/10 text-rose" : "bg-pigment-soft text-pigment")}>{late ? "Late" : "Due"}</span>
-                    <Link href={`/orders/${d.orderId}`} className={cn("min-w-0 flex-1 truncate font-semibold text-ink hover:text-pigment", focusRing)}>
-                      {d.orderNumber}
+                  <li key={d.orderId}>
+                    {/* The whole row opens that card on the board. */}
+                    <Link
+                      href={`/board?open=${d.orderId}`}
+                      className={cn("flex min-h-11 items-center gap-3 rounded-input px-2 py-2 text-sm hover:bg-canvas", focusRing)}
+                    >
+                      {/* Number over its deadline, so neither is cut short on a phone. */}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-semibold text-ink">{d.orderNumber}</span>
+                        <span className={cn("block tabular-nums", late ? "text-rose" : "text-slate")}>{fmtDue(d.dueAt)}</span>
+                      </span>
+                      {late && <span className="shrink-0 rounded-chip bg-rose/10 px-2 py-0.5 text-xs font-medium text-rose">Late</span>}
                     </Link>
-                    <span className={cn("shrink-0 whitespace-nowrap tabular-nums", late ? "text-rose" : "text-slate")}>{fmtDue(d.dueAt)}</span>
                   </li>
                 );
               })}
             </ul>
           )}
           <div className="flex flex-wrap gap-2">
-            <Link href="/board" className={cn("inline-flex h-10 items-center gap-2 rounded-input bg-pigment px-4 text-sm font-medium text-surface hover:opacity-90", focusRing)}>
-              <Columns size={16} /> Open my board
+            <Link href="/board" className={cn("inline-flex h-11 items-center gap-2 rounded-input bg-pigment px-4 text-sm font-medium text-surface hover:opacity-90 lg:h-10", focusRing)}>
+              <Columns size={16} /> Open My Board
             </Link>
-            <Link href="/me" className={cn("inline-flex h-10 items-center gap-2 rounded-input bg-canvas px-4 text-sm font-medium text-ink hover:bg-pigment-soft/60", focusRing)}>
-              <Calendar size={16} /> My week <ArrowRight size={14} />
+            <Link href="/me" className={cn("inline-flex h-11 items-center gap-2 rounded-input bg-canvas px-4 text-sm font-medium text-ink hover:bg-pigment-soft/60 lg:h-10", focusRing)}>
+              <Calendar size={16} /> My Week <ArrowRight size={14} />
             </Link>
           </div>
         </HomeSection>
-        <HomeSection title="My board" description={`${active} live order${active === 1 ? "" : "s"}`} className="lg:col-span-2">
+        <HomeSection title="My Board" description={`${active} order${active === 1 ? "" : "s"} in progress`} className="lg:col-span-2">
           <StackedBar
             segments={[
               { key: "queue", label: "Queue", value: h.board.queue, color: "c3" },
@@ -81,7 +95,7 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
               { key: "qc", label: "Awaiting QC", value: h.board.awaitingQc, color: "c5" },
             ]}
             height={22}
-            ariaLabel="My board by column"
+            ariaLabel="My Board by column"
           />
           {h.board.withCustomer > 0 && (
             <p className="text-sm text-slate">
@@ -94,7 +108,7 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
       </div>
 
       <RowLabel>The bigger picture</RowLabel>
-      <HomeSection quiet title="Figures delivered" description="Last 14 days" action={{ label: "My week", href: "/me" }}>
+      <HomeSection quiet title="Figures delivered" description="Last 14 days" action={{ label: "My Week", href: "/me" }}>
         <Bars series={[{ name: "Figures", color: "c2", values: h.figures.values }]} labels={h.figures.labels} height={180} ariaLabel="Figures delivered per day" />
         <p className="text-sm text-slate">
           {h.week.ordersDoneThisWeek} order{h.week.ordersDoneThisWeek === 1 ? "" : "s"} done this week

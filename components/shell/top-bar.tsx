@@ -90,7 +90,10 @@ export function TopBar({
         {mobileMenuButton}
         {/* min-w-0: on a narrow phone the workspace name truncates instead of
             pushing into the 44px tap targets on the right. */}
-        <div className="min-w-0">
+        {/* One workspace (a designer in one business): nothing to switch, and
+            on a phone the button could only show "Lu...". The page names
+            the business; a laptop keeps it as a label. */}
+        <div className={cn("min-w-0", options.length <= 1 && "max-sm:hidden")}>
           <Popover
             align="start"
             ariaLabel="Switch workspace"
@@ -169,7 +172,7 @@ export function TopBar({
             aria-label="Open order search"
             onClick={() => router.push("/orders")}
             className={cn(
-              "inline-flex h-11 w-10 shrink-0 items-center justify-center rounded-input text-slate transition-colors hover:bg-canvas hover:text-ink sm:hidden",
+              "inline-flex size-11 shrink-0 items-center justify-center rounded-input text-slate transition-colors hover:bg-canvas hover:text-ink sm:hidden",
               focusRing,
             )}
           >
@@ -182,7 +185,7 @@ export function TopBar({
           aria-label="Open Alpha AI"
           onClick={() => window.dispatchEvent(new CustomEvent("alphaos:chat-open"))}
           className={cn(
-            "inline-flex h-11 min-w-10 shrink-0 items-center justify-center gap-2 rounded-input border border-pigment/20 bg-pigment-soft px-2.5 text-sm font-semibold text-pigment sm:px-3 lg:h-9",
+            "inline-flex h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-input border border-pigment/20 bg-pigment-soft px-2.5 text-sm font-semibold text-pigment sm:px-3 lg:h-9",
             "transition-colors motion-hover hover:bg-pigment hover:text-surface",
             focusRing,
           )}
@@ -195,7 +198,7 @@ export function TopBar({
           <Popover
             ariaLabel="Help"
             triggerClassName={cn(
-              "inline-flex h-11 w-10 lg:size-9 items-center justify-center rounded-input text-slate",
+              "inline-flex size-11 lg:size-9 items-center justify-center rounded-input text-slate",
               "transition-colors motion-hover hover:bg-canvas hover:text-ink",
             )}
             trigger={<HelpCircle size={19} />}

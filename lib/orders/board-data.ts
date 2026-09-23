@@ -20,7 +20,12 @@ import { issueLabels } from "@/lib/proofs/issues";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { sizedImageUrl } from "@/lib/images";
-import { COMPLETE_COLUMN_MAX, COMPLETE_COLUMN_WINDOW_DAYS, WITH_CUSTOMER_STATUSES } from "@/lib/orders/board-constants";
+import {
+  COMPLETE_COLUMN_MAX,
+  COMPLETE_COLUMN_WINDOW_DAYS,
+  SENT_BACK_FROM,
+  WITH_CUSTOMER_STATUSES,
+} from "@/lib/orders/board-constants";
 import type { OrderStatus } from "./transitions";
 import type { ProofAnnotation } from "@/lib/db/schema";
 
@@ -66,6 +71,13 @@ export type BoardCard = {
    */
   qcFail: QcFailInfo | null;
   customerRevision: QcFailInfo | null;
+  /**
+   * In design with a portrait version newer than the last send-back (QC fail
+   * or customer revision): Submit for QC will be accepted. The same rule the
+   * server enforces (transitions.ts assertHasSubmission), so the board only
+   * offers Submit when it will work.
+   */
+  readyForQc: boolean;
 };
 
 type OrderRow = {
@@ -106,7 +118,7 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
   // known from `rows`), so none of them depends on another's result — run
   // them together instead of one round trip after another. Still the same
   // tx/withUserContext, so the RLS GUCs set on it apply to every one of these.
-  const [items, refs, failRows, revRows, vaRevisionRows, customerRows] = await Promise.all([
+  const [items, refs, failRows, revRows, vaRevisionRows, customerRows, submissionRows] = await Promise.all([
     tx
       .select({
         orderId: orderItems.orderId,
@@ -151,6 +163,7 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
       ? tx
           .select({
             orderId: activityLog.orderId,
+            fromState: activityLog.fromState,
             metadata: activityLog.metadata,
             createdAt: activityLog.createdAt,
           })
@@ -169,7 +182,25 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
             .from(customers)
             .where(inArray(customers.id, custIds))
       : Promise.resolve([]),
+    revisionIds.length
+      ? tx
+          .select({ orderId: assets.orderId, createdAt: assets.createdAt })
+          .from(assets)
+          .where(and(inArray(assets.orderId, revisionIds), eq(assets.type, "submission"), isNull(assets.deletedAt)))
+      : Promise.resolve([]),
   ]);
+
+  // Ready for QC: the newest portrait version is newer than the last send-back.
+  const lastSendBack = new Map<string, number>();
+  for (const r of vaRevisionRows) {
+    if (!r.orderId || !r.fromState || !(SENT_BACK_FROM as readonly string[]).includes(r.fromState)) continue;
+    const at = r.createdAt.getTime();
+    if (at > (lastSendBack.get(r.orderId) ?? 0)) lastSendBack.set(r.orderId, at);
+  }
+  const readyForQc = new Set<string>();
+  for (const s of submissionRows) {
+    if (s.createdAt.getTime() > (lastSendBack.get(s.orderId) ?? 0)) readyForQc.add(s.orderId);
+  }
 
   const fig = new Map<string, number>();
   const hasNull = new Map<string, boolean>();
@@ -284,6 +315,7 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
     thumbnailUrl: thumb.get(o.id) ?? null,
     qcFail: qcFail.get(o.id) ?? null,
     customerRevision: customerRevision.get(o.id) ?? null,
+    readyForQc: o.status === "in_design" && readyForQc.has(o.id),
   }));
 }
 
@@ -325,8 +357,9 @@ export type DesignerEarningHistory = {
   createdAt: string;
 };
 
+/** The styles an earning paid for; empty (the row just leaves it out) when unknown. */
 function styleSummary(breakdown: unknown): string {
-  if (!Array.isArray(breakdown) || breakdown.length === 0) return "Unspecified";
+  if (!Array.isArray(breakdown) || breakdown.length === 0) return "";
   const styles = [
     ...new Set(
       breakdown
@@ -334,7 +367,7 @@ function styleSummary(breakdown: unknown): string {
         .filter((style): style is string => typeof style === "string" && style.trim().length > 0),
     ),
   ];
-  return styles.length ? styles.join(", ") : "Unspecified";
+  return styles.join(", ");
 }
 
 const BOARD_ROW_SELECT = {

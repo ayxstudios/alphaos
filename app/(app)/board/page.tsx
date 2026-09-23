@@ -22,9 +22,18 @@ function money(value: string | null): string {
   return value == null ? "Needs rate" : `$${Number(value).toFixed(2)}`;
 }
 
-function shortDate(value: string): string {
-  return formatAt(value, { day: "2-digit", month: "short", hour: "numeric", minute: "2-digit" });
+/** The day an earning was made ("23 Sept"): the time of day adds nothing here. */
+function shortDay(value: string): string {
+  return formatAt(value, { day: "numeric", month: "short" });
 }
+
+/** Earning states in a designer's words. "Blocked" means pay waits on a rate being set. */
+const EARNING_STATUS: Record<string, string> = {
+  pending: "Pending",
+  paid: "Paid",
+  blocked: "On hold",
+  voided: "Voided",
+};
 
 /** A card matches a designer's search on its number, title, first name, style or options. */
 function cardMatches(card: BoardCard, needle: string): boolean {
@@ -56,6 +65,8 @@ export default async function BoardPage({
   // Designer search (top bar) lands here: filter their own cards. Staff search
   // goes to /orders, so a stray ?q= on a staff board is ignored.
   const q = !isStaff && typeof sp.q === "string" ? sp.q.trim().slice(0, 100) : "";
+  // ?open=<orderId> (a deadline tapped on Home or My Week) opens that card.
+  const openId = typeof sp.open === "string" ? sp.open : undefined;
 
   // Designers can only ever see their own board; staff pick one from the
   // right-hand rail (app shell) or the mobile dropdown below.
@@ -69,7 +80,7 @@ export default async function BoardPage({
   // boundary on targetId forces a fresh Suspense fallback on every switch.
   return (
     <Suspense key={`${targetId ?? "none"}:${q}`} fallback={<BoardLoading />}>
-      <BoardContent user={user} isStaff={isStaff} targetId={targetId} q={q} />
+      <BoardContent user={user} isStaff={isStaff} targetId={targetId} q={q} openId={openId} />
     </Suspense>
   );
 }
@@ -79,11 +90,13 @@ async function BoardContent({
   isStaff,
   targetId,
   q,
+  openId,
 }: {
   user: RequestUser;
   isStaff: boolean;
   targetId?: string;
   q: string;
+  openId?: string;
 }) {
   // Staff land on a board, never on a picker: with no ?designer= the first
   // designer in the rail (rank order) is opened. The rail switches.
@@ -100,7 +113,7 @@ async function BoardContent({
   return (
     <Page className="max-w-none">
       <PageHeader
-        title={isStaff ? "Designers" : "My board"}
+        title={isStaff ? "Designers" : "My Board"}
         tourId={isStaff ? "page:designers" : "page:board"}
         description={isStaff ? undefined : "Soonest deadline first."}
         actions={
@@ -114,12 +127,12 @@ async function BoardContent({
               <Link
                 href="/me"
                 className={cn(
-                  "inline-flex h-9 w-fit items-center gap-1.5 rounded-input border border-line bg-surface px-3 text-sm font-medium text-ink hover:bg-canvas",
+                  "inline-flex h-11 w-fit items-center gap-1.5 rounded-input border border-line bg-surface px-3 text-sm font-medium text-ink hover:bg-canvas lg:h-9",
                   focusRing,
                 )}
               >
                 <Calendar size={15} />
-                My week
+                My Week
               </Link>
             )}
             {isStaff && (
@@ -171,33 +184,46 @@ async function BoardContent({
                   </Link>
                 </div>
               )}
-              <DesignerBoard initial={columns} viewerRole={user.role} timeZone={board.timeZone} />
+              <DesignerBoard initial={columns} viewerRole={user.role} timeZone={board.timeZone} openId={openId} />
               <Disclosure
                 summary="Earnings history"
                 hint={board.earningHistory.length ? `${board.earningHistory.length} order${board.earningHistory.length === 1 ? "" : "s"}` : "nothing yet"}
               >
                 {board.earningHistory.length === 0 ? (
-                  <p className="py-1 text-sm text-slate">No completed payable orders yet.</p>
+                  <p className="py-1 text-sm text-slate">Pay for an order shows here once it is complete.</p>
                 ) : (
+                  // Two lines per order at every size: what it was on the
+                  // left, what it pays and where the payment is on the right.
+                  // The whole row is the link, so it is an easy tap on a phone.
                   <div className="-mx-4 divide-y divide-line/70">
                     {board.earningHistory.map((earning) => (
-                      <div key={earning.id} className="grid grid-cols-1 gap-2 px-4 py-3 text-sm md:grid-cols-[1fr_auto_auto_auto_auto] md:items-center">
+                      <Link
+                        key={earning.id}
+                        href={`/orders/${earning.orderId}`}
+                        className={cn("flex items-center justify-between gap-3 px-4 py-3 text-sm hover:bg-canvas/60", focusRing)}
+                      >
                         <div className="min-w-0">
-                          <a href={`/orders/${earning.orderId}`} className="font-medium text-ink hover:text-pigment">
-                            {earning.orderNumber}
-                          </a>
-                          <p className="truncate text-xs text-slate">{earning.style}</p>
+                          <p className="font-medium text-ink">{earning.orderNumber}</p>
+                          <p className="text-xs text-slate">
+                            {[
+                              earning.style,
+                              `${earning.figureCount} figure${earning.figureCount === 1 ? "" : "s"}`,
+                              earning.rate ? `$${Number(earning.rate).toFixed(2)} each` : "Mixed or missing rate",
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
                         </div>
-                        <span className="text-slate">{earning.figureCount} figure{earning.figureCount === 1 ? "" : "s"}</span>
-                        <span className="text-slate">{earning.rate ? `$${Number(earning.rate).toFixed(2)}/fig` : "Mixed or missing rate"}</span>
-                        <span className="font-semibold text-ink">{money(earning.amount)}</span>
-                        <div className="flex items-center justify-between gap-2 md:justify-end">
-                          <Badge variant={earning.status === "blocked" ? "warning" : earning.status === "voided" ? "danger" : earning.status === "paid" ? "success" : "neutral"}>
-                            {earning.status}
-                          </Badge>
-                          <span className="text-xs text-slate">{shortDate(earning.createdAt)}</span>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          <span className="font-semibold tabular-nums text-ink">{money(earning.amount)}</span>
+                          <span className="flex items-center gap-2">
+                            <Badge variant={earning.status === "blocked" ? "warning" : earning.status === "voided" ? "danger" : earning.status === "paid" ? "success" : "neutral"}>
+                              {EARNING_STATUS[earning.status] ?? earning.status}
+                            </Badge>
+                            <span className="text-xs text-slate">{shortDay(earning.createdAt)}</span>
+                          </span>
                         </div>
-                      </div>
+                      </Link>
                     ))}
                   </div>
                 )}

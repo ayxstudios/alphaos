@@ -1,10 +1,11 @@
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { cache } from "react";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { assignments, designerProfiles, earnings, orders } from "@/lib/db/schema";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { getMyWeek, type DesignerWeek } from "@/lib/designers/my-week";
+import { DEFAULT_TIMEZONE } from "@/lib/designers/quiet-hours";
 import { dayBucket, fillDays, lastDays, sinceDays } from "./shared";
 
 export type DesignerHome = {
@@ -35,7 +36,7 @@ const load = cache(async (userId: string): Promise<DesignerHome> => {
       // The designer works to their OWN deadline (assignments.due_at); the
       // customer SLA only stands in for a legacy assignment without one.
       const myDue = sql`coalesce(${assignments.dueAt}, ${orders.dueAt})`;
-      const [cols, figRows, limits] = await Promise.all([
+      const [cols, figRows, limits, openDue] = await Promise.all([
         tx
           .select({
             queue: sql<number>`count(*) filter (where ${orders.status} = 'ready_to_assign')::int`,
@@ -46,7 +47,6 @@ const load = cache(async (userId: string): Promise<DesignerHome> => {
             withCustomer: sql<number>`count(*) filter (where ${orders.status} in ('awaiting_approval','approved','printing','shipped','delivered'))::int`,
             complete14d: sql<number>`count(*) filter (where ${orders.status} = 'complete' and ${orders.updatedAt} >= ${since14})::int`,
             overdue: sql<number>`count(*) filter (where ${orders.status} in ('ready_to_assign','in_design','awaiting_qc') and ${myDue} < now())::int`,
-            dueToday: sql<number>`count(*) filter (where ${orders.status} in ('ready_to_assign','in_design','awaiting_qc') and ${dayBucket(myDue)} = to_char(timezone('Australia/Melbourne', now()), 'YYYY-MM-DD'))::int`,
             assignedToday: sql<number>`count(*) filter (where ${dayBucket(assignments.assignedAt)} = to_char(timezone('Australia/Melbourne', now()), 'YYYY-MM-DD'))::int`,
           })
           .from(assignments)
@@ -62,10 +62,24 @@ const load = cache(async (userId: string): Promise<DesignerHome> => {
           .from(designerProfiles)
           .where(eq(designerProfiles.userId, userId))
           .limit(1),
+        // Deadlines of the work still with the designer: "due today" is
+        // counted below in the designer's own zone, like every deadline they see.
+        tx
+          .select({ dueAt: sql<Date | null>`${myDue}`.mapWith(orders.dueAt) })
+          .from(assignments)
+          .innerJoin(orders, eq(orders.id, assignments.orderId))
+          .where(and(mine, inArray(orders.status, ["ready_to_assign", "in_design", "awaiting_qc"]))),
       ]);
-      return { cols: cols[0], figRows, lim: limits[0] };
+      return { cols: cols[0], figRows, lim: limits[0], openDue };
     }),
   ]);
+
+  // Today in the designer's zone (was Melbourne's: a Jakarta designer saw an
+  // order due at 9:30 pm yesterday counted as "due today").
+  const zone = week.contact?.timezone || DEFAULT_TIMEZONE;
+  const dayIn = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  const today = dayIn(now);
+  const dueToday = db.openDue.filter((r) => r.dueAt && dayIn(new Date(r.dueAt)) === today).length;
 
   const values = fillDays(days14, db.figRows);
   const sum = (from: number, to: number) => values.slice(from, to).reduce((a, b) => a + b, 0);
@@ -85,7 +99,7 @@ const load = cache(async (userId: string): Promise<DesignerHome> => {
     figuresPrev7d: sum(0, 7),
     limits: { maxActive: Number(db.lim?.maxActive ?? 0), dailyCapacity: Number(db.lim?.dailyCapacity ?? 0) },
     overdue: Number(c?.overdue ?? 0),
-    dueToday: Number(c?.dueToday ?? 0),
+    dueToday,
     assignedToday: Number(c?.assignedToday ?? 0),
   };
 });

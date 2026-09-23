@@ -124,7 +124,8 @@ async function loadWeek(tx: Tx, target: string): Promise<DesignerWeek> {
     designerId: target,
     designerName: nameRow?.name ?? "Designer",
     contact,
-    weekStartLabel: formatInTimezone(weekStart, contact?.timezone, false),
+    // The day only ("Mon 21 Sept"): the week starts at midnight, so a time adds nothing.
+    weekStartLabel: formatInTimezone(weekStart, contact?.timezone, false).replace(/,? \d{1,2}:\d{2}\s?[ap]m$/i, "").replace(",", ""),
     ordersDoneThisWeek: Number(completedThisWeek?.total ?? 0),
     onTimeRate: judged > 0 ? onTime / judged : null,
     revisionsThisWeek: Number(completedThisWeek?.revisions ?? 0),

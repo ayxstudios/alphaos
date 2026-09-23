@@ -104,7 +104,7 @@ export function AppShell({
               aria-label="Open navigation"
               onClick={() => setMobileOpen(true)}
               className={cn(
-                "flex h-11 w-10 shrink-0 items-center justify-center rounded-input text-slate transition-colors hover:bg-canvas hover:text-ink lg:hidden",
+                "flex size-11 shrink-0 items-center justify-center rounded-input text-slate transition-colors hover:bg-canvas hover:text-ink lg:hidden",
                 focusRing,
               )}
             >

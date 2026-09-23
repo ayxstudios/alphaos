@@ -53,11 +53,48 @@ export function stateLabel(s: OrderStatus | null): string {
 }
 
 /**
+ * The status a designer reads. "Ready to assign" is the staff-side name: to
+ * the designer it belongs to, the card is simply waiting in their queue.
+ */
+export function designerStateLabel(s: OrderStatus | null): string {
+  if (s === "ready_to_assign") return "In your queue";
+  // The board's own word for a proof the customer is looking at.
+  if (s === "awaiting_approval") return "With the customer";
+  return stateLabel(s);
+}
+
+/**
+ * A shop option's name for display. Shop variant names often carry their own
+ * colon ("Print On:"), and every place that shows one adds its own, so the
+ * trailing one is dropped ("Print On: Canvas", never "Print On:: Canvas").
+ */
+export function optionName(name: string): string {
+  return name.replace(/[\s:]+$/, "");
+}
+
+/**
+ * The customer's own words on a revision. The stored note repeats the issues
+ * they ticked in front of it ("Wrong eye colour. Could the collar be blue?"),
+ * and those issues are listed right above the note, so they are dropped here.
+ * Null when nothing is left.
+ */
+export function revisionNote(reason: string | null, failedItems: string[]): string | null {
+  if (!reason) return null;
+  let text = reason.trim();
+  const prefix = failedItems.join(", ");
+  if (prefix && text.toLowerCase().startsWith(prefix.toLowerCase())) {
+    text = text.slice(prefix.length).replace(/^[\s.,;:]+/, "");
+  }
+  return text || null;
+}
+
+/**
  * A one-line, human description of a history event (actor rendered separately).
  * Returns null for comments — those render as chat bubbles, not activity lines.
  */
-export function describeEvent(e: CardEvent): string | null {
+export function describeEvent(e: CardEvent, viewerRole?: "admin" | "va" | "designer"): string | null {
   if (e.action === "comment") return null;
+  const designer = viewerRole === "designer";
 
   const to = e.toState;
   const from = e.fromState;
@@ -67,14 +104,16 @@ export function describeEvent(e: CardEvent): string | null {
     case "order.in_design":
       if (from === "ready_to_assign") return "started the design";
       if (from === "awaiting_qc") return "sent this back to design (QC fail)";
-      if (from === "awaiting_approval") return "sent this back to design (customer revision)";
+      if (from === "awaiting_approval") {
+        return fromCustomer(e) ? "asked for changes" : "sent this back to design (customer revision)";
+      }
       return "moved this to In design";
     case "order.awaiting_qc":
       return "submitted this for QC";
     case "order.awaiting_approval":
       return "passed QC, sent to the customer for approval";
     case "order.approved":
-      return "approved this proof";
+      return fromCustomer(e) ? "approved the portrait" : "approved this proof";
     case "order.printing":
       return "sent this to print";
     case "order.shipped":
@@ -83,14 +122,28 @@ export function describeEvent(e: CardEvent): string | null {
       return "marked this delivered";
     case "order.complete":
       return "completed this order";
+    case "order.assigned":
+      return designer ? "assigned this to you" : "assigned this to a designer";
     case "order.reassigned":
+      // A designer only sees their own assignment rows, so an assignment on
+      // their card is the one that gave it to them.
+      if (designer) return "assigned this to you";
       return e.metadata?.firstAssignment === true ? "assigned this to a designer" : "reassigned this to another designer";
+    case "order.reresolved":
+    case "order.details_updated":
+    case "order.reclassified":
+    case "order.reconciled":
+      return "updated the order details";
+    case "order.tracking_added":
+      return "added tracking";
+    case "email.sent":
+      return "emailed the customer";
     case "order.on_hold":
       return "put this on hold";
     case "order.cancelled":
       return "cancelled this order";
     case "proof.viewed":
-      return "the customer viewed the proof";
+      return "viewed the proof";
     case "order.imported":
     case "order.created":
       return "imported this order";
@@ -101,7 +154,7 @@ export function describeEvent(e: CardEvent): string | null {
         type === "reference"
           ? "reference photo"
           : type === "submission"
-            ? "portrait upload"
+            ? "new portrait version"
             : type === "final"
               ? "final portrait"
               : "image";
@@ -115,6 +168,17 @@ export function describeEvent(e: CardEvent): string | null {
   if (from && to) return `moved this ${stateLabel(from)} → ${stateLabel(to)}`;
   if (to) return `moved this to ${stateLabel(to)}`;
   return nice;
+}
+
+/** Done by the customer on their proof page (logged with no staff actor). */
+function fromCustomer(e: CardEvent): boolean {
+  return !e.actorId && (e.action === "proof.viewed" || e.metadata?.via === "proof_portal" || e.action === "order.approved");
+}
+
+/** Who an event line names: a person, the customer (proof page) or the system. */
+export function eventActor(e: CardEvent): string {
+  if (e.actorName) return e.actorName;
+  return fromCustomer(e) ? "The customer" : "System";
 }
 
 /** Compact relative time ("3m", "5h", "2d") with an absolute fallback. */
