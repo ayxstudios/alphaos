@@ -4,14 +4,19 @@ import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
-/** Live countdown to due_at. Amber ≤4h remaining, rose when overdue. */
-export function Countdown({ dueAt }: { dueAt: string | null }) {
+/**
+ * Live countdown to due_at. Amber ≤4h remaining, rose when overdue. `done`
+ * (a completed order) shows "Done" instead: finished work never counts down
+ * or turns overdue.
+ */
+export function Countdown({ dueAt, done = false }: { dueAt: string | null; done?: boolean }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(id);
   }, []);
 
+  if (done) return <span className="text-xs font-medium text-sage">Done</span>;
   if (!dueAt) return <span className="text-xs text-slate">no due date</span>;
 
   const diff = new Date(dueAt).getTime() - now;

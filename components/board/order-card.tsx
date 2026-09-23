@@ -77,7 +77,7 @@ export function OrderCard({
           <span className="min-w-0 truncate text-sm font-semibold text-ink">
             {card.orderNumber}
           </span>
-          <Countdown dueAt={card.dueAt} />
+          <Countdown dueAt={card.dueAt} done={card.status === "complete"} />
         </div>
 
         {card.title && (
