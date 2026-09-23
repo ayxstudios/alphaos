@@ -9,7 +9,11 @@
  * Origins: NEXT_PUBLIC_APP_URL / AUTH_URL from the env, the local dev ports,
  * plus any extra origins passed as arguments (e.g. a preview deployment).
  *
- *   npx tsx scripts/r2-cors.ts https://alphaos-kappa.vercel.app
+ *   npx tsx scripts/r2-cors.ts https://alphaos-kappa.vercel.app https://alphaos-staging.vercel.app
+ *
+ * The rule set is REPLACED on every run, so always pass every deployed origin
+ * (production AND staging) together; .env.local usually holds a localhost
+ * NEXT_PUBLIC_APP_URL, which is why production must be passed explicitly.
  */
 import "./load-env";
 import { S3Client, GetBucketCorsCommand, PutBucketCorsCommand } from "@aws-sdk/client-s3";
