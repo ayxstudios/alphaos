@@ -412,7 +412,7 @@ export default async function OrderDetailPage({
             return [] as ShopifyProductMedia[];
           })
       : Promise.resolve([]);
-  // Style setter data — the order's first product, its current rule match, and
+  // Style setter data: the order's first product, its current rule match, and
   // how many orders a rule change would touch. Powers the inline "Set style".
   const styleSetterP = itemsP.then((items) => {
     const primaryProduct = items[0] ? { title: items[0].title, sku: items[0].sku } : null;
