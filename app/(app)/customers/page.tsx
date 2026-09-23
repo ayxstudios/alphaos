@@ -50,6 +50,8 @@ export default async function CustomersPage({
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
+  // Staff only; the middleware also sends designers away on a full page load.
+  if (session.user.role === "designer") redirect("/board");
   const user = { id: session.user.id, role: session.user.role };
   const { selected } = await loadShellData(user);
   const params = await searchParams;
