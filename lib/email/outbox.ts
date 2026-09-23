@@ -3,6 +3,7 @@ import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from "driz
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { customers, emailSenderIgnores, messages, orders } from "@/lib/db/schema";
 import { TEMPLATE_META } from "./templates";
+import { cleanSearchTerm } from "@/lib/search";
 
 /** Pull the bare email out of a "Name <email>" From header. */
 function parseEmail(address: string | null): string | null {
@@ -408,7 +409,7 @@ export async function getMailHistory(
   return withUserContext(user, async (tx) => {
     const pageSize = Math.min(Math.max(opts.pageSize ?? 50, 20), 100);
     const page = Math.max(opts.page ?? 1, 1);
-    const term = opts.q?.trim() ?? "";
+    const term = cleanSearchTerm(opts.q);
     const bizFilter =
       opts.businessId && opts.businessId !== "all" ? eq(messages.businessId, opts.businessId) : undefined;
     const suppressionFilter = opts.includeSuppressed ? undefined : isNull(messages.suppressedAt);

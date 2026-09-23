@@ -9,6 +9,7 @@ import { getIgnoredSenders, getMailHistory, getOutbox, getUnmatchedReplies } fro
 import { Page, PageHeader } from "@/components/ui";
 import { ComposeButton } from "@/components/emails/compose-button";
 import { EmailWorkspace } from "@/components/emails/email-workspace";
+import { cleanSearchTerm } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +27,7 @@ export default async function EmailsPage({ searchParams }: { searchParams: Searc
   if (user.role === "designer") redirect("/board");
 
   const params = await searchParams;
-  const q = params.q?.trim() ?? "";
+  const q = cleanSearchTerm(params.q);
   const includeSuppressed = params.showSuppressed === "1";
   const page = Math.max(Number(params.page ?? "1") || 1, 1);
   const pageSizeRaw = Number(params.pageSize ?? "50") || 50;

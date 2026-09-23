@@ -9,6 +9,7 @@ import { loadShellData } from "@/lib/shell/context";
 import { EmptyState, Page, PageHeader, TableShell } from "@/components/ui";
 import { Search, Users } from "@/components/ui/icons";
 import { formatAt } from "@/lib/time";
+import { cleanSearchTerm } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +54,7 @@ export default async function CustomersPage({
   const user = { id: session.user.id, role: session.user.role };
   const { selected } = await loadShellData(user);
   const params = await searchParams;
-  const q = params.q?.trim() ?? "";
+  const q = cleanSearchTerm(params.q);
   const currentParams = new URLSearchParams();
   if (q) currentParams.set("q", q);
   const requestedPageSize = parsePositiveInt(params.pageSize, 20);
