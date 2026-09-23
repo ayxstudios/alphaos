@@ -147,7 +147,7 @@ export function CardModal({
           onClick={onClose}
           aria-label="Close"
           className={cn(
-            "absolute right-3 top-3 z-20 inline-flex size-8 items-center justify-center rounded-input bg-surface/80 text-slate backdrop-blur",
+            "absolute right-3 top-3 z-20 inline-flex size-11 items-center justify-center rounded-input bg-surface/80 text-slate backdrop-blur md:size-8",
             "transition-colors motion-hover hover:bg-canvas hover:text-ink",
             focusRing,
           )}
@@ -250,7 +250,7 @@ export function CardModal({
                   focusRing,
                 )}
               />
-              <Button size="sm" onClick={send} loading={posting} disabled={!draft.trim()}>
+              <Button size="sm" className="max-md:h-11" onClick={send} loading={posting} disabled={!draft.trim()}>
                 Send
               </Button>
             </div>
@@ -482,6 +482,7 @@ function CardUploadPanel({
             type="button"
             size="sm"
             variant="secondary"
+            className="max-md:h-11"
             loading={uploading}
             onClick={() => fileRef.current?.click()}
           >
@@ -494,6 +495,7 @@ function CardUploadPanel({
           <Button
             type="button"
             size="sm"
+            className="max-md:h-11"
             loading={submitting}
             disabled={uploading}
             onClick={async () => {
