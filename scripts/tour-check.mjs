@@ -186,7 +186,15 @@ const words = (s) => s.split(/\s+/).filter(Boolean).length;
 
 async function shot(page, name) {
   await page.addStyleTag({ content: "nextjs-portal{display:none!important}" }).catch(() => {});
-  await page.screenshot({ path: path.join(OUT, `${name}.png`) });
+  // A loaded machine can stall one capture; try again before calling it a failure.
+  for (let i = 0; ; i++) {
+    try {
+      await page.screenshot({ path: path.join(OUT, `${name}.png`), timeout: 45000 });
+      return;
+    } catch (error) {
+      if (i >= 1) throw error;
+    }
+  }
 }
 
 function assertPlacement(label, m, phone) {

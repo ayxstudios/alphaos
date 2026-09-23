@@ -238,6 +238,9 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
           void a;
         } else await new Promise((r) => setTimeout(r, 120));
       },
+      lift() {
+        if (ghostRef.current) ghostRef.current.style.opacity = "0";
+      },
       carry(on) {
         if (carryRef.current) carryRef.current.style.opacity = on ? "1" : "0";
       },
@@ -390,6 +393,12 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
       // The pointer steps aside while the page is put back: the rest is the person's.
       if (ghostRef.current) ghostRef.current.style.opacity = "0";
       await undo(h, demo);
+      if (demo.act.kind === "drop") {
+        // Let the sample be seen, then clear it: the drop zone is empty for the person.
+        await sleep(h, 700);
+        if (sampleTimer.current) clearTimeout(sampleTimer.current);
+        setSampleBox(null);
+      }
       turnRef.current = { demo, chain: turnChain(current, demo) };
       setAnnounce(`Your turn. ${demo.line}`);
       setPhase("turn");

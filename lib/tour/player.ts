@@ -19,6 +19,8 @@ export type Ghost = {
   press(): Promise<void>;
   /** A sample file riding along with the pointer (the upload demo). */
   carry(on: boolean): void;
+  /** Lift the pointer off the screen (it comes back on the next move). */
+  lift(): void;
 };
 
 export type Hooks = {
@@ -342,8 +344,23 @@ export async function demonstrate(h: Hooks, step: TourStep): Promise<Demo> {
     if (act.undo === "back") await waitNet(h, () => here() !== before && !document.querySelector("main .animate-pulse"), 3500);
     else if (act.undo === "close") await waitFor(h, () => openDialogs().length > 0, 4000);
     await sleep(h, 220);
-    // Whatever opened now covers the pressed element: stop outlining it.
-    if (covered(target)) h.light(null);
+    // The page re-rendered: keep the (new) pressed element in view and lit,
+    // unless whatever opened now covers it.
+    const now = target.isConnected ? target : find(act.target);
+    if (!now || covered(now)) {
+      // A new page or a drawer: the finger lifts instead of hovering over nothing.
+      h.light(null);
+      h.ghost.lift();
+    } else {
+      const was = now.getBoundingClientRect();
+      await intoView(h, now);
+      h.light(now);
+      const r = now.getBoundingClientRect();
+      if (Math.abs(r.left - was.left) > 1 || Math.abs(r.top - was.top) > 1) {
+        // The row scrolled under the pointer: the pointer rests on the element again.
+        await h.ghost.moveTo(r.left + r.width / 2, r.top + r.height / 2);
+      }
+    }
   } else if (act.kind === "search") {
     const input = target as HTMLInputElement;
     await press(h, input);

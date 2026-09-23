@@ -39,12 +39,12 @@ Each step has one line of copy, second person, 9 words at most.
 | VA | Print | opens an order's Details | Open Details to see where each print is. |
 | Designer | My Board | the My Board menu item / tab | Open My Board to see your orders. |
 | Designer | Open a card | opens the order card | Open a card to see the order. |
-| Designer | Upload | sample file onto the drop zone | Drop your finished portrait here. |
+| Designer | Upload | sample file onto the drop zone | Add your finished portrait here. |
 | Designer | My Week | the My Week menu item / tab | Open My Week to see what is due. |
 | Admin | Orders | the Overdue tab | Open Overdue to see every late order. |
 | Admin | Team and sign-ins | the Designers group tab | Choose a group to see who can sign in. |
 | Admin | Portrait Styles | opens a style's Designers drawer | Open Designers to choose who draws each style. |
-| Admin | Settings | the Customer Email section | Open Customer Email to set up customer mail. |
+| Admin | Settings | the Customer Email section | Open Customer Email to connect your mailbox. |
 | Admin | Money | a designer's earnings | Choose a designer to see what they earned. |
 | Admin | Health | the All Businesses view | Choose All Businesses to check every shop at once. |
 
@@ -100,3 +100,25 @@ Timing gates: Start to first pointer movement under 300ms; each step's own
 demonstration under 4s (server rendering time is reported beside it, not
 counted); the watch's own length 30 to 45s. Screenshots per step in
 `var/tour-shots/`, timings in `var/tour-shots/timings.json`.
+
+## Judge loop (2026-09-24)
+
+Played headless as a brand new person, from the welcome card through Watch,
+Now you try and the Quick guide, reading every step's screenshot. Scored 1 to
+10 on: shows more than tells (S), instantly understandable (U), fast (F),
+nothing awkward or robotic in copy or motion (A), fits the calm design (D).
+
+| Round | Role | S | U | F | A | D | What was wrong, what changed |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | VA, laptop | 9 | 9 | 7 | 7 | 9 | The pointer stayed on screen during "Your turn", so it looked like the tour would press it; a leftover ripple dot sat on the page; the search demo typed "No" (it read the email column, not a name); demos on the second visit to a route waited on the network. Fixed: the pointer lifts before your turn, the ripple fades to nothing, the demo types the first customer name (`order:customer`), pages are fully prefetched one step ahead. |
+| 1 | Designer, phone | 8 | 9 | 8 | 6 | 8 | My Board and My Week were shown as loading skeletons; the ring kept outlining the card behind the open card modal; the sample file rode off the right edge; the watch felt rushed (about 20s). Fixed: menu steps wait for the real page, the ring lets go of anything a dialog now covers, the sample starts inside the screen, watch pacing counts only the tour's own time (target 36s) with a short rest before each press. |
+| 2 | Admin, phone | 9 | 9 | 9 | 8 | 9 | Travel through More was right; a tab row that scrolls sideways (Orders views) left the lit tab half off screen; "Overdue" was already the remembered view, so the press changed nothing. Fixed: targets are scrolled fully into view sideways too, and an already selected tab starts from the plain view first. |
+| 2 | VA, phone | 9 | 10 | 10 | 8 | 10 | After a press that opens a new page, the tap ring hovered over empty space (QC); after the tab row scrolled, the ring sat on the neighbouring tab. Fixed: the finger lifts after a press that changes page, and moves back onto the element when the row scrolls under it. |
+| 2 | Designer, phone | 10 | 9 | 10 | 9 | 10 | On "Your turn" the sample file was still showing, so the drop zone looked done already; "Drop" is wrong on a phone (it is a tap). Fixed: the sample shows for 0.7s then clears before your turn; the line is "Add your finished portrait here." |
+| 3 | VA, laptop + phone | 10 | 10 | 10 | 10 | 10 | Clean: one line per step, every step visibly does the thing, your turn is obvious and completes on the press. |
+| 3 | Designer, laptop + phone | 10 | 10 | 10 | 10 | 10 | Clean. |
+| 3 | Admin, laptop + phone | 10 | 10 | 10 | 10 | 10 | Clean. Money with no earnings falls back to the Money menu item, which reads naturally. |
+
+"Fast" judges the tour's own motion and response. Page render time on the
+local dev server (reported as "server" by the check) is not counted; app
+loading speed is owned elsewhere.
