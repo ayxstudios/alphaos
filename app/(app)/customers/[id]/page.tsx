@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/icons";
 import { ComposeButton } from "@/components/emails/compose-button";
 import { formatAt } from "@/lib/time";
+import { DUE_STATUSES } from "@/lib/home/shared";
 
 export const dynamic = "force-dynamic";
 
@@ -478,8 +479,12 @@ export default async function CustomerDetailPage({
                   const latestQc = qcsForOrder[0] ?? null;
                   const latestOrderMessage = messagesForOrder[0] ?? null;
                   const latestActivity = activityForOrder[0] ?? null;
-                  // A delivered, complete or cancelled order is never overdue.
-                  const overdue = order.dueAt && activeStatuses(order) ? order.dueAt < now : false;
+                  // Same rule as Orders and Home: a shipped, delivered, complete or
+                  // cancelled order is never overdue.
+                  const overdue =
+                    order.dueAt && activeStatuses(order) && (DUE_STATUSES as string[]).includes(order.status)
+                      ? order.dueAt < now
+                      : false;
 
                   return (
                     <article key={order.id} className="px-4 py-4">
