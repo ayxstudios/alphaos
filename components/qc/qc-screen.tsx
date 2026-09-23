@@ -36,6 +36,8 @@ export function QcScreen({
   const router = useRouter();
   const toast = useToast();
   const [pending, start] = useTransition();
+  // Which button started the pending work, so only that one spins.
+  const [acting, setActing] = useState<"pass" | "fail" | null>(null);
 
   const items = ctx.checklist.items;
   const [checked, setChecked] = useState<ItemResults>({});
@@ -92,7 +94,7 @@ export function QcScreen({
   const goTo = useCallback((id: string) => router.push(`/qc/${id}`), [router]);
   const advance = useCallback(() => {
     if (nextId) router.push(`/qc/${nextId}`);
-    else router.push("/orders?view=awaiting_qc");
+    else router.push("/qc");
   }, [nextId, router]);
 
   const toggle = useCallback(
@@ -122,7 +124,7 @@ export function QcScreen({
         toast({ variant: "warning", title: "Already moved", description: res.message });
         router.refresh();
       } else {
-        toast({ variant: "danger", title: "Couldn't submit", description: res.message });
+        toast({ variant: "danger", title: res.code === "email_failed" ? "Email not sent" : "Couldn't save", description: res.message });
       }
     },
     [toast, advance, router],
@@ -130,6 +132,7 @@ export function QcScreen({
 
   const doPass = useCallback(() => {
     if (!ctx.isReviewable || !allChecked || !signed || pending) return;
+    setActing("pass");
     start(async () => {
       const res = await prepareQcEmailPreview({
         orderId: ctx.orderId,
@@ -152,6 +155,7 @@ export function QcScreen({
 
   const confirmSend = useCallback(() => {
     if (!emailPreview || pending) return;
+    setActing("pass");
     start(async () => {
       const res = await confirmQcPassAndSend({
         orderId: ctx.orderId,
@@ -168,12 +172,13 @@ export function QcScreen({
         signature,
       });
       if (res.ok) setEmailPreview(null);
-      handleResult(res, "Email sent, sent to approval");
+      handleResult(res, "Proof sent to the customer");
     });
   }, [checked, ctx, emailBody, emailPreview, handleResult, pending, signature]);
 
   const doFail = useCallback(
     (failedKeys: number[], reason: string) => {
+      setActing("fail");
       start(async () => {
         const res = await submitQcFail({
           orderId: ctx.orderId,
@@ -184,7 +189,7 @@ export function QcScreen({
           signature,
         });
         if (res.ok) setFailOpen(false);
-        handleResult(res, "Failed, returned to designer");
+        handleResult(res, "Sent back to the designer");
       });
     },
     [ctx, handleResult, signature],
@@ -320,6 +325,7 @@ export function QcScreen({
                 variant="danger"
                 className="flex-1"
                 onClick={() => setFailOpen(true)}
+                loading={pending && acting === "fail"}
                 disabled={!ctx.isReviewable || !signed || pending}
               >
                 <XCircle size={16} /> Fail{" "}
@@ -329,8 +335,8 @@ export function QcScreen({
                 variant="primary"
                 className="flex-1"
                 onClick={doPass}
-                loading={pending}
-                disabled={!ctx.isReviewable || !allChecked || !signed}
+                loading={pending && acting === "pass"}
+                disabled={!ctx.isReviewable || !allChecked || !signed || pending}
               >
                 <Check size={16} /> Pass{" "}
                 <kbd className="hidden rounded border border-surface/30 px-1 text-xs lg:inline">↵</kbd>
