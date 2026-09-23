@@ -480,6 +480,38 @@ export async function setStageEmailAutoSend(businessId: string, enabled: boolean
   revalidatePath("/settings");
 }
 
+/**
+ * The business's own name and logo, shown to customers on the photo upload and
+ * proof pages and used as {{business_name}} in emails. The logo is a public
+ * https image URL; empty shows the name as text.
+ */
+export async function saveBusinessDetails(
+  businessId: string,
+  input: { name: string; logoUrl: string },
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const user = await requireAdmin();
+  const name = input.name.trim().replace(/\s+/g, " ");
+  if (!name) return { ok: false, message: "Enter the business name" };
+  if (name.length > 80) return { ok: false, message: "Keep the name under 80 characters" };
+  const rawLogo = input.logoUrl.trim();
+  let logoUrl: string | null = null;
+  if (rawLogo) {
+    let url: URL;
+    try {
+      url = new URL(rawLogo);
+    } catch {
+      return { ok: false, message: "The logo link is not a valid web address" };
+    }
+    if (url.protocol !== "https:") return { ok: false, message: "The logo link must start with https://" };
+    logoUrl = url.toString();
+  }
+  await withUserContext(user, (tx) =>
+    tx.update(businesses).set({ name, logoUrl }).where(eq(businesses.id, businessId)),
+  );
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
 export type GmailTestResult = {
   ok: boolean;
   message?: string;

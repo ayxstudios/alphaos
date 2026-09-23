@@ -33,6 +33,7 @@ import {
 import { TemplateEditor, type TemplateVM } from "@/components/settings/template-editor";
 import { ShopStylesPanel, type ShopStylesVM } from "@/components/settings/shop-styles-panel";
 import { SetupChecklist, type SetupChecklistItem } from "@/components/settings/setup-checklist";
+import { BusinessDetailsCard } from "@/components/settings/business-details-card";
 import {
   defaultTemplateForBusiness,
   EDITABLE_TEMPLATE_KEYS,
@@ -70,6 +71,7 @@ const SETTINGS_SECTIONS = [
   { key: "email", label: "Customer Email" },
   { key: "print", label: "Print Providers" },
   { key: "notifications", label: "Notifications" },
+  { key: "business", label: "Business" },
 ] as const;
 
 type SettingsSection = (typeof SETTINGS_SECTIONS)[number]["key"];
@@ -232,6 +234,8 @@ export default async function SettingsPage({
         address: businesses.gmailAddress,
         sendingEnabled: businesses.emailSendingEnabled,
         stageAutoSend: businesses.stageEmailAutoSend,
+        name: businesses.name,
+        logoUrl: businesses.logoUrl,
       })
       .from(businesses)
       .where(eq(businesses.id, selected.id)),
@@ -548,6 +552,15 @@ export default async function SettingsPage({
             <SectionHeader title="Notifications" />
             <DailyHealthEmailSettingsPanel settings={dailyHealthSettings} admins={dailyHealthAdmins} />
             <NotificationDryRunPanel />
+          </section>
+        )}
+
+        {activeSection === "business" && (
+          <section className="flex flex-col gap-4">
+            <SectionHeader title="Business" />
+            <BusinessDetailsCard
+              business={{ id: selected.id, name: biz?.name ?? selected.name, logoUrl: biz?.logoUrl ?? null }}
+            />
           </section>
         )}
       </div>
