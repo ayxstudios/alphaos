@@ -31,6 +31,7 @@ export function OrderCard({
   return (
     <div
       onClick={onOpen}
+      data-tour={overlay ? undefined : `card:${card.status}`}
       className={cn(
         "group flex flex-col overflow-hidden rounded-card bg-surface transition-[box-shadow,transform] duration-150",
         overlay ? "rotate-2 shadow-lg" : "shadow-card hover:-translate-y-0.5 hover:shadow-md",

@@ -121,7 +121,7 @@ const ORDER_COLUMNS: ColumnDef[] = [
     priority: "core",
     render: (row) => (
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-ink" title={row.customer}>{row.customer}</p>
+        <p className="truncate text-sm font-medium text-ink" title={row.customer} data-tour="order:customer">{row.customer}</p>
         <p className="truncate text-xs text-slate" title={row.customerEmail ?? "No email"}>{row.customerEmail ?? "No email"}</p>
       </div>
     ),

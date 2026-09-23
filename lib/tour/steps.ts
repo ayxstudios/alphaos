@@ -1,209 +1,261 @@
 import type { Role } from "@/lib/auth/config";
 
 /**
- * The first-run tour, per role. Shared by the tour itself
- * (components/tour/tour.tsx) and the Quick guide (/help), so the two always
- * teach the same steps. Every sentence describes what the page really does
- * today; when a page changes, change its step here.
+ * The first-run tour, per role: a short list of demonstrations on the real
+ * screen. Shared by the tour (components/tour) and the Quick guide (/help).
  *
- * Targets are `data-tour` attribute values:
- *  - `nav`  the sidebar item (laptop),
- *  - `tab`  the phone bottom tab, when that page has one (else "More" is lit),
- *  - `page` an element on the page itself, used once the person is there
- *    (comma separated fallbacks: a board column may be empty on a phone).
+ * Each step lives on one page (`path`). The ghost cursor travels there with
+ * the real sidebar item (laptop) or bottom tab / More menu (phone), then does
+ * the step's `act` for real: opening a list, a tab, a drawer, the search box,
+ * a filter. Nothing is ever sent, assigned, passed or uploaded. Then the
+ * person does the same thing themselves.
+ *
+ * `say` is the step's only line of copy: second person, 9 words at most,
+ * written as the instruction the cursor is demonstrating.
+ *
+ * Targets are CSS selectors, tried in order; `css@@Text` also requires the
+ * element's text to start with Text. The first visible match wins.
  */
+export type Sel = string[];
+
+export type TourAct =
+  /** The step's own sidebar item / bottom tab is the thing to press. */
+  | { kind: "nav"; say: string }
+  /** Press an element on the page. `undo` puts the page back before "Your turn". */
+  | {
+      kind: "click";
+      target: Sel;
+      say: string;
+      undo: "back" | "close" | "reclick" | { click: Sel };
+      via?: Sel;
+      /** When the target is already the selected one, quietly open this first. */
+      reset?: string;
+    }
+  /** Type into a search box and press Enter (the demo types a name from the page). */
+  | { kind: "search"; target: Sel; say: string; sample: Sel }
+  /** Show a sample file landing on an upload drop zone. Never uploads. */
+  | { kind: "drop"; target: Sel; say: string; via?: Sel };
+
 export type TourStep = {
   id: string;
+  /** Short name, for the Quick guide list. */
   title: string;
-  /** One sentence: what it is. */
-  what: string;
-  /** One sentence: what you do there. */
-  how: string;
-  /** Where "Try it" goes. */
-  href: string;
-  nav: string;
-  tab?: string;
-  page?: string;
+  /** The page the step happens on. */
+  path: string;
+  /** Candidates, best first. When none can be found the step falls back to `nav`. */
+  acts: TourAct[];
+  /** The fallback: press the page's own menu item. */
+  nav: { kind: "nav"; say: string };
 };
 
-const HOME_STAFF: TourStep = {
-  id: "home",
-  title: "Home",
-  what: "Home is your start page, with the day's numbers at a glance.",
-  how: "Look here first to see what needs you and what is running late.",
-  href: "/dashboard",
-  nav: "nav:/dashboard",
-  tab: "tab:/dashboard",
-};
-
-const ORDERS: TourStep = {
-  id: "orders",
-  title: "Orders",
-  what: "Orders holds every order from every shop, with a tab for each kind of work.",
-  how: "Open the Needs Details tab and fill in any order that came in without its full details.",
-  href: "/orders?view=needs_details",
-  nav: "nav:/orders",
-  tab: "tab:/orders",
-  page: "page:orders",
-};
-
-const QC: TourStep = {
-  id: "qc",
-  title: "QC",
-  what: "QC is where finished portraits wait for your check before the customer sees them.",
-  how: "Tick every item on the checklist, type your name, then press Pass or Fail.",
-  href: "/qc",
-  nav: "nav:/qc",
-  page: "page:qc",
-};
-
-const MESSAGES: TourStep = {
-  id: "messages",
-  title: "Messages",
-  what: "Messages holds customer email, with anything that needs you at the top.",
-  how: "Link each reply to its order, then answer it or send the drafts that are waiting.",
-  href: "/emails",
-  nav: "nav:/emails",
-  tab: "tab:/emails",
-  page: "page:messages",
-};
+const CARDS: Sel = ['[data-tour="card:in_design"]', '[data-tour="card:ready_to_assign"]', '[data-tour^="card:"]'];
 
 const VA_STEPS: TourStep[] = [
-  HOME_STAFF,
   {
     id: "today",
     title: "Today",
-    what: "Today is one list of everything waiting on a person, most urgent at the top.",
-    how: "Work from the top down; each row opens the order it is about.",
-    href: "/today",
-    nav: "nav:/today",
-    tab: "tab:/today",
-    page: "page:today",
+    path: "/today",
+    acts: [],
+    nav: { kind: "nav", say: "Open Today to see what needs you first." },
   },
-  ORDERS,
-  QC,
-  MESSAGES,
   {
-    id: "designers",
-    title: "Designers",
-    what: "Designers shows each designer's board: what they are working on and when it is due.",
-    how: "Pick a name to see their orders, and open a card to check on one.",
-    href: "/board",
-    nav: "nav:/board",
-    page: "page:designers",
+    id: "search",
+    title: "Find an order",
+    path: "/orders",
+    acts: [
+      {
+        kind: "search",
+        target: ['main input[name="q"]'],
+        sample: ['[data-tour="order:customer"]'],
+        say: "Type a name, then press Enter to search.",
+      },
+    ],
+    nav: { kind: "nav", say: "Open Orders to see every order." },
+  },
+  {
+    id: "needs-details",
+    title: "Needs details",
+    path: "/orders",
+    acts: [
+      {
+        kind: "click",
+        target: ['[data-tour="page:orders"]'],
+        undo: "back",
+        reset: "/orders?view=active",
+        say: "Open Needs Details for orders missing information.",
+      },
+    ],
+    nav: { kind: "nav", say: "Open Orders to see every order." },
+  },
+  {
+    id: "qc",
+    title: "QC",
+    path: "/qc",
+    acts: [
+      {
+        kind: "click",
+        target: ['main a[href^="/qc/"]@@Start QC'],
+        undo: "back",
+        say: "Press Start QC to check the next portrait.",
+      },
+    ],
+    nav: { kind: "nav", say: "Open QC to see portraits waiting for you." },
+  },
+  {
+    id: "messages",
+    title: "Messages",
+    path: "/emails",
+    acts: [
+      {
+        kind: "click",
+        target: ["main details > summary@@All mail"],
+        undo: "reclick",
+        say: "Open All mail to see every customer email.",
+      },
+    ],
+    nav: { kind: "nav", say: "Open Messages to answer customer email." },
   },
   {
     id: "print",
     title: "Print",
-    what: "Print lists approved orders that need a printed copy, oldest first.",
-    how: "Place the print with the print company, press Sent to print, then add the tracking number.",
-    href: "/queue/print",
-    nav: "nav:/queue/print",
-    page: "page:print",
+    path: "/queue/print",
+    acts: [
+      {
+        kind: "click",
+        target: ["main details > summary@@Details"],
+        undo: "reclick",
+        say: "Open Details to see where each print is.",
+      },
+    ],
+    nav: { kind: "nav", say: "Open Print for orders ready to print." },
   },
 ];
 
 const DESIGNER_STEPS: TourStep[] = [
   {
-    id: "home",
-    title: "Home",
-    what: "Home shows your own day: what is due, what is late and what you have earned.",
-    how: "Look here first to decide which order to work on next.",
-    href: "/dashboard",
-    nav: "nav:/dashboard",
-    tab: "tab:/dashboard",
-  },
-  {
     id: "board",
     title: "My Board",
-    what: "My Board holds every order given to you, soonest deadline first.",
-    how: "Press Start on an order in My Queue when you begin working on it.",
-    href: "/board",
-    nav: "nav:/board",
-    tab: "tab:/board",
-    page: "col:myQueue,page:board",
+    path: "/board",
+    acts: [],
+    nav: { kind: "nav", say: "Open My Board to see your orders." },
+  },
+  {
+    id: "card",
+    title: "Open a card",
+    path: "/board",
+    acts: [{ kind: "click", target: CARDS, undo: "close", say: "Open a card to see the order." }],
+    nav: { kind: "nav", say: "Open My Board to see your orders." },
   },
   {
     id: "upload",
     title: "Upload your portrait",
-    what: "Open an order card to see the customer's photos and notes.",
-    how: "Upload the finished portrait on that card, then send it to Awaiting QC.",
-    href: "/board",
-    nav: "nav:/board",
-    tab: "tab:/board",
-    // The phone board only renders columns that have cards: with nothing in
-    // design, light the next card the designer would open, not the header.
-    page: "col:inDesign,col:revisions,col:failedQc,col:myQueue,page:board",
-  },
-  {
-    id: "fixes",
-    title: "Fixes",
-    what: "A portrait that needs changes comes back under Failed QC or Revisions, with a note.",
-    how: "Read the note, upload a new version and send it back to QC.",
-    href: "/board",
-    nav: "nav:/board",
-    tab: "tab:/board",
-    page: "col:failedQc,col:revisions,page:board",
+    path: "/board",
+    acts: [
+      {
+        kind: "drop",
+        target: ['[data-tour="card:drop"]', '[data-tour="card:upload"]'],
+        via: CARDS,
+        say: "Add your finished portrait here.",
+      },
+    ],
+    nav: { kind: "nav", say: "Open My Board to see your orders." },
   },
   {
     id: "week",
     title: "My Week",
-    what: "My Week shows your deadlines for the days ahead and what you have earned.",
-    how: "Check it at the start of each day to plan your work.",
-    href: "/me",
-    nav: "nav:/me",
-    tab: "tab:/me",
-    page: "page:week",
+    path: "/me",
+    acts: [],
+    nav: { kind: "nav", say: "Open My Week to see what is due." },
   },
 ];
 
 const ADMIN_STEPS: TourStep[] = [
   {
-    ...HOME_STAFF,
-    what: "Home shows how the business is doing: orders in, on time, overdue and designer pay.",
-    how: "Look here first, then tap any number to see the orders behind it.",
+    id: "orders",
+    title: "Orders",
+    path: "/orders",
+    acts: [
+      {
+        kind: "click",
+        target: ['main a[href*="view=overdue"]'],
+        undo: "back",
+        reset: "/orders?view=active",
+        say: "Open Overdue to see every late order.",
+      },
+    ],
+    nav: { kind: "nav", say: "Open Orders to see every order." },
   },
   {
-    ...ORDERS,
-    how: "Search by order number or customer, or open a tab such as Needs Details or Overdue.",
+    id: "team",
+    title: "Team and sign-ins",
+    path: "/designers",
+    acts: [
+      {
+        kind: "click",
+        target: ['[data-tour="team"] [role="tab"]:nth-of-type(2)'],
+        undo: { click: ['[data-tour="team"] [role="tab"]:nth-of-type(1)'] },
+        say: "Choose a group to see who can sign in.",
+      },
+    ],
+    nav: { kind: "nav", say: "Open Designer Roster to manage your team." },
   },
-  QC,
-  MESSAGES,
   {
-    id: "roster",
-    title: "Designer Roster",
-    what: "Designer Roster is the list new orders are handed out from, top to bottom, and where your team's sign-ins live.",
-    how: "Set each designer's styles and daily limit, add designers, VAs and admins, and deactivate anyone who leaves.",
-    href: "/designers",
-    nav: "nav:/designers",
-    page: "page:roster",
-  },
-  {
-    id: "money",
-    title: "Money",
-    what: "Money shows what each designer has earned and what is still to pay.",
-    how: "Mark payments as paid once you have sent them, or export the list.",
-    href: "/payouts",
-    nav: "nav:/payouts",
-    page: "page:money",
+    id: "styles",
+    title: "Portrait Styles",
+    path: "/styles",
+    acts: [
+      {
+        kind: "click",
+        target: ["main button@@Designers ·"],
+        undo: "close",
+        say: "Open Designers to choose who draws each style.",
+      },
+    ],
+    nav: { kind: "nav", say: "Open Portrait Styles to set styles and rates." },
   },
   {
     id: "settings",
     title: "Settings",
-    what: "Settings is where shops, customer email, portrait styles and print companies are connected.",
-    how: "Come here when you add a shop or something stops coming in.",
-    href: "/settings",
-    nav: "nav:/settings",
-    page: "page:settings",
+    path: "/settings",
+    acts: [
+      {
+        kind: "click",
+        target: ['main a[href="/settings?section=email"]'],
+        undo: "back",
+        reset: "/settings?section=etsy",
+        say: "Open Customer Email to connect your mailbox.",
+      },
+    ],
+    nav: { kind: "nav", say: "Open Settings to connect shops and email." },
+  },
+  {
+    id: "money",
+    title: "Money",
+    path: "/payouts",
+    acts: [
+      {
+        kind: "click",
+        target: ['main a[href*="designer="]'],
+        undo: "back",
+        say: "Choose a designer to see what they earned.",
+      },
+    ],
+    nav: { kind: "nav", say: "Open Money to see what designers earned." },
   },
   {
     id: "health",
     title: "System Health",
-    what: "System Health tells you when anything behind the scenes needs a look.",
-    how: "Check it when numbers look wrong; anything listed at the top needs attention.",
-    href: "/health",
-    nav: "nav:/health",
-    page: "page:health",
+    path: "/health",
+    acts: [
+      {
+        kind: "click",
+        target: ['main a[href="/health?scope=all"]'],
+        undo: "back",
+        reset: "/health",
+        say: "Choose All Businesses to check every shop at once.",
+      },
+    ],
+    nav: { kind: "nav", say: "Open System Health when numbers look wrong." },
   },
 ];
 
@@ -213,15 +265,8 @@ export const TOUR_STEPS: Record<Role, TourStep[]> = {
   designer: DESIGNER_STEPS,
 };
 
-const WORDS = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
-
-/** "Seven short steps and you are ready." */
-export function stepsSentence(role: Role): string {
-  const n = TOUR_STEPS[role].length;
-  return `${WORDS[n] ?? n} short steps and you are ready.`;
+/** The line the Quick guide shows for a step (its preferred act). */
+export function stepLine(step: TourStep): string {
+  return (step.acts[0] ?? step.nav).say;
 }
 
-/** The pathname part of a step's link, for "am I already on this page?". */
-export function stepPath(step: TourStep): string {
-  return step.href.split("?")[0];
-}
