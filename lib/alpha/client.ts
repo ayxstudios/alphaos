@@ -20,6 +20,7 @@
 // Both optional: without them events queue and questions/chat get the fallback.
 import { alphaEvents } from "@/lib/db/schema";
 import type { Tx as DbTx } from "@/lib/db";
+import { plural } from "@/lib/utils";
 
 export type AlphaEventType =
   | "designer.brief" // new assignment: reference, photos, count, deadline, upload link
@@ -108,7 +109,6 @@ async function postHook(path: string, body: unknown, timeoutMs: number) {
 }
 
 const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
-const plural = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
 
 /** Never an error string: a short plain-English answer built straight from
  * the role-scoped snapshot, so the widget always says something useful

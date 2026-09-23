@@ -16,6 +16,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import { ALERT_TYPES, type AlertType } from "./types";
+import { plural } from "@/lib/utils";
 import { runDesignerLaneSweep, type DesignerLaneResult } from "./designer-sweep";
 
 const HOUR = 60 * 60 * 1000;
@@ -758,7 +759,7 @@ async function buildPresenceGapAlerts(
     subjectId: row.businessId,
     dedupeKey: `presence_gap:${row.businessId}:${window}`,
     recipients: admins,
-    title: `${row.count} designer${row.count === 1 ? "" : "s"} have unread required alerts`,
+    title: `${plural(row.count, "designer has", "designers have")} unread required alerts`,
     body: `${row.count} designer${row.count === 1 ? " has" : "s have"} unread overdue alerts older than 4 hours and no external channel.`,
     href: "/dashboard",
     metadata: { count: row.count, businessName: row.businessName, window },

@@ -6,6 +6,7 @@ import { businesses, dailyHealthReports, notifications, users } from "@/lib/db/s
 import { GmailClient, GmailNotConnectedError, GmailReauthRequiredError } from "@/lib/integrations/gmail";
 import { finishJobRun, JOB_NAMES, startJobRun } from "@/lib/jobs/ledger";
 import { appUrl } from "@/lib/urls";
+import { plural } from "@/lib/utils";
 import {
   HEALTH_TIME_ZONE,
   loadHealthMetricsForSystem,
@@ -336,7 +337,7 @@ async function markFailedAndNotify(
 function summaryLine(metrics: HealthMetrics): string {
   return metrics.healthy
     ? "Pipeline healthy."
-    : `${metrics.pipeline.staleShopCount} stale shops, ${metrics.pipeline.failedEmails} failed emails, ${metrics.operations.overdueNow} overdue orders.`;
+    : `${plural(metrics.pipeline.staleShopCount, "stale shop")}, ${plural(metrics.pipeline.failedEmails, "failed email")}, ${plural(metrics.operations.overdueNow, "overdue order")}.`;
 }
 
 function buildHealthEmail(

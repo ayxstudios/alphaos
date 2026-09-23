@@ -12,7 +12,7 @@ import { loadDailyNarrative } from "@/lib/health/narrative";
 import { loadShellData } from "@/lib/shell/context";
 import { Badge, DataPanel, Disclosure, EmptyState, Page, PageHeader, SectionHeader, Skeleton } from "@/components/ui";
 import { Grid } from "@/components/ui/icons";
-import { cn } from "@/lib/utils";
+import { cn, plural } from "@/lib/utils";
 import { formatAt } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
@@ -209,7 +209,7 @@ function PipelineSignals({ metrics }: { metrics: CountLink[] }) {
               {attention.length === 0 ? "Everything is clear" : `${clear.length} check${clear.length === 1 ? "" : "s"} clear`}
             </span>
           }
-          hint={attention.length === 0 ? `${clear.length} checks, all fine` : undefined}
+          hint={attention.length === 0 ? `${plural(clear.length, "check")}, all fine` : undefined}
         >
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {clear.map((metric) => (

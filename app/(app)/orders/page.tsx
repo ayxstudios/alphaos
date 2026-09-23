@@ -22,7 +22,7 @@ import { ArrowRight, ChevronDown, Mail, Package, Plus, Search, Sliders, X } from
 import { OrdersOperationsTable, type OrdersDashboardRow } from "@/components/orders/orders-operations-table";
 import { OrdersFilterSelect } from "@/components/orders/orders-filter-select";
 import { OrdersViewPreference } from "@/components/orders/orders-view-preference";
-import { cn } from "@/lib/utils";
+import { cn, plural } from "@/lib/utils";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
 import { resolveFigureCount, resolveProductType, type NormalizedVariation } from "@/lib/integrations/figures";
 import { stageTimer } from "@/lib/orders/stage-timers";
@@ -872,7 +872,7 @@ export default async function OrdersPage({
             >
               <Mail size={15} className="text-rose" />
               <span>
-                {emailAttention} email{emailAttention === 1 ? " needs" : "s need"} a reply
+                {plural(emailAttention, "email needs", "emails need")} a reply
               </span>
               <ArrowRight size={14} />
             </Link>

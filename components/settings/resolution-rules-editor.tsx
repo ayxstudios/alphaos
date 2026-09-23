@@ -10,6 +10,7 @@ import {
 } from "@/app/(app)/settings/actions";
 import type { FigureRule } from "@/lib/integrations/figures";
 import type { ReresolveSummary } from "@/lib/orders/resolution";
+import { plural } from "@/lib/utils";
 
 type FigureDraft = { match: string; type: "integer" | "map"; mapText: string };
 
@@ -378,7 +379,7 @@ export function ResolutionRulesEditor({
           {[
             `Checked ${summary.ordersProcessed} order${summary.ordersProcessed === 1 ? "" : "s"}`,
             summary.itemsResolved > 0 ? `${summary.itemsResolved} filled in` : null,
-            summary.stillUnresolved > 0 ? `${summary.stillUnresolved} still need details` : null,
+            summary.stillUnresolved > 0 ? `${plural(summary.stillUnresolved, "still needs", "still need")} details` : null,
             summary.addOnsRemoved > 0 ? `${summary.addOnsRemoved} add-on${summary.addOnsRemoved === 1 ? "" : "s"} taken off` : null,
             summary.namesBackfilled > 0 ? `${summary.namesBackfilled} order number${summary.namesBackfilled === 1 ? "" : "s"} added` : null,
             summary.reclassified > 0 ? `${summary.reclassified} re-sorted` : null,
