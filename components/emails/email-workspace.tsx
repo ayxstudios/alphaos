@@ -22,6 +22,7 @@ import {
   type OutboxActionResult,
 } from "@/app/(app)/emails/actions";
 import { ComposeButton } from "./compose-button";
+import { formatAt } from "@/lib/time";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -35,8 +36,7 @@ function formatAge(ms: number): string {
 }
 
 function fmtDateTime(iso: string | null): string {
-  if (!iso) return "Unknown";
-  return new Intl.DateTimeFormat("en-AU", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+  return formatAt(iso, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }, "Unknown");
 }
 
 export function EmailWorkspace({

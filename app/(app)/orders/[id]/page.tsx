@@ -66,6 +66,7 @@ import { AskAlpha } from "@/components/alpha/ask-alpha";
 import { ComposeButton } from "@/components/emails/compose-button";
 import { styles as stylesTable } from "@/lib/db/schema";
 import { currentMatchForProduct, countOrdersForProduct } from "@/lib/orders/style-learning";
+import { formatAt } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -73,20 +74,14 @@ function fmtDateTime(date: Date | string | null) {
   if (!date) return "Unknown";
   const value = typeof date === "string" ? new Date(date) : date;
   if (Number.isNaN(value.getTime())) return "Unknown";
-  return new Intl.DateTimeFormat("en-AU", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(value);
+  return formatAt(value, { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function fmtDate(date: Date | string | null) {
   if (!date) return "No due date";
   const value = typeof date === "string" ? new Date(date) : date;
   if (Number.isNaN(value.getTime())) return "Unknown";
-  return new Intl.DateTimeFormat("en-AU", { day: "2-digit", month: "short", year: "numeric" }).format(value);
+  return formatAt(value, { day: "2-digit", month: "short", year: "numeric" });
 }
 
 function customerDisplay(input: {

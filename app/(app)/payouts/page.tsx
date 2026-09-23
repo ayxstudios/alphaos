@@ -14,6 +14,7 @@ import {
   ResolveBlockedButton,
   VoidEarningForm,
 } from "@/components/payouts/payout-actions";
+import { formatAt } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -46,14 +47,7 @@ function money(value: string | number | null): string {
 }
 
 function formatDate(date: Date | null): string {
-  if (!date) return "-";
-  return new Intl.DateTimeFormat("en-AU", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
+  return formatAt(date, { day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }, "-");
 }
 
 function styleSummary(breakdown: EarningBreakdown[] | null): string {

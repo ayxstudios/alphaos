@@ -10,6 +10,7 @@ import { Badge, Button, DataPanel, Disclosure, Select, useToast } from "@/compon
 import { AlertTriangle, ArrowRight, Printer, Truck } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import type { PrintProvider } from "@/lib/print/mapping";
+import { formatAt } from "@/lib/time";
 
 export type ReconcileState =
   | "unchecked"
@@ -60,13 +61,7 @@ function providerLabel(provider: PrintProvider): string {
 }
 
 function fmtDate(value: string | null): string {
-  if (!value) return "Unknown";
-  return new Intl.DateTimeFormat("en-AU", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
+  return formatAt(value, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }, "Unknown");
 }
 
 function fmtAge(value: string | null): string | null {

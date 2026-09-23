@@ -36,6 +36,7 @@ import {
   Users,
 } from "@/components/ui/icons";
 import { ComposeButton } from "@/components/emails/compose-button";
+import { formatAt } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -128,23 +129,11 @@ function customerName(row: Nameable) {
 }
 
 function fmtDate(date: Date | null) {
-  if (!date) return "Not set";
-  return new Intl.DateTimeFormat("en-AU", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(date);
+  return formatAt(date, { day: "2-digit", month: "short", year: "numeric" }, "Not set");
 }
 
 function fmtDateTime(date: Date | null) {
-  if (!date) return "Not set";
-  return new Intl.DateTimeFormat("en-AU", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+  return formatAt(date, { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }, "Not set");
 }
 
 function titleCase(value: string | null | undefined) {

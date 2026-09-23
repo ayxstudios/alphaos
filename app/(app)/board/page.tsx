@@ -14,6 +14,7 @@ import { focusRing } from "@/components/ui/styles";
 import { Calendar, Columns, Search } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import BoardLoading from "./loading";
+import { formatAt } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -22,12 +23,7 @@ function money(value: string | null): string {
 }
 
 function shortDate(value: string): string {
-  return new Intl.DateTimeFormat("en-AU", {
-    day: "2-digit",
-    month: "short",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
+  return formatAt(value, { day: "2-digit", month: "short", hour: "numeric", minute: "2-digit" });
 }
 
 /** A card matches a designer's search on its number, title, first name, style or options. */

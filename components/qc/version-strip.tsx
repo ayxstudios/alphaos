@@ -2,14 +2,10 @@
 
 import { cn } from "@/lib/utils";
 import type { QcVersion } from "@/lib/qc/data";
+import { formatAt } from "@/lib/time";
 
 function when(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return formatAt(iso, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 /**
