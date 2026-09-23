@@ -22,7 +22,7 @@ export default function LoginPage() {
         <h1 className="font-display text-2xl font-semibold text-ink">
           Sign in to AlphaOS
         </h1>
-        <p className="text-sm text-slate">Internal tool. Accounts are issued by an admin.</p>
+        <p className="text-sm text-slate">Use the email and password you were given.</p>
       </div>
 
       <Card className="p-6">
@@ -42,7 +42,7 @@ export default function LoginPage() {
             name="email"
             type="email"
             autoComplete="email"
-            placeholder="you@aystudios.io"
+            placeholder="you@company.com"
             required
             autoFocus
           />
@@ -60,6 +60,7 @@ export default function LoginPage() {
           </Button>
         </form>
       </Card>
+      <p className="text-center text-sm text-slate">Forgot your password? Your admin can send a new one.</p>
     </div>
   );
 }
