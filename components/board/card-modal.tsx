@@ -135,7 +135,9 @@ export function CardModal({
         aria-modal="true"
         aria-label={`Order ${card.orderNumber}`}
         className={cn(
-          "relative z-10 my-auto flex w-full max-w-3xl flex-col-reverse overflow-hidden rounded-modal bg-surface shadow-lg md:flex-row",
+          // Phone: the work (upload, photos, notes) first, the details panel
+          // after it; status and deadline sit under the title instead.
+          "relative z-10 my-auto flex w-full max-w-3xl flex-col overflow-hidden rounded-modal bg-surface shadow-lg md:flex-row",
           "transition-[opacity,transform] motion-layout",
           visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2",
         )}
@@ -163,6 +165,14 @@ export function CardModal({
               <h2 className="font-display text-xl font-semibold text-ink">
                 {card.title ?? "Custom portrait"}
               </h2>
+              <div className="flex flex-wrap items-center gap-2 pt-1 md:hidden">
+                <StatusChip status={card.status} />
+                <Countdown
+                  dueAt={viewerRole === "designer" ? card.dueAt : card.orderDueAt}
+                  done={card.status === "complete"}
+                  withCustomer={viewerRole === "designer" && isWithCustomer(card.status)}
+                />
+              </div>
             </div>
             <CardUploadPanel
               card={card}
@@ -259,7 +269,7 @@ export function CardModal({
         </div>
 
         {/* Sidebar */}
-        <aside className="shrink-0 space-y-4 border-b border-line bg-canvas/40 p-4 md:w-64 md:border-b-0 md:border-l">
+        <aside className="shrink-0 space-y-4 border-t border-line bg-canvas/40 p-4 md:w-64 md:border-t-0 md:border-l">
           <Meta label="Status">
             <StatusChip status={card.status} />
           </Meta>
@@ -537,13 +547,23 @@ function CardUploadPanel({
           )}
         >
           <Camera size={16} />
-          {uploading
-            ? "Uploading..."
-            : designer
-              ? latestSubmission
-                ? "Drop a new version here or click Add new version"
-                : "Drop finished portrait here or click Upload"
-              : "Drop images here or click Upload"}
+          {uploading ? (
+            "Uploading..."
+          ) : (
+            <>
+              {/* Nobody drags files on a phone: there it is simply a tap target. */}
+              <span className="md:hidden">
+                {designer ? (latestSubmission ? "Tap to add a new version" : "Tap to add the finished portrait") : "Tap to add images"}
+              </span>
+              <span className="hidden md:inline">
+                {designer
+                  ? latestSubmission
+                    ? "Drop a new version here or click Add new version"
+                    : "Drop finished portrait here or click Upload"
+                  : "Drop images here or click Upload"}
+              </span>
+            </>
+          )}
         </button>
       )}
       {progress.length > 0 && (
