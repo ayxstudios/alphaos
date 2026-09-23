@@ -44,7 +44,8 @@ so RLS is defined but not enforced in production. Staging enforces it.
 ## What is disarmed
 
 After `prepare.ts` (the default, and the state after every clone; see
-"Mock mode" below to arm it for the full journey), in the staging database: every business has `email_sending_enabled`,
+"Mock mode" below to arm it for the full journey), in the staging
+database: every business has `email_sending_enabled`,
 `stage_email_auto_send` and `daily_health_email_enabled` false,
 `gmail_credentials` and `print_credentials` null; both shops have
 `credentials = {}` (no Etsy or Shopify API call can authenticate).
@@ -135,8 +136,8 @@ It deploys the current checkout as a preview with `DATABASE_URL`,
 relay variables overridden and `MOCK_INTEGRATIONS=1` (the mock transport,
 which only answers mock credentials), then moves the
 `alphaos-staging.vercel.app` alias to it. The worktree or checkout needs a
-`.vercel/project.json` link (copy it from the main checkout). The preview environment's own variables point at PRODUCTION,
-so never deploy a plain preview and use it for testing. Previews have no
+`.vercel/project.json` link (copy it from the main checkout). The preview
+environment's own variables point at PRODUCTION, so never deploy a plain preview and use it for testing. Previews have no
 deployment protection on this project; no bypass header is needed.
 
 ## Reset staging to a fresh copy of production
