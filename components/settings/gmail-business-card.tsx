@@ -108,7 +108,8 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
   }
 
   return (
-    <details className="group rounded-card bg-surface shadow-card">
+    // Open by default: the two sending switches are what people come here for.
+    <details className="group rounded-card bg-surface shadow-card" open>
       <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
