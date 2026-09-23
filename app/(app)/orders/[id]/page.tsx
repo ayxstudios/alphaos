@@ -138,6 +138,12 @@ function titleCase(value: string | null | undefined) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase()).replace(/\bQc\b/g, "QC");
 }
 
+/** An order state in the activity feed, sentence case like the status chips. */
+function stateLabel(value: string) {
+  const words = value.replaceAll("_", " ").replace(/\bqc\b/g, "QC");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 function mediaForItem(
   item: { sku: string | null; title: string | null; variation: string | null },
   media: ShopifyProductMedia[],
@@ -197,7 +203,7 @@ function nextSuggestedAction(input: {
       return { kind: "info", label: "Waiting for the customer to approve" };
     case "approved":
       return input.hasPhysical && !input.hasPrintJob
-        ? { kind: "info", label: "Approved, start the print & ship job" }
+        ? { kind: "link", label: "Approved. Send it to print", cta: "Open Print", href: "/queue/print" }
         : { kind: "info", label: "Approved, move it forward" };
     case "printing":
       return { kind: "info", label: "Printing, waiting for it to ship" };
@@ -572,7 +578,7 @@ export default async function OrderDetailPage({
         {nextAction.kind === "link" && (
           <Link
             href={nextAction.href}
-            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-input bg-pigment px-4 text-sm font-medium text-surface transition-opacity hover:opacity-90"
+            className="inline-flex h-10 w-full shrink-0 items-center justify-center gap-1.5 rounded-input bg-pigment px-4 text-sm font-medium text-surface transition-opacity hover:opacity-90 sm:w-auto"
           >
             {nextAction.cta}
             <ArrowRight size={14} />
@@ -1007,7 +1013,7 @@ export default async function OrderDetailPage({
                         {event.body && <p className="mt-2 whitespace-pre-wrap text-sm text-ink">{event.body}</p>}
                         {!event.body && event.fromState !== event.toState && (
                           <p className="mt-1 text-sm text-slate">
-                            {event.fromState ? titleCase(event.fromState) : "Created"} → {event.toState ? titleCase(event.toState) : "Updated"}
+                            {event.fromState ? stateLabel(event.fromState) : "Created"} → {event.toState ? stateLabel(event.toState) : "Updated"}
                           </p>
                         )}
                       </li>

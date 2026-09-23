@@ -734,6 +734,7 @@ export default async function OrdersPage({
   return (
     <Page className="max-w-none">
       <PageHeader
+        eyebrow={selected.name}
         title="Orders"
         actions={
           <Link
