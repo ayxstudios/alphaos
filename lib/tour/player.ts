@@ -35,6 +35,8 @@ export type Hooks = {
   sample(el: HTMLElement): void;
   /** Space the tour's own sheet takes at the bottom of the screen. */
   reserveBottom(): number;
+  /** Change the sheet's line mid-demonstration (a page with nothing to act on). */
+  say?(line: string): void;
   /** Time spent waiting on the server during the current demonstration. */
   stats: { netMs: number };
   /** How long the pointer rests on an element before pressing it. */
@@ -310,7 +312,9 @@ export async function demonstrate(h: Hooks, step: TourStep): Promise<Demo> {
   };
   const got = (await waitFor(h, pick, 600)) ?? null;
   if (!got) {
-    // Nothing to act on: the page's own menu item is the lesson.
+    // Nothing to act on: the page's own menu item is the lesson. Say so as the
+    // pointer turns to it, not after it has landed.
+    h.say?.(step.nav.say);
     const [first] = navChain(step.path);
     const el = find(first);
     if (el) {

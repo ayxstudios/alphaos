@@ -300,7 +300,13 @@ export async function confirmQcPassAndSend(input: {
       });
     });
     revalidate(input.orderId);
-    return { ok: false, code: "email_failed", message: sent.error };
+    // The raw provider error is in the activity log and the VA alert; the
+    // person gets what happened and what to do.
+    return {
+      ok: false,
+      code: "email_failed",
+      message: "The proof email did not go out, so the order stays in QC. Try Pass again in a minute. If it keeps failing, tell an admin.",
+    };
   }
 
   try {

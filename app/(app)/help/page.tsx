@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
 import { loadShellData } from "@/lib/shell/context";
-import { TOUR_STEPS, stepLine } from "@/lib/tour/steps";
+import { TOUR_STEPS, stepWhat } from "@/lib/tour/steps";
 import { GUIDE_ANSWERS } from "@/lib/tour/guide";
 import { cn } from "@/lib/utils";
 import { DataPanel, Disclosure, Page, PageHeader } from "@/components/ui";
@@ -49,7 +49,7 @@ export default async function HelpPage() {
                     {step.title}
                     <span className="sr-only">{done ? ", seen in the tour" : ", not seen yet"}</span>
                   </p>
-                  <p className="text-sm text-slate">{stepLine(step)}</p>
+                  <p className="text-sm text-slate">{stepWhat(step)}</p>
                 </div>
                 <ShowMeButton step={i} title={step.title} />
               </li>

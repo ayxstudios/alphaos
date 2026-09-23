@@ -1,7 +1,6 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
 
 import type { Role } from "@/lib/auth/config";
 import { tourOpening, type OnboardingState } from "@/lib/tour/state";
@@ -12,8 +11,13 @@ export { TOUR_START_EVENT };
 
 // The tour's code is only fetched when it is needed: on a first sign-in, or
 // when someone asks for it. Hovering the "?" button warms it up.
-const loadRuntime = () => import("./tour-runtime");
-const TourRuntime = dynamic(loadRuntime, { ssr: false, loading: () => null });
+type RuntimeProps = { role: Role; firstName: string; request: TourRequest | null };
+let runtime: Promise<ComponentType<RuntimeProps>> | null = null;
+const loadRuntime = () => (runtime ??= import("./tour-runtime").then((m) => m.default));
+// This module is itself loaded only when the tour is due or asked for
+// (components/shell/lazy-extras.tsx), so fetch the runtime right away rather
+// than after the first render: no second round trip after a "?" press.
+if (typeof window !== "undefined") void loadRuntime().catch(() => (runtime = null));
 
 export function Tour({
   role,
@@ -27,6 +31,9 @@ export function Tour({
   signedInAt: number;
 }) {
   const nextId = useRef(1);
+  // Held in state, not next/dynamic: a Suspense reveal is throttled by React
+  // (about 300ms), which the pointer's first movement would wait on.
+  const [Runtime, setRuntime] = useState<ComponentType<RuntimeProps> | null>(null);
   // Warmed up (the pointer is on "?"): mount the runtime idle, so a start is instant.
   const [warm, setWarm] = useState(false);
   const [request, setRequest] = useState<TourRequest | null>(() => {
@@ -57,6 +64,18 @@ export function Tour({
     };
   }, []);
 
-  if (!request && !warm) return null;
-  return <TourRuntime role={role} firstName={firstName} request={request} />;
+  const wanted = !!request || warm;
+  useEffect(() => {
+    if (!wanted || Runtime) return;
+    let live = true;
+    loadRuntime()
+      .then((c) => live && setRuntime(() => c))
+      .catch(() => (runtime = null));
+    return () => {
+      live = false;
+    };
+  }, [wanted, Runtime]);
+
+  if (!wanted || !Runtime) return null;
+  return <Runtime role={role} firstName={firstName} request={request} />;
 }

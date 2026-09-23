@@ -64,19 +64,17 @@ type ColumnDef = {
   render: (row: OrdersDashboardRow) => React.ReactNode;
 };
 
-/** True once the viewport is xl (1280px) or wider. Starts false (matches the
- * server-rendered guess) and updates after mount — the "wide" columns pop in
- * rather than risk a hydration mismatch guessing the real width up front. */
-function useIsWide() {
-  const [wide, setWide] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 1280px)");
-    const update = () => setWide(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
-  return wide;
+/** An email that, when it has to wrap, breaks after the @ rather than mid-word. */
+function EmailText({ email }: { email: string }) {
+  const at = email.indexOf("@");
+  if (at < 0) return <>{email}</>;
+  return (
+    <>
+      {email.slice(0, at + 1)}
+      <wbr />
+      {email.slice(at + 1)}
+    </>
+  );
 }
 
 const BULK_STATUSES: { value: OrderStatus; label: string }[] = [
@@ -84,7 +82,7 @@ const BULK_STATUSES: { value: OrderStatus; label: string }[] = [
   { value: "ready_to_assign", label: "Ready to assign" },
   { value: "in_design", label: "In design" },
   { value: "awaiting_qc", label: "Awaiting QC" },
-  { value: "awaiting_approval", label: "Awaiting customer" },
+  { value: "awaiting_approval", label: "Awaiting approval" },
   { value: "approved", label: "Approved" },
   { value: "printing", label: "Printing" },
   { value: "shipped", label: "Shipped" },
@@ -93,6 +91,37 @@ const BULK_STATUSES: { value: OrderStatus; label: string }[] = [
   { value: "on_hold", label: "On hold" },
   { value: "cancelled", label: "Cancelled" },
 ];
+
+/**
+ * What a person reads for each derived status: short, sentence case, and the
+ * same words as the view tabs and the order page. The derived keys stay as they
+ * are (the stage timers and help text key off them).
+ */
+const STATUS_LABEL: Record<string, string> = {
+  "Needs VA Review": "Needs review",
+  "Awaiting VA Details": "Needs details",
+  "Awaiting Customer Photos": "Awaiting photos",
+  "Assigned - Not Started": "Not started",
+  "With Designer": "In design",
+  "Awaiting Designer Revision": "In revision",
+  "Awaiting Designer QC Fix": "Failed QC",
+  "Awaiting VA QC": "Awaiting QC",
+  "Awaiting Customer Approval": "Awaiting approval",
+  "Ready to Ship": "Ready to print",
+  "In Print": "Printing",
+  "Shipped - Awaiting Tracking": "Needs tracking",
+  "Completed With Tracking": "Complete",
+  "On Hold": "On hold",
+  "Fulfilment Only": "Fulfilment only",
+};
+
+function statusLabel(row: { derivedStatus: string; assignee: string; status: string }): string {
+  // An unassigned order waiting for a designer says so plainly.
+  if (row.derivedStatus === "Needs VA Review" && row.status === "ready_to_assign" && row.assignee === "Unassigned") {
+    return "Unassigned";
+  }
+  return STATUS_LABEL[row.derivedStatus] ?? row.derivedStatus;
+}
 
 const COLUMN_STORAGE_KEY = "orders_table_columns";
 
@@ -108,8 +137,8 @@ const ORDER_COLUMNS: ColumnDef[] = [
         <Link href={`/orders/${row.id}`} className="truncate text-sm font-semibold text-ink hover:text-pigment">
           {row.orderNumber}
         </Link>
-        <p className="truncate text-xs text-slate" title={row.itemTitle}>{row.itemTitle}</p>
-        {row.itemSummary && <p className="truncate text-xs text-slate" title={row.itemSummary}>{row.itemSummary}</p>}
+        <p className="break-words text-xs text-slate">{row.itemTitle}</p>
+        {row.itemSummary && <p className="break-words text-xs text-slate">{row.itemSummary}</p>}
       </div>
     ),
   },
@@ -121,8 +150,8 @@ const ORDER_COLUMNS: ColumnDef[] = [
     priority: "core",
     render: (row) => (
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-ink" title={row.customer} data-tour="order:customer">{row.customer}</p>
-        <p className="truncate text-xs text-slate" title={row.customerEmail ?? "No email"}>{row.customerEmail ?? "No email"}</p>
+        <p className="break-words text-sm font-medium text-ink" data-tour="order:customer">{row.customer}</p>
+        <p className="text-xs text-slate [overflow-wrap:anywhere]">{row.customerEmail ? <EmailText email={row.customerEmail} /> : "No email"}</p>
       </div>
     ),
   },
@@ -130,12 +159,12 @@ const ORDER_COLUMNS: ColumnDef[] = [
     key: "source",
     label: "Source",
     sort: "source",
-    width: "7rem",
+    width: "6.5rem",
     priority: "wide",
     render: (row) => (
       <div className="min-w-0">
-        <p className="truncate text-sm text-ink" title={row.source}>{row.source}</p>
-        <p className="truncate text-xs text-slate" title={row.platform}>{row.platform}</p>
+        <p className="break-words text-sm text-ink">{row.source}</p>
+        <p className="break-words text-xs text-slate">{row.platform}</p>
       </div>
     ),
   },
@@ -143,18 +172,18 @@ const ORDER_COLUMNS: ColumnDef[] = [
     key: "status",
     label: "Status",
     sort: "status",
-    width: "minmax(7rem,0.9fr)",
+    width: "minmax(9.5rem,1fr)",
     priority: "core",
     render: (row) => (
       <div className="flex min-w-0 flex-col gap-1">
-        <div className="flex items-center gap-1.5">
-          <Badge variant={statusTone(row)} dot>{row.derivedStatus}</Badge>
-          <InfoBubble label={`What "${row.derivedStatus}" means`}>
-            <StatusHelp status={row.derivedStatus} reason={row.reviewReason} />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Badge variant={statusTone(row)} dot className="whitespace-nowrap">{statusLabel(row)}</Badge>
+          <InfoBubble label={`What "${statusLabel(row)}" means`}>
+            <StatusHelp status={row.derivedStatus} label={statusLabel(row)} reason={row.reviewReason} />
           </InfoBubble>
         </div>
         {row.reviewReason && (
-          <p className="truncate text-xs leading-snug text-amber" title={row.reviewReason}>{row.reviewReason}</p>
+          <p className="text-xs leading-snug text-amber">{row.reviewReason}</p>
         )}
       </div>
     ),
@@ -163,9 +192,9 @@ const ORDER_COLUMNS: ColumnDef[] = [
     key: "owner",
     label: "Designer",
     sort: "owner",
-    width: "7rem",
+    width: "6.5rem",
     priority: "wide",
-    render: (row) => <p className="truncate text-sm text-slate" title={row.assignee}>{row.assignee}</p>,
+    render: (row) => <p className="break-words text-sm text-slate">{row.assignee}</p>,
   },
   {
     key: "ordered",
@@ -194,16 +223,18 @@ const ORDER_COLUMNS: ColumnDef[] = [
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
           {row.isOverdue && <span className="size-1.5 shrink-0 rounded-full bg-rose" aria-hidden="true" />}
-          <span className={cn("truncate text-sm", row.isOverdue ? "font-medium text-rose" : "text-slate")}>
+          <span className={cn("text-sm", row.isOverdue ? "font-medium text-rose" : "text-slate")}>
             {row.isOverdue ? `Overdue · ${fmtShortDate(row.dueAt)}` : fmtDate(row.dueAt)}
           </span>
         </div>
-        <p
-          className={cn("truncate text-xs", row.stageTimer.isOverdue ? "font-medium text-rose" : "text-slate")}
-          title={row.stageTimer.followUpLabel ?? row.stageTimer.label}
-        >
-          {formatStageRemaining(row.stageTimer)} · {row.stageTimer.followUpLabel ?? row.stageTimer.label}
-        </p>
+        {row.stageTimer.remainingMs != null && (
+          <p
+            className={cn("text-xs", row.stageTimer.isOverdue ? "font-medium text-rose" : "text-slate")}
+            title={`Time left for this step (${row.stageTimer.label})`}
+          >
+            {row.stageTimer.followUpLabel ?? `Step: ${formatStageRemaining(row.stageTimer)}`}
+          </p>
+        )}
       </div>
     ),
   },
@@ -366,11 +397,11 @@ const DEFAULT_HELP = {
   todo: "Open the order to see the next step.",
 };
 
-function StatusHelp({ status, reason }: { status: string; reason: string | null }) {
+function StatusHelp({ status, label, reason }: { status: string; label: string; reason: string | null }) {
   const help = STATUS_HELP[status] ?? DEFAULT_HELP;
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-sm font-semibold text-ink">{status}</p>
+      <p className="text-sm font-semibold text-ink">{label}</p>
       <div className="flex flex-col gap-0.5">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate">What it means</p>
         <p className="text-sm leading-snug text-ink">{help.means}</p>
@@ -412,7 +443,6 @@ export function OrdersOperationsTable({
 }) {
   const router = useRouter();
   const toast = useToast();
-  const isWide = useIsWide();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [designerId, setDesignerId] = useState("");
   const [targetStatus, setTargetStatus] = useState<OrderStatus | "">("");
@@ -443,15 +473,21 @@ export function OrdersOperationsTable({
   }, [visibleColumnKeys]);
   // Source and Designer only earn a track once there's real room (xl+); below
   // that they're exactly the columns that used to force this table to scroll
-  // sideways on a laptop with the sidebar open.
-  const effectiveColumns = useMemo(
-    () => (isWide ? visibleColumns : visibleColumns.filter((column) => column.priority === "core")),
-    [visibleColumns, isWide],
-  );
+  // sideways on a laptop with the sidebar open. Decided in CSS (two grid
+  // templates and hidden cells), so the columns are right on the first paint
+  // instead of popping in after hydration.
+  const effectiveColumns = visibleColumns;
   const gridTemplateColumns = useMemo(
-    () => ["1.75rem", ...effectiveColumns.map((column) => column.width), "6.5rem"].join(" "),
-    [effectiveColumns],
+    () =>
+      ["1.75rem", ...visibleColumns.filter((column) => column.priority === "core").map((column) => column.width), "max-content"].join(" "),
+    [visibleColumns],
   );
+  const gridTemplateWide = useMemo(
+    () => ["1.75rem", ...visibleColumns.map((column) => column.width), "max-content"].join(" "),
+    [visibleColumns],
+  );
+  const gridStyle = { "--orders-grid": gridTemplateColumns, "--orders-grid-wide": gridTemplateWide } as React.CSSProperties;
+  const cellClass = (column: ColumnDef) => (column.priority === "wide" ? "hidden xl:block" : undefined);
 
   // The Next action column is only sticky/tinted while the table is actually
   // scrolling sideways — at the widths this table is designed for (960px+
@@ -646,8 +682,8 @@ export function OrdersOperationsTable({
           the Next action rail only pins itself if that net is ever needed. */}
       <div ref={scrollRef} className="hidden overflow-x-auto md:block">
         <div
-          className="hidden gap-2 border-b border-line/60 bg-surface px-4 py-2 text-xs font-medium text-slate md:grid md:[grid-template-columns:var(--orders-grid)]"
-          style={{ "--orders-grid": gridTemplateColumns } as React.CSSProperties}
+          className="hidden gap-2 border-b border-line/60 bg-surface px-4 py-2 text-xs font-medium text-slate md:grid md:[grid-template-columns:var(--orders-grid)] xl:[grid-template-columns:var(--orders-grid-wide)]"
+          style={gridStyle}
         >
           <label className="flex items-center">
             <input
@@ -662,6 +698,7 @@ export function OrdersOperationsTable({
             column.sort ? (
               <SortableHeader
                 key={column.key}
+                wide={column.priority === "wide"}
                 currentParams={currentParams}
                 sort={column.sort}
                 activeSort={sort}
@@ -670,7 +707,7 @@ export function OrdersOperationsTable({
                 {column.label}
               </SortableHeader>
             ) : (
-              <span key={column.key}>{column.label}</span>
+              <span key={column.key} className={cellClass(column)}>{column.label}</span>
             ),
           )}
           <span
@@ -693,11 +730,11 @@ export function OrdersOperationsTable({
               <div
                 key={row.id}
                 className={cn(
-                  "group grid gap-2 px-4 py-3.5 transition-colors hover:bg-canvas/70 md:items-center md:[grid-template-columns:var(--orders-grid)]",
+                  "group grid gap-2 px-4 py-3.5 transition-colors hover:bg-canvas/70 md:items-center md:[grid-template-columns:var(--orders-grid)] xl:[grid-template-columns:var(--orders-grid-wide)]",
                   urgent && "bg-rose/[0.025] hover:bg-rose/[0.05]",
                   isSelected && "bg-pigment-soft/60 hover:bg-pigment-soft/80",
                 )}
-                style={{ "--orders-grid": gridTemplateColumns } as React.CSSProperties}
+                style={gridStyle}
               >
                 <label className="flex items-center">
                   <input
@@ -709,7 +746,7 @@ export function OrdersOperationsTable({
                   />
                 </label>
                 {effectiveColumns.map((column) => (
-                  <div key={column.key} className="min-w-0">
+                  <div key={column.key} className={cn("min-w-0", cellClass(column))}>
                     {column.render(row)}
                   </div>
                 ))}
@@ -752,10 +789,10 @@ export function OrdersOperationsTable({
                       <Link href={`/orders/${row.id}`} className="text-base font-semibold text-ink hover:text-pigment">
                         {row.orderNumber}
                       </Link>
-                      <p className="truncate text-sm text-slate">{row.customer}</p>
+                      <p className="break-words text-sm text-slate">{row.customer}</p>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <Badge variant={statusTone(row)} dot>{row.derivedStatus}</Badge>
+                      <Badge variant={statusTone(row)} dot className="whitespace-nowrap">{statusLabel(row)}</Badge>
                     </div>
                   </div>
                   {row.reviewReason && <p className="mt-1.5 text-sm leading-snug text-amber">{row.reviewReason}</p>}
@@ -766,7 +803,7 @@ export function OrdersOperationsTable({
                     </div>
                     <div>
                       <dt className="text-xs text-slate">Designer</dt>
-                      <dd className="truncate text-ink">{row.assignee}</dd>
+                      <dd className="break-words text-ink">{row.assignee}</dd>
                     </div>
                     <div>
                       <dt className="text-xs text-slate">Due</dt>
@@ -780,7 +817,7 @@ export function OrdersOperationsTable({
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-xs text-slate">Stage time</dt>
+                      <dt className="text-xs text-slate">This step</dt>
                       <dd className={cn("font-medium", row.stageTimer.isOverdue ? "text-rose" : "text-ink")}>
                         {formatStageRemaining(row.stageTimer)}
                       </dd>
@@ -831,18 +868,24 @@ function SortableHeader({
   sort,
   activeSort,
   dir,
+  wide = false,
   children,
 }: {
   currentParams: string;
   sort: SortKey;
   activeSort: SortKey;
   dir: SortDir;
+  /** Only shown from xl up (Source, Designer). */
+  wide?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <Link
       href={sortHref(currentParams, sort, activeSort, dir)}
-      className="inline-flex items-center gap-1 text-left transition-colors hover:text-ink"
+      className={cn(
+        "items-center gap-1 text-left transition-colors hover:text-ink",
+        wide ? "hidden xl:inline-flex" : "inline-flex",
+      )}
     >
       {children}
       {activeSort === sort && <span>{dir === "asc" ? "↑" : "↓"}</span>}

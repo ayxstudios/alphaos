@@ -51,12 +51,12 @@ async function Summary({ user, businessId }: { user: U; businessId: string }) {
   const bits = [
     q.counts.now ? `${q.counts.now} need${q.counts.now === 1 ? "s" : ""} you now` : null,
     q.counts.today ? `${q.counts.today} for today` : null,
-    q.counts.soon ? `${q.counts.soon} soon` : null,
+    q.counts.soon ? `${q.counts.soon} for later` : null,
   ].filter(Boolean);
   return (
     <p className="-mt-3 text-base text-slate">
-      {bits.join(", ")}
-      {q.shops > 1 ? ` across ${q.shops} shops.` : "."}
+      {q.shops > 1 ? `Across ${q.shops} shops: ` : ""}
+      {bits.join(", ")}.
     </p>
   );
 }

@@ -232,7 +232,7 @@ export function TopBar({
                   )}
                 >
                   <Compass size={16} className="text-slate" />
-                  Show me around
+                  Try it myself
                 </button>
                 <Link
                   href="/help"

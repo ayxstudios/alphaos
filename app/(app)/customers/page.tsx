@@ -106,7 +106,7 @@ export default async function CustomersPage({
 
   return (
     <Page>
-      <PageHeader title="Customers" description="Everyone who has ordered, one record per email." />
+      <PageHeader eyebrow={selected.name} title="Customers" description="Everyone who has ordered from your shops." />
 
       <form className="relative w-full max-w-md">
         <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate" />

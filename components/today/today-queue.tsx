@@ -10,10 +10,10 @@ import { focusRing } from "@/components/ui/styles";
 import { ArrowRight, CheckCircle, ChevronDown } from "@/components/ui/icons";
 import { ShopBadge } from "@/components/ui/shop-badge";
 
-const BAND_META: Record<TodayBand, { title: string; hint: string }> = {
-  now: { title: "Now", hint: "someone is waiting on you" },
-  today: { title: "Today", hint: "ready for you to do" },
-  soon: { title: "Soon", hint: "nudges and tidy-ups" },
+const BAND_META: Record<TodayBand, { title: string; hint: (n: number) => string }> = {
+  now: { title: "Now", hint: (n) => `${n} waiting on you` },
+  today: { title: "Today", hint: (n) => `${n} ready for you` },
+  soon: { title: "Soon", hint: (n) => `${n} small follow-up${n === 1 ? "" : "s"}` },
 };
 
 const BANDS: TodayBand[] = ["now", "today", "soon"];
@@ -163,7 +163,7 @@ export function TodayQueueList({ groups }: { groups: Record<TodayBand, TodayItem
               <span className="flex min-w-0 items-baseline gap-2">
                 <span className="font-display text-base font-semibold text-ink">{meta.title}</span>
                 <span className="truncate text-sm text-slate">
-                  {done ? "nothing here" : `${total} ${meta.hint}`}
+                  {done ? "nothing here" : meta.hint(total)}
                 </span>
               </span>
               <span className="flex shrink-0 items-center gap-2">
@@ -193,15 +193,15 @@ export function TodayQueueList({ groups }: { groups: Record<TodayBand, TodayItem
                         {selected && <span aria-hidden className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-pigment" />}
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 items-center gap-2">
-                            <ShopBadge platform={item.platform} name={item.shop} className="shrink-0 text-xs" />
-                            <Link href={`/orders/${item.orderId}`} className={cn("shrink-0 text-xs font-semibold text-ink hover:text-pigment", focusRing)}>
+                            <ShopBadge platform={item.platform} name={item.shop} className="shrink-0 text-xs md:w-36" />
+                            <Link href={`/orders/${item.orderId}`} className={cn("shrink-0 text-xs font-semibold tabular-nums text-ink hover:text-pigment md:w-24", focusRing)}>
                               {item.orderNumber}
                             </Link>
-                            <span className="hidden min-w-0 truncate text-sm text-ink md:inline">{item.todo}</span>
+                            <span className="hidden min-w-0 text-sm text-ink md:inline">{item.todo}</span>
                           </div>
-                          <p className="mt-0.5 flex min-w-0 items-center gap-2 md:hidden">
-                            <span className="min-w-0 truncate text-sm text-ink">{item.todo}</span>
-                            <span className="ml-auto shrink-0 whitespace-nowrap text-xs tabular-nums text-slate">{item.age}</span>
+                          <p className="mt-0.5 flex min-w-0 items-start gap-2 md:hidden">
+                            <span className="min-w-0 text-sm text-ink">{item.todo}</span>
+                            <span className="ml-auto mt-0.5 shrink-0 whitespace-nowrap text-xs tabular-nums text-slate">{item.age}</span>
                           </p>
                         </div>
                         <span className="hidden shrink-0 whitespace-nowrap text-xs tabular-nums text-slate sm:inline">{item.age}</span>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button, Input, Textarea, useToast } from "@/components/ui";
@@ -46,6 +46,16 @@ export function ComposeButton({
     setDraft({ to, subject, body });
   }
 
+  // Escape closes the dialog, like every other dialog in the app.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  });
+
   function send() {
     start(async () => {
       const res = await sendComposedEmail({
@@ -78,17 +88,22 @@ export function ComposeButton({
       </Button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/30 p-4">
-          <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-modal border border-line bg-surface shadow-xl">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="compose-email-title"
+            className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-modal border border-line bg-surface shadow-xl"
+          >
             <div className="flex items-center justify-between border-b border-line px-4 py-3">
               <div>
-                <h2 className="text-base font-semibold text-ink">{preview ? "Preview email" : "Compose email"}</h2>
-                <p className="text-xs text-slate">Confirm the exact customer email before sending.</p>
+                <h2 id="compose-email-title" className="text-base font-semibold text-ink">{preview ? "Check and send" : "Write an email"}</h2>
+                <p className="text-xs text-slate">{preview ? "This is exactly what the customer gets." : "You see a preview before anything is sent."}</p>
               </div>
               <button
                 type="button"
                 onClick={close}
                 className="flex size-8 items-center justify-center rounded-input text-slate hover:bg-canvas hover:text-ink"
-                aria-label="Close compose"
+                aria-label="Close"
               >
                 <X size={16} />
               </button>
@@ -125,7 +140,7 @@ export function ComposeButton({
                       <dd className="font-medium text-ink">{draft.subject || "(no subject)"}</dd>
                     </div>
                   </dl>
-                  <div className="mt-4 whitespace-pre-wrap rounded-input border border-line bg-surface p-3 text-sm text-ink">
+                  <div className="mt-4 whitespace-pre-wrap rounded-input [overflow-wrap:anywhere] border border-line bg-surface p-3 text-sm text-ink">
                     {draft.body || "(empty)"}
                   </div>
                 </div>

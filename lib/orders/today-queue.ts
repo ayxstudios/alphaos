@@ -115,6 +115,7 @@ export async function getTodayQueue(user: RequestUser, businessId: string, now =
         updatedAt: orders.updatedAt,
         rawImport: orders.rawImport,
         shopName: shops.name,
+        shopPlatform: shops.platform,
         customerFirst: customers.firstName,
         customerEmail: customers.email,
         designerName: users.name,
@@ -183,7 +184,8 @@ export async function getTodayQueue(user: RequestUser, businessId: string, now =
       const base = {
         orderId: o.id,
         shop: o.shopName ?? (o.source === "manual" ? "Manual" : o.source),
-        platform: o.source,
+        // The shop's own platform picks the mark (a hand-made order in an Etsy shop is still Etsy).
+        platform: o.shopPlatform ?? o.source,
         orderNumber: o.number ?? o.fallbackNumber,
         customerFirst: firstName({ first: o.customerFirst, email: o.customerEmail, rawImport: o.rawImport }),
         status: o.status,
@@ -200,7 +202,7 @@ export async function getTodayQueue(user: RequestUser, businessId: string, now =
       const m = latestMsg.get(o.id);
       if (m && m.direction === "inbound") {
         const since = new Date(m.at).getTime();
-        push("reply", since, `Reply to ${name}, waiting ${formatAge(t - since)}`, { label: "Reply", href: `/orders/${o.id}#reply` }, 100);
+        push("reply", since, `Reply to ${name}`, { label: "Reply", href: `/orders/${o.id}#reply` }, 100);
       }
 
       switch (o.status) {
@@ -214,7 +216,7 @@ export async function getTodayQueue(user: RequestUser, businessId: string, now =
           const proof = latestProof.get(o.id);
           const sent = (proof?.sentAt ?? proof?.createdAt)?.getTime() ?? stageStart;
           if (!proof?.decision && t - sent >= 3 * DAY) {
-            push("proof_silent", sent, `Nudge ${name}, no answer on the proof for ${formatAge(t - sent)}`, { label: "Send a nudge", href: `/orders/${o.id}#reply` }, 80);
+            push("proof_silent", sent, `Nudge ${name} about the proof`, { label: "Send a nudge", href: `/orders/${o.id}#reply` }, 80);
           }
           break;
         }
@@ -240,7 +242,7 @@ export async function getTodayQueue(user: RequestUser, businessId: string, now =
           const deadline = o.assignmentDueAt ?? o.dueAt;
           if (deadline && deadline.getTime() < t) {
             const who = o.designerName ?? o.designerEmail ?? "The designer";
-            push("designer_late", deadline.getTime(), `${who} is ${formatAge(t - deadline.getTime())} late. Nudge or reassign`, { label: "Reassign", href: `/orders/${o.id}#designer` }, 65);
+            push("designer_late", deadline.getTime(), `${who} is late. Nudge or reassign`, { label: "Reassign", href: `/orders/${o.id}#designer` }, 65);
           }
           break;
         }
@@ -249,7 +251,7 @@ export async function getTodayQueue(user: RequestUser, businessId: string, now =
             push("unassigned", stageStart, "Pick a designer for this order", { label: "Assign", href: `/orders/${o.id}#designer` }, 50);
           } else if (o.assignedAt && t - o.assignedAt.getTime() > 12 * HOUR) {
             const who = o.designerName ?? o.designerEmail ?? "The designer";
-            push("designer_late", o.assignedAt.getTime(), `${who} has not started after ${formatAge(t - o.assignedAt.getTime())}. Nudge or reassign`, { label: "Reassign", href: `/orders/${o.id}#designer` }, 45);
+            push("designer_late", o.assignedAt.getTime(), `${who} has not started. Nudge or reassign`, { label: "Reassign", href: `/orders/${o.id}#designer` }, 45);
           }
           break;
         case "approved":
@@ -264,7 +266,7 @@ export async function getTodayQueue(user: RequestUser, businessId: string, now =
           break;
         case "awaiting_photos":
           if (t - stageStart > 2 * DAY) {
-            push("photos_silent", stageStart, `Ask ${name} for the photos again, ${formatAge(t - stageStart)} with none`, { label: "Ask again", href: `/orders/${o.id}#reply` }, 35);
+            push("photos_silent", stageStart, `Ask ${name} for the photos again`, { label: "Ask again", href: `/orders/${o.id}#reply` }, 35);
           }
           break;
         default:

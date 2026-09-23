@@ -41,7 +41,7 @@ export function VersionStrip({
             onClick={() => onSelect(v.id)}
             aria-pressed={selected}
             className={cn(
-              "group flex w-32 shrink-0 flex-col gap-1 rounded-card border p-1.5 text-left transition-colors motion-hover",
+              "group flex w-36 shrink-0 flex-col gap-1 rounded-card border p-1.5 text-left transition-colors motion-hover",
               selected
                 ? "border-pigment bg-pigment-soft"
                 : "border-transparent bg-surface shadow-card hover:border-slate/30",
@@ -65,10 +65,10 @@ export function VersionStrip({
                 {isLatest ? "Latest" : `v${i + 1}`}
               </span>
             </div>
-            <span className="truncate text-xs font-medium text-ink">
-              {v.uploadedBy ?? "Unknown"}
+            <span className="break-words text-xs font-medium text-ink">
+              {v.uploadedBy ?? "Designer"}
             </span>
-            <span className="truncate text-xs text-slate">{when(v.createdAt)}</span>
+            <span className="text-xs leading-snug text-slate">{when(v.createdAt)}</span>
           </button>
         );
       })}

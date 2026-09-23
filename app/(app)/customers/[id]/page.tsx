@@ -568,30 +568,30 @@ export default async function CustomerDetailPage({
 
                         <dl className="grid gap-2 text-sm">
                           <div className="flex items-center justify-between gap-3">
-                            <dt className="text-slate">Due</dt>
+                            <dt className="shrink-0 text-slate">Due</dt>
                             <dd className="text-right font-medium text-ink">
                               {fmtDate(order.dueAt)}
                             </dd>
                           </div>
                           <div className="flex items-center justify-between gap-3">
-                            <dt className="text-slate">Designer</dt>
-                            <dd className="truncate text-right font-medium text-ink">
+                            <dt className="shrink-0 text-slate">Designer</dt>
+                            <dd className="min-w-0 break-words text-right font-medium text-ink">
                               {activeAssignment
                                 ? userMap.get(activeAssignment.designerId) ?? "Assigned"
                                 : "Unassigned"}
                             </dd>
                           </div>
                           <div className="flex items-center justify-between gap-3">
-                            <dt className="text-slate">Assigned by</dt>
-                            <dd className="truncate text-right font-medium text-ink">
+                            <dt className="shrink-0 text-slate">Assigned by</dt>
+                            <dd className="min-w-0 break-words text-right font-medium text-ink">
                               {activeAssignment?.assignedBy
                                 ? userMap.get(activeAssignment.assignedBy) ?? "Staff"
                                 : "Not assigned"}
                             </dd>
                           </div>
                           <div className="flex items-center justify-between gap-3">
-                            <dt className="text-slate">QC</dt>
-                            <dd className="truncate text-right font-medium text-ink">
+                            <dt className="shrink-0 text-slate">QC</dt>
+                            <dd className="min-w-0 break-words text-right font-medium text-ink">
                               {latestQc
                                 ? `${titleCase(latestQc.result)} by ${
                                     latestQc.vaId
@@ -602,8 +602,8 @@ export default async function CustomerDetailPage({
                             </dd>
                           </div>
                           <div className="flex items-center justify-between gap-3">
-                            <dt className="text-slate">Messages</dt>
-                            <dd className="truncate text-right font-medium text-ink">
+                            <dt className="shrink-0 text-slate">Messages</dt>
+                            <dd className="min-w-0 break-words text-right font-medium text-ink">
                               {latestOrderMessage
                                 ? `${messagesForOrder.length} · ${titleCase(
                                     latestOrderMessage.direction,
@@ -612,14 +612,14 @@ export default async function CustomerDetailPage({
                             </dd>
                           </div>
                           <div className="flex items-center justify-between gap-3">
-                            <dt className="text-slate">Files</dt>
-                            <dd className="truncate text-right font-medium text-ink">
+                            <dt className="shrink-0 text-slate">Files</dt>
+                            <dd className="min-w-0 break-words text-right font-medium text-ink">
                               {assetSummary(assetsForOrder)}
                             </dd>
                           </div>
                           <div className="flex items-center justify-between gap-3">
-                            <dt className="text-slate">Latest work</dt>
-                            <dd className="truncate text-right font-medium text-ink">
+                            <dt className="shrink-0 text-slate">Last change</dt>
+                            <dd className="min-w-0 break-words text-right font-medium text-ink">
                               {latestActivity
                                 ? `${
                                     latestActivity.actorId

@@ -24,10 +24,10 @@ import * as schema from "../../lib/db/schema";
 import { hashPassword } from "../../lib/auth/password";
 import { createAssignment } from "../../lib/orders/assign";
 import type { Tx } from "../../lib/db";
+import { isProdHost } from "./prod-endpoints";
 
 neonConfig.webSocketConstructor = ws;
 
-const PROD_ENDPOINT = "ep-spring-dawn-audsesft";
 const STAGING_USERS = [
   { email: "staging-admin@alphaos.test", name: "Staging Admin", role: "admin", env: "STAGING_ADMIN_PASSWORD" },
   { email: "staging-va@alphaos.test", name: "Staging VA", role: "va", env: "STAGING_VA_PASSWORD" },
@@ -43,7 +43,7 @@ function need(name: string): string {
 async function main() {
   const url = need("TARGET_URL");
   const host = new URL(url).hostname;
-  if (host.includes(PROD_ENDPOINT)) throw new Error("TARGET_URL is the production database; refusing.");
+  if (isProdHost(host)) throw new Error("TARGET_URL is the production database; refusing.");
   if (new URL(url).username !== "neondb_owner") throw new Error("TARGET_URL must be the owner connection");
 
   const pool = new Pool({ connectionString: url, max: 1 });

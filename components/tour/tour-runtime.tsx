@@ -75,6 +75,19 @@ function ringBox(r: DOMRect): Box {
   return { top, left, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
 }
 
+/** A step's two sentences: what it is (ink), then what to do (slate). Two lines at most on a phone. */
+function StepLine({ id, line }: { id: string; line: string }) {
+  const cut = line.indexOf(". ");
+  const what = cut > 0 ? line.slice(0, cut + 1) : line;
+  const todo = cut > 0 ? line.slice(cut + 2) : "";
+  return (
+    <p id={id} className="text-sm text-ink lg:text-base">
+      {what}
+      {todo && <span className="text-slate"> {todo}</span>}
+    </p>
+  );
+}
+
 /** A small framed portrait, drawn in the palette: the upload demo's sample file. */
 function SamplePortrait({ className }: { className?: string }) {
   return (
@@ -261,6 +274,7 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
       light,
       sample: showSample,
       reserveBottom,
+      say: setLine,
       stats: statsRef.current,
       // Watching is unhurried; a demonstration before your turn is brisk.
       dwell: modeRef.current === "watch" ? 450 : 150,
@@ -740,7 +754,7 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
                   Later
                 </button>
               </div>
-              <p className="text-sm text-slate">See how your day works in 30 seconds.</p>
+              <p className="text-sm text-slate">This short tour shows your day on the real screen. Watch it once, then try it yourself.</p>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <button type="button" onClick={() => begin("try", performance.now())} className={secondaryBtn}>
                   Try it myself
@@ -757,6 +771,7 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
               <h2 id={titleId} className="font-display text-lg font-semibold text-ink">
                 That is the whole day.
               </h2>
+              <p className="text-sm text-slate">Now try each step yourself, in about a minute. Or close this and start working.</p>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <button type="button" onClick={finishWatch} className={secondaryBtn}>
                   Got it
@@ -773,7 +788,7 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
               <h2 id={titleId} className="font-display text-lg font-semibold text-ink">
                 You are ready.
               </h2>
-              <p className="text-sm text-slate">The ? at the top brings this back any time.</p>
+              <p className="text-sm text-slate">Everything you tried works the same way every day. The ? at the top brings this back any time.</p>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <Link href="/help" onClick={() => stop("none")} className={secondaryBtn}>
                   Quick guide
@@ -786,7 +801,7 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
           )}
 
           {mode === "watch" && (
-            <div className="flex flex-col gap-2.5">
+            <div className="flex flex-col gap-2">
               <div className="flex items-center gap-3">
                 <button
                   ref={primaryRef}
@@ -804,20 +819,18 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
                     <Pause size={16} />
                   )}
                 </button>
-                <p id={titleId} className="min-w-0 flex-1 text-base font-medium text-ink">
-                  {line}
-                </p>
+                <div className="flex min-w-0 flex-1 gap-1" aria-hidden="true">
+                  {steps.map((s, i) => (
+                    <span key={s.id} className="h-1 flex-1 overflow-hidden rounded-full bg-line">
+                      <span className={cn("block h-full origin-left rounded-full bg-pigment transition-transform duration-[400ms] ease-standard", i < index ? "scale-x-100" : i === index ? "scale-x-50" : "scale-x-0")} />
+                    </span>
+                  ))}
+                </div>
                 <button type="button" onClick={skip} className={cn(quiet, "-mr-2 shrink-0")}>
                   Close
                 </button>
               </div>
-              <div className="flex gap-1" aria-hidden="true">
-                {steps.map((s, i) => (
-                  <span key={s.id} className="h-1 flex-1 overflow-hidden rounded-full bg-line">
-                    <span className={cn("block h-full origin-left rounded-full bg-pigment transition-transform duration-[400ms] ease-standard", i < index ? "scale-x-100" : i === index ? "scale-x-50" : "scale-x-0")} />
-                  </span>
-                ))}
-              </div>
+              <StepLine id={titleId} line={line} />
             </div>
           )}
 
@@ -846,9 +859,7 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
                   </button>
                 </span>
               </div>
-              <p id={titleId} className="text-base font-medium text-ink">
-                {line}
-              </p>
+              <StepLine id={titleId} line={line} />
             </div>
           )}
         </div>

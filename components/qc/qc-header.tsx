@@ -15,7 +15,7 @@ function TimeInQc({ since }: { since: string | null }) {
     return () => clearInterval(id);
   }, []);
 
-  if (!since) return <span className="text-xs text-slate">-</span>;
+  if (!since) return null;
   const diff = Math.max(0, now - new Date(since).getTime());
   const h = Math.floor(diff / 3_600_000);
   const m = Math.floor((diff % 3_600_000) / 60_000);
@@ -69,10 +69,10 @@ export function QcHeader({
           {ctx.figuresResolved ? (
             ctx.figureCount
           ) : (
-            <Badge variant="warning">unresolved</Badge>
+            <Badge variant="warning">Not set</Badge>
           )}
         </Fact>
-        <Fact label="Style">{ctx.style ?? "-"}</Fact>
+        <Fact label="Style">{ctx.style ?? "Not set"}</Fact>
         <Fact label="Designer">{ctx.designerName ?? "Unassigned"}</Fact>
       </div>
 
