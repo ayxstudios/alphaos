@@ -12,6 +12,7 @@ import { Sidebar } from "./sidebar";
 import { TopBar } from "./top-bar";
 import { BottomTabs } from "./bottom-tabs";
 import { LazyAlphaChat, LazyTour } from "./lazy-extras";
+import { ServiceWorkerRegister } from "./sw-register";
 import type { OnboardingState } from "@/lib/tour/state";
 
 /** Cookie the sidebar collapse preference persists in (read by the layout). */
@@ -119,6 +120,7 @@ export function AppShell({
       {/* Loaded on demand, not in the first-load bundle (docs/PERF.md). */}
       <LazyAlphaChat user={user} />
       <LazyTour role={user.role} firstName={tour.firstName} onboarding={tour.onboarding} signedInAt={tour.signedInAt} />
+      <ServiceWorkerRegister />
     </div>
   );
 }
