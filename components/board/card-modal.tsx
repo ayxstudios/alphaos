@@ -392,7 +392,14 @@ function CardUploadPanel({
       onSaved(saved.detail);
       toast({
         variant: "success",
-        title: images.length === 1 ? "Photo uploaded" : `${images.length} photos uploaded`,
+        title:
+          designer && type === "submission"
+            ? images.length === 1
+              ? "New version added"
+              : `${images.length} new versions added`
+            : images.length === 1
+              ? "Photo uploaded"
+              : `${images.length} photos uploaded`,
       });
       if (fileRef.current) fileRef.current.value = "";
     } catch (error) {
@@ -416,7 +423,7 @@ function CardUploadPanel({
             <p className="mt-1 text-xs text-slate">
               {canDesignerUpload
                 ? latestSubmission
-                  ? "Upload another version before submitting to QC. The newest version is reviewed first."
+                  ? "Add a new version before submitting to QC. Every version is kept, the newest is reviewed."
                   : "Upload the finished portrait before moving this card to QC."
                 : designerNote}
             </p>
@@ -450,7 +457,8 @@ function CardUploadPanel({
             onClick={() => fileRef.current?.click()}
           >
             <Camera size={15} />
-            {latestSubmission && designer ? "Replace" : "Upload"}
+            {/* Versions are never overwritten: each upload adds one. */}
+            {latestSubmission && designer ? "Add new version" : "Upload"}
           </Button>
         )}
         <input
@@ -482,7 +490,9 @@ function CardUploadPanel({
           {uploading
             ? "Uploading..."
             : designer
-              ? "Drop finished portrait here or click Upload"
+              ? latestSubmission
+                ? "Drop a new version here or click Add new version"
+                : "Drop finished portrait here or click Upload"
               : "Drop images here or click Upload"}
         </button>
       )}
@@ -511,7 +521,7 @@ function CardUploadPanel({
       )}
       {submissions.length > 0 && (
         <div className="mt-3">
-          <p className="mb-2 text-xs font-medium text-ink">Portrait versions</p>
+          <p className="mb-2 text-xs font-medium text-ink">Portrait versions ({submissions.length}), newest last</p>
           <div className="flex gap-2 overflow-x-auto pb-1">
             {submissions.map((image, index) => (
               <div key={image.id} className="w-20 shrink-0">
@@ -520,7 +530,7 @@ function CardUploadPanel({
                   <img src={image.url} alt="" className="size-20 rounded-input border border-line object-cover" />
                 </a>
                 <p className="mt-1 truncate text-xs text-slate">
-                  {index === submissions.length - 1 ? "Latest" : `v${index + 1}`}
+                  {`v${index + 1}${index === submissions.length - 1 ? ", latest" : ""}`}
                 </p>
               </div>
             ))}
