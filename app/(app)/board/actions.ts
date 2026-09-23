@@ -149,7 +149,10 @@ export async function presignCardAssetUploads(input: {
         if (!ALLOWED_IMAGE_TYPES.test(file.contentType)) {
           throw new Error(`${file.filename}: not an image`);
         }
-        if (typeof file.size !== "number" || file.size <= 0 || file.size > MAX_UPLOAD_BYTES) {
+        if (typeof file.size !== "number" || !Number.isFinite(file.size) || file.size <= 0) {
+          throw new Error(`${file.filename}: the file is empty`);
+        }
+        if (file.size > MAX_UPLOAD_BYTES) {
           throw new Error(`${file.filename}: over 25 MB`);
         }
         const key = assetKey(order.businessId, input.orderId, input.type, extFor(file.filename, file.contentType));
@@ -200,7 +203,10 @@ export async function saveCardAssetUploads(input: {
           if (!head.contentType || !ALLOWED_IMAGE_TYPES.test(head.contentType)) {
             throw new Error("Uploaded file is not a supported image");
           }
-          if (!head.contentLength || head.contentLength <= 0 || head.contentLength > MAX_UPLOAD_BYTES) {
+          if (!head.contentLength || head.contentLength <= 0) {
+            throw new Error("Uploaded file is empty");
+          }
+          if (head.contentLength > MAX_UPLOAD_BYTES) {
             throw new Error("Uploaded file is over 25 MB");
           }
         }),

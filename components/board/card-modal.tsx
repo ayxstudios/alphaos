@@ -388,6 +388,11 @@ function CardUploadPanel({
       toast({ variant: "danger", title: "No images selected" });
       return;
     }
+    const empty = images.find((file) => file.size === 0);
+    if (empty) {
+      toast({ variant: "danger", title: "Empty file", description: `${empty.name} is empty (0 bytes). Choose the saved image again.` });
+      return;
+    }
     const tooBig = images.find((file) => file.size > MAX_UPLOAD_BYTES);
     if (tooBig) {
       toast({ variant: "danger", title: "Upload too large", description: `${tooBig.name} is over 25 MB.` });
