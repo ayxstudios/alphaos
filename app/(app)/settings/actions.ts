@@ -466,6 +466,20 @@ export async function setEmailSendingEnabled(
   return result;
 }
 
+/**
+ * Stage emails (order received, in the artist's hands, printing, shipped, proof
+ * reminder): OFF (the default) drafts them into Emails for a VA to approve; ON
+ * queues them to send by themselves. Only affects emails created after the
+ * change, and nothing sends while customer email sending is off.
+ */
+export async function setStageEmailAutoSend(businessId: string, enabled: boolean): Promise<void> {
+  const user = await requireAdmin();
+  await withUserContext(user, (tx) =>
+    tx.update(businesses).set({ stageEmailAutoSend: enabled }).where(eq(businesses.id, businessId)),
+  );
+  revalidatePath("/settings");
+}
+
 export type GmailTestResult = {
   ok: boolean;
   message?: string;

@@ -228,7 +228,11 @@ export default async function SettingsPage({
   )) as GmailCredentials | null;
   const [biz] = await withUserContext(user, (tx) =>
     tx
-      .select({ address: businesses.gmailAddress, sendingEnabled: businesses.emailSendingEnabled })
+      .select({
+        address: businesses.gmailAddress,
+        sendingEnabled: businesses.emailSendingEnabled,
+        stageAutoSend: businesses.stageEmailAutoSend,
+      })
       .from(businesses)
       .where(eq(businesses.id, selected.id)),
   );
@@ -241,6 +245,7 @@ export default async function SettingsPage({
     address: creds?.address ?? biz?.address ?? null,
     redirectUri: appUrl("/api/gmail/callback"),
     sendingEnabled: !!biz?.sendingEnabled,
+    stageAutoSend: !!biz?.stageAutoSend,
   };
 
   // --- Print provider credentials (Gelato / Luma Prints), per business ----
