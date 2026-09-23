@@ -10,6 +10,7 @@
  *  - outgoing email HTML escapes quotes, so customer text in a URL cannot
  *    break out of the href attribute (textToHtml)
  *  - manual order figure counts are bounded (lib/orders/manual-input.ts)
+ *  - mocks never run on the production deployment (lib/mock/guard.ts)
  *
  * Runs against the seeded local database (scripts/ci-local.sh). Everything it
  * creates is removed at the end.
@@ -27,6 +28,10 @@ import { PreconditionError, assertQcPassAllowed } from "../lib/orders/transition
 import { QC_SEND_DEDUPE_MS, qcPassEmailInFlight } from "../lib/qc/send-guard";
 import { textToHtml } from "../lib/integrations/gmail/mime";
 import { MAX_FIGURES, parseFigureCount } from "../lib/orders/manual-input";
+import { mocksAllowed } from "../lib/mock/guard";
+import { installMockTransport } from "../lib/mock/transport";
+import { isMockMode as gelatoMockMode } from "../lib/integrations/gelato/client";
+import { isMockMode as lumaMockMode } from "../lib/integrations/lumaprints/client";
 
 let failures = 0;
 function report(name: string, pass: boolean, detail: string) {
@@ -227,11 +232,40 @@ function figureCounts() {
   );
 }
 
+function mocksNeverInProduction() {
+  const saved = { vercelEnv: process.env.VERCEL_ENV, printMock: process.env.PRINT_PROVIDER_MOCK };
+  const realFetch = globalThis.fetch;
+  try {
+    process.env.VERCEL_ENV = "production";
+    process.env.PRINT_PROVIDER_MOCK = "1";
+    installMockTransport();
+    const transportRefused = globalThis.fetch === realFetch;
+    const printRefused =
+      !gelatoMockMode({ apiKey: "mock_key" } as Parameters<typeof gelatoMockMode>[0]) &&
+      !lumaMockMode({ username: "mock_user", password: "x" } as Parameters<typeof lumaMockMode>[0]);
+    process.env.VERCEL_ENV = "preview";
+    const previewStillMocks =
+      gelatoMockMode({ apiKey: "real-looking-key" } as Parameters<typeof gelatoMockMode>[0]) && mocksAllowed();
+    report(
+      "mocks never run on production: transport not installed, print clients ignore PRINT_PROVIDER_MOCK and mock_ keys",
+      transportRefused && printRefused && previewStillMocks,
+      `transport refused=${transportRefused} print refused=${printRefused} preview still mocks=${previewStillMocks}`,
+    );
+  } finally {
+    globalThis.fetch = realFetch;
+    if (saved.vercelEnv === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = saved.vercelEnv;
+    if (saved.printMock === undefined) delete process.env.PRINT_PROVIDER_MOCK;
+    else process.env.PRINT_PROVIDER_MOCK = saved.printMock;
+  }
+}
+
 async function main() {
   await loginIpLimit();
   await qcSendGuard();
   emailHtmlEscaping();
   figureCounts();
+  mocksNeverInProduction();
   console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);
   process.exit(failures === 0 ? 0 : 1);
 }

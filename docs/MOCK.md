@@ -38,7 +38,10 @@ keys", and how the pipeline is tested end to end with no vendor account.
 
 ## Switches
 
-`.env.local` and the Vercel project (production + preview):
+`.env.local` and preview deployments (staging) only. The production
+deployment ignores all of these (`VERCEL_ENV=production`, lib/mock/guard.ts):
+the transport logs `refused_in_production` and the print clients never
+answer from fixtures there.
 
 ```
 MOCK_INTEGRATIONS=1

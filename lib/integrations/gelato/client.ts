@@ -2,6 +2,7 @@ import { GelatoApiError, GelatoAuthError } from "./errors";
 import { findGelatoFixtureByReference, findGelatoFixtureById } from "./fixtures";
 import { GELATO_ORDER_BASE, type GelatoCredentials, type GelatoOrder, type GelatoSearchResponse } from "./types";
 import type { NormalizedProviderOrder, PrintProviderClient } from "@/lib/print/provider-types";
+import { mocksAllowed } from "@/lib/mock/guard";
 
 // Gelato does not publish a documented per-key rate limit; be a polite
 // citizen and cap our own calls the same way we cap Etsy's (headroom, not a
@@ -53,7 +54,9 @@ function gelatoStatusToNormalized(order: GelatoOrder): NormalizedProviderOrder {
   };
 }
 
-function isMockMode(credentials?: GelatoCredentials): boolean {
+export function isMockMode(credentials?: GelatoCredentials): boolean {
+  // Never on the production deployment (lib/mock/guard.ts).
+  if (!mocksAllowed()) return false;
   // Global switch, or a mock credential (lib/mock: keys that look real but
   // start with "mock_" are answered from fixtures, real keys never are).
   return process.env.PRINT_PROVIDER_MOCK === "1" || String(credentials?.apiKey ?? "").startsWith("mock_");
