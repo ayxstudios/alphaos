@@ -23,6 +23,7 @@ import {
   DEFAULT_TEMPLATES,
   EDITABLE_TEMPLATE_KEYS,
   TEMPLATE_META,
+  defaultTemplateForBusiness,
   renderTemplate,
   resolveTemplate,
   type TemplateKey,
@@ -694,16 +695,28 @@ export async function saveEmailTemplate(formData: FormData): Promise<void> {
   revalidatePath("/settings");
 }
 
-/** Remove a business's override, reverting the template to the built-in default. */
-export async function resetEmailTemplate(businessId: string, key: string): Promise<void> {
+/**
+ * Remove a business's override, reverting the template to the built-in default.
+ * Returns that default so the editor shows it at once, without a reload.
+ */
+export async function resetEmailTemplate(
+  businessId: string,
+  key: string,
+): Promise<{ subject: string; body: string }> {
   const user = await requireAdmin();
   const templateKey = assertTemplateKey(key);
-  await withUserContext(user, (tx) =>
-    tx
+  const fallback = await withUserContext(user, async (tx) => {
+    await tx
       .delete(emailTemplates)
-      .where(and(eq(emailTemplates.businessId, businessId), eq(emailTemplates.key, templateKey))),
-  );
+      .where(and(eq(emailTemplates.businessId, businessId), eq(emailTemplates.key, templateKey)));
+    const [biz] = await tx
+      .select({ name: businesses.name, slug: businesses.slug })
+      .from(businesses)
+      .where(eq(businesses.id, businessId));
+    return defaultTemplateForBusiness(biz ?? {}, templateKey);
+  });
   revalidatePath("/settings");
+  return { subject: fallback.subject, body: fallback.body };
 }
 
 /* --- Print provider credentials (per business) --------------------------- */

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
-import { Button, Input, Textarea, Badge } from "@/components/ui";
+import { Button, Input, Textarea, Badge, useToast } from "@/components/ui";
 import { ChevronDown } from "@/components/ui/icons";
 import { saveEmailTemplate, resetEmailTemplate } from "@/app/(app)/settings/actions";
 
@@ -33,9 +33,30 @@ export function TemplateEditor({
 }
 
 function TemplateCard({ businessId, template }: { businessId: string; template: TemplateVM }) {
+  const toast = useToast();
   const [subject, setSubject] = useState(template.subject);
   const [body, setBody] = useState(template.body);
   const [resetting, startReset] = useTransition();
+  const [saving, startSave] = useTransition();
+
+  // The saved copy changed (saved here, reset, or edited elsewhere): show it.
+  useEffect(() => {
+    setSubject(template.subject);
+    setBody(template.body);
+  }, [template.subject, template.body]);
+
+  function save(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    startSave(async () => {
+      try {
+        await saveEmailTemplate(form);
+        toast({ variant: "success", title: "Template saved", description: `${template.label} now uses your text.` });
+      } catch {
+        toast({ variant: "danger", title: "Didn't save", description: "The subject and body both need some text." });
+      }
+    });
+  }
 
   return (
     <details className="group rounded-card bg-surface shadow-card">
@@ -48,7 +69,7 @@ function TemplateCard({ businessId, template }: { businessId: string; template: 
       </summary>
 
       <div className="border-t border-line p-4">
-        <form action={saveEmailTemplate} className="flex flex-col gap-3">
+        <form onSubmit={save} className="flex flex-col gap-3">
           <input type="hidden" name="businessId" value={businessId} />
           <input type="hidden" name="key" value={template.key} />
           <Input
@@ -75,7 +96,7 @@ function TemplateCard({ businessId, template }: { businessId: string; template: 
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <Button type="submit" size="sm">
+            <Button type="submit" size="sm" loading={saving} disabled={resetting}>
               Save template
             </Button>
             {template.customized && (
@@ -84,9 +105,17 @@ function TemplateCard({ businessId, template }: { businessId: string; template: 
                 variant="ghost"
                 size="sm"
                 loading={resetting}
+                disabled={saving}
                 onClick={() =>
                   startReset(async () => {
-                    await resetEmailTemplate(businessId, template.key);
+                    const fallback = await resetEmailTemplate(businessId, template.key);
+                    setSubject(fallback.subject);
+                    setBody(fallback.body);
+                    toast({
+                      variant: "success",
+                      title: "Back to the default",
+                      description: `${template.label} uses the built-in text again.`,
+                    });
                   })
                 }
               >
