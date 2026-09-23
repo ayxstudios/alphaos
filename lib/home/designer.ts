@@ -32,6 +32,9 @@ const load = cache(async (userId: string): Promise<DesignerHome> => {
     getMyWeek(user),
     withUserContext(user, async (tx) => {
       const mine = and(eq(assignments.designerId, userId), eq(assignments.active, true), liveOrderWhere());
+      // The designer works to their OWN deadline (assignments.due_at); the
+      // customer SLA only stands in for a legacy assignment without one.
+      const myDue = sql`coalesce(${assignments.dueAt}, ${orders.dueAt})`;
       const [cols, figRows, limits] = await Promise.all([
         tx
           .select({
@@ -40,8 +43,8 @@ const load = cache(async (userId: string): Promise<DesignerHome> => {
             revisions: sql<number>`count(*) filter (where ${orders.status} = 'in_design' and ${orders.revisionCount} > 0)::int`,
             awaitingQc: sql<number>`count(*) filter (where ${orders.status} = 'awaiting_qc')::int`,
             complete14d: sql<number>`count(*) filter (where ${orders.status} = 'complete' and ${orders.updatedAt} >= ${since14})::int`,
-            overdue: sql<number>`count(*) filter (where ${orders.status} in ('ready_to_assign','in_design','awaiting_qc') and ${orders.dueAt} < now())::int`,
-            dueToday: sql<number>`count(*) filter (where ${orders.status} in ('ready_to_assign','in_design','awaiting_qc') and ${dayBucket(orders.dueAt)} = to_char(timezone('Australia/Melbourne', now()), 'YYYY-MM-DD'))::int`,
+            overdue: sql<number>`count(*) filter (where ${orders.status} in ('ready_to_assign','in_design','awaiting_qc') and ${myDue} < now())::int`,
+            dueToday: sql<number>`count(*) filter (where ${orders.status} in ('ready_to_assign','in_design','awaiting_qc') and ${dayBucket(myDue)} = to_char(timezone('Australia/Melbourne', now()), 'YYYY-MM-DD'))::int`,
             assignedToday: sql<number>`count(*) filter (where ${dayBucket(assignments.assignedAt)} = to_char(timezone('Australia/Melbourne', now()), 'YYYY-MM-DD'))::int`,
           })
           .from(assignments)

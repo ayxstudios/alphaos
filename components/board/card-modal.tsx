@@ -251,16 +251,23 @@ export function CardModal({
           <Meta label="Status">
             <StatusChip status={card.status} />
           </Meta>
-          <Meta label="Due">
-            <div className="flex items-center gap-2">
-              <Countdown dueAt={card.dueAt} />
-              {card.dueAt && (
-                <span className="text-xs text-slate">
-                  {dateFmt.format(new Date(card.dueAt))}
-                </span>
+          {viewerRole === "designer" ? (
+            // The designer's own deadline (their assignment), never the customer SLA.
+            <Meta label="Your deadline">
+              <DueLine dueAt={card.dueAt} />
+            </Meta>
+          ) : (
+            <>
+              <Meta label="Customer due">
+                <DueLine dueAt={card.orderDueAt} />
+              </Meta>
+              {card.assignmentDueAt && (
+                <Meta label="Designer due">
+                  <DueLine dueAt={card.assignmentDueAt} />
+                </Meta>
               )}
-            </div>
-          </Meta>
+            </>
+          )}
           {labels.length > 0 && (
             <Meta label="Labels">
               <div className="flex flex-wrap gap-1">
@@ -540,6 +547,15 @@ function uploadToR2(
     xhr.onerror = () => reject(new Error(`Upload failed for ${file.name}`));
     xhr.send(file);
   });
+}
+
+function DueLine({ dueAt }: { dueAt: string | null }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-2">
+      <Countdown dueAt={dueAt} />
+      {dueAt && <span className="text-xs text-slate">{dateFmt.format(new Date(dueAt))}</span>}
+    </div>
+  );
 }
 
 function Meta({ label, children }: { label: string; children: React.ReactNode }) {
