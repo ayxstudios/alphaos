@@ -210,9 +210,15 @@ const ORDER_COLUMNS: ColumnDef[] = [
 
 const DEFAULT_COLUMN_KEYS = ORDER_COLUMNS.map((column) => column.key);
 
+// Rendered on the server (UTC) and hydrated in the viewer's browser: pin the
+// business time zone so both agree (else React hydration error #418, and
+// dates that shift a day near midnight).
+const TZ = "Australia/Melbourne";
+
 function fmtDate(value: string | null) {
   if (!value) return "No due date";
   return new Intl.DateTimeFormat("en-AU", {
+    timeZone: TZ,
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -221,12 +227,13 @@ function fmtDate(value: string | null) {
 
 function fmtShortDate(value: string | null) {
   if (!value) return "No due date";
-  return new Intl.DateTimeFormat("en-AU", { day: "2-digit", month: "short" }).format(new Date(value));
+  return new Intl.DateTimeFormat("en-AU", { timeZone: TZ, day: "2-digit", month: "short" }).format(new Date(value));
 }
 
 function fmtDateTime(value: string | null) {
   if (!value) return "Unknown";
   return new Intl.DateTimeFormat("en-AU", {
+    timeZone: TZ,
     day: "2-digit",
     month: "short",
     hour: "2-digit",
