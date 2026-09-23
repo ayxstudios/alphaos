@@ -17,7 +17,9 @@ import { sql } from "drizzle-orm";
 import { db, withUserContext, schema, type RequestUser } from "../lib/db";
 
 let failures = 0;
+let total = 0;
 function report(name: string, pass: boolean, detail: string) {
+  total += 1;
   console.log(`${pass ? "PASS" : "FAIL"}  ${name}`);
   console.log(`      ${detail}`);
   if (!pass) failures += 1;
@@ -298,11 +300,200 @@ async function main() {
     );
   }
 
+  await tightenedR2(admin, va1, d1, d2);
+
   console.log(
     `\n${failures === 0 ? "ALL PASSED" : failures + " FAILED"} ` +
-      `(${7 - failures}/7 assertions passed)`,
+      `(${total - failures}/${total} assertions passed)`,
   );
   process.exit(failures === 0 ? 0 : 1);
+}
+
+/** Run `fn`; "rejected: <pg message>" if Postgres refused it, else its result. */
+async function attempt<T>(fn: () => Promise<T>): Promise<{ ok: true; value: T } | { ok: false; msg: string }> {
+  try {
+    return { ok: true, value: await fn() };
+  } catch (err) {
+    return { ok: false, msg: rootMsg(err) };
+  }
+}
+
+/**
+ * 0040_rls_tighten_r2 (security QA r2, remaining P2s): each policy that was
+ * wider than the app uses, proven narrow, with the app's own use still working.
+ */
+async function tightenedR2(admin: string, va1: string, d1: string, d2: string) {
+  const asAdmin = asUser(admin, "admin");
+  const asVa = asUser(va1, "va");
+  const asD2 = asUser(d2, "designer");
+  const [own] = await withUserContext(asAdmin, (tx) =>
+    tx
+      .select({ orderId: schema.assignments.orderId, businessId: schema.assignments.businessId })
+      .from(schema.assignments)
+      .where(and(eq(schema.assignments.designerId, d2), eq(schema.assignments.active, true)))
+      .limit(1),
+  );
+  const businesses = await withUserContext(asAdmin, (tx) => tx.select({ id: schema.businesses.id }).from(schema.businesses));
+  const d2Businesses = new Set(
+    (
+      await withUserContext(asAdmin, (tx) =>
+        tx.select({ b: schema.designerBusinesses.businessId }).from(schema.designerBusinesses).where(eq(schema.designerBusinesses.userId, d2)),
+      )
+    ).map((r) => r.b),
+  );
+  const foreignBusiness = businesses.find((b) => !d2Businesses.has(b.id))?.id;
+
+  // -- 8. "user": no self-promotion; own-row writes and sign-in reads still work
+  {
+    const roleWrite = await attempt(() =>
+      withUserContext(asD2, (tx) =>
+        tx.update(schema.users).set({ role: "admin" }).where(eq(schema.users.id, d2)).returning({ id: schema.users.id }),
+      ),
+    );
+    const ownWrite = await attempt(() =>
+      withUserContext(asD2, (tx) =>
+        tx.update(schema.users).set({ sessionsValidAfter: null }).where(eq(schema.users.id, d2)).returning({ id: schema.users.id }),
+      ),
+    );
+    const otherWrite = await attempt(() =>
+      withUserContext(asVa, (tx) =>
+        tx.update(schema.users).set({ name: "Tampered" }).where(eq(schema.users.id, d1)).returning({ id: schema.users.id }),
+      ),
+    );
+    const noContextRead = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.id, d2));
+    const [after] = await db.select({ role: schema.users.role, name: schema.users.name }).from(schema.users).where(eq(schema.users.id, d2));
+    const [d1After] = await db.select({ name: schema.users.name }).from(schema.users).where(eq(schema.users.id, d1));
+    const pass =
+      !roleWrite.ok &&
+      after?.role === "designer" &&
+      ownWrite.ok &&
+      ownWrite.value.length === 1 &&
+      (!otherWrite.ok || otherWrite.value.length === 0) &&
+      d1After?.name !== "Tampered" &&
+      noContextRead.length === 1;
+    report(
+      "user: a designer cannot change their own role; own-row writes and no-context sign-in reads still work",
+      pass,
+      `role write ${roleWrite.ok ? "ALLOWED" : "rejected"}; own write ${ownWrite.ok ? ownWrite.value.length + " row" : "rejected: " + ownWrite.msg}; VA edit of another user ${otherWrite.ok ? otherWrite.value.length + " rows" : "rejected"}; raw read ${noContextRead.length}`,
+    );
+  }
+
+  // -- 9. designer_businesses: a designer cannot attach themselves elsewhere --
+  {
+    const attach = foreignBusiness
+      ? await attempt(() =>
+          withUserContext(asD2, (tx) => tx.insert(schema.designerBusinesses).values({ userId: d2, businessId: foreignBusiness })),
+        )
+      : { ok: false as const, msg: "no foreign business in seed" };
+    const seen = await withUserContext(asD2, (tx) => tx.select({ u: schema.designerBusinesses.userId }).from(schema.designerBusinesses));
+    const staffSeen = await withUserContext(asVa, (tx) => tx.select({ u: schema.designerBusinesses.userId }).from(schema.designerBusinesses));
+    if (attach.ok && foreignBusiness) {
+      await withUserContext(asAdmin, (tx) =>
+        tx.delete(schema.designerBusinesses).where(and(eq(schema.designerBusinesses.userId, d2), eq(schema.designerBusinesses.businessId, foreignBusiness))),
+      );
+    }
+    report(
+      "designer_businesses: a designer cannot attach themselves to another business and sees only their own rows",
+      !attach.ok && !!foreignBusiness && seen.length > 0 && seen.every((r) => r.u === d2) && staffSeen.length > seen.length,
+      `attach ${attach.ok ? "ALLOWED" : "rejected: " + attach.msg}; designer sees ${seen.length} (all own=${seen.every((r) => r.u === d2)}), VA sees ${staffSeen.length}`,
+    );
+  }
+
+  // -- 10. customer_public: only customers of the designer's own orders ------
+  {
+    const allowed = new Set(
+      (
+        await withUserContext(asAdmin, (tx) =>
+          tx
+            .select({ c: schema.orders.customerId })
+            .from(schema.orders)
+            .innerJoin(schema.assignments, and(eq(schema.assignments.orderId, schema.orders.id), eq(schema.assignments.active, true)))
+            .where(eq(schema.assignments.designerId, d2)),
+        )
+      )
+        .map((r) => r.c)
+        .filter((c): c is string => !!c),
+    );
+    const seen = await withUserContext(asD2, (tx) => tx.select({ id: schema.customerPublic.id }).from(schema.customerPublic));
+    const inBusiness = await withUserContext(asAdmin, (tx) => tx.select({ id: schema.customers.id, b: schema.customers.businessId }).from(schema.customers));
+    const businessCount = inBusiness.filter((c) => d2Businesses.has(c.b)).length;
+    report(
+      "customer_public: a designer sees first names only for customers of their own orders",
+      seen.length > 0 && seen.every((r) => r.id && allowed.has(r.id)),
+      `designer sees ${seen.length} (all on own orders=${seen.every((r) => r.id && allowed.has(r.id))}); ${businessCount} customers in their businesses`,
+    );
+  }
+
+  // -- 11. activity_log / assets: designer rows carry their own id, own order -
+  {
+    const forged = await attempt(() =>
+      withUserContext(asD2, (tx) =>
+        tx.insert(schema.activityLog).values({ businessId: own.businessId, orderId: own.orderId, actorId: d1, action: "rls.test.forged_actor" }),
+      ),
+    );
+    const ownRow = await attempt(() =>
+      withUserContext(asD2, (tx) =>
+        tx.insert(schema.activityLog).values({ businessId: own.businessId, orderId: own.orderId, actorId: d2, action: "rls.test.own_actor" }),
+      ),
+    );
+    const refAsset = await attempt(() =>
+      withUserContext(asD2, (tx) =>
+        tx.insert(schema.assets).values({ businessId: own.businessId, orderId: own.orderId, type: "reference", storage: "cdn", url: "https://example.com/r.jpg", uploadedBy: d2 }),
+      ),
+    );
+    const otherUploader = await attempt(() =>
+      withUserContext(asD2, (tx) =>
+        tx.insert(schema.assets).values({ businessId: own.businessId, orderId: own.orderId, type: "submission", storage: "cdn", url: "https://example.com/s.jpg", uploadedBy: d1 }),
+      ),
+    );
+    const ownSubmission = await attempt(() =>
+      withUserContext(asD2, (tx) =>
+        tx
+          .insert(schema.assets)
+          .values({ businessId: own.businessId, orderId: own.orderId, type: "submission", storage: "cdn", url: "https://example.com/own.jpg", uploadedBy: d2 })
+          .returning({ id: schema.assets.id }),
+      ),
+    );
+    if (ownSubmission.ok) {
+      await withUserContext(asAdmin, (tx) => tx.delete(schema.assets).where(eq(schema.assets.id, ownSubmission.value[0].id)));
+    }
+    report(
+      "activity_log and assets: a designer cannot forge the actor/uploader or add a reference photo; own rows still insert",
+      !forged.ok && ownRow.ok && !refAsset.ok && !otherUploader.ok && ownSubmission.ok,
+      `forged actor ${forged.ok ? "ALLOWED" : "rejected"}; own activity ${ownRow.ok ? "ok" : ownRow.msg}; reference ${refAsset.ok ? "ALLOWED" : "rejected"}; other uploader ${otherUploader.ok ? "ALLOWED" : "rejected"}; own submission ${ownSubmission.ok ? "ok" : ownSubmission.msg}`,
+    );
+  }
+
+  // -- 12. VA cannot delete (restrictive admin-only DELETE) --------------------
+  {
+    const [probe] = await withUserContext(asAdmin, (tx) =>
+      tx
+        .insert(schema.customers)
+        .values({ businessId: own.businessId, email: `rls-delete-probe-${Date.now()}@example.com`, firstName: "Probe" })
+        .returning({ id: schema.customers.id }),
+    );
+    const vaDelete = await attempt(() =>
+      withUserContext(asVa, (tx) => tx.delete(schema.customers).where(eq(schema.customers.id, probe.id)).returning({ id: schema.customers.id })),
+    );
+    const adminDelete = await withUserContext(asAdmin, (tx) =>
+      tx.delete(schema.customers).where(eq(schema.customers.id, probe.id)).returning({ id: schema.customers.id }),
+    );
+    report(
+      "VA cannot delete rows (customers probe); an admin can",
+      (!vaDelete.ok || vaDelete.value.length === 0) && adminDelete.length === 1,
+      `VA delete ${vaDelete.ok ? vaDelete.value.length + " rows" : "rejected"}; admin delete ${adminDelete.length} row`,
+    );
+  }
+
+  // -- 13. Auth.js adapter tables are closed to the app role -------------------
+  {
+    const read = await attempt(() => withUserContext(asAdmin, (tx) => tx.execute(sql`select 1 from "session" limit 1`)));
+    report(
+      "Auth.js session table (unused, JWT sessions) is not readable by app_user",
+      !read.ok && /permission denied/i.test(read.msg),
+      read.ok ? "readable (unexpected)" : read.msg,
+    );
+  }
 }
 
 main().catch((err) => {
