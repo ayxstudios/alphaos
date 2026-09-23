@@ -598,12 +598,12 @@ export function OrdersOperationsTable({
           above the phone tab bar, centred on desktop. */}
       {selected.size > 0 && (
         <div className="pointer-events-none fixed bottom-[5.5rem] left-3 right-[4.75rem] z-40 flex justify-center sm:inset-x-0 sm:bottom-6">
-          <div className="pointer-events-auto flex w-full max-w-2xl flex-wrap items-center gap-2 rounded-card bg-ink px-3 py-2.5 text-surface shadow-lg lg:w-auto">
+          <div className="pointer-events-auto flex w-full max-w-2xl flex-wrap items-center gap-2 whitespace-nowrap rounded-card bg-ink px-3 py-2.5 text-surface shadow-lg lg:w-auto lg:max-w-[calc(100vw-3rem)] lg:flex-nowrap">
             <span className="text-sm font-medium tabular-nums">{selected.size} selected</span>
             <select
               value={designerId}
               onChange={(event) => setDesignerId(event.currentTarget.value)}
-              className="h-9 rounded-input bg-surface/10 px-2 text-sm text-surface outline-none focus-visible:ring-2 focus-visible:ring-surface [&>option]:text-ink"
+              className="h-9 max-w-full rounded-input bg-surface/10 px-2 text-sm text-surface outline-none focus-visible:ring-2 focus-visible:ring-surface [&>option]:text-ink"
               aria-label="Choose designer"
             >
               <option value="">Designer…</option>
@@ -617,7 +617,7 @@ export function OrdersOperationsTable({
             <select
               value={targetStatus}
               onChange={(event) => setTargetStatus(event.currentTarget.value as OrderStatus)}
-              className="h-9 rounded-input bg-surface/10 px-2 text-sm text-surface outline-none focus-visible:ring-2 focus-visible:ring-surface [&>option]:text-ink"
+              className="h-9 max-w-full rounded-input bg-surface/10 px-2 text-sm text-surface outline-none focus-visible:ring-2 focus-visible:ring-surface [&>option]:text-ink"
               aria-label="Choose status"
             >
               <option value="">Status…</option>
