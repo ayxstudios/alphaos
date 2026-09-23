@@ -834,7 +834,7 @@ async function classifyAndStoreReply(attached: AttachedMessage): Promise<void> {
   });
 }
 
-function mergeReplyClassification(metadata: unknown, classification: ReplyClassification) {
+export function mergeReplyClassification(metadata: unknown, classification: ReplyClassification) {
   const base = metadata && typeof metadata === "object" && !Array.isArray(metadata)
     ? (metadata as Record<string, unknown>)
     : {};
