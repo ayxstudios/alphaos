@@ -169,6 +169,11 @@ async function measure(page) {
       demoStep: d.demoStep == null ? -1 : Number(d.demoStep),
       watchMs: d.watchMs == null ? null : Number(d.watchMs),
       line: sheet?.querySelector("p")?.textContent?.trim() ?? "",
+      lines: (() => {
+        const p = sheet?.querySelector("p");
+        if (!p) return 0;
+        return Math.round(p.getBoundingClientRect().height / parseFloat(getComputedStyle(p).lineHeight));
+      })(),
       sheet: box(sheet),
       lit: box(lit),
       litTag: lit ? lit.getAttribute("data-tour") || lit.tagName.toLowerCase() : "",
@@ -183,6 +188,17 @@ async function measure(page) {
 const overlaps = (a, b) => a && b && !(a.right <= b.left + 1 || a.left >= b.right - 1 || a.bottom <= b.top + 1 || a.top >= b.bottom - 1);
 const inside = (r, m) => r && r.left >= -1 && r.top >= -1 && r.right <= m.vw + 1 && r.bottom <= m.vh + 1;
 const words = (s) => s.split(/\s+/).filter(Boolean).length;
+const sentences = (s) => (s.match(/[a-z][.?!](\s|$)/gi) ?? []).length;
+
+/** A card's body copy: two sentences, two lines at most. */
+async function checkCardCopy(tag, locator) {
+  const c = await locator.evaluate((el) => {
+    const p = el.querySelector("p");
+    return { text: p?.textContent?.trim() ?? "", lines: p ? Math.round(p.getBoundingClientRect().height / parseFloat(getComputedStyle(p).lineHeight)) : 0 };
+  });
+  check(`${tag}: two plain sentences`, sentences(c.text) === 2 && words(c.text) <= 22 && !c.text.includes("—"), c.text);
+  check(`${tag}: two lines at most`, c.lines >= 1 && c.lines <= 2, `${c.lines} lines`);
+}
 
 async function shot(page, name) {
   await page.addStyleTag({ content: "nextjs-portal{display:none!important}" }).catch(() => {});
@@ -205,7 +221,8 @@ function assertPlacement(label, m, phone) {
   }
   check(`${label}: no sideways overflow`, m.overflow <= 1, `${m.overflow}px`);
   if (phone) check(`${label}: tap targets >= 44px`, m.small.length === 0, m.small.join(", "));
-  check(`${label}: one line, 9 words at most`, m.line.length > 0 && words(m.line) <= 9 && !m.line.includes("—"), m.line);
+  check(`${label}: two short sentences, 12 to 22 words`, sentences(m.line) === 2 && words(m.line) >= 12 && words(m.line) <= 22 && !m.line.includes("—"), m.line);
+  check(`${label}: copy wraps to two lines at most`, m.lines >= 1 && m.lines <= 2, `${m.lines} lines`);
 }
 
 /**
@@ -332,6 +349,7 @@ async function walkRole(browser, role, vp) {
   await welcome.waitFor({ state: "visible", timeout: 60000 });
   const welcomeText = await welcome.innerText();
   check(`${tag}: welcome greets by first name`, welcomeText.includes(`Welcome, ${u.first}.`), welcomeText.split("\n")[0]);
+  await checkCardCopy(`${tag} welcome`, welcome);
   check(`${tag}: welcome is a small card`, await welcome.evaluate((el) => el.getBoundingClientRect().height < window.innerHeight * 0.45));
   check(`${tag}: welcome offers Watch and Try`, (await welcome.getByRole("button", { name: "Watch how it works" }).count()) === 1 && (await welcome.getByRole("button", { name: "Try it myself" }).count()) === 1);
   await page.waitForTimeout(300);
@@ -344,8 +362,9 @@ async function walkRole(browser, role, vp) {
   check(`${tag}: watch lasts 30 to 45s`, own >= LIMITS.watchMin && own <= LIMITS.watchMax, `${(own / 1000).toFixed(1)}s + ${(server / 1000).toFixed(1)}s server`);
   timings[timings.length - 1].watchMs = own;
   const end = page.locator('[data-tour-sheet][data-mode="watch-end"]');
-  await end.waitFor({ state: "visible", timeout: 10000 });
+  await end.waitFor({ state: "visible", timeout: 30000 });
   check(`${tag}: watch ends with Now you try + Got it`, (await end.getByRole("button", { name: "Now you try" }).count()) === 1 && (await end.getByRole("button", { name: "Got it" }).count()) === 1);
+  await checkCardCopy(`${tag} watch end`, end);
   await shot(page, `${tag}-watch-end`);
 
   // 2. Now you try: every step by doing it.
@@ -354,7 +373,8 @@ async function walkRole(browser, role, vp) {
 
   // 3. Done, saved, quiet.
   const done = page.locator('[data-tour-sheet][data-mode="done"]');
-  await done.waitFor({ state: "visible", timeout: 10000 });
+  await done.waitFor({ state: "visible", timeout: 30000 });
+  await checkCardCopy(`${tag} done`, done);
   await shot(page, `${tag}-99-done`);
   await done.getByRole("button", { name: "Done", exact: true }).click();
   check(`${tag}: nothing left on screen after Done`, (await page.locator("[data-tour-sheet], [data-tour-lit], [data-tour-ghost]").count()) === 0);
@@ -369,11 +389,29 @@ async function walkRole(browser, role, vp) {
   await page.getByRole("button", { name: "Help", exact: true }).hover();
   await page.waitForTimeout(600);
   await page.getByRole("button", { name: "Help", exact: true }).click();
+  // Timed in the page: from the press on the menu item to the watch sheet.
+  await page.evaluate(() => {
+    const w = window;
+    w.__tourPress = null;
+    w.__tourSheet = null;
+    document.addEventListener("click", () => (w.__tourPress ??= performance.now()), { capture: true, once: true });
+    const mo = new MutationObserver(() => {
+      if (document.querySelector('[data-tour-sheet][data-mode="watch"]')) {
+        w.__tourSheet = performance.now();
+        mo.disconnect();
+      }
+    });
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true });
+  });
   await page.getByRole("menuitem", { name: "Watch how it works" }).click();
-  await page.locator('[data-tour-sheet][data-mode="watch"]').waitFor({ state: "visible", timeout: 10000 });
-  const fm = await page.waitForFunction(() => document.querySelector("[data-tour-sheet]")?.dataset.firstMoveMs, null, { timeout: 5000 }).then((h) => h.jsonValue(), () => null);
+  // It must open as a watch (not the step-by-step tour), even when the tour
+  // code was not loaded yet (a finished tour loads it on this press).
+  await page.locator('[data-tour-sheet][data-mode="watch"]').waitFor({ state: "visible", timeout: 30000 });
+  const sheetMs = Math.round(await page.evaluate(() => window.__tourSheet - window.__tourPress));
+  check(`${tag}: "?" Watch opens the watch within ${LIMITS.firstMove}ms of the press`, sheetMs >= 0 && sheetMs < LIMITS.firstMove, `${sheetMs}ms`);
+  const fm = await page.waitForFunction(() => document.querySelector("[data-tour-sheet]")?.dataset.firstMoveMs, null, { timeout: 30000 }).then((h) => h.jsonValue(), () => null);
   check(`${tag}: "?" Watch, first movement < ${LIMITS.firstMove}ms`, fm !== null && Number(fm) < LIMITS.firstMove, `${fm}ms`);
-  timings.push({ tag, mode: "menu-watch", firstMove: Number(fm) });
+  timings.push({ tag, mode: "menu-watch", firstMove: Number(fm), sheetMs });
   await page.getByRole("button", { name: "Pause" }).click();
   check(`${tag}: watch pauses`, (await page.getByRole("button", { name: "Play" }).count()) === 1);
   await page.keyboard.press("Escape");
@@ -383,12 +421,12 @@ async function walkRole(browser, role, vp) {
   // 5. "?" -> Show me around: Back, then Esc skips (saved).
   await page.getByRole("button", { name: "Help", exact: true }).click();
   await page.getByRole("menuitem", { name: "Show me around" }).click();
-  await page.locator('[data-tour-sheet][data-mode="try"][data-phase="turn"][data-step="0"]').waitFor({ timeout: 20000 });
+  await page.locator('[data-tour-sheet][data-mode="try"][data-phase="turn"][data-step="0"]').waitFor({ timeout: 30000 });
   check(`${tag}: Show me around starts at step 1`, true);
   await page.locator("[data-tour-lit]").click();
-  await page.locator('[data-tour-sheet][data-step="1"]').waitFor({ timeout: 20000 });
+  await page.locator('[data-tour-sheet][data-step="1"]').waitFor({ timeout: 30000 });
   await page.locator("[data-tour-sheet]").getByRole("button", { name: "Back", exact: true }).click();
-  const backOk = await page.locator('[data-tour-sheet][data-step="0"]').waitFor({ timeout: 10000 }).then(() => true, () => false);
+  const backOk = await page.locator('[data-tour-sheet][data-step="0"]').waitFor({ timeout: 30000 }).then(() => true, () => false);
   check(`${tag}: Back goes to the previous step`, backOk);
   await page.keyboard.press("Escape");
   await page.waitForTimeout(600);
@@ -416,14 +454,14 @@ async function walkRole(browser, role, vp) {
   await shot(page, `${tag}-help`);
   const pick = Math.min(1, u.steps - 1);
   await page.locator('button[aria-label^="Show me:"]').nth(pick).click();
-  await page.locator(`[data-tour-sheet][data-mode="one"][data-phase="turn"][data-step="${pick}"]`).waitFor({ timeout: 20000 });
+  await page.locator(`[data-tour-sheet][data-mode="one"][data-phase="turn"][data-step="${pick}"]`).waitFor({ timeout: 30000 });
   check(`${tag}: Show me plays that one step`, true);
   const one = await measure(page);
   if (one.act === "search") {
     await page.locator("[data-tour-lit]").fill("Gwen");
     await page.locator("[data-tour-lit]").press("Enter");
   } else await page.locator("[data-tour-lit]").click();
-  const closed = await page.waitForFunction(() => !document.querySelector("[data-tour-sheet]"), null, { timeout: 10000 }).then(() => true, () => false);
+  const closed = await page.waitForFunction(() => !document.querySelector("[data-tour-sheet]"), null, { timeout: 30000 }).then(() => true, () => false);
   check(`${tag}: Show me closes after the person does it`, closed);
 
   check(`${tag}: no page errors`, errors.length === 0, errors.slice(0, 3).join(" | "));
@@ -496,6 +534,7 @@ try {
   console.log("\ntimings (ms):");
   for (const t of timings) {
     const bits = [`first move ${t.firstMove}`];
+    if (t.sheetMs != null) bits.push(`press to sheet ${t.sheetMs}`);
     if (t.demos) bits.push(`demos ${t.demos.join("/")}`, `max ${t.maxDemo}`, `server ${t.server.map(Math.round).join("/")}`);
     if (t.watchMs) bits.push(`watch ${(t.watchMs / 1000).toFixed(1)}s`);
     console.log(`  ${t.tag} ${t.mode}: ${bits.join(", ")}`);

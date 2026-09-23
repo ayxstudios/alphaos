@@ -27,26 +27,28 @@ picker opens and nothing uploads.
 
 ## Steps per role
 
-Each step has one line of copy, second person, 9 words at most.
+Each step has two short plain sentences, 12 to 22 words: what the thing is,
+then what to do (owner, 2026-09-24: "some telling, but like simple text, not
+a whole essay"). On a phone they wrap to two lines at most.
 
 | Role | Step | The real action | Line |
 | --- | --- | --- | --- |
-| VA | Today | the Today menu item | Open Today to see what needs you first. |
-| VA | Find an order | types a customer's name into Orders search, Enter | Type a name, then press Enter to search. |
-| VA | Needs details | the Needs Details tab | Open Needs Details for orders missing information. |
-| VA | QC | Start QC (opens the review screen, read only) | Press Start QC to check the next portrait. |
-| VA | Messages | opens All mail | Open All mail to see every customer email. |
-| VA | Print | opens an order's Details | Open Details to see where each print is. |
-| Designer | My Board | the My Board menu item / tab | Open My Board to see your orders. |
-| Designer | Open a card | opens the order card | Open a card to see the order. |
-| Designer | Upload | sample file onto the drop zone | Add your finished portrait here. |
-| Designer | My Week | the My Week menu item / tab | Open My Week to see what is due. |
-| Admin | Orders | the Overdue tab | Open Overdue to see every late order. |
-| Admin | Team and sign-ins | the Designers group tab | Choose a group to see who can sign in. |
-| Admin | Portrait Styles | opens a style's Designers drawer | Open Designers to choose who draws each style. |
-| Admin | Settings | the Customer Email section | Open Customer Email to connect your mailbox. |
-| Admin | Money | a designer's earnings | Choose a designer to see what they earned. |
-| Admin | Health | the All Businesses view | Choose All Businesses to check every shop at once. |
+| VA | Today | the Today menu item | Today lists what needs you first. Open it and work from the top down. |
+| VA | Find an order | types a customer's name into Orders search, Enter | Search finds any order fast. Type a customer's name, then press Enter. |
+| VA | Needs details | the Needs Details tab | Some orders arrive missing information. Open Needs Details to see which ones need you. |
+| VA | QC | Start QC (opens the review screen, read only) | Finished portraits wait here for your check. Press Start QC to review the next one. |
+| VA | Messages | opens All mail | Messages holds every customer email. Open All mail to read or search them. |
+| VA | Print | opens an order's Details | Print lists approved orders ready to print. Open Details to see where each one is. |
+| Designer | My Board | the My Board menu item / tab | My Board holds every order given to you. Open it to see what is due first. |
+| Designer | Open a card | opens the order card | Each card is one order with the customer's photos. Open a card to see the details. |
+| Designer | Upload | sample file onto the drop zone | Your finished portrait goes on the order card. Add it here when the design is done. |
+| Designer | My Week | the My Week menu item / tab | My Week shows your deadlines and what you earned. Check it at the start of each day. |
+| Admin | Orders | the Overdue tab | Orders holds every order from every shop. Open Overdue to see the late ones first. |
+| Admin | Team and sign-ins | the Designers group tab | Team and sign-ins lists everyone who can sign in. Choose a group to see who is in it. |
+| Admin | Portrait Styles | opens a style's Designers drawer | Each style goes to the designers who draw it. Open Designers to choose who they are. |
+| Admin | Settings | the Customer Email section | Settings connects your shops, email and printers. Open Customer Email to connect your mailbox. |
+| Admin | Money | a designer's earnings | Money shows what each designer has earned. Choose a designer to see their orders. |
+| Admin | Health | the All Businesses view | Health flags problems behind the scenes. Choose All Businesses to check every shop at once. |
 
 When a page has nothing to act on (an empty QC queue, no earnings yet) the
 step falls back to the page's own menu item with its own line. When the
