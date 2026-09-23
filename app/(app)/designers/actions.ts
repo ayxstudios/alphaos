@@ -6,7 +6,8 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { businesses, designerBusinesses, designerProfiles, users } from "@/lib/db/schema";
-import { hashPassword } from "@/lib/auth/password";
+import { newUserProblem, newUserRow } from "@/lib/auth/new-user";
+import { createTeamMember, resetUserPassword, setUserActive } from "@/lib/team/manage";
 import {
   isValidE164,
   isValidHHMM,
@@ -206,8 +207,6 @@ export type AddDesignerInput = {
 
 export type AddDesignerResult = { ok: true; userId: string } | { ok: false; message: string };
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MIN_PASSWORD = 8;
 /** A new designer starts with a small daily limit so auto-assign can reach them at all (0 = never). */
 const NEW_DESIGNER_DAILY_LIMIT = 5;
 
@@ -227,14 +226,10 @@ export async function addDesigner(input: AddDesignerInput): Promise<AddDesignerR
   const user: RequestUser = { id: session.user.id, role: session.user.role };
   if (user.role !== "admin") return { ok: false, message: "Only an admin can add designers" };
 
-  const name = (input.name ?? "").trim().replace(/\s+/g, " ");
-  const email = (input.email ?? "").trim().toLowerCase();
-  const password = input.password ?? "";
-  if (name.length < 2 || name.length > 80) return { ok: false, message: "Enter the designer's name" };
-  if (!EMAIL_RE.test(email) || email.length > 200) return { ok: false, message: "Enter a valid email address" };
-  if (password.length < MIN_PASSWORD) {
-    return { ok: false, message: `The temporary password needs at least ${MIN_PASSWORD} characters` };
-  }
+  const problem = newUserProblem({ name: input.name, email: input.email, password: input.password });
+  if (problem) return { ok: false, message: problem };
+  const values = await newUserRow({ name: input.name, email: input.email, role: "designer", password: input.password });
+  const email = values.email;
   const wanted = [...new Set((input.businessIds ?? []).map((id) => id.trim()).filter(Boolean))];
 
   try {
@@ -254,7 +249,7 @@ export async function addDesigner(input: AddDesignerInput): Promise<AddDesignerR
 
       const [created] = await tx
         .insert(users)
-        .values({ name, email, role: "designer", passwordHash: await hashPassword(password) })
+        .values(values)
         .returning({ id: users.id });
       await tx.insert(designerProfiles).values({
         userId: created.id,
@@ -270,4 +265,45 @@ export async function addDesigner(input: AddDesignerInput): Promise<AddDesignerR
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Could not add the designer" };
   }
+}
+
+// ---- Team (admin only): the logic lives in lib/team/manage.ts ---------------
+
+async function sessionActor(): Promise<RequestUser | null> {
+  const session = await auth();
+  if (!session?.user) return null;
+  return { id: session.user.id, role: session.user.role };
+}
+
+function refreshTeamViews() {
+  revalidatePath("/designers");
+  revalidatePath("/board");
+  revalidatePath("/orders");
+}
+
+/** Add a VA or another admin with a password the admin sets (shown to them once). */
+export async function addTeamMember(input: {
+  name: string;
+  email: string;
+  password: string;
+  role: "va" | "admin";
+}): Promise<AddDesignerResult> {
+  const res = await createTeamMember(await sessionActor(), input);
+  if (res.ok) revalidatePath("/designers");
+  return res;
+}
+
+/** Deactivate (or reactivate) anyone; never the last active admin. */
+export async function setMemberActive(
+  userId: string,
+  active: boolean,
+): Promise<{ ok: true; openOrders: number } | { ok: false; message: string }> {
+  const res = await setUserActive(await sessionActor(), userId, active);
+  if (res.ok) refreshTeamViews();
+  return res;
+}
+
+/** Admin sets a new password for someone; their open sessions end. */
+export async function resetMemberPassword(userId: string, password: string): Promise<ActionResult> {
+  return resetUserPassword(await sessionActor(), userId, password);
 }

@@ -46,7 +46,22 @@ export async function authenticate(
     throw new AccountLockedError();
   }
 
-  const [user] = await db.select().from(users).where(eq(users.email, email));
+  // Named columns (not select *) so a column added later never breaks sign-in
+  // on a database the migration has not reached yet.
+  const [user] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      name: users.name,
+      role: users.role,
+      image: users.image,
+      active: users.active,
+      passwordHash: users.passwordHash,
+    })
+    .from(users)
+    .where(eq(users.email, email));
+  // A deactivated account (user.active = false) fails exactly like a wrong
+  // password: null, and the login form's calm "ask your admin" line.
   const ok =
     !!user?.passwordHash &&
     user.active &&

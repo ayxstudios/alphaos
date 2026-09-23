@@ -163,6 +163,9 @@ export const users = pgTable("user", {
   passwordHash: text("password_hash"),
   // First-run tour progress (lib/tour/state.ts). Null = never seen it.
   onboarding: jsonb("onboarding").$type<OnboardingState>(),
+  // Sessions signed in before this are refused (sign-out, password reset).
+  // Read on every request by lib/auth/session-check.ts. Null = never revoked.
+  sessionsValidAfter: timestamp("sessions_valid_after", { withTimezone: true, mode: "date" }),
 });
 
 // Database-backed login throttling (no Redis). Keyed by lowercased email so it

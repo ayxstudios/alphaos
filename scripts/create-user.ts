@@ -17,7 +17,7 @@ import { drizzle } from "drizzle-orm/neon-serverless";
 import ws from "ws";
 
 import * as schema from "../lib/db/schema";
-import { hashPassword } from "../lib/auth/password";
+import { newUserRow } from "../lib/auth/new-user";
 
 neonConfig.webSocketConstructor = ws;
 
@@ -50,13 +50,14 @@ async function main() {
   const pool = new Pool({ connectionString: url });
   const db = drizzle(pool, { schema });
 
-  const passwordHash = await hashPassword(password);
+  // Same row builder as the admin Team panel and Add designer (lib/auth/new-user.ts).
+  const values = await newUserRow({ email, name, role: roleRaw as Role, password });
   await db
     .insert(schema.users)
-    .values({ email, name, role: roleRaw as Role, passwordHash })
+    .values(values)
     .onConflictDoUpdate({
       target: schema.users.email,
-      set: { name, role: roleRaw as Role, passwordHash },
+      set: { name: values.name, role: values.role, passwordHash: values.passwordHash },
     });
 
   await pool.end();

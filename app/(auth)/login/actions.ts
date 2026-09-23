@@ -26,7 +26,9 @@ export async function loginAction(
         error:
           err.code === "locked"
             ? "Too many failed attempts. Try again in 15 minutes."
-            : "Invalid email or password.",
+            : // Also what a deactivated account sees: calm, and it never says
+              // whether the account exists.
+              "That email and password did not sign you in. Check them, or ask your admin if your account was deactivated.",
       };
     }
     if (err instanceof AuthError) {

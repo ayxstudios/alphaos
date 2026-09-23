@@ -6,6 +6,8 @@ import { getStyleCatalog } from "@/lib/designers/styles";
 import { loadShellData } from "@/lib/shell/context";
 import { AddDesigner } from "@/components/designers/add-designer";
 import { DesignerRoster } from "@/components/designers/designer-roster";
+import { TeamPanel } from "@/components/team/team-panel";
+import { listTeam } from "@/lib/team/manage";
 import { DataPanel, EmptyState, Page, PageHeader } from "@/components/ui";
 import { Users } from "@/components/ui/icons";
 
@@ -20,9 +22,10 @@ export default async function DesignersPage() {
 
   const { selected, options } = await loadShellData(user);
   const isAdmin = user.role === "admin";
-  const [designers, styleCatalog] = await Promise.all([
+  const [designers, styleCatalog, team] = await Promise.all([
     getDesignerRoster(user),
     getStyleCatalog(user, selected.id),
+    isAdmin ? listTeam(user) : Promise.resolve([]),
   ]);
 
   return (
@@ -50,6 +53,9 @@ export default async function DesignersPage() {
       ) : (
         <DesignerRoster designers={designers} styleOptions={styleCatalog} canEdit />
       )}
+
+      {/* Admin only: add VAs and admins, deactivate, reset passwords. */}
+      {isAdmin && <TeamPanel members={team} currentUserId={user.id} />}
     </Page>
   );
 }
