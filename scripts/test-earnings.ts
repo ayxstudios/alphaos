@@ -136,12 +136,12 @@ async function cleanupRows() {
 async function main() {
   const ctx = await withSystemContext(async (tx) => {
     const [shop] = await tx.select({ id: shops.id, businessId: shops.businessId }).from(shops).limit(1);
-    const [va] = await tx.select({ id: users.id }).from(users).where(eq(users.role, "va")).limit(1);
+    const [va] = await tx.select({ id: users.id, name: users.name }).from(users).where(eq(users.role, "va")).limit(1);
     const designers = await tx.select({ id: users.id }).from(users).where(eq(users.role, "designer")).limit(2);
     if (!shop) throw new Error("Need at least one shop in the database");
     if (!va) throw new Error("Need at least one VA in the database");
     if (designers.length < 2) throw new Error("Need at least two designers in the database");
-    return { shopId: shop.id, businessId: shop.businessId, vaId: va.id, d1: designers[0].id, d2: designers[1].id };
+    return { shopId: shop.id, businessId: shop.businessId, vaId: va.id, vaName: va.name ?? "", d1: designers[0].id, d2: designers[1].id };
   });
   const va: RequestUser = { id: ctx.vaId, role: "va" };
 
@@ -176,7 +176,7 @@ async function main() {
     await transition(va, { orderId, to: "in_design", expectedFrom: "complete", metadata: { revisionReason: "Regression test" } });
     await addSubmission(orderId);
     await transition(va, { orderId, to: "awaiting_qc", expectedFrom: "in_design" });
-    await transition(va, { orderId, to: "awaiting_approval", expectedFrom: "awaiting_qc", metadata: { itemResults: passingItemResults } });
+    await transition(va, { orderId, to: "awaiting_approval", expectedFrom: "awaiting_qc", metadata: { itemResults: passingItemResults, signature: ctx.vaName } });
     await transition(va, { orderId, to: "approved", expectedFrom: "awaiting_approval" });
     await transition(va, { orderId, to: "complete", expectedFrom: "approved" });
     rows = await earningRows(orderId);

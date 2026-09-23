@@ -22,12 +22,14 @@ import ws from "ws";
 import * as schema from "../lib/db/schema";
 import { encryptCredentials } from "../lib/db/credentials";
 import { hashPassword } from "../lib/auth/password";
+import { applyLocalNeonProxy } from "../lib/db/local-proxy";
 
 // Dev-only password shared by every seeded user (printed at the end).
 const DEV_PASSWORD = "alphaos123";
 
 config({ path: ".env.local" });
 neonConfig.webSocketConstructor = ws;
+applyLocalNeonProxy();
 
 const pool = new Pool({ connectionString: process.env.DIRECT_URL! });
 const db = drizzle(pool, { schema });

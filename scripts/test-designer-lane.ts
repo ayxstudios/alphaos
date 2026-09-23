@@ -109,7 +109,7 @@ async function main() {
   const ctx = await withSystemContext(async (tx) => {
     const [shop] = await tx.select({ id: shops.id, businessId: shops.businessId }).from(shops).limit(1);
     if (!shop) throw new Error("Need at least one shop in the database");
-    const [va] = await tx.select({ id: users.id }).from(users).where(eq(users.role, "va")).limit(1);
+    const [va] = await tx.select({ id: users.id, name: users.name }).from(users).where(eq(users.role, "va")).limit(1);
     if (!va) throw new Error("Need at least one VA in the database");
     const designers = await tx
       .select({ id: users.id })
@@ -117,7 +117,7 @@ async function main() {
       .innerJoin(designerBusinesses, and(eq(designerBusinesses.userId, users.id), eq(designerBusinesses.businessId, shop.businessId)))
       .where(eq(users.role, "designer"));
     if (designers.length < 2) throw new Error("Need at least two designers linked to the seed business");
-    return { shopId: shop.id, businessId: shop.businessId, vaId: va.id, d1: designers[0].id, d2: designers[1].id };
+    return { shopId: shop.id, businessId: shop.businessId, vaId: va.id, vaName: va.name ?? "", d1: designers[0].id, d2: designers[1].id };
   });
 
   const now = new Date();
@@ -226,10 +226,12 @@ async function main() {
         orderId: qcOrder,
         to: "in_design",
         expectedFrom: "awaiting_qc",
-        metadata: { reason: "Ring does not match the reference photo.", itemResults: passingResults },
+        // QC sign-off (0035): the reviewer types their own account name.
+        metadata: { reason: "Ring does not match the reference photo.", itemResults: passingResults, signature: ctx.vaName },
       });
     } catch (err) {
       if (!(err instanceof OrderTransitionError)) throw err;
+      console.log(`      QC fail transition rejected: ${err.message}`);
     }
     const qcEvents = await alphaEventsFor(qcOrder, "designer.qc_feedback");
     report(

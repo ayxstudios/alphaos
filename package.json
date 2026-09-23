@@ -33,6 +33,8 @@
     "test:etsy-mail": "tsx scripts/test-etsy-mail.ts",
     "test:reminders": "tsx scripts/test-reminders.ts",
     "test:designer-lane": "tsx scripts/test-designer-lane.ts",
+    "test:all": "node scripts/test-all.mjs",
+    "ci:local": "bash scripts/ci-local.sh",
     "seed:qc": "tsx scripts/seed-qc.ts"
   },
   "dependencies": {

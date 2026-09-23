@@ -85,7 +85,7 @@ async function main() {
   // --- setup: a resolved in_design order assigned to designer d2 -----------
   const ctx = await withSystemContext(async (tx) => {
     const [d2] = await tx.select({ id: users.id }).from(users).where(eq(users.email, "d2@aystudios.io"));
-    const [va] = await tx.select({ id: users.id }).from(users).where(eq(users.email, "va1@aystudios.io"));
+    const [va] = await tx.select({ id: users.id, name: users.name }).from(users).where(eq(users.email, "va1@aystudios.io"));
     // A shop in a business d2 belongs to.
     const [shop] = await tx
       .select({ id: shops.id, businessId: shops.businessId })
@@ -166,7 +166,7 @@ async function main() {
       active: true,
       dueAt: new Date(Date.now() + 86400000),
     });
-    return { orderId, noSubmissionOrderId, lateOrderId, d2: d2.id, va: va.id };
+    return { orderId, noSubmissionOrderId, lateOrderId, d2: d2.id, va: va.id, vaName: va.name ?? "" };
   });
 
   const designer: RequestUser = { id: ctx.d2, role: "designer" };
@@ -210,7 +210,8 @@ async function main() {
     orderId: ctx.orderId,
     to: "awaiting_approval",
     expectedFrom: "awaiting_qc",
-    metadata: { itemResults: passingItemResults },
+    // QC sign-off (0035): the reviewer types their own account name.
+    metadata: { itemResults: passingItemResults, signature: ctx.vaName },
   });
   report("VA awaiting_qc -> awaiting_approval", (await statusOf(ctx.orderId)) === "awaiting_approval", `status now ${await statusOf(ctx.orderId)}`);
 
