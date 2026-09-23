@@ -42,10 +42,10 @@ import {
   type ShopCredentials,
 } from "../../lib/db/credentials";
 import type { Tx } from "../../lib/db";
+import { isProdHost } from "./prod-endpoints";
 
 neonConfig.webSocketConstructor = ws;
 
-const PROD_ENDPOINT = "ep-spring-dawn";
 const BUSINESS_NAME = process.env.ARM_BUSINESS ?? "PixArt";
 const HOUR = 3600_000;
 
@@ -153,7 +153,7 @@ async function main() {
   const url = need("TARGET_URL");
   need("ENCRYPTION_KEY");
   const parsed = new URL(url);
-  if (parsed.hostname.includes(PROD_ENDPOINT)) throw new Error("TARGET_URL is the production database; refusing.");
+  if (isProdHost(parsed.hostname)) throw new Error("TARGET_URL is the production database; refusing.");
   if (parsed.username !== "neondb_owner") throw new Error("TARGET_URL must be the staging owner connection");
 
   const pool = new Pool({ connectionString: url, max: 1 });
