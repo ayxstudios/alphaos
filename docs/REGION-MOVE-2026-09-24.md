@@ -126,6 +126,16 @@ customers and 123 orders. No context set sees 0.
   `cron.reminders`, `cron.print_reconcile`, all `ok`). The Etsy shop's
   `lastSyncAt` moved to 20:59:07 on the new database.
 
+- Shopify staff-session sync (LaunchAgent, reads the updated
+  `alphaos-wt-alpha/.env.local`): its first run after reload (20:54) failed
+  with "no CSRF token seen on the pixartcreatives-8416 admin". That is the
+  Shopify admin browser session, not the database: the shop list had already
+  been read from the new database, and the same error appears 16 times in the
+  log before the move. A `launchctl kickstart` run at 21:13 logged
+  `sync_complete` and `shop_synced` (0 imported, 1 skipped, 0 failed of 23),
+  and the Shopify shop's `lastSyncAt` moved to 21:13:27 on the Singapore
+  database. It stays at 20:42:57 on the old one.
+
 ## TTFB from this Mac (Melbourne), ms, median of 6 warm requests
 
 Measured with Node fetch on one connection, signed in as admin.
