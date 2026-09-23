@@ -194,7 +194,11 @@ export async function saveCustomerUploads(token: string, keys: string[], note: s
       if (CLOSED.includes(order.status)) return { ok: false as const, message: "This order is closed." };
 
       const prefix = `${usingDevStore() ? DEV_STORE_PREFIX : ""}${order.businessId}/${order.id}/reference/`;
-      if (r2Keys.some((k) => !k.startsWith(prefix))) throw new Error("Upload does not belong to this order.");
+      // Exactly one plain file name under this order's prefix (no "..", no sub-path),
+      // so a key can never point at another order's object.
+      if (r2Keys.some((k) => !k.startsWith(prefix) || !/^[A-Za-z0-9-]+\.[A-Za-z0-9]+$/.test(k.slice(prefix.length)))) {
+        throw new Error("Upload does not belong to this order.");
+      }
 
       for (const key of r2Keys) {
         // A key that never landed (or a storage hiccup) must read as a plain

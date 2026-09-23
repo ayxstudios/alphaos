@@ -184,7 +184,7 @@ export async function saveCardAssetUploads(input: {
         .limit(1);
       if (!order) throw new Error("Order not found");
       const expectedPrefix = `${order.businessId}/${order.id}/${input.type}/`;
-      if (r2Keys.some((key) => !key.startsWith(expectedPrefix))) {
+      if (r2Keys.some((key) => !key.startsWith(expectedPrefix) || !/^[A-Za-z0-9-]+\.[A-Za-z0-9]+$/.test(key.slice(expectedPrefix.length)))) {
         throw new Error("Upload key does not match this order");
       }
       if (user.role === "designer" && input.type !== "submission") {
