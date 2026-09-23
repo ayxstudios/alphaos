@@ -97,6 +97,14 @@ async function main() {
       !dup.ok && !byVa.ok && !weak.ok,
       `dup=${dup.ok ? "ok" : dup.message} | va=${byVa.ok ? "ok" : byVa.message} | weak=${weak.ok ? "ok" : weak.message}`,
     );
+    // Hand-crafted action calls (security QA r2): non-string fields get a calm refusal, not a 500.
+    const oddName = await createTeamMember(admin, { name: 12345 as unknown as string, email: `team-odd-${stamp}@example.test`, password: vaPassword, role: "va" });
+    const oddPassword = await createTeamMember(admin, { name: "Odd", email: `team-odd2-${stamp}@example.test`, password: ["x".repeat(12)] as unknown as string, role: "va" });
+    report(
+      "non-string name or password is refused calmly",
+      !oddName.ok && !oddPassword.ok,
+      `name=${oddName.ok ? "ok" : oddName.message} | password=${oddPassword.ok ? "ok" : oddPassword.message}`,
+    );
     report("a VA sees no Team list", (await listTeam(seedVa)).length === 0, "listTeam(va) = []");
 
     // ---- 2. Inactive user cannot sign in, live session refused --------------
