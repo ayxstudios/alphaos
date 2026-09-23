@@ -417,6 +417,18 @@ export function OrdersOperationsTable({
   const [designerId, setDesignerId] = useState("");
   const [targetStatus, setTargetStatus] = useState<OrderStatus | "">("");
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
+  const columnMenuRef = useRef<HTMLDivElement>(null);
+  // Escape closes the Columns popover and hands focus back to its button.
+  useEffect(() => {
+    if (!columnMenuOpen) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setColumnMenuOpen(false);
+      columnMenuRef.current?.querySelector("button")?.focus();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [columnMenuOpen]);
   const [columnPrefsLoaded, setColumnPrefsLoaded] = useState(false);
   const [visibleColumnKeys, setVisibleColumnKeys] = useState<ColumnKey[]>(DEFAULT_COLUMN_KEYS);
   const [scrolls, setScrolls] = useState(false);
@@ -542,8 +554,14 @@ export function OrdersOperationsTable({
         <span className="tabular-nums">
           {firstResult}-{lastResult} of {total}
         </span>
-        <div className="relative">
-          <Button type="button" size="sm" variant="ghost" onClick={() => setColumnMenuOpen((open) => !open)}>
+        <div ref={columnMenuRef} className="relative">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            aria-expanded={columnMenuOpen}
+            onClick={() => setColumnMenuOpen((open) => !open)}
+          >
             <Columns size={15} />
             Columns
           </Button>
