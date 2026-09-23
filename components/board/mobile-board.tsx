@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui";
-import { Brush, Check } from "@/components/ui/icons";
+import { Brush, Camera, Check } from "@/components/ui/icons";
 import { OrderCard } from "./order-card";
 import type { BoardCard, DesignerBoard as BoardData } from "@/lib/orders/board-data";
 import { COMPLETE_COLUMN_WINDOW_DAYS } from "@/lib/orders/board-constants";
@@ -14,20 +14,21 @@ type ColKey = keyof Cols;
 const SECTIONS: { key: ColKey; title: string; empty: string }[] = [
   { key: "myQueue", title: "My Queue", empty: "Nothing waiting on you." },
   { key: "inDesign", title: "In Design", empty: "Nothing in progress." },
-  { key: "failedQc", title: "Failed QC, fix these first", empty: "Nothing failed." },
+  { key: "failedQc", title: "Failed QC", empty: "Nothing failed." },
   { key: "revisions", title: "Revisions", empty: "No revisions." },
   { key: "awaitingQc", title: "Awaiting QC", empty: "Nothing sent for QC yet." },
-  { key: "withCustomer", title: "With the customer", empty: "Nothing with customers." },
+  { key: "withCustomer", title: "With the Customer", empty: "Nothing with customers." },
   { key: "complete", title: `Complete (last ${COMPLETE_COLUMN_WINDOW_DAYS} days)`, empty: "Nothing finished yet." },
 ];
 
 /**
  * Phone-first designer board: one stacked column, no drag. Each card gets a
- * big tap button for the one thing a designer actually does next — "Start"
- * moves a queued order into design, "Submit for QC" sends a designed order on
- * (the server still enforces a submission exists first; a rejection just
- * shows the same toast the desktop board shows). Awaiting QC, With the
- * customer and Complete are read-only: there is nothing left for the designer to do there.
+ * big tap button for the one thing a designer actually does next: "Start"
+ * moves a queued order into design; a card with a fresh portrait version
+ * gets "Submit for QC"; one without (never uploaded, or sent back since)
+ * gets "Add the portrait" / "Add a new version", which opens the card where
+ * the upload lives. Awaiting QC, With the Customer and Complete are
+ * read-only: there is nothing left for the designer to do there.
  */
 export function MobileDesignerBoard({
   cols,
@@ -87,19 +88,32 @@ export function MobileDesignerBoard({
                     Start
                   </Button>
                 )}
-                {(section.key === "inDesign" || section.key === "failedQc" || section.key === "revisions") && (
-                  <Button
-                    type="button"
-                    size="lg"
-                    variant="secondary"
-                    className="mt-2 w-full"
-                    loading={busy === card.orderId}
-                    onClick={() => void run(card, () => onSubmit(card, section.key))}
-                  >
-                    <Check size={16} />
-                    Submit for QC
-                  </Button>
-                )}
+                {(section.key === "inDesign" || section.key === "failedQc" || section.key === "revisions") &&
+                  (card.readyForQc ? (
+                    <Button
+                      type="button"
+                      size="lg"
+                      className="mt-2 w-full"
+                      loading={busy === card.orderId}
+                      onClick={() => void run(card, () => onSubmit(card, section.key))}
+                    >
+                      <Check size={16} />
+                      Submit for QC
+                    </Button>
+                  ) : (
+                    // No version to review yet (or none since it came back):
+                    // the next step is adding one, which lives in the card.
+                    <Button
+                      type="button"
+                      size="lg"
+                      variant="secondary"
+                      className="mt-2 w-full"
+                      onClick={() => onOpen(card)}
+                    >
+                      <Camera size={16} />
+                      {section.key === "inDesign" ? "Add the portrait" : "Add a new version"}
+                    </Button>
+                  ))}
               </div>
             ))}
           </div>

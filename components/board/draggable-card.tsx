@@ -35,6 +35,16 @@ export function DraggableCard({
       ref={setNodeRef}
       {...listeners}
       {...attributes}
+      // A read-only column's card still opens: it is not a disabled button
+      // (dnd-kit marks it aria-disabled because it cannot be dragged).
+      aria-disabled={undefined}
+      aria-roledescription={disabled ? undefined : attributes["aria-roledescription"]}
+      // Enter or Space opens the card from the keyboard, same as a click.
+      onKeyDown={(e) => {
+        if (!onOpen || (e.key !== "Enter" && e.key !== " ")) return;
+        e.preventDefault();
+        onOpen(card);
+      }}
       // Capture phase: record the press position WITHOUT overriding dnd-kit's own
       // onPointerDown (spread above) — using onPointerDown here would clobber the
       // sensor and break dragging entirely.
