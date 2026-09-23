@@ -26,7 +26,10 @@ export type OrderStyleSetterProps = {
   styles: { id: string; name: string }[];
 };
 
-export function OrderStyleSetter({ orderId, currentStyle, via, affected, locked, styles }: OrderStyleSetterProps) {
+export function OrderStyleSetter({ orderId, currentStyle: rawStyle, via, affected, locked, styles }: OrderStyleSetterProps) {
+  // An item saved with no style (e.g. Complete details left blank) carries ""
+  // or null; either way there is no style name to show.
+  const currentStyle = rawStyle?.trim() || null;
   const router = useRouter();
   const toast = useToast();
   const [open, setOpen] = useState(false);
@@ -37,7 +40,8 @@ export function OrderStyleSetter({ orderId, currentStyle, via, affected, locked,
   const hasRule = via === "sku" || via === "title";
   // Defaulted = a style applied via the fallback, not a real match, and the VA
   // hasn't hand-set this order. Surface it so a new product isn't silently mislabelled.
-  const defaulted = via === "default" && !locked;
+  // Only when a default style actually landed; with none it is "No style matched".
+  const defaulted = via === "default" && !locked && !!currentStyle;
   const targetName = choice === NEW ? newName.trim() : styles.find((s) => s.id === choice)?.name ?? "";
   const differs = !!currentStyle && !!targetName && currentStyle.toLowerCase() !== targetName.toLowerCase();
   const ready = choice === NEW ? !!newName.trim() : !!choice;
@@ -86,7 +90,7 @@ export function OrderStyleSetter({ orderId, currentStyle, via, affected, locked,
         ) : currentStyle ? (
           <span className="font-medium text-ink">{currentStyle}</span>
         ) : (
-          <span className="font-medium text-amber">Not recognised, no style set</span>
+          <span className="font-medium text-amber">No style matched</span>
         )}
         <Button type="button" size="sm" variant="secondary" className="ml-auto" onClick={() => setOpen(true)}>
           {defaulted ? "Confirm or correct" : currentStyle ? "Change" : "Set style"}
