@@ -374,7 +374,8 @@ export function ResolutionRulesEditor({
           {summary.addOnsRemoved} add-on line{summary.addOnsRemoved === 1 ? "" : "s"} removed,{" "}
           {summary.namesBackfilled} order number{summary.namesBackfilled === 1 ? "" : "s"} backfilled,{" "}
           {summary.reclassified} re-classified, {summary.reclassifySkipped} skipped (designer
-          already working)
+          already working), {summary.productTypesFixed} digital/physical fixed
+          {summary.productTypeConflicts > 0 ? `, ${summary.productTypeConflicts} digital/physical to check` : ""}
           {summary.refetched > 0 ? ` · ${summary.refetched} re-fetched from Shopify.` : "."}
         </p>
       )}

@@ -24,7 +24,7 @@ import { OrdersFilterSelect } from "@/components/orders/orders-filter-select";
 import { OrdersViewPreference } from "@/components/orders/orders-view-preference";
 import { cn } from "@/lib/utils";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
-import { resolveFigureCount, type NormalizedVariation } from "@/lib/integrations/figures";
+import { resolveFigureCount, resolveProductType, type NormalizedVariation } from "@/lib/integrations/figures";
 import { stageTimer } from "@/lib/orders/stage-timers";
 import { getEmailNeedsActionCounts } from "@/lib/email/outbox";
 import { liveOrderWhere } from "@/lib/orders/archive";
@@ -205,12 +205,14 @@ function reviewReasonText(input: {
   status: string;
   email: string | null;
   unresolvedFigures: boolean;
+  fulfilmentConflict: boolean;
   assignee: string | null;
 }): string | null {
   if (input.derivedStatus !== "Needs VA Review") return null;
   if (input.status === "triage") return "This is a draft order. Open it and choose the right order type.";
   if (!input.email) return "No customer email yet. Add the customer's email so we can send the proof.";
   if (input.unresolvedFigures) return "We do not know how many figures. Open it and set the figure count.";
+  if (input.fulfilmentConflict) return "The order says both digital file and print. Check which one the customer paid for.";
   if (!input.assignee) return "No designer is free for this order right now. Please assign it to a designer by hand.";
   return "Open this order and check what is missing.";
 }
@@ -225,6 +227,12 @@ function effectiveFigureCount(item: { figureCount: number | null; rawVariations:
   if (item.figureCount != null) return item.figureCount;
   const variations = Array.isArray(item.rawVariations) ? (item.rawVariations as NormalizedVariation[]) : [];
   return variations.length ? resolveFigureCount(variations, null).count : null;
+}
+
+/** The item's options disagree on digital vs physical (the importer flagged it). */
+function fulfilmentConflict(item: { productType: string; rawVariations: unknown }): boolean {
+  const variations = Array.isArray(item.rawVariations) ? (item.rawVariations as NormalizedVariation[]) : [];
+  return variations.length > 0 && resolveProductType(variations, item.productType === "digital").conflict;
 }
 
 function orderLabel(number: string | null, fallback: string) {
@@ -566,8 +574,9 @@ export default async function OrdersPage({
       // because the stored value predates the shop rule. Never widens review — it
       // only clears a stale figure-only needs_review flag.
       const unresolvedFigures = items.some((item) => effectiveFigureCount(item) == null);
+      const typeConflict = items.some(fulfilmentConflict);
       const needsReview =
-        order.needsReview && (!order.customerEmail || unresolvedFigures);
+        order.needsReview && (!order.customerEmail || unresolvedFigures || typeConflict);
       const derivedStatus = operationalStatusLabel({
         status: order.status,
         needsReview,
@@ -599,6 +608,7 @@ export default async function OrdersPage({
         status: order.status,
         email: order.customerEmail,
         unresolvedFigures,
+        fulfilmentConflict: typeConflict,
         assignee: order.assignee,
       });
       const action =

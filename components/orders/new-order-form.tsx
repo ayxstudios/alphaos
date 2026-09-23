@@ -335,6 +335,7 @@ export function NewOrderForm({
                           <div className="mt-1 flex flex-wrap gap-1.5">
                             {tx.quantity != null && <Badge variant="neutral">Qty {tx.quantity}</Badge>}
                             {tx.fulfillment && <Badge variant={tx.fulfillment === "physical" ? "info" : "success"}>{tx.fulfillment === "physical" ? "Physical fulfilment" : "Digital fulfilment"}</Badge>}
+                            {tx.fulfillmentConflict && <Badge variant="warning">Check: digital or print?</Badge>}
                             {tx.productCategory && <Badge variant="neutral">{tx.productCategory}</Badge>}
                           </div>
                         </div>
