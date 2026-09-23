@@ -145,6 +145,11 @@ export function NewOrderForm({
   const [dup, setDup] = useState<{ orderId: string; status: string; label: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const firstFieldRef = useRef<HTMLInputElement>(null);
+  // Keyboard-first on a laptop: a new order opens with Order number focused.
+  // Not on a phone, where focus would throw the keyboard over the form.
+  useEffect(() => {
+    if (mode === "create" && window.matchMedia("(min-width: 1024px)").matches) firstFieldRef.current?.focus();
+  }, [mode]);
   const effectivePhotoCount = (existing?.photoCount ?? 0) + photos.length;
   const missing = mode === "complete"
     ? missingReviewFields({ customerEmail, style, photoCount: effectivePhotoCount })
