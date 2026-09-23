@@ -424,8 +424,11 @@ function EmailPreviewDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="qc-email-preview-title"
-        className="grid max-h-[92vh] w-full max-w-6xl grid-cols-1 overflow-y-auto rounded-modal bg-surface shadow-lg xl:grid-cols-[minmax(0,1fr)_28rem] xl:grid-rows-[minmax(0,92vh)] xl:overflow-hidden"
+        className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-modal bg-surface shadow-lg"
       >
+        {/* Body scrolls (as one on a phone, per pane from xl); the footer with
+            Send stays put, so the one thing to do is always on screen. */}
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto xl:grid-cols-[minmax(0,1fr)_28rem] xl:grid-rows-[minmax(0,1fr)] xl:overflow-hidden">
         <div className="min-h-0 p-5 xl:overflow-y-auto">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -487,16 +490,17 @@ function EmailPreviewDialog({
             className="mt-4 font-mono text-xs"
           />
 
-          {/* Always in view: the send is the point of this dialog. */}
-          <div className="sticky bottom-0 -mx-5 -mb-5 mt-4 flex flex-wrap justify-end gap-2 border-t border-line bg-canvas px-5 py-3">
-            <Button type="button" variant="ghost" onClick={onCancel} disabled={pending}>
-              Cancel
-            </Button>
-            <Button type="button" onClick={onConfirm} loading={pending} disabled={!body.trim()}>
-              Send email and pass QC
-            </Button>
-          </div>
         </aside>
+        </div>
+
+        <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-line bg-surface px-5 py-3">
+          <Button type="button" variant="ghost" onClick={onCancel} disabled={pending}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={onConfirm} loading={pending} disabled={!body.trim()}>
+            Send email and pass QC
+          </Button>
+        </div>
       </div>
     </div>
   );
