@@ -34,6 +34,7 @@ import { TemplateEditor, type TemplateVM } from "@/components/settings/template-
 import { ShopStylesPanel, type ShopStylesVM } from "@/components/settings/shop-styles-panel";
 import { SetupChecklist, type SetupChecklistItem } from "@/components/settings/setup-checklist";
 import { BusinessDetailsCard } from "@/components/settings/business-details-card";
+import { ActiveSectionIntoView } from "@/components/settings/active-section-into-view";
 import {
   defaultTemplateForBusiness,
   EDITABLE_TEMPLATE_KEYS,
@@ -455,9 +456,13 @@ export default async function SettingsPage({
   ];
 
   return (
-    <Page className="grid grid-cols-1 gap-6 lg:grid-cols-[12rem_minmax(0,1fr)]">
+    <Page>
+      {/* Title first, full width, so it lines up with every other page; then
+          the section list (a scrolling row on a phone) beside the content. */}
+      <PageHeader title="Settings" tourId="page:settings" />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[12rem_minmax(0,1fr)]">
       <aside className="min-w-0">
-        <nav className="sticky top-20 flex gap-1 overflow-x-auto text-sm lg:flex-col lg:overflow-visible">
+        <nav id="settings-sections" aria-label="Settings sections" className="-mx-4 flex gap-1 overflow-x-auto px-4 text-sm sm:mx-0 sm:px-0 lg:sticky lg:top-5 lg:flex-col lg:overflow-visible">
           {SETTINGS_SECTIONS.map((section) => (
             <Link
               key={section.key}
@@ -465,20 +470,17 @@ export default async function SettingsPage({
               aria-current={activeSection === section.key ? "page" : undefined}
               className={
                 activeSection === section.key
-                  ? "shrink-0 rounded-input bg-pigment text-surface px-3 py-2 font-medium"
-                  : "shrink-0 rounded-input px-3 py-2 text-slate hover:bg-surface hover:text-ink"
+                  ? "flex min-h-11 shrink-0 items-center rounded-input bg-pigment px-3 py-2 font-medium text-surface lg:min-h-0"
+                  : "flex min-h-11 shrink-0 items-center rounded-input px-3 py-2 text-slate hover:bg-surface hover:text-ink lg:min-h-0"
               }
             >
               {section.label}
             </Link>
           ))}
         </nav>
+        <ActiveSectionIntoView navId="settings-sections" active={activeSection} />
       </aside>
       <div className="flex min-w-0 flex-col gap-6">
-        <PageHeader
-          title="Settings"
-          tourId="page:settings"
-        />
         <SetupChecklist businessName={selected.name} items={checklistItems} />
 
         {activeSection === "etsy" && (
@@ -559,7 +561,7 @@ export default async function SettingsPage({
 
         {activeSection === "email" && (
           <section className="flex flex-col gap-4">
-            <SectionHeader title="Customer email" />
+            <SectionHeader title="Customer Email" />
             {gmailVM ? (
               <>
                 <GmailBusinessCard gmail={gmailVM} />
@@ -609,6 +611,7 @@ export default async function SettingsPage({
             />
           </section>
         )}
+      </div>
       </div>
     </Page>
   );
