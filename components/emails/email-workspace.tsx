@@ -229,7 +229,7 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
             </p>
           )}
           {queued ? (
-            <p className="mt-2 whitespace-pre-wrap rounded-input border border-line bg-canvas p-3 font-mono text-xs text-ink">
+            <p className="mt-2 whitespace-pre-wrap rounded-input [overflow-wrap:anywhere] border border-line bg-canvas p-3 font-mono text-xs text-ink">
               {item.body || "(empty)"}
             </p>
           ) : (
@@ -293,7 +293,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
       </button>
       {open && (
         <div className="mt-3">
-          <p className="whitespace-pre-wrap rounded-input border border-line bg-canvas p-3 text-sm text-ink">{reply.body || "(empty)"}</p>
+          <p className="whitespace-pre-wrap rounded-input [overflow-wrap:anywhere] border border-line bg-canvas p-3 text-sm text-ink">{reply.body || "(empty)"}</p>
           {reply.suggestion && (
             <div className="mt-3 flex flex-wrap items-center gap-2 rounded-input border border-pigment/20 bg-pigment-soft/40 p-2.5 text-sm">
               <span className="text-ink">
@@ -350,7 +350,7 @@ function MailRow({ item, businessId }: { item: MailHistoryItem; businessId: stri
         {item.customerName && <span>· {item.customerName}</span>}
         {item.orderNumber && <Link href={`/orders/${item.orderId}`} className="font-medium text-pigment hover:text-ink">· {item.orderNumber}</Link>}
       </div>
-      {item.body && <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm text-slate">{item.body}</p>}
+      {item.body && <p className="mt-2 line-clamp-3 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm text-slate">{item.body}</p>}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {inbound && item.address && (
           <ComposeButton

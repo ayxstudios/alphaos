@@ -474,7 +474,7 @@ function EmailPreviewDialog({
           <div className="rounded-card border border-line bg-surface p-3 text-sm">
             <p className="text-xs text-slate">To: <span className="text-ink">{preview.to}</span></p>
             <p className="mt-1 text-xs text-slate">Subject: <span className="font-medium text-ink">{preview.subject}</span></p>
-            <div className="mt-3 whitespace-pre-wrap rounded-input border border-line bg-canvas p-3 text-sm text-ink">
+            <div className="mt-3 whitespace-pre-wrap rounded-input [overflow-wrap:anywhere] border border-line bg-canvas p-3 text-sm text-ink">
               {body}
             </div>
           </div>

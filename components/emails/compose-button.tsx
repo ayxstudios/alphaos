@@ -140,7 +140,7 @@ export function ComposeButton({
                       <dd className="font-medium text-ink">{draft.subject || "(no subject)"}</dd>
                     </div>
                   </dl>
-                  <div className="mt-4 whitespace-pre-wrap rounded-input border border-line bg-surface p-3 text-sm text-ink">
+                  <div className="mt-4 whitespace-pre-wrap rounded-input [overflow-wrap:anywhere] border border-line bg-surface p-3 text-sm text-ink">
                     {draft.body || "(empty)"}
                   </div>
                 </div>
