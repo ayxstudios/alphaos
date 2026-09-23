@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Button, Input, useToast } from "@/components/ui";
+import { Button, Drawer, Input, useToast } from "@/components/ui";
 import {
   markPeriodPaidAction,
   resolveBlockedEarningAction,
@@ -68,23 +68,47 @@ export function MarkPeriodPaidButton({
   pendingCount: number;
 }) {
   const { pending, run } = useRunAction();
+  const [open, setOpen] = useState(false);
   const orders = `${pendingCount} order${pendingCount === 1 ? "" : "s"}`;
   return (
-    <Button
-      type="button"
-      size="sm"
-      variant="secondary"
-      loading={pending}
-      onClick={() => {
-        // Paying is not undone from here, so say exactly who and how much.
-        if (confirm(`Mark ${pendingLabel} for ${designerName} (${orders}, ${period}) as paid? Pay them first; this only records it.`)) {
-          run(() => markPeriodPaidAction(businessId, designerId, period), `Marked ${pendingLabel} paid`);
-        }
-      }}
-    >
-      Mark paid
-    </Button>
+    <>
+      <Button type="button" size="sm" variant="secondary" loading={pending} onClick={() => setOpen(true)}>
+        Mark paid
+      </Button>
+      {/* Paying is not undone from here, so say exactly who and how much. */}
+      <Drawer open={open} onClose={() => setOpen(false)} title="Mark paid">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-ink">
+            Record <span className="font-semibold">{pendingLabel}</span> as paid to{" "}
+            <span className="font-semibold">{designerName}</span> for {orders} in {monthName(period)}?
+          </p>
+          <p className="text-sm text-slate">Pay them first. This only records it, and it cannot be undone here.</p>
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="ghost" className="min-h-11 sm:min-h-0" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="min-h-11 sm:min-h-0"
+              onClick={() => {
+                setOpen(false);
+                run(() => markPeriodPaidAction(businessId, designerId, period), `Marked ${pendingLabel} paid`);
+              }}
+            >
+              Mark {pendingLabel} paid
+            </Button>
+          </div>
+        </div>
+      </Drawer>
+    </>
   );
+}
+
+/** "2026-09" -> "September 2026". */
+function monthName(period: string): string {
+  const [y, m] = period.split("-").map(Number);
+  if (!y || !m) return period;
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleString("en-AU", { month: "long", year: "numeric", timeZone: "UTC" });
 }
 
 export function VoidEarningForm({
@@ -97,13 +121,13 @@ export function VoidEarningForm({
   const [reason, setReason] = useState("");
   const { pending, run } = useRunAction();
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex min-w-0 items-center gap-2">
       <Input
         value={reason}
         onChange={(e) => setReason(e.target.value)}
         placeholder="Void reason"
         aria-label="Void reason"
-        className="h-8 w-44"
+        className="h-10 w-40 sm:h-8"
       />
       <Button
         type="button"
