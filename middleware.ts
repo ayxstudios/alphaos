@@ -24,6 +24,8 @@ const PROTECTED = [
   /^\/health(\/|$)/,
   /^\/help(\/|$)/,
   /^\/me(\/|$)/,
+  // The component styleguide is a staff design reference, not a public page.
+  /^\/styleguide(\/|$)/,
 ];
 
 // The only areas a designer may reach. Per-order ownership on /orders/[id] is
