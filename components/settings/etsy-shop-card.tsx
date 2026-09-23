@@ -152,7 +152,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
                 Sync now
               </Button>
               <Button
-                variant="ghost"
+                variant="secondary"
                 size="sm"
                 onClick={() => setBackfillOpen(true)}
                 loading={backfilling}
