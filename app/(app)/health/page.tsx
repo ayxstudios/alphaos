@@ -3,13 +3,14 @@ export const maxDuration = 30;
 
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 
 import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
 import { auth } from "@/lib/auth";
 import { loadHealthMetrics, type CountLink, type GmailMailboxHealth, type JobRunHealth, type ShopSyncHealth } from "@/lib/health/daily-report";
 import { loadDailyNarrative } from "@/lib/health/narrative";
 import { loadShellData } from "@/lib/shell/context";
-import { Badge, DataPanel, Disclosure, EmptyState, Page, PageHeader, SectionHeader } from "@/components/ui";
+import { Badge, DataPanel, Disclosure, EmptyState, Page, PageHeader, SectionHeader, Skeleton } from "@/components/ui";
 import { Grid } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import { formatAt } from "@/lib/time";
@@ -57,9 +58,7 @@ export default async function HealthPage({
     ? ({ kind: "all" } as const)
     : ({ kind: "business", businessId: selected.id, businessName: selected.name } as const);
 
-  const metrics = await loadHealthMetrics(user, scope);
   const showAiFeatures = anthropicFeaturesEnabled();
-  const narrative = showAiFeatures ? await loadDailyNarrative(user, metrics) : null;
 
   return (
     <Page>
@@ -67,7 +66,7 @@ export default async function HealthPage({
         title="System Health"
         tourId="page:health"
         description="What needs a look, then everything that is fine."
-        eyebrow={metrics.scopeLabel}
+        eyebrow={scope.kind === "all" ? "All Businesses" : scope.businessName}
         actions={
           <div className="inline-flex rounded-input bg-surface p-1 text-sm shadow-card">
             <Link
@@ -92,19 +91,27 @@ export default async function HealthPage({
         }
       />
 
-      {narrative && (
-        <DataPanel className="p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="max-w-4xl">
-              <p className="text-sm font-semibold text-ink">Daily briefing</p>
-              <p className="mt-2 text-sm leading-6 text-slate">{narrative.text}</p>
-            </div>
-            <Badge variant={metrics.healthy ? "success" : "warning"} dot>
-              {metrics.healthy ? "Healthy" : "Needs attention"}
-            </Badge>
-          </div>
-          <p className="mt-3 text-xs text-slate">{formatGenerated(narrative.generatedAt)}</p>
-        </DataPanel>
+      {/* Speed (docs/PERF.md): the header paints at once; the ~30 health reads
+          stream in, and the AI briefing (which may wait on the relay) never
+          holds the numbers back. */}
+      <Suspense fallback={<HealthBodySkeleton />}>
+        <HealthBody user={user} scope={scope} showAiFeatures={showAiFeatures} />
+      </Suspense>
+    </Page>
+  );
+}
+
+type HealthScope = Parameters<typeof loadHealthMetrics>[1];
+type SessionUser = { id: string; role: "admin" | "va" | "designer" };
+
+async function HealthBody({ user, scope, showAiFeatures }: { user: SessionUser; scope: HealthScope; showAiFeatures: boolean }) {
+  const metrics = await loadHealthMetrics(user, scope);
+  return (
+    <>
+      {showAiFeatures && (
+        <Suspense fallback={<Skeleton className="h-28 rounded-card" />}>
+          <DailyBriefing user={user} metrics={metrics} />
+        </Suspense>
       )}
 
       <PipelineSignals metrics={metrics.links.pipeline} />
@@ -142,7 +149,36 @@ export default async function HealthPage({
           />
         }
       />
-    </Page>
+    </>
+  );
+}
+
+async function DailyBriefing({ user, metrics }: { user: SessionUser; metrics: Awaited<ReturnType<typeof loadHealthMetrics>> }) {
+  const narrative = await loadDailyNarrative(user, metrics);
+  return (
+    <DataPanel className="p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="max-w-4xl">
+          <p className="text-sm font-semibold text-ink">Daily briefing</p>
+          <p className="mt-2 text-sm leading-6 text-slate">{narrative.text}</p>
+        </div>
+        <Badge variant={metrics.healthy ? "success" : "warning"} dot>
+          {metrics.healthy ? "Healthy" : "Needs attention"}
+        </Badge>
+      </div>
+      <p className="mt-3 text-xs text-slate">{formatGenerated(narrative.generatedAt)}</p>
+    </DataPanel>
+  );
+}
+
+function HealthBodySkeleton() {
+  return (
+    <>
+      <Skeleton className="h-24 rounded-card" />
+      <Skeleton className="h-12 rounded-card" />
+      <Skeleton className="h-40 rounded-card" />
+      <Skeleton className="h-24 rounded-card" />
+    </>
   );
 }
 
