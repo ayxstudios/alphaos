@@ -73,6 +73,10 @@ Before you start, have ready for the business:
   re-auth**, just click **Connect Gmail** again.
 - **One project per business.** Do not reuse a single OAuth client across
   businesses — credentials are stored and scoped per business.
-- **Templates.** After connecting, edit the three per-business email templates
-  (Photo request, Proof ready, Revision received) in the same Settings section.
-  They render server-side and can be changed without a deploy.
+- **Templates.** After connecting, edit the twelve per-business email templates
+  in the same Settings section. They render server-side and can be changed
+  without a deploy. PixArt's copy and the rollout switches are in
+  docs/PIXART_EMAIL_TEMPLATES.md.
+- **Turning sending on** marks stale unsent system emails as Skipped (finished
+  or archived orders, or older than 7 days) so a backlog never floods buyers;
+  they stay in Messages > Waiting to send. See lib/email/backlog-guard.ts.

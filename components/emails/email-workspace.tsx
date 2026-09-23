@@ -203,6 +203,7 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
         {item.templateLabel && <Badge variant="info">{item.templateLabel}</Badge>}
         {queued && <Badge variant="warning" dot>System queued</Badge>}
         {item.status === "failed" && <Badge variant="danger" dot>Failed</Badge>}
+        {item.skippedReason && <Badge variant="warning" dot>Skipped</Badge>}
         <span className="min-w-0 truncate text-sm font-medium text-ink">{item.subject || "(no subject)"}</span>
         <span className="ml-auto text-xs text-slate">
           {item.customerName ?? item.toAddress ?? "-"}
@@ -216,6 +217,11 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
             <p className="text-xs text-slate">Subject: <span className="font-medium text-ink">{item.subject}</span></p>
           </div>
           {item.status === "failed" && item.error && <p className="mt-2 text-xs text-rose">Last error: {item.error}</p>}
+          {item.skippedReason && (
+            <p className="mt-2 text-xs text-amber">
+              Skipped when sending was turned on ({item.skippedReason}). Approve &amp; send only if it still makes sense, otherwise discard.
+            </p>
+          )}
           {queued ? (
             <p className="mt-2 whitespace-pre-wrap rounded-input border border-line bg-canvas p-3 font-mono text-xs text-ink">
               {item.body || "(empty)"}

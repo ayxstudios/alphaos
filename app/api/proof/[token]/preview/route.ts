@@ -1,4 +1,5 @@
 import { getProofImageSource } from "@/lib/proofs/data";
+import { readStoredObject } from "@/lib/uploads/store";
 import { checkRateLimit, clientIp } from "@/lib/proofs/rate-limit";
 import { watermarkImage } from "@/lib/proofs/watermark";
 
@@ -35,9 +36,18 @@ export async function GET(
   const source = await getProofImageSource(token);
   if (!source) return new Response("Not found", { status: 404 });
 
-  const upstream = await fetch(source.url);
-  if (!upstream.ok) return new Response("Not found", { status: 404 });
-  const original = Buffer.from(await upstream.arrayBuffer());
+  let original: Buffer;
+  try {
+    if (source.r2Key) {
+      original = await readStoredObject(source.r2Key);
+    } else {
+      const upstream = await fetch(source.url!);
+      if (!upstream.ok) return new Response("Not found", { status: 404 });
+      original = Buffer.from(await upstream.arrayBuffer());
+    }
+  } catch {
+    return new Response("Not found", { status: 404 });
+  }
 
   let watermarked: Buffer;
   try {

@@ -33,6 +33,7 @@
     "test:etsy-mail": "tsx scripts/test-etsy-mail.ts",
     "test:reminders": "tsx scripts/test-reminders.ts",
     "test:designer-lane": "tsx scripts/test-designer-lane.ts",
+    "test:send-enable-guard": "tsx scripts/test-send-enable-guard.ts",
     "seed:qc": "tsx scripts/seed-qc.ts"
   },
   "dependencies": {

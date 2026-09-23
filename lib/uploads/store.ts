@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import {
+  getObjectBuffer as r2GetObjectBuffer,
   headObject as r2Head,
   isR2Configured,
   presignUpload as r2PresignUpload,
@@ -52,6 +53,12 @@ export async function headStored(key: string): Promise<{ contentType: string | n
     fs.readFile(`${abs}.meta.json`, "utf8").then((s) => JSON.parse(s) as { contentType?: string }).catch(() => ({}) as { contentType?: string }),
   ]);
   return { contentType: meta.contentType ?? null, contentLength: stat.size };
+}
+
+/** Read a stored object's bytes server-side (R2, or the dev store locally). */
+export async function readStoredObject(key: string): Promise<Buffer> {
+  if (!isDevStoreKey(key)) return r2GetObjectBuffer(key);
+  return fs.readFile(devStorePath(key));
 }
 
 /** Write a dev-store object (the PUT route handler). */

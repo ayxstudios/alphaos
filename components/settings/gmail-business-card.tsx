@@ -13,6 +13,7 @@ import {
   type GmailTestResult,
 } from "@/app/(app)/settings/actions";
 import type { InboundSummary } from "@/lib/integrations/gmail";
+import { STALE_AFTER_DAYS } from "@/lib/email/backlog-constants";
 
 export type GmailBusinessVM = {
   businessId: string;
@@ -47,7 +48,17 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
 
   function onToggleSending() {
     startToggle(async () => {
-      await setEmailSendingEnabled(gmail.businessId, !gmail.sendingEnabled);
+      const turningOn = !gmail.sendingEnabled;
+      const res = await setEmailSendingEnabled(gmail.businessId, turningOn);
+      if (turningOn) {
+        toast({
+          variant: "success",
+          title: "Customer email sending is on",
+          description: res.skipped
+            ? `Skipped ${res.skipped} stale unsent email${res.skipped === 1 ? "" : "s"}. They are in Emails, Waiting to send.`
+            : "No stale emails to skip.",
+        });
+      }
       router.refresh();
     });
   }
@@ -117,6 +128,11 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
           >
             {gmail.sendingEnabled ? "Turn off" : "Turn on"}
           </Button>
+          {!gmail.sendingEnabled && (
+            <p className="w-full text-xs text-slate">
+              Turning on skips unsent emails for finished orders or anything older than {STALE_AFTER_DAYS} days; they stay in Emails to send or discard by hand.
+            </p>
+          )}
         </div>
 
         <div className="grid gap-4 xl:grid-cols-2">
