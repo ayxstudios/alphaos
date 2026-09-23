@@ -8,6 +8,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 
 import { withSystemContext } from "../lib/db";
 import {
+  alphaEvents,
   assignments,
   businesses,
   designerBusinesses,
@@ -97,6 +98,7 @@ async function setup(now: Date) {
 
 async function cleanup() {
   await withSystemContext(async (tx) => {
+    await tx.delete(alphaEvents).where(eq(alphaEvents.businessId, ids.businessId));
     await tx.delete(notifications).where(eq(notifications.businessId, ids.businessId));
     await tx.delete(notificationFires).where(eq(notificationFires.businessId, ids.businessId));
     await tx.delete(orders).where(eq(orders.id, ids.orderId));
