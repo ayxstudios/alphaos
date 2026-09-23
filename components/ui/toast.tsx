@@ -142,7 +142,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
                 onClick={() => dismiss(t.id)}
                 aria-label="Dismiss"
                 className={cn(
-                  "-mr-1 -mt-1 inline-flex size-7 shrink-0 items-center justify-center rounded-input text-slate",
+                  // 44px to a finger (negative margins keep the toast's size),
+                  // the original 28px with a pointer.
+                  "-my-2.5 -mr-3 inline-flex size-11 shrink-0 items-center justify-center rounded-input text-slate lg:-mr-1 lg:-mt-1 lg:mb-0 lg:size-7",
                   "transition-colors motion-hover hover:bg-canvas hover:text-ink",
                   focusRing,
                 )}
