@@ -64,19 +64,17 @@ type ColumnDef = {
   render: (row: OrdersDashboardRow) => React.ReactNode;
 };
 
-/** True once the viewport is xl (1280px) or wider. Starts false (matches the
- * server-rendered guess) and updates after mount — the "wide" columns pop in
- * rather than risk a hydration mismatch guessing the real width up front. */
-function useIsWide() {
-  const [wide, setWide] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia("(min-width: 1280px)");
-    const update = () => setWide(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
-  return wide;
+/** An email that, when it has to wrap, breaks after the @ rather than mid-word. */
+function EmailText({ email }: { email: string }) {
+  const at = email.indexOf("@");
+  if (at < 0) return <>{email}</>;
+  return (
+    <>
+      {email.slice(0, at + 1)}
+      <wbr />
+      {email.slice(at + 1)}
+    </>
+  );
 }
 
 const BULK_STATUSES: { value: OrderStatus; label: string }[] = [
@@ -84,7 +82,7 @@ const BULK_STATUSES: { value: OrderStatus; label: string }[] = [
   { value: "ready_to_assign", label: "Ready to assign" },
   { value: "in_design", label: "In design" },
   { value: "awaiting_qc", label: "Awaiting QC" },
-  { value: "awaiting_approval", label: "Awaiting customer" },
+  { value: "awaiting_approval", label: "Awaiting approval" },
   { value: "approved", label: "Approved" },
   { value: "printing", label: "Printing" },
   { value: "shipped", label: "Shipped" },
@@ -153,7 +151,7 @@ const ORDER_COLUMNS: ColumnDef[] = [
     render: (row) => (
       <div className="min-w-0">
         <p className="break-words text-sm font-medium text-ink" data-tour="order:customer">{row.customer}</p>
-        <p className="text-xs text-slate [overflow-wrap:anywhere]">{row.customerEmail ?? "No email"}</p>
+        <p className="text-xs text-slate [overflow-wrap:anywhere]">{row.customerEmail ? <EmailText email={row.customerEmail} /> : "No email"}</p>
       </div>
     ),
   },
@@ -445,7 +443,6 @@ export function OrdersOperationsTable({
 }) {
   const router = useRouter();
   const toast = useToast();
-  const isWide = useIsWide();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [designerId, setDesignerId] = useState("");
   const [targetStatus, setTargetStatus] = useState<OrderStatus | "">("");
@@ -476,15 +473,21 @@ export function OrdersOperationsTable({
   }, [visibleColumnKeys]);
   // Source and Designer only earn a track once there's real room (xl+); below
   // that they're exactly the columns that used to force this table to scroll
-  // sideways on a laptop with the sidebar open.
-  const effectiveColumns = useMemo(
-    () => (isWide ? visibleColumns : visibleColumns.filter((column) => column.priority === "core")),
-    [visibleColumns, isWide],
-  );
+  // sideways on a laptop with the sidebar open. Decided in CSS (two grid
+  // templates and hidden cells), so the columns are right on the first paint
+  // instead of popping in after hydration.
+  const effectiveColumns = visibleColumns;
   const gridTemplateColumns = useMemo(
-    () => ["1.75rem", ...effectiveColumns.map((column) => column.width), "7.5rem"].join(" "),
-    [effectiveColumns],
+    () =>
+      ["1.75rem", ...visibleColumns.filter((column) => column.priority === "core").map((column) => column.width), "max-content"].join(" "),
+    [visibleColumns],
   );
+  const gridTemplateWide = useMemo(
+    () => ["1.75rem", ...visibleColumns.map((column) => column.width), "max-content"].join(" "),
+    [visibleColumns],
+  );
+  const gridStyle = { "--orders-grid": gridTemplateColumns, "--orders-grid-wide": gridTemplateWide } as React.CSSProperties;
+  const cellClass = (column: ColumnDef) => (column.priority === "wide" ? "hidden xl:block" : undefined);
 
   // The Next action column is only sticky/tinted while the table is actually
   // scrolling sideways — at the widths this table is designed for (960px+
@@ -679,8 +682,8 @@ export function OrdersOperationsTable({
           the Next action rail only pins itself if that net is ever needed. */}
       <div ref={scrollRef} className="hidden overflow-x-auto md:block">
         <div
-          className="hidden gap-2 border-b border-line/60 bg-surface px-4 py-2 text-xs font-medium text-slate md:grid md:[grid-template-columns:var(--orders-grid)]"
-          style={{ "--orders-grid": gridTemplateColumns } as React.CSSProperties}
+          className="hidden gap-2 border-b border-line/60 bg-surface px-4 py-2 text-xs font-medium text-slate md:grid md:[grid-template-columns:var(--orders-grid)] xl:[grid-template-columns:var(--orders-grid-wide)]"
+          style={gridStyle}
         >
           <label className="flex items-center">
             <input
@@ -695,6 +698,7 @@ export function OrdersOperationsTable({
             column.sort ? (
               <SortableHeader
                 key={column.key}
+                wide={column.priority === "wide"}
                 currentParams={currentParams}
                 sort={column.sort}
                 activeSort={sort}
@@ -703,7 +707,7 @@ export function OrdersOperationsTable({
                 {column.label}
               </SortableHeader>
             ) : (
-              <span key={column.key}>{column.label}</span>
+              <span key={column.key} className={cellClass(column)}>{column.label}</span>
             ),
           )}
           <span
@@ -726,11 +730,11 @@ export function OrdersOperationsTable({
               <div
                 key={row.id}
                 className={cn(
-                  "group grid gap-2 px-4 py-3.5 transition-colors hover:bg-canvas/70 md:items-center md:[grid-template-columns:var(--orders-grid)]",
+                  "group grid gap-2 px-4 py-3.5 transition-colors hover:bg-canvas/70 md:items-center md:[grid-template-columns:var(--orders-grid)] xl:[grid-template-columns:var(--orders-grid-wide)]",
                   urgent && "bg-rose/[0.025] hover:bg-rose/[0.05]",
                   isSelected && "bg-pigment-soft/60 hover:bg-pigment-soft/80",
                 )}
-                style={{ "--orders-grid": gridTemplateColumns } as React.CSSProperties}
+                style={gridStyle}
               >
                 <label className="flex items-center">
                   <input
@@ -742,7 +746,7 @@ export function OrdersOperationsTable({
                   />
                 </label>
                 {effectiveColumns.map((column) => (
-                  <div key={column.key} className="min-w-0">
+                  <div key={column.key} className={cn("min-w-0", cellClass(column))}>
                     {column.render(row)}
                   </div>
                 ))}
@@ -864,18 +868,24 @@ function SortableHeader({
   sort,
   activeSort,
   dir,
+  wide = false,
   children,
 }: {
   currentParams: string;
   sort: SortKey;
   activeSort: SortKey;
   dir: SortDir;
+  /** Only shown from xl up (Source, Designer). */
+  wide?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <Link
       href={sortHref(currentParams, sort, activeSort, dir)}
-      className="inline-flex items-center gap-1 text-left transition-colors hover:text-ink"
+      className={cn(
+        "items-center gap-1 text-left transition-colors hover:text-ink",
+        wide ? "hidden xl:inline-flex" : "inline-flex",
+      )}
     >
       {children}
       {activeSort === sort && <span>{dir === "asc" ? "↑" : "↓"}</span>}
