@@ -246,7 +246,7 @@ function StyleCard({
           {style.titleMatches.map((m) => (
             <span key={m} className="inline-flex items-center gap-1 rounded-input bg-pigment-soft px-2 py-0.5 text-xs font-medium text-pigment">
               {m}
-              <button type="button" onClick={() => removeMatch(m)} aria-label={`Remove ${m}`} className="hover:text-ink">
+              <button type="button" onClick={() => removeMatch(m)} aria-label={`Remove ${m}`} className="-my-3 -mr-3 inline-flex size-11 items-center justify-center hover:text-ink sm:m-0 sm:size-auto">
                 <XCircle size={13} />
               </button>
             </span>

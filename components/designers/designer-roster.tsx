@@ -233,7 +233,7 @@ function Row({
               if (e.key === "Enter") e.currentTarget.blur();
             }}
             className={cn(
-              "h-9 w-20 rounded-input border border-line bg-surface px-2.5 text-sm tabular-nums text-ink",
+              "h-11 w-20 rounded-input sm:h-9 border border-line bg-surface px-2.5 text-sm tabular-nums text-ink",
               focusRing,
             )}
           />
@@ -466,7 +466,7 @@ function StyleSelect({
         type="button"
         onClick={() => setOpen((o) => !o)}
         className={cn(
-          "flex min-h-9 w-full items-center gap-1 rounded-input border border-line bg-surface px-2 py-1 text-left",
+          "flex min-h-11 w-full items-center gap-1 rounded-input border border-line bg-surface px-2 py-1 text-left sm:min-h-9",
           focusRing,
         )}
       >
