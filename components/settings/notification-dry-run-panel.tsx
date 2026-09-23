@@ -115,7 +115,7 @@ function Metric({
 }) {
   return (
     <div className="rounded-input bg-canvas/70 px-3 py-2">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate">{label}</div>
+      <div className="text-xs font-medium text-slate">{label}</div>
       <div className={tone === "warning" ? "mt-1 text-xl font-semibold text-amber" : tone === "success" ? "mt-1 text-xl font-semibold text-sage" : "mt-1 text-xl font-semibold text-ink"}>
         {n(value)}
       </div>
@@ -142,7 +142,7 @@ function SummaryTable({
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[28rem] text-left text-sm">
-            <thead className="bg-canvas text-xs font-semibold uppercase tracking-wide text-slate">
+            <thead className="bg-canvas text-xs font-medium text-slate">
               <tr>
                 {columns.map((column) => (
                   <th key={column} className="px-3 py-2">

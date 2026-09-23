@@ -109,7 +109,7 @@ export function TopBar({
           >
             {(close) => (
               <div className="flex flex-col">
-                <p className="px-2 py-1.5 text-xs font-medium uppercase text-slate">
+                <p className="px-2 py-1.5 text-xs font-medium text-slate">
                   Workspace
                 </p>
                 {options.map((o) => {
