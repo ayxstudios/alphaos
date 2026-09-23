@@ -102,7 +102,13 @@ export async function postComment(orderId: string, body: string): Promise<Commen
   if (!text) return { ok: false, message: "Message is empty" };
   if (text.length > 5000) return { ok: false, message: "Message is too long" };
   const user = { id: session.user.id, role: session.user.role };
-  const event = await addComment(user, orderId, text);
+  let event: CardEvent;
+  try {
+    event = await addComment(user, orderId, text);
+  } catch {
+    // Not visible to this user (RLS) or gone: a calm denial, never a 500.
+    return { ok: false, message: "Order not found" };
+  }
   revalidatePath("/board");
   return { ok: true, event };
 }
