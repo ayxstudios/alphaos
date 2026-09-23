@@ -33,7 +33,7 @@ function useLazyOnEvent<P>(
   load: () => Promise<ComponentType<P>>,
 ) {
   const [Comp, setComp] = useState<ComponentType<P> | null>(null);
-  const pending = useRef(false);
+  const pending = useRef<{ detail: unknown } | null>(null);
   const started = useRef(false);
 
   useEffect(() => {
@@ -45,9 +45,9 @@ function useLazyOnEvent<P>(
       });
     };
     if (loadNow) start();
-    const onEvent = () => {
+    const onEvent = (e: Event) => {
       if (Comp) return; // the component handles it itself
-      pending.current = true;
+      pending.current = { detail: (e as CustomEvent).detail };
       start();
     };
     window.addEventListener(eventName, onEvent);
@@ -58,8 +58,10 @@ function useLazyOnEvent<P>(
   // listener is in place by the time the request is replayed.
   useEffect(() => {
     if (Comp && pending.current) {
-      pending.current = false;
-      window.dispatchEvent(new CustomEvent(eventName));
+      const { detail } = pending.current;
+      pending.current = null;
+      // Replayed with its detail: "?" > Watch must not arrive as a plain start.
+      window.dispatchEvent(new CustomEvent(eventName, { detail }));
     }
   }, [Comp, eventName]);
 
