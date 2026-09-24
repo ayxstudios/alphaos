@@ -59,7 +59,7 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
           variant: "success",
           title: "Customer email sending is on",
           description: res.skipped
-            ? `Skipped ${res.skipped} stale unsent email${res.skipped === 1 ? "" : "s"}. They are in Emails, Waiting to send.`
+            ? `Skipped ${res.skipped} stale unsent email${res.skipped === 1 ? "" : "s"}. They are in Messages, under Waiting to send.`
             : "No stale emails to skip.",
         });
       }

@@ -12,6 +12,7 @@ import type { ItemResults } from "@/lib/qc/checklist";
 import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
 import { classifyProofReply } from "@/lib/email/reply-classifier";
 import { mergeReplyClassification } from "@/lib/integrations/gmail/inbound";
+import { adoptSenderAsCustomer } from "@/lib/email/link-reply";
 
 export type OutboxActionResult = { ok: true; message?: string } | { ok: false; message: string };
 
@@ -249,7 +250,12 @@ export async function linkReplyToOrder(messageId: string, orderId: string): Prom
       .where(eq(orders.id, orderId));
     if (!o || o.businessId !== m.businessId) return { ok: false as const, message: "Order not found in this workspace" };
 
-    await tx.update(messages).set({ orderId: o.id, customerId: o.customerId }).where(eq(messages.id, messageId));
+    // An order with no customer yet (Etsy gives us no buyer email) takes the
+    // sender of the reply, so the next photo request or proof can reach them.
+    const customerId = m.suppressedAt
+      ? o.customerId
+      : await adoptSenderAsCustomer(tx, { businessId: o.businessId, orderId: o.id, customerId: o.customerId, fromHeader: m.address });
+    await tx.update(messages).set({ orderId: o.id, customerId }).where(eq(messages.id, messageId));
     await tx.insert(activityLog).values({
       businessId: m.businessId,
       orderId: o.id,

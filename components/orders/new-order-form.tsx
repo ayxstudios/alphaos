@@ -45,6 +45,8 @@ export type ExistingOrder = {
   savedProductTitle: string;
   savedFigureCount: number | null;
   savedStyle: string;
+  /** What the shop's style rules say this order is; shown pre-selected when nothing is saved yet. */
+  suggestedStyle?: string;
   styleOptions: string[];
   savedProductType: "physical" | "digital" | null;
   savedNotes: string;
@@ -105,7 +107,7 @@ export function NewOrderForm({
             customerName: existing.customerName,
             customerEmail: existing.customerEmail,
             figureCount: existing.savedFigureCount,
-            style: existing.savedStyle,
+            style: existing.savedStyle || existing.suggestedStyle || "",
             productTitle: existing.savedProductTitle,
             productType: existing.savedProductType,
             notes: existing.savedNotes,

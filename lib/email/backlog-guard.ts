@@ -19,7 +19,7 @@ import { STALE_AFTER_DAYS } from "./backlog-constants";
  *     the Emails outbox shows as a "Skipped" badge with the reason.
  *
  * Nothing is deleted. A VA can still "Approve & send" (the reversal) or
- * "Discard" each one from Emails > Waiting to send.
+ * "Discard" each one from Messages > Waiting to send.
  */
 
 export { STALE_AFTER_DAYS };

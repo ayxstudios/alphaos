@@ -431,9 +431,9 @@ export default async function SettingsPage({
     },
     {
       key: "sending",
-      label: "Email sending on",
+      label: gmailVM.sendingEnabled ? "Email sending on" : "Email sending off",
       ok: gmailVM.sendingEnabled,
-      detail: "Customer email enabled",
+      detail: gmailVM.sendingEnabled ? "Customer email enabled" : "No email reaches a customer yet",
       href: "/settings?section=email",
       action: "Turn on sending",
     },

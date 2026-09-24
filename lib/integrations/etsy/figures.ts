@@ -22,6 +22,7 @@ export function resolveFigureCount(
 export function resolveStyle(
   variations: EtsyVariation[],
   config: EtsyIntegrationConfig | null | undefined,
+  title?: string | null,
 ): StyleResolution {
-  return resolveStyleShared(toPairs(variations), config);
+  return resolveStyleShared(toPairs(variations), config, title);
 }

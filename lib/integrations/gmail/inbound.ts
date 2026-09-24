@@ -17,6 +17,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import { classifyProofReply, type ReplyClassification } from "@/lib/email/reply-classifier";
+import { adoptSenderAsCustomer, matchOrderBySubject } from "@/lib/email/link-reply";
 import { resolveSuppressionReason } from "@/lib/email/suppression";
 import { normalizeOrderNumber } from "@/lib/orders/reconcile";
 import { GmailClient } from "./client";
@@ -427,7 +428,7 @@ async function attachMessage(
     if (existing) return null;
 
     // Match the reply to an order by the thread we originally sent on.
-    const [threadMatch] = await tx
+    const [byThread] = await tx
       .select({ orderId: messages.orderId, customerId: messages.customerId, orderStatus: orders.status })
       .from(messages)
       .leftJoin(orders, eq(orders.id, messages.orderId))
@@ -439,6 +440,30 @@ async function attachMessage(
     const rfcMessageId = header(msg, "Message-ID");
     const body = extractPlainText(msg);
     const suppression = await resolveSuppressionReason(tx, businessId, header(msg, "From"));
+
+    // No thread of ours? A subject that names one of this business's order
+    // numbers ("Re: PC32164 ...", "#4170595372 ...") is about that order: link
+    // it straight away instead of parking it in the unmatched tray. Replies to
+    // mail sent before AlphaOS existed only ever match this way.
+    let threadMatch: { orderId: string | null; customerId: string | null; orderStatus: string | null } | undefined = byThread;
+    let linkedBy: "thread" | "subject" | null = byThread ? "thread" : null;
+    if (!threadMatch?.orderId && !suppression) {
+      const bySubject = await matchOrderBySubject(tx, businessId, subject);
+      if (bySubject) {
+        threadMatch = { orderId: bySubject.orderId, customerId: bySubject.customerId, orderStatus: bySubject.status };
+        linkedBy = "subject";
+      }
+    }
+    // An order with no customer (Etsy gives us no buyer email) takes the sender.
+    if (threadMatch?.orderId && !suppression) {
+      const adopted = await adoptSenderAsCustomer(tx, {
+        businessId,
+        orderId: threadMatch.orderId,
+        customerId: threadMatch.customerId,
+        fromHeader: header(msg, "From"),
+      });
+      if (adopted) threadMatch = { ...threadMatch, customerId: adopted };
+    }
 
     const [inserted] = await tx.insert(messages).values({
       businessId,
@@ -465,7 +490,7 @@ async function attachMessage(
         orderId: threadMatch.orderId,
         actorId: null, // customer, no internal user
         action: "message.received",
-        metadata: { channel: "email", subject, gmailThreadId: msg.threadId },
+        metadata: { channel: "email", subject, gmailThreadId: msg.threadId, linkedBy },
       });
     }
 
@@ -493,6 +518,7 @@ async function attachMessage(
       event: "reply_attached",
       gmailMessageId,
       orderId: threadMatch?.orderId ?? null,
+      linkedBy,
       suppressed: !!suppression,
     });
     return {

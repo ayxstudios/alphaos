@@ -37,6 +37,7 @@
     "test:security": "tsx scripts/test-security.ts",
     "test:login-link": "tsx scripts/test-login-link.ts",
     "test:send-enable-guard": "tsx scripts/test-send-enable-guard.ts",
+    "test:link-reply": "tsx scripts/test-link-reply.ts",
     "test:all": "node scripts/test-all.mjs",
     "ci:local": "bash scripts/ci-local.sh",
     "seed:qc": "tsx scripts/seed-qc.ts",

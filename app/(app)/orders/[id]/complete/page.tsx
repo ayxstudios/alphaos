@@ -14,6 +14,8 @@ import {
 } from "@/lib/db/schema";
 import { isR2Configured } from "@/lib/storage/r2";
 import { shopStyleChoices } from "@/lib/designers/styles";
+import { resolveStyle } from "@/lib/integrations/etsy/figures";
+import type { EtsyIntegrationConfig, EtsyTransaction } from "@/lib/integrations/etsy/types";
 import { NewOrderForm, type ExistingOrder } from "@/components/orders/new-order-form";
 import { Page, PageHeader, StatusChip } from "@/components/ui";
 import type { OrderStatus } from "@/components/ui";
@@ -48,6 +50,7 @@ export default async function CompleteOrderPage({
         shopName: shops.name,
         businessName: businesses.name,
         styles: shops.styles,
+        shopConfig: shops.integrationConfig,
       })
       .from(orders)
       .innerJoin(shops, eq(shops.id, orders.shopId))
@@ -94,6 +97,7 @@ export default async function CompleteOrderPage({
       .where(eq(assets.orderId, order.id)),
   );
   const styleOptions = await withUserContext(user, (tx) => shopStyleChoices(tx, order.businessId, order.styles));
+  const suggestedStyle = suggestStyleFromImport(order.rawImport, order.shopConfig, styleOptions);
 
   const existing: ExistingOrder = {
     orderId: order.id,
@@ -111,6 +115,7 @@ export default async function CompleteOrderPage({
     savedProductTitle: item?.title ?? "",
     savedFigureCount: item?.figureCount ?? null,
     savedStyle: item?.style ?? "",
+    suggestedStyle,
     styleOptions,
     savedProductType: item?.productType ?? null,
     savedNotes: order.notes ?? "",
@@ -130,4 +135,19 @@ export default async function CompleteOrderPage({
       <NewOrderForm shops={[]} r2Enabled={isR2Configured()} existing={existing} />
     </Page>
   );
+}
+
+/**
+ * The style the shop's own rules give this order (variation rule, title rule,
+ * shop default), so the VA confirms a pre-filled style instead of picking one.
+ * Only a style the shop actually offers is suggested; the saved value wins.
+ */
+function suggestStyleFromImport(rawImport: unknown, shopConfig: unknown, styleOptions: string[]): string {
+  const raw = rawImport as { transactions?: EtsyTransaction[] } | null;
+  const tx = raw?.transactions?.[0];
+  if (!tx) return "";
+  const resolved = resolveStyle(tx.variations ?? [], (shopConfig ?? null) as EtsyIntegrationConfig | null, tx.title);
+  const want = resolved.style?.trim().toLowerCase();
+  if (!want) return "";
+  return styleOptions.find((s) => s.toLowerCase() === want) ?? "";
 }
