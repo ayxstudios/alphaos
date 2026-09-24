@@ -771,7 +771,7 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
               <h2 id={titleId} className="font-display text-lg font-semibold text-ink">
                 That is your day in AlphaOS.
               </h2>
-              <p className="text-sm text-slate">Now try each step yourself, in about a minute. The ? at the top brings this back any time.</p>
+              <p className="text-sm text-slate">Now try each step yourself, in about a minute. The&nbsp;? at the top brings this back any time.</p>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <button type="button" onClick={finishWatch} className={secondaryBtn}>
                   Got it
@@ -788,7 +788,7 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
               <h2 id={titleId} className="font-display text-lg font-semibold text-ink">
                 You are ready.
               </h2>
-              <p className="text-sm text-slate">Everything you tried works the same way every day. The ? at the top brings this back any time.</p>
+              <p className="text-sm text-slate">Everything you tried works the same way every day. The&nbsp;? at the top brings this back any time.</p>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <Link href="/help" onClick={() => stop("none")} className={secondaryBtn}>
                   Quick guide

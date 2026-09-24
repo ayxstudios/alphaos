@@ -32,6 +32,7 @@
     "**/*.mts",
     "**/*.ts",
     "**/*.tsx",
+    ".next-build/types/**/*.ts",
     ".next-laneb/types/**/*.ts",
     ".next-lanec/types/**/*.ts",
     ".next-laned1/types/**/*.ts",
@@ -40,7 +41,7 @@
     ".next/dev/types/**/*.ts",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    ".next-build/types/**/*.ts"
+    ".next-tour/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"
