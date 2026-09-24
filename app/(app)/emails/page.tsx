@@ -1,14 +1,16 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
-import { withUserContext } from "@/lib/db";
+import { withUserContext, type RequestUser } from "@/lib/db";
 import { businesses } from "@/lib/db/schema";
 import { loadShellData } from "@/lib/shell/context";
 import { getIgnoredSenders, getMailHistory, getOutbox, getUnmatchedReplies } from "@/lib/email/outbox";
 import { Page, PageHeader } from "@/components/ui";
 import { ComposeButton } from "@/components/emails/compose-button";
 import { EmailWorkspace } from "@/components/emails/email-workspace";
+import { MailHistory, MailHistoryFallback } from "@/components/emails/mail-history";
 import { cleanSearchTerm } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +36,7 @@ export default async function EmailsPage({ searchParams }: { searchParams: Searc
   const pageSize = pageSizeRaw === 20 || pageSizeRaw === 100 ? pageSizeRaw : 50;
 
   const { selected } = await loadShellData(user);
-  const [emailConfig, unmatched, outbox, history, ignoredSenders] = await Promise.all([
+  const [emailConfig, unmatched, outbox, ignoredSenders] = await Promise.all([
     withUserContext(user, async (tx) => {
       const [row] = await tx
         .select({
@@ -48,9 +50,9 @@ export default async function EmailsPage({ searchParams }: { searchParams: Searc
     }),
     getUnmatchedReplies(user, { businessId: selected.id, includeSuppressed: false }),
     getOutbox(user, { businessId: selected.id }),
-    getMailHistory(user, { businessId: selected.id, q, includeSuppressed, page, pageSize }),
     getIgnoredSenders(user, { businessId: selected.id }),
   ]);
+  const historyOpts = { businessId: selected.id, q, includeSuppressed, page, pageSize };
 
   return (
     <Page className="max-w-none">
@@ -73,13 +75,43 @@ export default async function EmailsPage({ searchParams }: { searchParams: Searc
         sendingEnabled={emailConfig.emailSendingEnabled}
         unmatched={unmatched}
         outbox={outbox}
-        history={history}
+        history={
+          // Its own boundary: "Needs you" paints while the 50-row history
+          // query is still running (the page used to wait for all of it).
+          <Suspense fallback={<MailHistoryFallback />}>
+            <MailHistorySection user={user} {...historyOpts} />
+          </Suspense>
+        }
         ignoredSenders={ignoredSenders}
-        q={q}
-        includeSuppressed={includeSuppressed}
-        page={page}
-        pageSize={pageSize}
       />
     </Page>
+  );
+}
+
+async function MailHistorySection({
+  user,
+  businessId,
+  q,
+  includeSuppressed,
+  page,
+  pageSize,
+}: {
+  user: RequestUser;
+  businessId: string;
+  q: string;
+  includeSuppressed: boolean;
+  page: number;
+  pageSize: number;
+}) {
+  const history = await getMailHistory(user, { businessId, q, includeSuppressed, page, pageSize });
+  return (
+    <MailHistory
+      businessId={businessId}
+      history={history}
+      q={q}
+      includeSuppressed={includeSuppressed}
+      page={page}
+      pageSize={pageSize}
+    />
   );
 }

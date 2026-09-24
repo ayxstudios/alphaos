@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { PrefetchKind } from "next/dist/client/components/router-reducer/router-reducer-types";
 
 import { cn } from "@/lib/utils";
 import { focusRing } from "@/components/ui/styles";
@@ -9,10 +10,13 @@ import { Grid, ListChecks, Package, Mail, Columns, Calendar, Menu, type IconProp
 import type { ComponentType } from "react";
 import type { Role } from "@/lib/auth/config";
 
-// Next 15.5 Link: full prefetch (page data, not only the skeleton) on pointer
-// hover or touch start. The prop exists at runtime but is missing from the
-// public next/link types, hence the spread (docs/PERF.md).
-const HOVER_PREFETCH = { unstable_dynamicOnHover: true } as object;
+// Prefetch on touch start only. With Link's default prefetch every tab in
+// view fired its own `?_rsc=` request during a cold load (7 to 9 of them on
+// a 400 ms RTT phone pipe, docs/PERF.md), so viewport prefetch is off here
+// (`prefetch={false}` also turns Link's own touch-start prefetch off in Next
+// 15.5, hence the explicit one). A full prefetch, page data included, so
+// the tap still lands on a ready page.
+const TOUCH_PREFETCH = { kind: PrefetchKind.FULL };
 
 type Tab = { label: string; href: string; icon: ComponentType<IconProps> };
 
@@ -38,6 +42,7 @@ const DESIGNER_TABS: Tab[] = [
  */
 export function BottomTabs({ role, onMore }: { role: Role; onMore: () => void }) {
   const pathname = usePathname();
+  const router = useRouter();
   const tabs = role === "designer" ? DESIGNER_TABS : ADMIN_VA_TABS;
   return (
     <nav
@@ -51,8 +56,10 @@ export function BottomTabs({ role, onMore }: { role: Role; onMore: () => void })
           <Link
             key={tab.href}
             href={tab.href}
-            // Touch start fetches the page data, so the tap lands on a ready page (docs/PERF.md).
-            {...HOVER_PREFETCH}
+            prefetch={false}
+            onTouchStart={() => {
+              if (!active) router.prefetch(tab.href, TOUCH_PREFETCH);
+            }}
             className={cn(
               "flex min-h-11 flex-1 flex-col items-center justify-center gap-1 text-xs font-medium",
               focusRing,

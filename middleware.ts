@@ -42,6 +42,13 @@ const DESIGNER_ALLOWED = [
 // Admin-only areas (VAs are sent home, matching the pages' own redirects).
 const ADMIN_ONLY = [/^\/payouts(\/|$)/, /^\/health(\/|$)/];
 
+// Designer-only pages: staff who type one get the Designers page here, in
+// the middleware, instead of a second full document after the page's own
+// redirect (a typed /me on a phone on Slow 3G used to take 5.6 s: skeleton
+// document, then the redirect, then /designers). Staff navigation never
+// links /me; the page's own check stays as the second line.
+const STAFF_TO_DESIGNERS = [/^\/me(\/|$)/];
+
 // Public on purpose: a person's private sign-in link (lib/auth/login-link.ts)
 // must open with no session. Listed so a later catch-all protection rule
 // cannot swallow it by accident.
@@ -74,6 +81,8 @@ export default auth((req) => {
     }
   } else if (session.user.role !== "admin" && ADMIN_ONLY.some((r) => r.test(pathname))) {
     return NextResponse.redirect(new URL("/dashboard", req.nextUrl.origin));
+  } else if (STAFF_TO_DESIGNERS.some((r) => r.test(pathname))) {
+    return NextResponse.redirect(new URL("/designers", req.nextUrl.origin));
   }
 
   return NextResponse.next();

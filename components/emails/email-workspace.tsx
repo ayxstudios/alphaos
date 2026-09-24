@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
 import { Badge, Button, Disclosure, Input, Textarea, useToast } from "@/components/ui";
-import { AlertTriangle, ChevronRight, Mail, Search } from "@/components/ui/icons";
+import { AlertTriangle, ChevronRight, Mail } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
-import type { IgnoredSender, MailHistoryItem, OutboxItem, UnmatchedReply } from "@/lib/email/outbox";
+import type { IgnoredSender, OutboxItem, UnmatchedReply } from "@/lib/email/outbox";
 import {
   approveAndSend,
   updateDraftBody,
@@ -17,11 +17,9 @@ import {
   archiveReply,
   searchOrdersForLink,
   ignoreSenderFromMessage,
-  unsuppressMessage,
   removeIgnoredSender,
   type OutboxActionResult,
 } from "@/app/(app)/emails/actions";
-import { ComposeButton } from "./compose-button";
 import { formatAt } from "@/lib/time";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -35,7 +33,7 @@ function formatAge(ms: number): string {
   return `${d}d`;
 }
 
-function fmtDateTime(iso: string | null): string {
+export function fmtDateTime(iso: string | null): string {
   return formatAt(iso, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }, "Unknown");
 }
 
@@ -46,25 +44,16 @@ export function EmailWorkspace({
   outbox,
   history,
   ignoredSenders,
-  q,
-  includeSuppressed,
-  page,
-  pageSize,
 }: {
   businessId: string;
   sendingEnabled: boolean;
   unmatched: UnmatchedReply[];
   outbox: OutboxItem[];
-  history: { rows: MailHistoryItem[]; total: number; suppressedCount: number };
+  history: ReactNode;
   ignoredSenders: IgnoredSender[];
-  q: string;
-  includeSuppressed: boolean;
-  page: number;
-  pageSize: number;
 }) {
   const failed = outbox.filter((m) => m.status === "failed");
   const pendingOutbox = outbox.filter((m) => m.status !== "failed");
-  const totalPages = Math.max(1, Math.ceil(history.total / pageSize));
 
   return (
     <div className="flex flex-col gap-4">
@@ -108,58 +97,9 @@ export function EmailWorkspace({
         )}
       </Disclosure>
 
-      <Disclosure
-        summary={<span className="flex items-center gap-2"><Search size={15} className="text-slate" /> All mail</span>}
-        hint={`${history.total} message${history.total === 1 ? "" : "s"}`}
-        defaultOpen={Boolean(q) || includeSuppressed || page > 1}
-      >
-        <div className="-mx-4">
-          <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
-            <form className="relative min-w-0 flex-1 sm:max-w-md">
-              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate" />
-              <input type="hidden" name="showSuppressed" value={includeSuppressed ? "1" : "0"} />
-              <input
-                name="q"
-                defaultValue={q}
-                placeholder="Search sender, subject, order or customer"
-                className="h-10 w-full rounded-input border border-line bg-canvas pl-9 pr-3 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-pigment"
-              />
-            </form>
-            {history.suppressedCount > 0 && (
-              <Link
-                href={`/emails?showSuppressed=${includeSuppressed ? "0" : "1"}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
-                className="inline-flex h-8 items-center rounded-input px-2 text-xs font-medium text-slate hover:bg-canvas hover:text-ink"
-              >
-                {includeSuppressed ? "Hide" : "Show"} {history.suppressedCount} suppressed
-              </Link>
-            )}
-          </div>
-          <div className="divide-y divide-line/70 border-t border-line/70">
-            {history.rows.length === 0 ? (
-              <p className="px-4 py-4 text-sm text-slate">No mail found.</p>
-            ) : (
-              history.rows.map((item) => <MailRow key={item.messageId} item={item} businessId={businessId} />)
-            )}
-          </div>
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between border-t border-line/70 px-4 pt-3 text-sm">
-              <Link
-                href={`/emails?q=${encodeURIComponent(q)}&showSuppressed=${includeSuppressed ? "1" : "0"}&page=${Math.max(1, page - 1)}&pageSize=${pageSize}`}
-                className={page <= 1 ? "pointer-events-none text-slate/50" : "font-medium text-pigment hover:text-ink"}
-              >
-                Previous
-              </Link>
-              <span className="text-slate">Page {page} of {totalPages}</span>
-              <Link
-                href={`/emails?q=${encodeURIComponent(q)}&showSuppressed=${includeSuppressed ? "1" : "0"}&page=${Math.min(totalPages, page + 1)}&pageSize=${pageSize}`}
-                className={page >= totalPages ? "pointer-events-none text-slate/50" : "font-medium text-pigment hover:text-ink"}
-              >
-                Next
-              </Link>
-            </div>
-          )}
-        </div>
-      </Disclosure>
+      {/* All mail: streamed in its own Suspense boundary (app/(app)/emails/page.tsx),
+          so "Needs you" paints before the 50-row history query returns. */}
+      {history}
 
       {ignoredSenders.length > 0 && (
         <Disclosure
@@ -331,50 +271,6 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
   );
 }
 
-function MailRow({ item, businessId }: { item: MailHistoryItem; businessId: string }) {
-  const { run } = useActionRunner();
-  const inbound = item.direction === "inbound";
-  const replySubject = item.subject.toLowerCase().startsWith("re:") ? item.subject : `Re: ${item.subject || ""}`.trim();
-  return (
-    <div className="px-4 py-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={inbound ? "info" : "neutral"} dot>{inbound ? "Inbound" : "Outbound"}</Badge>
-        {item.suppressed && <Badge variant="warning">Suppressed</Badge>}
-        {item.archived && <Badge variant="neutral">Archived</Badge>}
-        {item.status === "failed" && <Badge variant="danger">Failed</Badge>}
-        <span className="min-w-0 truncate text-sm font-medium text-ink">{item.subject || "(no subject)"}</span>
-        <span className="ml-auto text-xs text-slate">{fmtDateTime(item.sentAt ?? item.createdAt)}</span>
-      </div>
-      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate">
-        <span>{inbound ? "From" : "To"} {item.address ?? "unknown"}</span>
-        {item.customerName && <span>· {item.customerName}</span>}
-        {item.orderNumber && <Link href={`/orders/${item.orderId}`} className="font-medium text-pigment hover:text-ink">· {item.orderNumber}</Link>}
-      </div>
-      {item.body && <p className="mt-2 line-clamp-3 whitespace-pre-wrap [overflow-wrap:anywhere] text-sm text-slate">{item.body}</p>}
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        {inbound && item.address && (
-          <ComposeButton
-            businessId={businessId}
-            to={item.address}
-            subject={replySubject}
-            orderId={item.orderId}
-            customerId={item.customerId}
-            replyToMessageId={item.messageId}
-            label="Reply"
-            size="sm"
-            variant="ghost"
-          />
-        )}
-        {item.orderId && <Link href={`/orders/${item.orderId}`} className="text-sm font-medium text-pigment hover:text-ink">Open order</Link>}
-        {item.customerId && <Link href={`/customers/${item.customerId}`} className="text-sm font-medium text-pigment hover:text-ink">Open customer</Link>}
-        {item.suppressed && (
-          <Button type="button" size="sm" variant="ghost" onClick={() => run(() => unsuppressMessage(item.messageId))}>Restore</Button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function IgnoredSenderRow({ sender }: { sender: IgnoredSender }) {
   const { run } = useActionRunner();
   return (
@@ -391,7 +287,7 @@ function IgnoredSenderRow({ sender }: { sender: IgnoredSender }) {
   );
 }
 
-function useActionRunner() {
+export function useActionRunner() {
   const router = useRouter();
   const toast = useToast();
   const [pending, start] = useTransition();

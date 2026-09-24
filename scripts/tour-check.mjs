@@ -48,7 +48,15 @@ function envLocal() {
   }
   return out;
 }
-const ENV = envLocal();
+// Values set in the shell win over .env.local, so a check can point at its own
+// local database without editing the env file (DIRECT_URL, AUTH_URL,
+// NEON_LOCAL_PROXY, DATABASE_URL). The next dev it starts inherits the same.
+const ENV = {
+  ...envLocal(),
+  ...Object.fromEntries(
+    ["DIRECT_URL", "DATABASE_URL", "AUTH_URL", "NEON_LOCAL_PROXY"].filter((k) => process.env[k]).map((k) => [k, process.env[k]]),
+  ),
+};
 const dbUrl = (() => {
   try {
     return new URL(ENV.DIRECT_URL || "");

@@ -1,5 +1,6 @@
 import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 
+import { mailPreview } from "@/lib/email/preview";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { customers, emailSenderIgnores, messages, orders } from "@/lib/db/schema";
 import { TEMPLATE_META } from "./templates";
@@ -388,7 +389,10 @@ export type MailHistoryItem = {
   status: string;
   address: string | null;
   subject: string;
-  body: string;
+  /** First ~300 characters of the unquoted body; the full text comes from getMailBody on expand. */
+  preview: string;
+  /** True when the full body holds more than the preview shows. */
+  hasMore: boolean;
   createdAt: string;
   sentAt: string | null;
   archived: boolean;
@@ -493,7 +497,7 @@ export async function getMailHistory(
         status: r.status,
         address: r.address,
         subject: r.subject ?? "",
-        body: r.body ?? "",
+        ...mailPreview(r.body),
         createdAt: r.createdAt.toISOString(),
         sentAt: r.sentAt?.toISOString() ?? null,
         archived: !!r.archivedAt,
@@ -501,6 +505,14 @@ export async function getMailHistory(
         suppressedReason: r.suppressedReason,
       })),
     };
+  });
+}
+
+/** The full text of one message, for a history row a person expands. RLS scopes it to the user's businesses. */
+export async function getMailBody(user: RequestUser, messageId: string): Promise<string | null> {
+  return withUserContext(user, async (tx) => {
+    const [row] = await tx.select({ body: messages.body }).from(messages).where(eq(messages.id, messageId)).limit(1);
+    return row ? (row.body ?? "") : null;
   });
 }
 

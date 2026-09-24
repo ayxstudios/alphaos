@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { activityLog, customers, emailSenderIgnores, messages, orders } from "@/lib/db/schema";
 import { notifyVaEmailFailure, sendMessage } from "@/lib/email/dispatch";
+import { getMailBody } from "@/lib/email/outbox";
 import { ignoreMatchesAddress, parseEmailAddress } from "@/lib/email/suppression";
 import {
   approveAndSend,
@@ -222,6 +223,15 @@ export async function ignoreSenderFromMessage(messageId: string): Promise<Outbox
     revalidatePath("/dashboard");
     return { ok: true as const, message: "Sender ignored" };
   });
+}
+
+/** The full text of a history row, loaded when a person expands it (the list ships a short preview). */
+export async function loadMailBody(messageId: string): Promise<{ ok: true; body: string } | { ok: false; message: string }> {
+  const user = await requireStaff();
+  if (!user) return { ok: false, message: "Not permitted" };
+  const body = await getMailBody(user, messageId);
+  if (body === null) return { ok: false, message: "Message not found" };
+  return { ok: true, body };
 }
 
 export async function unsuppressMessage(messageId: string): Promise<OutboxActionResult> {

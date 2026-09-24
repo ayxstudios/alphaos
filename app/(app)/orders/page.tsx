@@ -383,7 +383,7 @@ export default async function OrdersPage({
     cookies(),
   ]);
 
-  const selectedView = validView(params.view);
+  const requestedView = validView(params.view);
   const q = params.q?.trim() ?? "";
   const source = params.source ?? "";
   const shop = params.shop ?? "";
@@ -410,18 +410,15 @@ export default async function OrdersPage({
     return counts;
   });
 
-  if (!selectedView) {
-    const cookieView = validView(cookieStore.get(ORDERS_VIEW_COOKIE)?.value);
-    // A search from the top bar (/orders?q=...) looks through every open
-    // order, and keeps its query and filters through this redirect.
-    const fallback = q ? "active" : cookieView ?? (countRow.overdue > 0 ? "overdue" : "active");
-    const next = new URLSearchParams();
-    for (const [key, value] of Object.entries(params)) {
-      if (typeof value === "string" && value && key !== "view") next.set(key, value);
-    }
-    next.set("view", fallback);
-    redirect(`/orders?${next.toString()}`);
-  }
+  // No ?view in the URL: the saved view (cookie), else Overdue when there is
+  // any, else Active. Rendered in place: a redirect here used to cost a
+  // second full document after loading.tsx had already flushed the skeleton
+  // (Fast 3G 2107 ms against 1.2-1.5 s for the neighbour pages). The URL is
+  // brought in line on the client with history.replaceState, no reload. A
+  // search from the top bar (/orders?q=...) looks through every open order.
+  const cookieView = requestedView ? null : validView(cookieStore.get(ORDERS_VIEW_COOKIE)?.value);
+  const selectedView: ViewKey =
+    requestedView ?? (q ? "active" : cookieView ?? (countRow.overdue > 0 ? "overdue" : "active"));
 
   // Most imported Etsy orders have no customers row yet: the list shows the
   // buyer name from the receipt (customerName below), so search it too.
@@ -746,7 +743,7 @@ export default async function OrdersPage({
           </Link>
         }
       />
-      <OrdersViewPreference view={selectedView} />
+      <OrdersViewPreference view={selectedView} syncUrl={requestedView ? null : `/orders?${currentParams.toString()}`} />
 
       {/* One row of clickable counts: the views that matter day to day. The
           other saved views live under "More views", never removed. */}

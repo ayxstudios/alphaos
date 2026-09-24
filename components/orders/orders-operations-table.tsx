@@ -134,7 +134,7 @@ const ORDER_COLUMNS: ColumnDef[] = [
     priority: "core",
     render: (row) => (
       <div className="min-w-0">
-        <Link href={`/orders/${row.id}`} className="truncate text-sm font-semibold text-ink hover:text-pigment">
+        <Link href={`/orders/${row.id}`} prefetch={false} className="truncate text-sm font-semibold text-ink hover:text-pigment">
           {row.orderNumber}
         </Link>
         <p className="break-words text-xs text-slate">{row.itemTitle}</p>
@@ -786,7 +786,7 @@ export function OrdersOperationsTable({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <Link href={`/orders/${row.id}`} className="text-base font-semibold text-ink hover:text-pigment">
+                      <Link href={`/orders/${row.id}`} prefetch={false} className="text-base font-semibold text-ink hover:text-pigment">
                         {row.orderNumber}
                       </Link>
                       <p className="break-words text-sm text-slate">{row.customer}</p>
@@ -898,8 +898,11 @@ function OrderActions({ row, full = false }: { row: OrdersDashboardRow; full?: b
   // "Open" fallback stays quiet so the eye is drawn only to real work.
   const isTask = row.action.label !== "Open";
   return (
+    // No viewport prefetch: a page of rows is a page of different order
+    // links, and on a phone each one cost a request of its own (docs/PERF.md).
     <Link
       href={row.action.href}
+      prefetch={false}
       aria-label={`${row.action.label}, order ${row.orderNumber}`}
       className={cn(
         "inline-flex min-w-0 items-center justify-center gap-1.5 rounded-input px-3 text-sm font-medium transition-[opacity,background-color,border-color] duration-[120ms]",

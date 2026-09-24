@@ -194,7 +194,7 @@ export function TodayQueueList({ groups }: { groups: Record<TodayBand, TodayItem
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 items-center gap-2">
                             <ShopBadge platform={item.platform} name={item.shop} className="shrink-0 text-xs md:w-36" />
-                            <Link href={`/orders/${item.orderId}`} className={cn("shrink-0 text-xs font-semibold tabular-nums text-ink hover:text-pigment md:w-24", focusRing)}>
+                            <Link href={`/orders/${item.orderId}`} prefetch={false} className={cn("shrink-0 text-xs font-semibold tabular-nums text-ink hover:text-pigment md:w-24", focusRing)}>
                               {item.orderNumber}
                             </Link>
                             <span className="hidden min-w-0 text-sm text-ink md:inline">{item.todo}</span>
@@ -207,6 +207,8 @@ export function TodayQueueList({ groups }: { groups: Record<TodayBand, TodayItem
                         <span className="hidden shrink-0 whitespace-nowrap text-xs tabular-nums text-slate sm:inline">{item.age}</span>
                         <Link
                           href={item.action.href}
+                          // No viewport prefetch: every row is a different order, each one a request of its own on a phone (docs/PERF.md).
+                          prefetch={false}
                           className={cn(
                             "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-input px-3 text-sm font-medium",
                             band === "now" ? "bg-pigment text-surface hover:opacity-90" : "bg-canvas text-ink hover:bg-pigment-soft",
