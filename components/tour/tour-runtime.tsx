@@ -57,6 +57,39 @@ function save(event: TourEvent): Promise<unknown> {
   return recordTourEvent(event).catch(() => {});
 }
 
+// A Skip (or finish) is remembered in this tab as well as on the server, so a
+// save lost on a slow phone connection can never bring the tour back over the
+// next page; the dismiss is sent again instead. Starting from the ? menu clears it.
+const ENDED_KEY = "alphaos:tour-ended";
+function markEnded(event: "dismiss" | "complete") {
+  try {
+    sessionStorage.setItem(ENDED_KEY, event);
+  } catch {
+    /* private mode: the server save still counts */
+  }
+  const send = (tries: number): Promise<unknown> =>
+    recordTourEvent({ type: event }).then(
+      (res) => (res?.ok || tries <= 0 ? res : new Promise((r) => setTimeout(r, 1500)).then(() => send(tries - 1))),
+      () => (tries > 0 ? new Promise((r) => setTimeout(r, 1500)).then(() => send(tries - 1)) : undefined),
+    );
+  return send(2);
+}
+function endedHere(): "dismiss" | "complete" | null {
+  try {
+    const v = sessionStorage.getItem(ENDED_KEY);
+    return v === "dismiss" || v === "complete" ? v : null;
+  } catch {
+    return null;
+  }
+}
+function clearEnded() {
+  try {
+    sessionStorage.removeItem(ENDED_KEY);
+  } catch {
+    /* nothing to clear */
+  }
+}
+
 function focusable(el: HTMLElement) {
   return el.matches("a[href], button, input, select, textarea, summary, [tabindex]");
 }
@@ -384,7 +417,10 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
       }
       startAtRef.current = at || performance.now();
       firstRingRef.current = null;
-      if (persist && next !== "one") save({ type: "start" });
+      if (persist && next !== "one") {
+        clearEnded();
+        save({ type: "start" });
+      }
       const from = Math.max(0, Math.min(steps.length - 1, first));
       // The first pages the tour visits, with their data, so each step lands at once.
       for (const s of steps.slice(from, from + 2)) router.prefetch(s.path, FULL);
@@ -413,7 +449,11 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
 
   useEffect(() => {
     if (!request) return;
-    if (request.kind === "welcome") setMode("welcome");
+    // Skipped or finished in this tab already: the server has not caught up, so
+    // a welcome or resume is not shown again; the end is sent once more instead.
+    const ended = request.kind === "welcome" || request.kind === "resume" ? endedHere() : null;
+    if (ended) void markEnded(ended);
+    else if (request.kind === "welcome") setMode("welcome");
     else if (request.kind === "resume") begin("try", performance.now(), request.step, false);
     else begin(request.mode, request.at, request.step);
     // Each request is handled once, when it arrives.
@@ -421,7 +461,7 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
   }, [request?.id, request?.kind]);
 
   const skip = useCallback(() => {
-    if (mode !== "one") save({ type: "dismiss" });
+    if (mode !== "one") void markEnded("dismiss");
     stop("none");
   }, [mode, stop]);
 
@@ -461,7 +501,7 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
       if (mode === "one") stop("none");
       else if (index + 1 < steps.length) setIndex(index + 1);
       else {
-        save({ type: "complete" });
+        void markEnded("complete");
         stop("done");
       }
     })().catch((error) => {
