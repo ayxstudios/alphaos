@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql, type AnyColumn, type SQL } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
@@ -143,6 +143,12 @@ function titleCase(value: string | null | undefined) {
   return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase()).replace(/\bQc\b/g, "QC");
 }
 
+/** A stored status as the app writes it everywhere else: "Awaiting details", "Awaiting QC". */
+function statusName(value: string) {
+  const words = value.replaceAll("_", " ").replace(/\bqc\b/g, "QC").replace("fulfillment", "fulfilment");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 function operationalStatusLabel(input: {
   status: string;
   needsReview: boolean;
@@ -188,11 +194,11 @@ function operationalStatusLabel(input: {
     case "complete":
       return "Complete";
     case "on_hold":
-      return "On Hold";
+      return "On hold";
     case "cancelled":
       return "Cancelled";
     case "fulfillment_only":
-      return "Fulfilment Only";
+      return "Fulfilment only";
     default:
       return titleCase(input.status);
   }
@@ -341,13 +347,19 @@ function dueFilterWhere(due: string) {
 
 function sortOrder(sort: SortKey, dir: SortDir, view: ViewKey) {
   const direction = dir === "asc" ? asc : desc;
-  if (sort === "due") return [direction(orders.dueAt), desc(orders.createdAt)];
+  // Blanks (no due date, no designer, no name yet) sort last both ways, so a
+  // reversed column starts with real values, never with the empty ones.
+  const blanksLast = (column: SQL | AnyColumn) => (dir === "asc" ? sql`${column} asc nulls last` : sql`${column} desc nulls last`);
+  // The name the row shows: the customer record, else their email, else the
+  // Etsy buyer name on the receipt; case does not matter.
+  const shownName = sql`lower(coalesce(nullif(trim(concat_ws(' ', ${customers.firstName}, ${customers.lastName})), ''), ${customers.email}, ${orders.rawImport}->>'name'))`;
+  if (sort === "due") return [blanksLast(orders.dueAt), desc(orders.createdAt)];
   if (sort === "order") return [direction(orders.platformOrderName), desc(orders.createdAt)];
-  if (sort === "customer") return [direction(customers.firstName), direction(customers.lastName), desc(orders.createdAt)];
+  if (sort === "customer") return [blanksLast(shownName), desc(orders.createdAt)];
   if (sort === "source") return [direction(shops.name), desc(orders.createdAt)];
   if (sort === "status") return [direction(orders.status), desc(orders.createdAt)];
-  if (sort === "owner") return [direction(users.name), desc(orders.createdAt)];
-  if (sort === "ordered") return [direction(orders.placedAt), desc(orders.createdAt)];
+  if (sort === "owner") return [blanksLast(users.name), desc(orders.createdAt)];
+  if (sort === "ordered") return [blanksLast(orders.placedAt), desc(orders.createdAt)];
   if (view === "overdue") return [asc(orders.dueAt), desc(orders.createdAt)];
   return [desc(orders.createdAt)];
 }
@@ -713,7 +725,7 @@ export default async function OrdersPage({
 
   // Filters that are set right now (the chips + the count on the button).
   const activeFilters: { key: string; label: string }[] = [];
-  if (status) activeFilters.push({ key: "status", label: titleCase(status) });
+  if (status) activeFilters.push({ key: "status", label: statusName(status) });
   if (source) activeFilters.push({ key: "source", label: titleCase(source) });
   if (shop) activeFilters.push({ key: "shop", label: filterData.shops.find((s) => s.id === shop)?.name ?? "Shop" });
   if (designer) {
@@ -824,7 +836,7 @@ export default async function OrdersPage({
                 <OrdersFilterSelect label="Status" value={status} paramName="status" currentParams={currentParams.toString()}>
                   <option value="">All statuses</option>
                   {STATUS_FILTERS.map((status) => (
-                    <option key={status} value={status}>{titleCase(status)}</option>
+                    <option key={status} value={status}>{statusName(status)}</option>
                   ))}
                 </OrdersFilterSelect>
                 <OrdersFilterSelect label="Source" value={source} paramName="source" currentParams={currentParams.toString()}>
@@ -855,7 +867,7 @@ export default async function OrdersPage({
               </div>
               {activeFilters.length > 0 && (
                 <div className="mt-3 flex justify-end border-t border-line/60 pt-3">
-                  <Link href={clearFiltersHref(currentParams)} className="text-sm font-medium text-pigment hover:text-ink">
+                  <Link href={clearFiltersHref(currentParams)} className="inline-flex min-h-11 items-center text-sm font-medium text-pigment hover:text-ink sm:min-h-0">
                     Clear all filters
                   </Link>
                 </div>
@@ -896,11 +908,21 @@ export default async function OrdersPage({
         {rows.length === 0 ? (
           <EmptyState
             icon={Package}
-            headline={activeFilters.length ? "No orders match" : "Nothing here right now"}
-            body={activeFilters.length ? "Try clearing a filter." : `No orders are in ${selectedViewMeta.label} at the moment.`}
+            headline={q ? `No orders match "${q}"` : activeFilters.length ? "No orders match" : "Nothing here right now"}
+            body={
+              q
+                ? `${selectedView === "active" ? "" : `Only ${selectedViewMeta.label} was searched. `}Check the spelling, or try the order number.`
+                : activeFilters.length
+                  ? "Try clearing a filter."
+                  : `No orders are in ${selectedViewMeta.label} at the moment.`
+            }
             action={
-              activeFilters.length ? (
-                <Link href={clearFiltersHref(currentParams)} className="text-sm font-medium text-pigment hover:text-ink">
+              q ? (
+                <Link href={clearSearchHref(currentParams)} className="inline-flex min-h-11 items-center text-sm font-medium text-pigment hover:text-ink sm:min-h-0">
+                  Clear search
+                </Link>
+              ) : activeFilters.length ? (
+                <Link href={clearFiltersHref(currentParams)} className="inline-flex min-h-11 items-center text-sm font-medium text-pigment hover:text-ink sm:min-h-0">
                   Clear filters
                 </Link>
               ) : undefined
@@ -936,6 +958,13 @@ const DUE_LABELS: Record<string, string> = {
   week: "Due next 7 days",
   none: "No due date",
 };
+
+function clearSearchHref(params: URLSearchParams) {
+  const next = new URLSearchParams(params);
+  next.delete("q");
+  next.delete("page");
+  return `/orders?${next.toString()}`;
+}
 
 function clearFiltersHref(params: URLSearchParams) {
   const next = new URLSearchParams(params);
