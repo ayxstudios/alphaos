@@ -90,7 +90,7 @@ export function EmailWorkspace({
       {notices.length > 0 && (
         <Disclosure
           summary={<span className="flex items-center gap-2"><Mail size={15} className="text-slate" /> Notifications</span>}
-          hint={`${notices.length} not counted, nobody is waiting`}
+          hint={`${notices.length} not counted`}
         >
           <div className="-mx-4 divide-y divide-line/70">
             {notices.map((reply) => <ReplyCard key={reply.messageId} reply={reply} businessId={businessId} />)}

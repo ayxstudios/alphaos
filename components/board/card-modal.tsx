@@ -27,6 +27,7 @@ import {
   type CardAssetType,
 } from "@/app/(app)/board/actions";
 import type { BoardCard } from "@/lib/orders/board-data";
+import { optionsSummary } from "@/lib/orders/options-summary";
 import { isWithCustomer, SENT_BACK_FROM } from "@/lib/orders/board-constants";
 import type { CardDetail, CardEvent, CardImage } from "@/lib/orders/card-detail";
 import { formatAt, formatDeadline } from "@/lib/time";
@@ -225,17 +226,36 @@ export function CardModal({
 
             <Gallery images={detail?.images ?? null} cover={card.thumbnailUrl} />
 
+            {/* The shop's options as one human line; every option in full,
+                exactly as the customer chose it, is one tap away. */}
             {card.options.length > 0 && (
-              <ul className="flex flex-wrap gap-1.5">
-                {card.options.map((o, i) => (
-                  <li
-                    key={i}
-                    className="rounded bg-canvas px-2 py-1 text-xs text-slate"
-                  >
-                    <span className="text-ink">{optionName(o.name)}:</span> {o.value}
-                  </li>
-                ))}
-              </ul>
+              <details className="group rounded-input bg-canvas px-3">
+                <summary
+                  className={cn(
+                    "-mx-3 flex min-h-11 cursor-pointer list-none items-center gap-3 rounded-input px-3 py-2 [&::-webkit-details-marker]:hidden",
+                    focusRing,
+                  )}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-xs font-medium text-slate">Options</span>
+                    <span className="block text-sm text-ink group-open:hidden">
+                      {optionsSummary(card.options) || `${card.options.length} option${card.options.length === 1 ? "" : "s"}`}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-xs font-medium text-pigment">
+                    <span className="group-open:hidden">All options</span>
+                    <span className="hidden group-open:inline">Hide</span>
+                  </span>
+                </summary>
+                <dl className="flex flex-col gap-2 pb-3 text-sm">
+                  {card.options.map((o, i) => (
+                    <div key={i} className="min-w-0">
+                      <dt className="text-xs text-slate">{optionName(o.name)}</dt>
+                      <dd className="break-words text-ink [overflow-wrap:anywhere]">{o.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </details>
             )}
 
             {card.notes && (
