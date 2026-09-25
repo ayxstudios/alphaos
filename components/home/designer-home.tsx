@@ -93,7 +93,16 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
           id="my-board"
           title="My Board"
           description={`${active} order${active === 1 ? "" : "s"} in progress`}
-          summary={`${h.board.queue} queued, ${h.board.inDesign} in design, ${h.board.revisions} revisions, ${h.board.awaitingQc} in QC`}
+          summary={
+            [
+              h.board.queue ? `${h.board.queue} queued` : null,
+              h.board.inDesign ? `${h.board.inDesign} in design` : null,
+              h.board.revisions ? `${h.board.revisions} in revision` : null,
+              h.board.awaitingQc ? `${h.board.awaitingQc} in QC` : null,
+            ]
+              .filter(Boolean)
+              .join(", ") || "Nothing on your board"
+          }
           className="lg:col-span-2"
         >
           <StackedBar
