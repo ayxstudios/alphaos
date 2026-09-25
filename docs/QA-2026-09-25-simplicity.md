@@ -242,3 +242,86 @@ wrong, undo wrong, Tick all, keys 1-5 / A / F / Enter / J / K, zoom, versions, e
   sheet "Ready for QC. To change it first, add a new version." -> "Ready. Press Submit for QC, or add a new version first."; capital labels in the sheet -> normal case.
 - Settings: "Live-order cutoff set / All shops protected" -> "Start date for live orders set / Older orders come in archived".
 - Money empty state: "Designers earn when their orders are complete. Pick another month to look back." -> "Pick another month to look back." (the header already says it).
+
+## Round 2: small follow-ups after the re-walk
+
+- QC email check on a phone: the attached portrait took the whole first screen, so the message sat below the fold.
+  Portrait capped at 256px on a phone (unchanged from xl up). Header "Figures" -> "People and pets".
+- Home and Today queue kinds: "Details" -> "Missing details", "Unassigned" -> "Needs a designer".
+- Admin Home "On time: No data" -> "On time: Not yet".
+
+## How the re-walk was done
+
+The iMac ran at load 50 to 900 all afternoon with processes stuck on disk. The local dev server (port 3475, db
+alphaos_simplicity, proxy 5501) took 20 minutes to compile /login and then hung in disk wait, so a full logged-in
+walk on it was not possible. Instead:
+
+- QC review (the priority) was rendered for real: the actual components/qc code, the real Tailwind build of
+  app/globals.css, bundled with esbuild into a static page with the server actions stubbed. Walked on a phone
+  (390x844) and a laptop (1440x900): tick lines, mark one wrong, sign, Pass (email check opens), Fail (box opens with
+  only the line marked wrong). Screenshots looked at.
+- Every other screen: re-rated from the diff against the round 0 screenshots of staging (text-only changes in the
+  same places, no layout change).
+- tsc and eslint clean before every commit. The dev server and proxy were stopped at the end.
+
+## Ratings, before -> after
+
+"Knew" = I knew what to do. "Calm" = not too much stuff.
+
+| Screen | Knew before | Knew after | Calm before | Calm after | How checked |
+|---|---|---|---|---|---|
+| QC review, phone | 5 | 9 | 4 | 9 | rendered, walked |
+| QC review, laptop | 6 | 10 | 5 | 9 | rendered, walked |
+| QC email check | 7 | 10 | 4 | 9 | rendered, walked |
+| QC fail box | 7 | 10 | 7 | 9 | rendered, walked |
+| QC list | 7 | 9 | 8 | 9 | diff |
+| Tour (watch + try) | 8 / 7 | 9 / 9 | 8 | 9 | diff |
+| Quick guide | 8 | 9 | 7 | 9 | diff |
+| Today | 8 | 9 | 6 | 8 | diff |
+| Home (VA) | 6 | 8 | 4 | 6 | diff |
+| Home (admin) | 6 | 8 | 4 | 6 | diff |
+| Home (designer) | 8 | 8 | 7 | 7 | not changed |
+| Orders list | 7 | 8 | 4 | 6 | diff |
+| Order page | 8 | 9 | 3 | 5 | diff |
+| Messages | 7 | 8 | 5 | 6 | diff |
+| Board + card sheet | 8 / 9 | 9 / 9 | 6 / 7 | 7 / 8 | diff |
+| Settings first screen | 8 | 9 | 8 | 9 | diff |
+| Money | 9 | 10 | 9 | 10 | diff |
+
+The QC screens reach 9 to 10. The screens still under 9 on "Calm" are under 9 because of how MUCH is on them, not the
+wording, and the brief says never to remove a feature or change layouts beyond spacing. Getting them to 9 needs a
+layout decision (see below), not more word changes.
+
+## Left as it is (with reasons)
+
+- Home (VA, admin): four tiles, Do first, What is waiting, three charts. Every panel is a feature. To reach 9 on
+  "Calm": fold "The bigger picture" charts behind one "Show charts" line on a phone. A layout change, so left to the
+  admin lane / owner.
+- Orders list phone card: Source, Designer, Due, Time on this step on every card. A compact card (number, name, one
+  status line, button) would be a layout change; left to the VA lane.
+- Order page: about a dozen sections. Suggest folding Messages, Ask Alpha AI, Print and tracking and Activity by
+  default. Layout change; left to the VA lane.
+- Messages: spam ("MetaAdsSupport ... Policy Violation") sits in "Needs you" with real customers. A sorting rule, not
+  wording.
+- Draft reply template names ("Proof ready . digital . single") are shared with the email template keys and the QC
+  email line; renaming them touches lib/email. Left.
+- Board card repeats raw shop options ("Need Your Order Within 72 Hours? (... *NOT SHIPPING TIME*): No Thanks"): that
+  is the shop's own text. Hiding "No Thanks" answers would be a data rule; left to the designer lane.
+- Designer phone: "Submit for QC" right after an upload could not be tapped by Playwright (the tap landed on the
+  customer photo). Designer lane should check the sheet on a real phone.
+
+## Shared files touched (for the merge)
+
+- VA lane: components/qc/*, app/(app)/qc/page.tsx, app/(app)/qc/actions.ts (messages only), components/today/today-queue.tsx,
+  app/(app)/orders/page.tsx (two hint strings), app/(app)/orders/[id]/page.tsx (copy, message chip, no capitals),
+  components/orders/orders-operations-table.tsx (phone card Due line), components/orders/reply-draft.tsx,
+  components/orders/order-comment-form.tsx, components/emails/email-workspace.tsx.
+- Designer lane: lib/tour/steps.ts, lib/tour/guide.ts, components/tour/tour-runtime.tsx (watch mode clears its demo
+  search), docs/TOUR.md, components/board/order-card.tsx, components/board/card-modal.tsx.
+- Admin lane: components/home/staff-home.tsx, components/home/attention-list.tsx, lib/home/staff.ts,
+  app/(app)/settings/page.tsx (two strings), app/(app)/payouts/page.tsx (empty state only).
+- Shared core: lib/qc/checklist.ts (DEFAULT_CHECKLIST labels shortened, same keys; new splitChecklistLabel helper),
+  lib/orders/transitions.ts (QC precondition messages only). No test asserts the old strings (grepped scripts/).
+  Existing qc_checks rows keep their snapshotted old labels; the board still reads the name before the colon.
+- No migration. No production or staging data changed by code. Staging orders used: PC32162 (passed, proof email
+  mocked) and PC32156 (failed on Likeness, back with the designer).
