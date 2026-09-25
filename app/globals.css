@@ -136,3 +136,18 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Phone: iOS Safari zooms the whole page into any field under 16px when it is
+   tapped, and a field is a 44px tap target. Unlayered, so it wins over the
+   text-sm and h-10 utilities on every field. */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]):not([type="file"]),
+  select {
+    min-height: 44px;
+  }
+}
