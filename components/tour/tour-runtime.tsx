@@ -429,9 +429,10 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
         const found = await waitFor({ signal }, () => find(link.sel), 8000);
         if (!found) return; // Not on this page after all: never strand the person.
         // Let the part it sits in finish loading (an order card's details), so
-        // the ring lands once and the element is not swapped under it.
+        // the ring lands once and the element is not swapped or pushed down
+        // under it. Patient: a busy server can take well over 5s for the details.
         const scope = found.closest('[role="dialog"]') ?? found.closest("main");
-        if (scope) await waitFor({ signal }, () => !scope.querySelector(".animate-pulse"), 5000);
+        if (scope) await waitFor({ signal }, () => !scope.querySelector(".animate-pulse"), 12000);
         const el = find(link.sel) ?? found;
         await bringIntoView({ signal }, el);
         light(el);
