@@ -87,15 +87,15 @@ export function DesignerWeekView({ week, self = false }: { week: DesignerWeek; s
         </div>
         <div className="grid grid-cols-2 gap-3 p-4 text-sm sm:grid-cols-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate">Phone</p>
+            <p className="text-xs font-medium text-slate">Phone</p>
             <p className="text-ink">{c?.phone ?? "Not set"}</p>
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate">Channel</p>
+            <p className="text-xs font-medium text-slate">Channel</p>
             <p className="text-ink">{CHANNEL[c?.preferredChannel ?? "whatsapp"] ?? c?.preferredChannel}</p>
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate">Timezone</p>
+            <p className="text-xs font-medium text-slate">Timezone</p>
             {/* Underscores out ("Asia/Kuala Lumpur"); an unset zone says it is the default. */}
             <p className="break-words text-ink">
               {(c?.timezoneRaw ?? c?.timezone ?? "Not set").replace(/_/g, " ")}
@@ -103,7 +103,7 @@ export function DesignerWeekView({ week, self = false }: { week: DesignerWeek; s
             </p>
           </div>
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate">Quiet hours</p>
+            <p className="text-xs font-medium text-slate">Quiet hours</p>
             <p className="text-ink">{c?.quietStart && c?.quietEnd ? `${c.quietStart} to ${c.quietEnd}` : "None"}</p>
           </div>
         </div>
