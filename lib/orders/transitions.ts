@@ -407,7 +407,7 @@ function normalizeSignature(s: string): string {
 async function assertSignature(tx: Tx, actor: Actor, metadata?: Record<string, unknown>): Promise<string | null> {
   if (actor.role === "system") return null;
   const typed = typeof metadata?.signature === "string" ? metadata.signature.trim().replace(/\s+/g, " ") : "";
-  if (!typed) throw new PreconditionError("Sign off first: type your name to pass or fail QC.");
+  if (!typed) throw new PreconditionError("Sign your name first.");
   const [who] = await tx.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, actor.id)).limit(1);
   const expected = (who?.name || "").trim() || (who?.email || "").split("@")[0];
   if (!expected || normalizeSignature(typed) !== normalizeSignature(expected)) {

@@ -20,7 +20,7 @@ const NEEDS_DETAILS: GuideAnswer = {
 
 const PASS_FAIL: GuideAnswer = {
   q: "How do I pass or fail QC?",
-  a: "Open QC and press Start QC. Compare the portrait with the customer's photos, tick every item on the checklist, and type your name to unlock the buttons. Pass shows you the email to the customer before it goes. Fail asks which items were wrong and why, then sends it back to the designer.",
+  a: "Open QC and press Start QC. Compare the portrait with the customer's photos, tick every item on the checklist, and sign your name to unlock the buttons. Pass shows you the email to the customer before it goes. Fail asks which items were wrong and why, then sends it back to the designer.",
 };
 
 const UPLOAD_STAFF: GuideAnswer = {
