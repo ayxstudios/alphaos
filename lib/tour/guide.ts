@@ -40,7 +40,7 @@ const LATE: GuideAnswer = {
 
 const PRINT: GuideAnswer = {
   q: "How do I send an order to print?",
-  a: "Approved printed orders wait in Print, oldest first. Place the order with the print company on their own site, then press Sent to print here. When the tracking number arrives, add it on the same row so the order shows as shipped.",
+  a: "Approved printed orders wait in Print, oldest first. Place the order with the print company on their own site, then press Mark as sent here. When the tracking number arrives, press Add tracking on the same card and save it; the order shows as shipped.",
 };
 
 const ROSTER: GuideAnswer = {
