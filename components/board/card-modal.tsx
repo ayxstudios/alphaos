@@ -722,7 +722,7 @@ function DueLine({
 function Meta({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate">{label}</p>
+      <p className="text-xs font-medium text-slate">{label}</p>
       {children}
     </div>
   );
