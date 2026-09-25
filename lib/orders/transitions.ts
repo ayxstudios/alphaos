@@ -411,7 +411,7 @@ async function assertSignature(tx: Tx, actor: Actor, metadata?: Record<string, u
   const [who] = await tx.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, actor.id)).limit(1);
   const expected = (who?.name || "").trim() || (who?.email || "").split("@")[0];
   if (!expected || normalizeSignature(typed) !== normalizeSignature(expected)) {
-    throw new PreconditionError(`The sign-off must match the name on your account (${expected || "unknown"}).`);
+    throw new PreconditionError(`Sign with the name on your account: ${expected || "unknown"}.`);
   }
   return typed;
 }
@@ -452,7 +452,7 @@ async function assertQc(
       checklist.items.length > 0 && checklist.items.every((it) => itemResults[it.key]);
     if (!allTicked) {
       throw new PreconditionError(
-        "Cannot pass QC: every checklist item must be ticked.",
+        "Tick every line before you pass.",
       );
     }
     return { result, checklist, itemResults, reason: null, signature };
@@ -462,10 +462,10 @@ async function assertQc(
   const anyFailed = checklist.items.some((it) => !itemResults[it.key]);
   const reason = typeof metadata?.reason === "string" ? metadata.reason.trim() : "";
   if (!anyFailed) {
-    throw new PreconditionError("Cannot fail QC: mark at least one checklist item as failed.");
+    throw new PreconditionError("Mark at least one line as wrong before you fail.");
   }
   if (!reason) {
-    throw new PreconditionError("Cannot fail QC: a reason for the designer is required.");
+    throw new PreconditionError("Write a note for the designer before you fail.");
   }
   return { result, checklist, itemResults, reason, signature };
 }
