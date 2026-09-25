@@ -471,6 +471,7 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
       }
       startAtRef.current = at || performance.now();
       firstRingRef.current = null;
+      pendingNavRef.current = null;
       if (persist && next !== "one") {
         clearEnded();
         save({ type: "start" });
@@ -549,16 +550,16 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
       // A save clears the router cache, so the next page is fetched after it.
       if (mode === "try") void save({ type: "step", step: index }).then(ahead);
       else ahead();
-      pendingNavRef.current = null;
-      await runStep(h, current, mode === "one");
-      setPhase("ok");
-      setAnnounce("Done.");
-      // The person's press opens a page: let it arrive before the next ring, so
-      // nothing changes under the next step. A busy server can take a while, so
-      // this is patient; the address leaving where the press happened counts as
-      // arrived too (a page that tidies its own address).
-      // Set by the click listener while runStep waited (TypeScript cannot see that).
+      // The page the person's last press opened: let it arrive before this
+      // step's first ring, so nothing changes under it. This waits AFTER the
+      // save above on purpose: a navigation can sit resolved but uncommitted in
+      // the router until its next action (the save) is dispatched, so waiting
+      // before the save could hold the tour and the page for each other. A busy
+      // server can take a while, so this is patient; the address leaving where
+      // the press happened counts as arrived too (a page that tidies its own
+      // address). Set by the click listener (TypeScript cannot see that).
       const pending = pendingNavRef.current as PendingNav | null;
+      pendingNavRef.current = null;
       if (pending) {
         await waitFor(
           h,
@@ -569,6 +570,9 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
           45000,
         );
       }
+      await runStep(h, current, mode === "one");
+      setPhase("ok");
+      setAnnounce("Done.");
       await new Promise((r) => setTimeout(r, OK_MS));
       if (ac.signal.aborted) return;
       if (mode === "one") stop("none");

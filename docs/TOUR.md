@@ -120,6 +120,11 @@ designer's card is not open for the upload step, the card is ringed first.
 - `lib/tour/player.ts`: finds real elements and walks a step as a chain of
   links (menu item, then the thing on the page); never presses anything.
 - `lib/tour/steps.ts`: the steps above, as CSS targets with fallbacks.
+- A press that opens a page (a menu item, a tab, a link): the next step
+  first sends its save, then waits (up to 45s) for that page to arrive before
+  its first ring, so nothing changes under the ring. The order matters: the
+  router can hold a finished navigation uncommitted until its next action
+  (the save) is dispatched, so waiting before the save stalled both.
 - Speed: on start the first two pages are prefetched with their data, and
   each step prefetches the page after it. A search submit is done as a
   client navigation to the same URL, so the page never reloads under the
