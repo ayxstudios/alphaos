@@ -117,7 +117,7 @@ export function TrackingCompleteForm({
         ) : (
           <button
             type="button"
-            className="w-fit text-sm font-medium text-pigment transition-colors hover:text-ink disabled:opacity-50"
+            className="inline-flex min-h-11 w-fit items-center text-sm font-medium text-pigment transition-colors hover:text-ink disabled:opacity-50 sm:min-h-0"
             disabled={disabled || pending}
             onClick={() => setShowTrackingUrl(true)}
           >

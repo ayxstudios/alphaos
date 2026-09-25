@@ -403,11 +403,11 @@ function StatusHelp({ status, label, reason }: { status: string; label: string; 
     <div className="flex flex-col gap-2">
       <p className="text-sm font-semibold text-ink">{label}</p>
       <div className="flex flex-col gap-0.5">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate">What it means</p>
+        <p className="text-xs font-semibold text-slate">What it means</p>
         <p className="text-sm leading-snug text-ink">{help.means}</p>
       </div>
       <div className="flex flex-col gap-0.5">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate">What to do</p>
+        <p className="text-xs font-semibold text-slate">What to do</p>
         <p className="text-sm leading-snug text-ink">{reason ?? help.todo}</p>
       </div>
     </div>

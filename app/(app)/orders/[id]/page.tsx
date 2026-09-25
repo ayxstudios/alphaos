@@ -733,7 +733,7 @@ export default async function OrderDetailPage({
                 editable && references.length > 0 ? (
                   <Link
                     href={`/orders/${order.id}/complete`}
-                    className="text-sm font-medium text-pigment hover:text-ink"
+                    className="-my-3 inline-flex min-h-11 items-center text-sm font-medium text-pigment hover:text-ink sm:my-0 sm:min-h-0"
                   >
                     Manage
                   </Link>
@@ -747,7 +747,7 @@ export default async function OrderDetailPage({
                 {editable && (
                   <Link
                     href={`/orders/${order.id}/complete`}
-                    className="mt-3 inline-flex h-8 items-center gap-2 rounded-input bg-pigment px-3 text-sm font-medium text-surface transition-opacity hover:opacity-90"
+                    className="mt-3 inline-flex h-11 items-center gap-2 rounded-input bg-pigment px-3 text-sm font-medium text-surface transition-opacity hover:opacity-90 sm:h-8"
                   >
                     <Plus size={14} />
                     Add photos
@@ -1046,7 +1046,7 @@ function Fact({
 }) {
   return (
     <div className="bg-surface p-4">
-      <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-slate">
         <Icon size={13} className="shrink-0" />
         {label}
       </div>
@@ -1054,7 +1054,16 @@ function Fact({
         className={cn("mt-1.5 break-words text-sm font-semibold", muted ? "text-slate" : "text-ink")}
         title={value}
       >
-        {value}
+        {/* An email breaks after the @ on a phone, never mid-word. */}
+        {value.includes("@") ? (
+          <>
+            {value.slice(0, value.indexOf("@") + 1)}
+            <wbr />
+            {value.slice(value.indexOf("@") + 1)}
+          </>
+        ) : (
+          value
+        )}
       </div>
     </div>
   );
