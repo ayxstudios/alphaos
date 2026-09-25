@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql, type SQL } from "drizzle-orm";
 
+import { cleanSearchTerm, likeContains } from "@/lib/search";
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
 import { loadShellData } from "@/lib/shell/context";
@@ -384,7 +385,10 @@ export default async function OrdersPage({
   ]);
 
   const requestedView = validView(params.view);
-  const q = params.q?.trim() ?? "";
+  // Cleaned like every other search box: a NUL byte (?q=%00) made the query
+  // throw and the page render its error boundary (customer + security QA
+  // 2026-09-25), and a typed % or _ is matched literally below.
+  const q = cleanSearchTerm(params.q);
   const source = params.source ?? "";
   const shop = params.shop ?? "";
   const designer = params.designer ?? "";
@@ -423,7 +427,7 @@ export default async function OrdersPage({
   // Most imported Etsy orders have no customers row yet: the list shows the
   // buyer name from the receipt (customerName below), so search it too.
   const queryFilter = q
-    ? sql`(${orders.platformOrderName} ilike ${`%${q}%`} or ${orders.platformOrderId} ilike ${`%${q}%`} or ${customers.email} ilike ${`%${q}%`} or concat_ws(' ', ${customers.firstName}, ${customers.lastName}) ilike ${`%${q}%`} or ${orders.rawImport}->>'name' ilike ${`%${q}%`} or ${orders.rawImport}->>'buyer_email' ilike ${`%${q}%`})`
+    ? sql`(${orders.platformOrderName} ilike ${likeContains(q)} or ${orders.platformOrderId} ilike ${likeContains(q)} or ${customers.email} ilike ${likeContains(q)} or concat_ws(' ', ${customers.firstName}, ${customers.lastName}) ilike ${likeContains(q)} or ${orders.rawImport}->>'name' ilike ${likeContains(q)} or ${orders.rawImport}->>'buyer_email' ilike ${likeContains(q)})`
     : undefined;
   const sourceFilter =
     source === "etsy" || source === "shopify" || source === "manual"
