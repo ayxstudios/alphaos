@@ -279,6 +279,8 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
   const pulseRef = useRef<HTMLDivElement>(null);
   const arrowRef = useRef<SVGPathElement>(null);
   const headRef = useRef<SVGPathElement>(null);
+  const underRef = useRef<SVGPathElement>(null);
+  const underHeadRef = useRef<SVGPathElement>(null);
   const shieldRefs = useRef<(HTMLDivElement | null)[]>([]);
   const primaryRef = useRef<HTMLButtonElement>(null);
   const litRef = useRef<HTMLElement | null>(null);
@@ -719,12 +721,14 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
         if (key !== lastArrow) {
           line.setAttribute("d", path?.line ?? "");
           head.setAttribute("d", path?.head ?? "");
+          underRef.current?.setAttribute("d", path?.line ?? "");
+          underHeadRef.current?.setAttribute("d", path?.head ?? "");
           lastArrow = key;
         }
         if (arrived && path && !reduced) {
           // Drawn in once, from the card toward the target.
-          line.animate([{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], { duration: DRAW_MS, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)", fill: "backwards" });
-          head.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, delay: DRAW_MS - 120, easing: "linear", fill: "backwards" });
+          for (const l of [line, underRef.current]) l?.animate([{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }], { duration: DRAW_MS, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)", fill: "backwards" });
+          for (const hd of [head, underHeadRef.current]) hd?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, delay: DRAW_MS - 120, easing: "linear", fill: "backwards" });
         }
       }
       if (arrived) seenArrival = arrivalRef.current;
@@ -826,6 +830,9 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
           </div>
           {/* The arrow: a thin curve from the card to the ring, with a small open head. */}
           <svg aria-hidden="true" data-tour-arrow="" className="pointer-events-none fixed inset-0 z-[72] h-full w-full overflow-visible">
+            {/* A thin surface-coloured underlay, so the line stays crisp where it crosses text. */}
+            <path ref={underRef} pathLength={1} strokeDasharray="1 1" fill="none" stroke="var(--color-surface)" strokeOpacity={0.85} strokeWidth={5} strokeLinecap="round" />
+            <path ref={underHeadRef} fill="none" stroke="var(--color-surface)" strokeOpacity={0.85} strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" />
             <path
               ref={arrowRef}
               data-tour-arrow-line=""
@@ -953,11 +960,11 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
                   </button>
                 </span>
               </div>
-              <p id={titleId} className="text-base font-semibold text-ink" data-tour-what="">
+              <p id={titleId} className="text-base font-semibold text-ink [text-wrap:balance]" data-tour-what="">
                 {what}
               </p>
               {todo && (
-                <p className="mt-0.5 text-sm text-slate" data-tour-todo="">
+                <p className="mt-0.5 text-sm text-slate [text-wrap:pretty]" data-tour-todo="">
                   {todo}
                 </p>
               )}
