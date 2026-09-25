@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 import { createManualPrintJob } from "@/app/(app)/queue/print/actions";
 import { TrackingCompleteForm } from "@/components/orders/tracking-complete-form";
@@ -69,7 +68,7 @@ function fmtAge(value: string | null): string | null {
   const ms = Date.now() - new Date(value).getTime();
   if (ms < 0) return null;
   const hours = Math.floor(ms / (60 * 60 * 1000));
-  if (hours < 1) return "under an hour";
+  if (hours < 1) return null;
   if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
   return `${days}d ${hours % 24}h`;
@@ -115,7 +114,6 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
   const [provider, setProvider] = useState<PrintProvider>(activeProvider);
   const [trackingOpen, setTrackingOpen] = useState(false);
   const [pending, start] = useTransition();
-  const router = useRouter();
   const toast = useToast();
   const canStart = order.status === "approved";
   const inPrint = order.status === "printing";
@@ -135,7 +133,6 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
         title: res.ok ? `Marked as sent to ${providerLabel(provider)}` : "Not saved",
         description: res.ok ? "Add the tracking here when it ships." : res.message,
       });
-      if (res.ok) router.refresh();
     });
   }
 
@@ -146,7 +143,7 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
       ? "In print. Add the tracking when it ships."
       : `Not sent yet. Order it in ${providerLabel(provider)}, then mark it here.`;
   // What the age next to the chip counts from, said with it.
-  const ageText = age && job?.submittedAt ? `sent ${age} ago` : null;
+  const ageText = job?.submittedAt ? (age ? `sent ${age} ago` : "sent in the last hour") : null;
 
   return (
     <DataPanel className="overflow-hidden">
