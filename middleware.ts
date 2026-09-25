@@ -75,6 +75,13 @@ export default auth((req) => {
   }
 
   if (session.user.role === "designer") {
+    // A designer's view of an order is its card on My Board: one clean 307
+    // for a typed or notification link, instead of the order page's loading
+    // skeleton and then its own redirect (the page keeps that as the second line).
+    const order = pathname.match(/^\/orders\/(?!new\/?$)([^/]+)\/?$/);
+    if (order) {
+      return NextResponse.redirect(new URL(`/board?open=${encodeURIComponent(order[1])}`, req.nextUrl.origin));
+    }
     const allowed = DESIGNER_ALLOWED.some((r) => r.test(pathname));
     if (!allowed) {
       return NextResponse.redirect(new URL("/board", req.nextUrl.origin));
