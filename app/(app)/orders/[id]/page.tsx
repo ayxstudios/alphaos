@@ -244,6 +244,10 @@ export default async function OrderDetailPage({
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
   const { id } = await params;
+  // A designer's view of an order is its card on My Board (their own deadline,
+  // the customer's first name, the upload area). A notification or a pasted
+  // link to /orders/<id> opens that card; one not on their board says so there.
+  if (user.role === "designer") redirect(`/board?open=${encodeURIComponent(id)}`);
 
   const staffView = user.role === "admin" || user.role === "va";
 
