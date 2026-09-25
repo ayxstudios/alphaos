@@ -238,7 +238,7 @@ export function CardModal({
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block text-xs font-medium text-slate">Options</span>
-                    <span className="block text-sm text-ink group-open:hidden">
+                    <span className="block truncate text-sm text-ink group-open:hidden">
                       {optionsSummary(card.options) || `${card.options.length} option${card.options.length === 1 ? "" : "s"}`}
                     </span>
                   </span>
