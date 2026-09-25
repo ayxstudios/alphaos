@@ -37,6 +37,8 @@ type Box = { top: number; left: number; width: number; height: number };
 type Pt = { x: number; y: number };
 
 const PHONE = "(max-width: 1023px)";
+/** Where the person's last press is taking them, and where it happened. */
+type PendingNav = { to: string; from: string };
 /** Phone: past this gap (px) between a target and the bottom sheet, the sheet sits just under the target (PHONE_NEAR_GAP away). */
 const PHONE_FAR = 200;
 const PHONE_NEAR_GAP = 56;
@@ -312,7 +314,7 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
   /** The link the person is being asked to do, and how to finish it. */
   const waiterRef = useRef<{ link: TourLink; done: () => void } | null>(null);
   /** Where the person's last press is taking them (an in-app link), until it arrives. */
-  const pendingNavRef = useRef<{ to: string; from: string } | null>(null);
+  const pendingNavRef = useRef<PendingNav | null>(null);
   const phaseRef = useRef<Phase>("wait");
   const reducedRef = useRef(false);
   const startAtRef = useRef(0);
@@ -555,7 +557,8 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
       // nothing changes under the next step. A busy server can take a while, so
       // this is patient; the address leaving where the press happened counts as
       // arrived too (a page that tidies its own address).
-      const pending = pendingNavRef.current;
+      // Set by the click listener while runStep waited (TypeScript cannot see that).
+      const pending = pendingNavRef.current as PendingNav | null;
       if (pending) {
         await waitFor(
           h,
