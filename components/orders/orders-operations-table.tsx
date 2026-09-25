@@ -807,7 +807,7 @@ export function OrdersOperationsTable({
                   <div className="mt-0.5 flex items-center justify-between gap-3 text-sm">
                     <span className="min-w-0 truncate text-ink" data-tour="order:customer">{row.customer}</span>
                     <span className={cn("shrink-0 whitespace-nowrap tabular-nums", row.isOverdue ? "font-medium text-rose" : "text-slate")}>
-                      {row.isOverdue ? `Late, ${fmtDate(row.dueAt)}` : `Due ${fmtDate(row.dueAt)}`}
+                      {row.isOverdue ? `Late, ${fmtDate(row.dueAt)}` : row.dueAt ? `Due ${fmtDate(row.dueAt)}` : fmtDate(row.dueAt)}
                     </span>
                   </div>
                   {row.reviewReason && <p className="mt-1 line-clamp-2 text-sm leading-snug text-amber">{row.reviewReason}</p>}
