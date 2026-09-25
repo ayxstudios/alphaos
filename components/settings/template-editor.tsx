@@ -105,7 +105,7 @@ function TemplateCard({
   return (
     <details className="group rounded-card bg-surface shadow-card">
       <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 px-4 py-3">
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{template.label}</span>
+        <span className="min-w-0 flex-1 text-sm font-semibold text-ink">{template.label}</span>
         <Badge variant={template.customized ? "info" : "neutral"} dot>
           {template.customized ? "Customized" : "Default"}
         </Badge>

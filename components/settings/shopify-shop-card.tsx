@@ -180,7 +180,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="truncate text-sm font-semibold text-ink">{shop.name}</span>
-            <span className="rounded bg-canvas px-1.5 py-0.5 text-xs font-medium uppercase text-slate">Shopify</span>
+            <span className="rounded bg-canvas px-1.5 py-0.5 text-xs font-medium text-slate">Shopify</span>
             {shop.status === "connected" ? (
               <Badge variant="success" dot>Connected</Badge>
             ) : (

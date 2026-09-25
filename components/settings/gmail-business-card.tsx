@@ -171,7 +171,7 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
               Sending {gmail.sendingEnabled ? "on" : "off"}
             </Badge>
           </div>
-          <p className="mt-1 break-all text-xs text-slate">{gmail.address ?? "No mailbox set"}</p>
+          <p className="mt-1 text-xs text-slate [overflow-wrap:anywhere]">{gmail.address ?? "No mailbox set"}</p>
         </div>
         <ChevronDown size={16} className="text-slate transition-transform group-open:rotate-180" />
       </summary>
@@ -296,8 +296,9 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
               </a>
               {!gmail.hasClient && <span className="text-xs text-slate">Save the keys first.</span>}
             </div>
-            <p className="break-all text-xs text-slate">
-              In Google Cloud, add this as the sign-in return address: {gmail.redirectUri}
+            <p className="text-xs text-slate">
+              In Google Cloud, add this as the sign-in return address:
+              <code className="mt-1 block text-ink [overflow-wrap:anywhere]">{gmail.redirectUri}</code>
             </p>
           </form>
 
