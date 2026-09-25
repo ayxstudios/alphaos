@@ -47,7 +47,11 @@ export default async function QcQueuePage() {
         eyebrow={selected.name}
         title="QC"
         tourId="page:qc"
-        description={rows.length ? `${rows.length} portrait${rows.length === 1 ? "" : "s"} waiting, soonest due first.` : undefined}
+        description={
+          rows.length
+            ? `Check each portrait before the customer sees it. ${rows.length} waiting, most urgent first.`
+            : "Check each portrait before the customer sees it."
+        }
         actions={
           rows.length > 0 ? (
             <Link
@@ -64,11 +68,11 @@ export default async function QcQueuePage() {
         <DataPanel>
           <EmptyState
             icon={CheckCircle}
-            headline={elsewhere.length ? `Nothing here for ${selected.name}.` : "Nothing waiting for QC"}
+            headline={elsewhere.length ? `Nothing here for ${selected.name}.` : "Nothing to check"}
             body={
               elsewhere.length
                 ? elsewhere.map((e) => `${e.name} has ${e.n}.`).join(" ")
-                : "When a designer submits a portrait it lands here."
+                : "When a designer finishes a portrait, it shows up here."
             }
             action={
               elsewhere.length ? (
@@ -128,15 +132,14 @@ export default async function QcQueuePage() {
                         {late && <Badge variant="danger">Late</Badge>}
                       </div>
                       <p className="truncate text-sm text-slate">
+                        Waiting {formatAge(now - new Date(r.waitingSince).getTime())}
+                        {" · "}
                         {r.designerName ?? "Unassigned"}
                         {" · "}
                         {r.figureCount} figure{r.figureCount === 1 ? "" : "s"}
                         {r.style ? ` · ${styleLabel(r.style)}` : ""}
                       </p>
                     </div>
-                    <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-slate">
-                      {formatAge(now - new Date(r.waitingSince).getTime())}
-                    </span>
                     <ChevronRight size={16} className="shrink-0 text-slate/70" />
                   </Link>
                 </li>
