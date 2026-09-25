@@ -265,7 +265,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
           )}
           <div className="mt-3">
             <p className="mb-1.5 text-xs font-medium text-ink">Which order is this about?</p>
-            <Input value={q} onChange={(e) => search(e.target.value)} placeholder="Type the order number" aria-label="Order number to link this message to" className="h-9 max-w-xs" />
+            <Input value={q} onChange={(e) => search(e.target.value)} placeholder="Type the order number" aria-label="Order number to link this message to" className="h-11 max-w-xs sm:h-9" />
             {searching && <p className="mt-1 text-xs text-slate">Searching…</p>}
             {results.length > 0 && (
               <div className="mt-2 flex flex-col divide-y divide-line rounded-input border border-line">
@@ -280,7 +280,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
             )}
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason, e.g. not a customer" aria-label="Why archive it" className="h-8 w-56" />
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason, e.g. not a customer" aria-label="Why archive it" className="h-11 w-full sm:h-8 sm:w-56" />
             <Button type="button" size="sm" variant="ghost" disabled={!reason.trim()} onClick={() => run(() => archiveReply(reply.messageId, reason))}>Archive</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => run(() => ignoreSenderFromMessage(reply.messageId))}>Ignore sender</Button>
           </div>
