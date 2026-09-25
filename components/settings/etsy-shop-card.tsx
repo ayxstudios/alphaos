@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 import {
@@ -8,6 +9,7 @@ import {
   ConfirmDrawer,
   Input,
   Badge,
+  useToast,
 } from "@/components/ui";
 import { ChevronDown } from "@/components/ui/icons";
 import { saveEtsyCredentials, triggerSync, backfillEtsyShop } from "@/app/(app)/settings/actions";
@@ -45,6 +47,9 @@ function StatusBadge({ status }: { status: EtsyShopVM["status"] }) {
 }
 
 export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [saving, startSave] = useTransition();
   const [pending, startTransition] = useTransition();
   const [backfilling, startBackfill] = useTransition();
   const [summary, setSummary] = useState<SyncSummary | null>(null);
@@ -58,6 +63,22 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
         setSummary(await triggerSync(shop.id));
       } catch (e) {
         setError(e instanceof Error ? e.message : "Sync failed");
+      }
+    });
+  }
+
+  function onSaveCredentials(formData: FormData) {
+    startSave(async () => {
+      try {
+        const res = await saveEtsyCredentials(formData);
+        if (!res.ok) {
+          toast({ variant: "danger", title: "Not saved", description: res.message });
+          return;
+        }
+        toast({ variant: "success", title: "Etsy keys saved", description: res.message });
+        router.refresh();
+      } catch {
+        toast({ variant: "danger", title: "Not saved", description: "Could not save. Try again." });
       }
     });
   }
@@ -104,7 +125,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
       <div className="border-t border-line p-4">
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
           <div className="flex flex-col gap-4">
-            <form action={saveEtsyCredentials} className="grid gap-3 rounded-input bg-canvas/70 p-3">
+            <form action={onSaveCredentials} className="grid gap-3 rounded-input bg-canvas/70 p-3">
               <input type="hidden" name="shopId" value={shop.id} />
               <Input
                 label="Keystring"
@@ -122,7 +143,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
                 required
               />
               <div className="flex flex-wrap items-center gap-2">
-                <Button type="submit" variant="secondary" size="sm">
+                <Button type="submit" variant="secondary" size="sm" loading={saving}>
                   Save credentials
                 </Button>
                 <a

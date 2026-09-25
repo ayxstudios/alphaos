@@ -33,20 +33,32 @@ function GelatoCard({ creds }: { creds: PrintProviderCredentialsVM }) {
   function onSave(formData: FormData) {
     start(async () => {
       try {
-        await savePrintProviderCredentials(formData);
-        toast({ variant: "success", title: "Gelato credentials saved" });
+        const res = await savePrintProviderCredentials(formData);
+        if (!res.ok) {
+          toast({ variant: "danger", title: "Not saved", description: res.message });
+          return;
+        }
+        toast({ variant: "success", title: "Gelato keys saved" });
         router.refresh();
-      } catch (error) {
-        toast({ variant: "danger", title: "Not saved", description: error instanceof Error ? error.message : "Try again." });
+      } catch {
+        toast({ variant: "danger", title: "Not saved", description: "Could not save. Try again." });
       }
     });
   }
 
   function onClear() {
     startClear(async () => {
-      await clearPrintProviderCredentials(creds.businessId, "gelato");
-      toast({ variant: "success", title: "Gelato credentials removed" });
-      router.refresh();
+      try {
+        const res = await clearPrintProviderCredentials(creds.businessId, "gelato");
+        if (!res.ok) {
+          toast({ variant: "danger", title: "Not removed", description: res.message });
+          return;
+        }
+        toast({ variant: "success", title: "Gelato keys removed" });
+        router.refresh();
+      } catch {
+        toast({ variant: "danger", title: "Not removed", description: "Could not remove. Try again." });
+      }
     });
   }
 
@@ -106,20 +118,32 @@ function LumaCard({ creds }: { creds: PrintProviderCredentialsVM }) {
   function onSave(formData: FormData) {
     start(async () => {
       try {
-        await savePrintProviderCredentials(formData);
-        toast({ variant: "success", title: "Luma Prints credentials saved" });
+        const res = await savePrintProviderCredentials(formData);
+        if (!res.ok) {
+          toast({ variant: "danger", title: "Not saved", description: res.message });
+          return;
+        }
+        toast({ variant: "success", title: "Luma Prints keys saved" });
         router.refresh();
-      } catch (error) {
-        toast({ variant: "danger", title: "Not saved", description: error instanceof Error ? error.message : "Try again." });
+      } catch {
+        toast({ variant: "danger", title: "Not saved", description: "Could not save. Try again." });
       }
     });
   }
 
   function onClear() {
     startClear(async () => {
-      await clearPrintProviderCredentials(creds.businessId, "lumaprints");
-      toast({ variant: "success", title: "Luma Prints credentials removed" });
-      router.refresh();
+      try {
+        const res = await clearPrintProviderCredentials(creds.businessId, "lumaprints");
+        if (!res.ok) {
+          toast({ variant: "danger", title: "Not removed", description: res.message });
+          return;
+        }
+        toast({ variant: "success", title: "Luma Prints keys removed" });
+        router.refresh();
+      } catch {
+        toast({ variant: "danger", title: "Not removed", description: "Could not remove. Try again." });
+      }
     });
   }
 

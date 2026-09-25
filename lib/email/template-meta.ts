@@ -43,67 +43,67 @@ export const TEMPLATE_META: Record<
 > = {
   photo_request: {
     label: "Photo request",
-    description: "Sent automatically on order import. Contains the upload link.",
+    description: "Goes out by itself when a new order arrives without photos. Has the upload link.",
     variables: ["first_name", "order_number", "business_name", "upload_link"],
   },
   proof_ready: {
-    label: "Proof ready (legacy)",
-    description: "Legacy proof-ready template kept so existing rows remain readable.",
+    label: "Proof ready (older orders)",
+    description: "Kept so proof emails sent before the digital and printed versions still read correctly.",
     variables: ["first_name", "order_number", "business_name", "proof_link"],
   },
   proof_ready_digital_single: {
-    label: "Proof ready · digital · single",
-    description: "Auto-selected for first-pass digital orders with one figure.",
+    label: "Proof ready: digital, one subject",
+    description: "The first proof of a digital portrait with one person or pet.",
     variables: ["first_name", "order_number", "business_name", "proof_link"],
   },
   proof_ready_digital_multi: {
-    label: "Proof ready · digital · multi",
-    description: "Auto-selected for first-pass digital orders with multiple figures.",
+    label: "Proof ready: digital, several subjects",
+    description: "The first proof of a digital portrait with more than one person or pet.",
     variables: ["first_name", "order_number", "business_name", "proof_link"],
   },
   proof_ready_physical_single: {
-    label: "Proof ready · physical · single",
-    description: "Auto-selected for first-pass physical orders with one figure.",
+    label: "Proof ready: printed, one subject",
+    description: "The first proof of a printed portrait with one person or pet.",
     variables: ["first_name", "order_number", "business_name", "proof_link"],
   },
   proof_ready_physical_multi: {
-    label: "Proof ready · physical · multi",
-    description: "Auto-selected for first-pass physical orders with multiple figures.",
+    label: "Proof ready: printed, several subjects",
+    description: "The first proof of a printed portrait with more than one person or pet.",
     variables: ["first_name", "order_number", "business_name", "proof_link"],
   },
   revision_received: {
     label: "Revision ready",
-    description: "Auto-selected when a revised portrait is ready after a revision round.",
+    description: "Sent when the customer asked for changes and the new version is ready.",
     variables: ["first_name", "order_number", "business_name", "proof_link"],
   },
   order_received: {
     label: "Order received",
-    description: "Drafted the moment an order is placed, a warm acknowledgement, not a status update.",
+    description: "A thank-you the moment an order is placed.",
     variables: ["first_name", "order_number", "business_name"],
   },
   in_design: {
     label: "In the artist's hands",
-    description: "Drafted when an order is first assigned to a designer.",
+    description: "Sent when a designer starts on the order.",
     variables: ["first_name", "order_number", "business_name"],
   },
   printing: {
     label: "Now printing",
-    description: "Drafted when an approved physical order moves to printing.",
+    description: "Sent when an approved printed portrait goes to print.",
     variables: ["first_name", "order_number", "business_name"],
   },
   shipped: {
     label: "Shipped",
-    description: "Drafted when tracking is added and the order moves to shipped.",
+    description: "Sent when a tracking number is added.",
     variables: ["first_name", "order_number", "business_name", "tracking_number", "tracking_url"],
   },
   photo_reminder: {
     label: "Photo reminder",
-    description: "The 48-hour nudge when photos still haven't arrived. Auto-sent like the initial photo request.",
+    description: "Goes out by itself two days after the photo request if no photos arrived.",
     variables: ["first_name", "order_number", "business_name", "upload_link"],
   },
   proof_reminder: {
     label: "Proof reminder",
-    description: "The 3-day nudge when a sent proof hasn't been reviewed yet.",
+    description: "Sent three days after a proof if the customer has not answered.",
     variables: ["first_name", "order_number", "business_name", "proof_link"],
   },
 };
@@ -122,3 +122,39 @@ export const EDITABLE_TEMPLATE_KEYS: TemplateKey[] = [
   "photo_reminder",
   "proof_reminder",
 ];
+
+/**
+ * The {{placeholders}} in a subject or body that this template cannot fill.
+ * A typo ({{frist_name}}) or a link this email never gets ({{tracking_url}}
+ * in the photo request) would reach the customer as blank text, so the editor
+ * warns and the save refuses, naming the placeholder.
+ */
+export function unknownPlaceholders(key: TemplateKey, text: string): string[] {
+  const allowed = new Set<string>(TEMPLATE_META[key].variables);
+  const seen = new Set<string>();
+  for (const m of text.matchAll(/\{\{\s*([^{}]*?)\s*\}\}/g)) {
+    const name = m[1].trim();
+    if (!allowed.has(name)) seen.add(name || "(empty)");
+  }
+  return [...seen];
+}
+
+/** Sample values for a preview or a test email: what a customer would see. */
+export function sampleTemplateVars(businessName: string, appOrigin: string): TemplateVars {
+  return {
+    first_name: "Sam",
+    order_number: "TEST-1001",
+    business_name: businessName,
+    proof_link: `${appOrigin}/proof/sample-test`,
+    upload_link: `${appOrigin}/upload/sample-test`,
+    tracking_number: "TEST123456789",
+    tracking_url: "https://example.com/track/TEST123456789",
+  };
+}
+
+/** Substitute {{placeholders}}; a placeholder with no value renders empty. */
+export function fillTemplate(template: EmailTemplate, vars: TemplateVars): EmailTemplate {
+  const sub = (input: string) =>
+    input.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, name: string) => (vars as Record<string, string | undefined>)[name] ?? "");
+  return { subject: sub(template.subject), body: sub(template.body) };
+}

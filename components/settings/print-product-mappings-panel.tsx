@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
 import { deactivatePrintProductMapping, savePrintProductMapping } from "@/app/(app)/settings/actions";
-import { Badge, Button, DataPanel, Input, Select, Textarea } from "@/components/ui";
+import { Badge, Button, DataPanel, Input, Select, Textarea, useToast } from "@/components/ui";
 import { Printer, X } from "@/components/ui/icons";
 
 export type PrintProductMappingVM = {
@@ -39,6 +40,50 @@ export function PrintProductMappingsPanel({
   const [shopId, setShopId] = useState(shops[0]?.id ?? "");
   const selectedShop = shops.find((shop) => shop.id === shopId) ?? shops[0] ?? null;
   const byShop = useMemo(() => new Map(shops.map((shop) => [shop.id, shop])), [shops]);
+  const router = useRouter();
+  const toast = useToast();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [saving, startSave] = useTransition();
+  const [removing, startRemove] = useTransition();
+  const [removingId, setRemovingId] = useState<string | null>(null);
+
+  function onSave(formData: FormData) {
+    startSave(async () => {
+      try {
+        const res = await savePrintProductMapping(formData);
+        if (!res.ok) {
+          toast({ variant: "danger", title: "Not saved", description: res.message });
+          return;
+        }
+        toast({ variant: "success", title: "Mapping saved", description: res.message });
+        formRef.current?.reset();
+        router.refresh();
+      } catch {
+        toast({ variant: "danger", title: "Not saved", description: "Could not save. Try again." });
+      }
+    });
+  }
+
+  function onRemove(mappingId: string) {
+    const formData = new FormData();
+    formData.set("mappingId", mappingId);
+    setRemovingId(mappingId);
+    startRemove(async () => {
+      try {
+        const res = await deactivatePrintProductMapping(formData);
+        if (!res.ok) {
+          toast({ variant: "danger", title: "Not removed", description: res.message });
+          return;
+        }
+        toast({ variant: "success", title: "Mapping removed" });
+        router.refresh();
+      } catch {
+        toast({ variant: "danger", title: "Not removed", description: "Could not remove. Try again." });
+      } finally {
+        setRemovingId(null);
+      }
+    });
+  }
 
   return (
     <div className="space-y-4">
@@ -48,7 +93,7 @@ export function PrintProductMappingsPanel({
           Add print product mapping
         </div>
         {selectedShop ? (
-          <form action={savePrintProductMapping} className="grid gap-3 lg:grid-cols-2">
+          <form ref={formRef} action={onSave} className="grid gap-3 lg:grid-cols-2">
             <Select label="Shop" name="shopId" value={shopId} onChange={(event) => setShopId(event.currentTarget.value)}>
               {shops.map((shop) => (
                 <option key={shop.id} value={shop.id}>
@@ -86,7 +131,7 @@ export function PrintProductMappingsPanel({
                 <option key={title} value={title} />
               ))}
             </datalist>
-            <Button type="submit" className="w-fit">
+            <Button type="submit" className="w-fit" loading={saving}>
               Save mapping
             </Button>
           </form>
@@ -119,12 +164,17 @@ export function PrintProductMappingsPanel({
                     <p className="mt-1 text-xs text-slate">Provider product: {mapping.providerProductId}</p>
                   </div>
                   <div className="flex gap-2">
-                    <form action={deactivatePrintProductMapping}>
-                      <input type="hidden" name="mappingId" value={mapping.id} />
-                      <Button type="submit" variant="ghost" size="sm" aria-label="Deactivate mapping">
-                        <X size={15} />
-                      </Button>
-                    </form>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label="Remove mapping"
+                      loading={removing && removingId === mapping.id}
+                      disabled={removing}
+                      onClick={() => onRemove(mapping.id)}
+                    >
+                      <X size={15} />
+                    </Button>
                   </div>
                 </div>
               </DataPanel>
