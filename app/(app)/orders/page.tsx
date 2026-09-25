@@ -44,6 +44,8 @@ type SearchParams = Promise<{
   dir?: string;
   page?: string;
   pageSize?: string;
+  /** "search": the phone top bar's search button, which puts the cursor in the search box. */
+  focus?: string;
 }>;
 
 type ViewKey =
@@ -716,7 +718,7 @@ export default async function OrdersPage({
   const lastResult = Math.min(offset + rows.length, total);
   const currentParams = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (typeof value === "string" && value) currentParams.set(key, value);
+    if (typeof value === "string" && value && key !== "focus") currentParams.set(key, value);
   }
   currentParams.set("view", selectedView);
 
@@ -813,7 +815,10 @@ export default async function OrdersPage({
             ))}
             <input
               name="q"
+              type="search"
+              enterKeyHint="search"
               defaultValue={q}
+              autoFocus={params.focus === "search"}
               placeholder="Search order number or customer"
               className="h-11 w-full rounded-full bg-surface pl-10 pr-4 text-sm text-ink shadow-card outline-none placeholder:text-slate/70 focus-visible:ring-2 focus-visible:ring-pigment"
             />
