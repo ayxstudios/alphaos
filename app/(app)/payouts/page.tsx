@@ -221,7 +221,7 @@ export default async function PayoutsPage({
 
       <TableShell>
         {summaries.length === 0 ? (
-          <EmptyState icon={Wallet} headline="No earnings this month" body="Designers earn when their orders are complete. Pick another month to look back." />
+          <EmptyState icon={Wallet} headline="No earnings this month" body="Pick another month to look back." />
         ) : (
           <>
             <div className="hidden grid-cols-[minmax(0,1.4fr)_1fr_1fr_5rem_13rem] gap-4 border-b border-line/60 px-4 py-2.5 text-xs font-medium text-slate md:grid">

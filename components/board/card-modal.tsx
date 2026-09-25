@@ -404,7 +404,7 @@ function CardUploadPanel({
   const designerHint = !canDesignerUpload
     ? designerNote
     : freshVersion
-      ? "Ready for QC. To change it first, add a new version."
+      ? "Ready. Press Submit for QC, or add a new version first."
       : latestSubmission
         ? "Add a new version with the changes, then submit it for QC."
         : "Add the finished portrait, then submit it for QC.";
@@ -722,7 +722,7 @@ function DueLine({
 function Meta({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate">{label}</p>
+      <p className="text-xs font-semibold text-slate">{label}</p>
       {children}
     </div>
   );

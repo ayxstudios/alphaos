@@ -129,7 +129,7 @@ export function OrderCard({
               )}
               {revision.failedItems.length > 0 && (
                 <span className="block font-normal text-slate">
-                  {revision.failedItems.map((f) => f.split(":")[0].trim()).join(", ")}
+                  To fix: {revision.failedItems.map((f) => f.split(":")[0].trim()).join(", ")}
                 </span>
               )}
               {!!revision.annotations?.length && (
@@ -146,7 +146,7 @@ export function OrderCard({
           <span className="shrink-0 tabular-nums">
             {card.figuresResolved
               ? `${card.figureCount} figure${card.figureCount === 1 ? "" : "s"}`
-              : "Figures ?"}
+              : "Figures not set"}
           </span>
         </div>
       </div>

@@ -447,9 +447,9 @@ export default async function SettingsPage({
     },
     {
       key: "cutoff",
-      label: "Live-order cutoff set",
+      label: "Start date for live orders set",
       ok: cutoffsSet,
-      detail: "All shops protected",
+      detail: "Older orders come in archived",
       href: cutoffHref,
       action: "Set cutoff",
     },
