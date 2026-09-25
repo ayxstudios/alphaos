@@ -56,6 +56,8 @@ import { getCardDetail } from "@/lib/orders/card-detail";
 import { formatAge } from "@/lib/orders/today-queue";
 import { defaultReplyTemplate } from "@/lib/orders/reply-draft";
 import { OrderCommentForm } from "@/components/orders/order-comment-form";
+import { PhoneFold } from "@/components/ui/phone-fold";
+import { optionsSummary } from "@/lib/orders/options-summary";
 import { OrderRevisionForm } from "@/components/orders/order-revision-form";
 import { OrderReassignForm } from "@/components/orders/order-reassign-form";
 import { OrderStyleSetter } from "@/components/orders/order-style-setter";
@@ -707,7 +709,15 @@ export default async function OrderDetailPage({
                           </div>
                         </div>
                         {Array.isArray(item.options) && item.options.length > 0 ? (
-                          <dl className="mt-3 grid gap-x-4 gap-y-2 rounded-input bg-canvas p-3 text-sm sm:grid-cols-2">
+                          // Phone: the raw shop options fold behind one summary line.
+                          <PhoneFold
+                            plain
+                            staticFromLg
+                            summary={<span className="text-xs font-medium text-slate">Options</span>}
+                            hint={optionsSummary(item.options) || `${item.options.length} option${item.options.length === 1 ? "" : "s"}`}
+                            className="mt-2 lg:mt-0"
+                          >
+                          <dl className="mt-1 grid gap-x-4 gap-y-2 rounded-input bg-canvas p-3 text-sm sm:grid-cols-2 lg:mt-3">
                             {item.options.map((option) => (
                               <div key={`${option.name}-${option.value}`} className="min-w-0">
                                 <dt className="text-xs text-slate">
@@ -717,6 +727,7 @@ export default async function OrderDetailPage({
                               </div>
                             ))}
                           </dl>
+                          </PhoneFold>
                         ) : (
                           item.variation && (
                             <p className="mt-2 break-words text-sm text-slate">{item.variation}</p>
@@ -855,12 +866,16 @@ export default async function OrderDetailPage({
         {/* Right: everything else is waiting on — who has it, when it's due,
             what print and proof are doing, and the full history underneath. */}
         <aside className="flex flex-col gap-4">
-          <DataPanel className="p-4">
-            <SectionHeader title="Ask Alpha AI" />
-            <div className="mt-3">
+          {/* Phone: folded behind its heading (less used than the status
+              below); from lg up the same panel as before. */}
+          <PhoneFold summary="Ask Alpha AI" hint="Questions about this order" staticFromLg>
+            <div className="hidden lg:block">
+              <SectionHeader title="Ask Alpha AI" />
+            </div>
+            <div className="lg:mt-3">
               <AskAlpha orderId={order.id} compact />
             </div>
-          </DataPanel>
+          </PhoneFold>
 
           {/* Where it is right now: designer + proof, two short facts. */}
           <DataPanel className="p-4">
@@ -1004,10 +1019,12 @@ export default async function OrderDetailPage({
             )}
           </Disclosure>
 
-          <Disclosure
+          {/* The order's history: open from lg up, folded on a phone (a link
+              to #notes still opens it there). */}
+          <PhoneFold
             summary="Activity"
             hint={`${detail.events.length} event${detail.events.length === 1 ? "" : "s"}`}
-            defaultOpen
+            hashIds={["notes"]}
             className="scroll-mt-20"
           >
             <div id="notes">
@@ -1040,7 +1057,7 @@ export default async function OrderDetailPage({
                 )}
               </ul>
             </div>
-          </Disclosure>
+          </PhoneFold>
         </aside>
       </div>
     </Page>
