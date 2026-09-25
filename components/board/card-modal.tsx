@@ -17,6 +17,7 @@ import {
   LABEL_CLASS,
   optionName,
   relativeTime,
+  exactTime,
   revisionNote,
 } from "./card-meta";
 import {
@@ -260,7 +261,9 @@ export function CardModal({
                 ) : events.length === 0 ? (
                   <p className="text-sm text-slate">No activity yet.</p>
                 ) : (
-                  events.map((e) => <FeedItem key={e.id} event={e} viewerRole={viewerRole} />)
+                  events.map((e) => (
+                    <FeedItem key={e.id} event={e} viewerRole={viewerRole} timeZone={viewerRole === "designer" ? timeZone : undefined} />
+                  ))
                 )}
               </div>
             </Disclosure>
@@ -866,9 +869,14 @@ function RevisionBlock({
   );
 }
 
-function FeedItem({ event, viewerRole }: { event: CardEvent; viewerRole: ViewerRole }) {
+function FeedItem({ event, viewerRole, timeZone }: { event: CardEvent; viewerRole: ViewerRole; timeZone?: string }) {
   const actor = eventActor(event);
-  const when = relativeTime(event.createdAt);
+  // A designer reads every time in their own zone (like their deadline); staff in the business's.
+  const when = (
+    <time dateTime={event.createdAt} title={exactTime(event.createdAt, timeZone)}>
+      {relativeTime(event.createdAt, Date.now(), timeZone)}
+    </time>
+  );
 
   if (event.action === "comment") {
     return (

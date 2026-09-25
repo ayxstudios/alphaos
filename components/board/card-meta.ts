@@ -182,15 +182,22 @@ export function eventActor(e: CardEvent): string {
   return fromCustomer(e) ? "The customer" : "System";
 }
 
-/** Compact relative time ("3m", "5h", "2d") with an absolute fallback. */
-export function relativeTime(iso: string, now = Date.now()): string {
+/**
+ * When a feed event happened: "just now", "8m ago" or "5h ago" inside a day,
+ * then the day and time in the viewer's zone ("Tue 22 Sept, 3:10 pm GMT+7"),
+ * so an older comment or QC result has an exact time a designer can read in
+ * their own clock. `exactTime` is the full moment, for the hover title.
+ */
+export function relativeTime(iso: string, now = Date.now(), timeZone?: string): string {
   const diff = now - new Date(iso).getTime();
   const m = Math.floor(diff / 60_000);
   if (m < 1) return "just now";
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d ago`;
-  return formatAt(iso, { day: "2-digit", month: "short" });
+  return exactTime(iso, timeZone);
+}
+
+export function exactTime(iso: string, timeZone?: string): string {
+  return formatAt(iso, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }, "", timeZone).replace(",", "");
 }
