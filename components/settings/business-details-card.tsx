@@ -20,12 +20,20 @@ export function BusinessDetailsCard({ business }: { business: BusinessDetailsVM 
   const [error, setError] = useState<string | null>(null);
   const [pending, startSave] = useTransition();
   const preview = /^https:\/\/\S+$/i.test(logoUrl.trim()) ? logoUrl.trim() : null;
+  // A link that is not an image shows a clear line, not a broken picture.
+  const [brokenLogo, setBrokenLogo] = useState<string | null>(null);
 
   function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     startSave(async () => {
-      const res = await saveBusinessDetails(business.id, { name, logoUrl });
+      let res: Awaited<ReturnType<typeof saveBusinessDetails>>;
+      try {
+        res = await saveBusinessDetails(business.id, { name, logoUrl });
+      } catch {
+        setError("Could not save. Try again.");
+        return;
+      }
       if (!res.ok) {
         setError(res.message);
         return;
@@ -62,9 +70,16 @@ export function BusinessDetailsCard({ business }: { business: BusinessDetailsVM 
         />
         <div className="flex min-h-16 items-center gap-3 rounded-input border border-line bg-canvas p-3">
           <span className="text-xs text-slate">Customers see</span>
-          {preview ? (
+          {preview && brokenLogo === preview ? (
+            <span className="text-sm text-rose">That link is not a picture. Customers would see the name instead.</span>
+          ) : preview ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={preview} alt={name} className="h-10 w-auto max-w-[12rem] object-contain" />
+            <img
+              src={preview}
+              alt={name}
+              className="h-10 w-auto max-w-[12rem] object-contain"
+              onError={() => setBrokenLogo(preview)}
+            />
           ) : (
             <span className="font-display text-lg font-semibold text-ink">{name.trim() || "Your business"}</span>
           )}
