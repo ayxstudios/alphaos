@@ -135,8 +135,16 @@ export function textToHtml(text: string): string {
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  // A sentence's full stop, comma or closing bracket after a link is not part
+  // of it: the default proof templates read "...here: {{proof_link}}. You can
+  // also...", and the HTML link then opened /proof/<token>. = "Link not found"
+  // (customer + security QA 2026-09-25). Tokens never end in punctuation.
   const linkify = (s: string) =>
-    s.replace(/(https?:\/\/[^\s<]+)/g, (url) => `<a href="${url}">${url}</a>`);
+    s.replace(/https?:\/\/[^\s<]+/g, (match) => {
+      const [, url, tail] = /^(.*?)((?:[.,;:!?)\]]|&#39;|&quot;)*)$/.exec(match) ?? [match, match, ""];
+      if (!url || /^https?:\/\/$/.test(url)) return match;
+      return `<a href="${url}">${url}</a>${tail}`;
+    });
   // Bodies saved from a browser textarea arrive with CRLF; normalise so blank
   // lines still split paragraphs.
   const paras = text
@@ -144,7 +152,9 @@ export function textToHtml(text: string): string {
     .split(/\n{2,}/)
     .map((p) => `<p>${linkify(esc(p)).replace(/\n/g, "<br>")}</p>`)
     .join("\n");
-  return `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;font-size:15px;color:#16222E;line-height:1.5">${paras}</div>`;
+  // overflow-wrap: a 70-character proof link wraps on a phone instead of
+  // pushing the whole email sideways.
+  return `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;font-size:15px;color:#16222E;line-height:1.5;overflow-wrap:anywhere;word-break:break-word">${paras}</div>`;
 }
 
 /* --- inbound parsing ---------------------------------------------------- */

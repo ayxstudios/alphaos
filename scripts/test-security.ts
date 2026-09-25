@@ -227,6 +227,15 @@ function emailHtmlEscaping() {
       html.includes('href="https://a.test/p?x=1&amp;y=2"'),
     anchors.join(" "),
   );
+  const sentence = textToHtml("Approve it here: https://app.test/proof/AbC_-9. Or reply (https://app.test/upload/x), thanks");
+  report(
+    "email HTML: a full stop or bracket after a link stays outside the href",
+    sentence.includes('href="https://app.test/proof/AbC_-9">') &&
+      sentence.includes('href="https://app.test/upload/x">') &&
+      !sentence.includes('AbC_-9."') &&
+      sentence.includes("overflow-wrap:anywhere"),
+    "the default proof template's link opened /proof/<token>. (Link not found) before; long links wrap on a phone",
+  );
 }
 
 function figureCounts() {
