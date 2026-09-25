@@ -38,6 +38,7 @@ Machine note: the iMac ran at a load average of 380 to 620 during this run
 | P3 | Upload page: a PDF was only refused after Send, with one message at the bottom naming the file, and it blocked the good photos in the same batch; a 26 MB file marked "Over 25 MB" still went to the server and blocked the batch; a failed upload could not be retried (Send disabled); the remove button was 28 px; "or drag them here" on a phone. | Rejected files are marked on their own row at once and skipped; failed uploads retry; 44 px remove; drag hint laptop only. | 6539abd |
 | P3 | Proof page: an approved proof still said "If everything looks perfect, approve it, or let us know what to change", and a decided proof with no image said "Your proof is being prepared. Please check back shortly." Change options were 40 px; "Clear pins" was a 20 px text link next to "spots marked". | Intro only while a decision is open; placeholder only while undecided; 44 px options and Clear spots. | 6c5a49a |
 | P3 | `/orders?q=%00` threw on the server (empty page with a digest); `?q=%` listed every order. | `cleanSearchTerm` + `likeContains`, as on Customers and Messages. Verified locally: %00 lists normally, % and zzzz find nothing, ORD-10 finds the ORD-10xx orders. | a778fa0 |
+| P3 | Upload page: a batch with a real photo and an HTML-as-png answered "One of the files is not a supported photo." while BOTH rows said "Uploaded", with no way to tell which file; Send just failed again. | The server returns the refused keys; the page marks that row "Not a photo: choose a JPG, PNG or HEIC", names it in the message, and Send adds the rest (test:security covers the data layer). | 77fc72c |
 | P3 | `/api/upload/dev/*` (unauthenticated PUT to the function disk) relied on R2 env being present to refuse. | Refuses on every Vercel deployment as well. | 63dc8d5 |
 
 ## Round 1
@@ -210,6 +211,38 @@ this branch, local db `alphaos_cs25`).
   4460): 23/23 pass (test:security flaked once on "fetch failed" to the local
   proxy under load 300+, passed on the re-run). `npx tsc --noEmit` 0,
   `npm run lint` 0.
+
+Round 2 on the local server (fixed build), phone and laptop:
+
+| Screen | Phone | Laptop | Notes |
+|---|---|---|---|
+| Upload: PDF + 26 MB + real PNG | 10 | 10 | PDF "Not a photo" and 26 MB "Over 25 MB" on their own rows at once; Send took only the PNG; "Got them"; the order moved to ready to assign with 1 photo. No drag hint on the phone. |
+| Upload: HTML-as-png dropped (laptop) | 7 | 7 | Refused, no row saved (verified in the db), but the row still said "Uploaded" next to a vague message: fixed 77fc72c, loop 3. |
+| Upload: closed order | 10 | 10 | Unchanged. |
+| Error page (a real one: the local db proxy dropped a connection under load while opening a wrong upload link) | 10 | 10 | Branded "Something went wrong", plain words, Try again 44 px, no message, digest or stack in the page. Only the digest in the console. |
+| Proof: decided proof | 10 | 10 | No "approve it" intro and no "being prepared" box after a decision (6c5a49a). |
+| 404 `/nope`, `/proof/x`, `/upload/x` | 10 | 10 | HTTP 404, calm pages, security headers on all three, no auth cookies on the buyer pages. |
+
+## Round 3 (loop 3)
+
+| Screen | Phone | Laptop | Notes |
+|---|---|---|---|
+| Upload: real PNG + HTML-as-png in one batch | 10 | 10 | The fake row reads "Not a photo: choose a JPG, PNG or HEIC", the message names the file ("STAGING-TEST-really-html.png is not a photo. Send again to add the rest."), Send again uploads nothing new and saves the PNG: "Got them", 1 photo on ORD-1020. |
+| Every other screen of rounds 1 and 2 | 10 | 10 | No code changed under them since round 2 (the upload client change is scoped to the refused-file path); test:security, tsc and lint green after the change. |
+
+## Loop 4: fidelity to the owner order
+
+"Test every function ... every user level ... tested and then debugged and
+uncamelled every section." For this lane: the buyer (upload link, proof
+link, 404 and error pages, 26 customer emails), every signed-out and
+wrong-role caller of every API route and the riskiest server actions, the
+sign-in page and sign-in links, headers and cookies, search and free-text
+inputs, RLS and the security suites. Each section was tested on staging (or
+locally where staging lacked the data or the fix), debugged (18 fixes
+below the 404 fix, each committed on its own), and uncamelled (the upload
+and proof copy says what happened in plain words, one row at a time; no
+jargon; 44 px targets). Not done in this lane and said so: the per-IP login
+lock on shared staging, and a full script CSP.
 
 ## The 12 P3s from docs/QA-2026-09-23-security-r2.md, re-decided
 
