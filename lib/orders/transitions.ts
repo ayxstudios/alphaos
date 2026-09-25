@@ -121,26 +121,39 @@ export class OrderTransitionError extends Error {
     this.name = "OrderTransitionError";
   }
 }
+/** A status as a person reads it in a message: "awaiting_qc" -> "Awaiting QC". */
+function statusWords(status: string): string {
+  const words = status.replaceAll("_", " ").replace(/\bqc\b/g, "QC").replace("fulfillment", "fulfilment");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+// These messages reach the person on screen (toasts, bulk results), so they
+// are plain sentences; the code field carries the machine meaning.
 export class OrderNotFoundError extends OrderTransitionError {
   constructor(orderId: string) {
-    super("not_found", `Order ${orderId} not found or not visible in this context`);
+    super("not_found", "This order is gone or you cannot open it.");
+    void orderId;
   }
 }
 export class IllegalTransitionError extends OrderTransitionError {
   constructor(from: string, to: string) {
-    super("illegal", `Illegal transition ${from} -> ${to}`);
+    super("illegal", `An order in ${statusWords(from)} cannot move straight to ${statusWords(to)}.`);
   }
 }
 export class ForbiddenTransitionError extends OrderTransitionError {
   constructor(role: string, from: string, to: string) {
-    super("forbidden", `Role "${role}" may not transition ${from} -> ${to}`);
+    super("forbidden", `Your role cannot move an order from ${statusWords(from)} to ${statusWords(to)}.`);
+    void role;
   }
 }
 export class StaleTransitionError extends OrderTransitionError {
   movedBy: string;
   actual: string;
   constructor(expected: string, actual: string, movedBy: string) {
-    super("stale", `This order was already moved by ${movedBy} (expected ${expected}, was ${actual})`);
+    const who = movedBy.charAt(0).toUpperCase() + movedBy.slice(1);
+    const where = actual === "(changed)" ? "a new status" : statusWords(actual);
+    super("stale", `${who} already moved this order to ${where}. Refresh to see it.`);
+    void expected;
     this.movedBy = movedBy;
     this.actual = actual;
   }
