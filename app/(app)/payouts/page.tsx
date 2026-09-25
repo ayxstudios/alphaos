@@ -297,22 +297,25 @@ export default async function PayoutsPage({
           <div className="divide-y divide-line/60">
             {detailRows.map((row) => (
               // Fixed columns so every row lines up (auto columns sized per row).
-              <div key={row.id} className="grid grid-cols-1 gap-2 px-4 py-3 text-sm lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_7rem_5rem_15rem] lg:items-center">
+              // Phone: order and amount on one line, the details under them, then the status.
+              <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 px-4 py-3 text-sm lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_7rem_5rem_15rem] lg:items-center lg:gap-2">
                 <div>
                   <Link href={`/orders/${row.orderId}`} className="font-medium text-ink hover:text-pigment">
                     {row.orderNumber}
                   </Link>
                   <p className="text-xs text-slate">{formatDate(row.createdAt)}</p>
                 </div>
-                <p className="text-slate">{details(row.breakdown)}</p>
-                <Badge className="w-fit" variant={row.status === "blocked" ? "warning" : row.status === "voided" ? "danger" : row.status === "paid" ? "success" : "neutral"}>
+                <p className="text-slate max-lg:order-3 max-lg:col-span-2">{details(row.breakdown)}</p>
+                <Badge className="w-fit max-lg:order-4" variant={row.status === "blocked" ? "warning" : row.status === "voided" ? "danger" : row.status === "paid" ? "success" : "neutral"}>
                   {STATUS_LABEL[row.status]}
                 </Badge>
-                <span className="font-semibold text-ink lg:text-right">{money(row.amount)}</span>
+                <span className="text-right font-semibold text-ink max-lg:order-2">{money(row.amount)}</span>
                 {/* A pending earning (e.g. an order completed by mistake) can be voided
                     before it is paid; blocked ones are voided from the panel above. */}
                 {row.status === "pending" ? (
-                  <VoidEarningForm businessId={businessId} earningId={row.id} />
+                  <div className="max-lg:order-5 max-lg:col-span-2">
+                    <VoidEarningForm businessId={businessId} earningId={row.id} />
+                  </div>
                 ) : (
                   <span className="hidden lg:block" />
                 )}
