@@ -107,3 +107,47 @@ Walked, phone then laptop:
 | 9b97afc | Alpha AI message box and Send 44px |
 | 77fa5ce | Alpha AI quick answer: "Nothing new in your queue, 1 in design and 1 waiting for QC. Due first: PC32148, then PC32151." |
 | 3a8b3ae | Board (found reading the drop code against the transition table): a Failed QC or Revisions card dropped on In Design was sent to the server as in_design to in_design ("Illegal transition"); an Awaiting QC card dropped on In Design is a QC fail, which needs QC's signed reason, so the designer got a sign-off error. Both now leave the card where it was; Awaiting QC back to My Queue still works, as the Quick guide says |
+
+## Round 2: local dev server (alphaos_designer, fixes at 3a8b3ae) + staging for uploads
+
+Local database `alphaos_designer` (npm run db:local-tour + seed:history), designer
+Dina Park (Lumina, Asia/Jakarta), two fresh queued orders GD-R2P (phone) and
+GD-R2L (laptop) cloned from ORD-1013 with two customer photos. The local
+.env.local has NO file storage: the worktree of record's R2 settings point at
+the production bucket, so they were removed here and never used. A saved
+upload is recorded in the local database the way the save action records it
+(a submission asset row); the real upload path (presign, PUT, save) was walked
+on staging in rounds 1 and 2. The iMac ran at load 100 to 900 with swap full
+for most of the afternoon (several lanes): the dev server took 10 to 20
+minutes to compile a route and a server action could hold its transaction
+open for minutes, so local timings say nothing about the app and a few walk
+steps timed out on the machine, not the page. Each such step was re-run.
+
+Verified on the phone (local):
+- Welcome, Watch how it works (50 s under load), Now you try steps 1 and 2:
+  clean audit, no sideways scroll, nothing clipped, no tap target under 44px.
+- Home: "Figures, last 7 days / 0 / Delivered", chart and "Assigned today" in
+  Jakarta days; a Due first row opens its card.
+- My Week: "On-time this week: None yet"; month $33.00 = My Board's "This
+  month" = the Money page's pending + paid for 2026-09 ($33, five rows; read
+  through the same functions the pages call).
+- Card upload: the file picker offers only image/png, jpeg, webp, gif, heic,
+  heif; a .txt and an .svg each get "That file can't be added. <name> is not a
+  PNG, JPG, WebP or HEIC image. Save it as a PNG or JPG and try again."; a
+  27 MB PNG gets "That file is too big. huge.png is over 25 MB. Save a smaller
+  copy ... and add that."; no red "Failed" row is left behind.
+- Card activity: an event two days old reads "Wed 23 Sept, 6:02 pm GMT+7"
+  (Jakarta), a new one "6m ago" with "Fri 25 Sept, 6:03 pm GMT+7" on hover.
+- The comment box computes to 16px on the phone (no iOS zoom on tap).
+
+"Submit for QC right after an upload" (the simplicity lane's report), phone,
+staging, PC32151 after a QC fail: the card was scrolled so the upload area sat
+at the bottom of the screen, a JPG was added, and the button was tapped the
+moment it appeared. Submit for QC appears only once the new version is saved
+(7.4 s after the upload started on staging: presign, upload, save), it is
+enabled at once, it is the top element at its centre (y 248 to 292 on an
+844 px screen) and the "New version added" toast sits at y 714 to 764, so
+nothing covers it; the tap sent the card for QC and closed it in 2.9 s. Not
+reproduced as a defect: a script that taps within ~7 s of choosing the file
+is tapping a button that does not exist yet (by design: it is offered only
+when there is a new version to review). Left as it is.
