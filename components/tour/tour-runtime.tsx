@@ -395,6 +395,9 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
         const left = steps.length - index;
         const hold = (WATCH_MS - elapsed - (left - 1) * TYPICAL_DEMO_MS) / left;
         await sleep(h, Math.max(1800, Math.min(7000, hold)));
+        // A demo search would otherwise stay in the box and empty the next
+        // step's list (the Needs details step showed "Nothing here").
+        if (demo.act.kind === "search") await undo(h, demo);
         if (index + 1 < steps.length) setIndex(index + 1);
         else {
           light(null);

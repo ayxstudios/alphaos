@@ -33,10 +33,10 @@ a whole essay"). On a phone they wrap to two lines at most.
 
 | Role | Step | The real action | Line |
 | --- | --- | --- | --- |
-| VA | Today | the Today menu item | Today lists what needs you first. Open it and work from the top down. |
+| VA | Today | the Today menu item | Today lists what needs you first. Tap Today and work from the top down. |
 | VA | Find an order | types a customer's name into Orders search, Enter | Search finds any order fast. Type a customer's name, then press Enter. |
-| VA | Needs details | the Needs Details tab | Some orders arrive missing information. Open Needs Details to see which ones need you. |
-| VA | QC | Start QC (opens the review screen, read only) | Finished portraits wait here for your check. Press Start QC to review the next one. |
+| VA | Needs details | the Needs details tab | Some orders arrive with details missing. Open Needs details to fill them in. |
+| VA | QC | Start QC (opens the review screen, read only) | QC is where you check each finished portrait. Press Start QC to check the next one. |
 | VA | Messages | opens All mail | Messages holds every customer email. Open All mail to read or search them. |
 | VA | Print | opens an order's Details | Print lists approved orders ready to print. Open Details to see where each one is. |
 | Designer | My Board | the My Board menu item / tab | My Board holds every order given to you. Open it to see what is due first. |
