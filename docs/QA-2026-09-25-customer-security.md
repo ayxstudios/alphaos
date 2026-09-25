@@ -37,6 +37,7 @@ Machine note: the iMac ran at a load average of 380 to 620 during this run
 | P3 | A designer's card feed showed an email address a VA typed into a comment (metadata was scrubbed, comment bodies were not). | Same scrub on comment bodies for designers. | 0afb89c |
 | P3 | Upload page: a PDF was only refused after Send, with one message at the bottom naming the file, and it blocked the good photos in the same batch; a 26 MB file marked "Over 25 MB" still went to the server and blocked the batch; a failed upload could not be retried (Send disabled); the remove button was 28 px; "or drag them here" on a phone. | Rejected files are marked on their own row at once and skipped; failed uploads retry; 44 px remove; drag hint laptop only. | 6539abd |
 | P3 | Proof page: an approved proof still said "If everything looks perfect, approve it, or let us know what to change", and a decided proof with no image said "Your proof is being prepared. Please check back shortly." Change options were 40 px; "Clear pins" was a 20 px text link next to "spots marked". | Intro only while a decision is open; placeholder only while undecided; 44 px options and Clear spots. | 6c5a49a |
+| P3 | `/orders?q=%00` threw on the server (empty page with a digest); `?q=%` listed every order. | `cleanSearchTerm` + `likeContains`, as on Customers and Messages. Verified locally: %00 lists normally, % and zzzz find nothing, ORD-10 finds the ORD-10xx orders. | a778fa0 |
 | P3 | `/api/upload/dev/*` (unauthenticated PUT to the function disk) relied on R2 env being present to refuse. | Refuses on every Vercel deployment as well. | 63dc8d5 |
 
 ## Round 1
@@ -139,7 +140,8 @@ Staging, as a stranger (no cookies), phone 390x844 and laptop 1440x900.
 | Upload: second visit | 10 | 10 | "We already have 4 photos from you", can add more. |
 | Upload: wrong token, `<script>` token, 200-char token | 10 | 10 | HTTP 404, calm "Link not found". |
 | Upload: closed order (PC32149, complete) | 10 | 10 | HTTP 200 with "This order is closed, so photos can no longer be added." |
-| Proof (local, fixed build; staging had no proof to open, see below) | 9 | 9 | Decided proof kept asking to approve (fixed 6c5a49a). Watermarked preview (`/api/proof/<token>/preview`, "PROOF . PIXART" tiles), no cookies set, only business name, order number and the portrait on the page (no customer name, email, address or price). |
+| Proof on staging, PC32168 (made for this: VA assigned it to the staging designer, designer started, uploaded STAGING-TEST png, submitted; VA passed QC and sent, mock Gmail) | 9 | 9 | Watermarked JPEG preview (26 KB, `cache-control: private, no-store`, `x-robots-tag: noindex`), approve worked (awaiting_approval to approved, one `order.approved`), two replayed approves and a late revision all answer "A decision has already been recorded for this proof." Unfixed staging still sets the auth csrf/callback cookies on the buyer and keeps the "approve it" intro after approval (both fixed, below). |
+| Proof (local, fixed build) | 9 | 9 | Decided proof kept asking to approve (fixed 6c5a49a). Watermarked preview (`/api/proof/<token>/preview`, "PROOF . PIXART" tiles), no cookies set, only business name, order number and the portrait on the page (no customer name, email, address or price). |
 | Proof: approve twice | 10 | 10 | Confirm step, "Portrait approved"; reload shows the same; 23 replayed approve calls: 19 "A decision has already been recorded", then "Too many attempts" (20/min per IP and per token); exactly one `order.approved` row. |
 | Proof: request a change with 2 spots and `<img onerror>` + 250 words | 10 | 10 | "Changes requested"; the VA order page shows the note as text, no overflow. |
 | Proof: wrong token | 10 | 10 | HTTP 404 "Link not found". |
@@ -160,8 +162,92 @@ proof" / "Send us your photos" (the page's metadata streams in after the
 not-found head), which is right for a buyer; the root 404 reads "Page not
 found". Only a raw curl of the first bytes showed "AlphaOS".
 
+### Search and input hardening (B9)
+
+Staging as the VA: `/orders`, `/customers`, `/emails` with `' OR 1=1--`,
+`%00`, `%`, `<script>alert(1)</script>`, RTL override + Arabic, 5000 chars:
+all HTTP 200, parameterised, never echoed raw. Two defects on `/orders`
+(VA lane's page, fixed here with a two-line change, see Shared files):
+`?q=%00` threw on the server (digest in the page, empty main area) and `?q=%`
+listed every order (214 KB vs 80 KB). `/customers` and `/emails` were
+already cleaned (`cleanSearchTerm`, `likeContains`).
+
+No `dangerouslySetInnerHTML` or `innerHTML` anywhere in app, components or
+lib: every name, note, comment, style name and draft renders through React's
+escaping. The two HTML email builders escape: `textToHtml` (customer mail,
+quotes too) and the daily health email (`escapeHtml`). Links built from
+stored data: tracking URLs are validated (`cleanTrackingUrl`), manual photo
+links must be http(s) now (3b8fa1b), and React 19 refuses `javascript:`
+hrefs. Checked live: the customer upload note `<b>bold?</b> & "quotes"
+ünïcødé` and the revision note `<img src=x onerror=alert(1)>` show as text on
+the VA order page, phone and laptop, no sideways scroll.
+
+Designer order pages on staging (PC32168, PC32148): the only email address
+in the HTML is the designer's own; no customer last name.
+
 ### Local suites
 
 `test:security` (now 7 more checks), `test:rls`, `test:login-link` on
 `alphaos_ci_cs25`: all pass.
 
+
+## The 12 P3s from docs/QA-2026-09-23-security-r2.md, re-decided
+
+| # | P3 | Now |
+|---|---|---|
+| 1 | `/customers?q=%00` rendered the error boundary | Fixed earlier (`cleanSearchTerm`), staging 200. The same bug was still on `/orders` (digest, empty page): fixed on this branch. |
+| 2 | Concurrent reassignment losers get HTTP 500 | Still there (unique index throws in `bulkReassignOrders`). Left for the VA lane, which owns `app/(app)/orders/actions.ts` this round: a catch on the unique violation with "Someone just reassigned this order" is the fix. |
+| 3 | `addTeamMember` with a non-string name: 500 | Fixed earlier (`normalizeName` checks the type). |
+| 4 | Customer names have no length cap | Left: written by manual orders (VA lane) and platform imports; pages render 5000 characters without breaking (r2). |
+| 5 | Search `%` and `_` are wildcards | `/customers`, `/emails` fixed earlier; `/orders` fixed on this branch. |
+| 6 | Notification `href` without a leading-`/` check | Fixed earlier (top bar only pushes `/` paths that are not `//`). |
+| 7 | Built-in `POST /api/auth/signout` does not revoke | Fixed earlier (`events.signOut` revokes). |
+| 8 | `recheckToken` keeps a session when the DB read fails | Kept on purpose: a database blip must not sign everyone out. |
+| 9 | A designer calling team actions gets HTTP 200 `{}` | Kept: re-proved today on staging and locally, no action runs and nothing is written; the VA gets the calm "Only an admin can make sign-in links". |
+| 10 | Order page client chunk bundled `lib/db` | Fixed earlier (`lib/orders/reply-templates.ts` is db-free). |
+| 11 | `prepareQcEmailPreview` trusts the client checklist | Kept: VA-only preview; the send runs the authoritative gate. |
+| 12 | `moveOrder` not-found message had the UUID; hidden orders are soft 404s | The message is plain now. `/orders/not-a-uuid` still answers HTTP 200 for a VA and a designer: left for the VA lane (its page), flagged. |
+| + | A designer's Start never drafts the `in_design` email | Kept: a design call (needs a system-side draft). |
+
+## The 8 wide RLS policies, re-decided
+
+| # | Policy | Now |
+|---|---|---|
+| 1 | `"user"` UPDATE open to app_user (a designer context could change its own role) | Narrowed in 0040 (admin, or own row keeping its role); test:rls. |
+| 2 | `designer_businesses` without RLS | Narrowed in 0040; test:rls. |
+| 3 | `alpha_events` without RLS | Kept: VA, system and designer transitions write it and need `.returning`; a safe policy needs a per-event-type rule. |
+| 4 | Designer `activity_log` / `assets` inserts with any actor, `customer_public` wide, notification deletes and channels, unused Auth.js tables | Narrowed in 0040; test:rls. |
+| 5 | `orders_designer_update` allows any column | Kept: a policy cannot limit columns (needs a trigger); `transition()` is the only designer writer. |
+| 6 | `orders_select` lets an assigned designer read `raw_import` (Etsy `buyer_email`) | Kept: read server-side for the first name only. Re-checked today: a designer's order page HTML on staging carries no customer email and no last name. |
+| 7 | `shops_select` returns credential ciphertext to designers | Kept: AES-256-GCM, key server-side only; hiding it needs a designer-safe view. |
+| 8 | VA policies FOR ALL | Deletes narrowed in 0040; VA UPDATE on earnings kept (completing an order creates the earning). |
+
+test:rls passes on `alphaos_ci_cs25` with every one of these.
+
+## Left as it is (with reasons)
+
+- A full script `Content-Security-Policy`: Next's inline runtime scripts need a per-request nonce (middleware + every page dynamic); `frame-ancestors 'none'` is set now. Worth its own change.
+- HSTS without `preload`: preload is a registry submission decision for a custom domain, not a header default. Vercel already sends it on `*.vercel.app`.
+- The Shopify webhook says "unknown shop" vs "invalid signature": shop domains are public, and the distinction is what an admin needs when setting a store up.
+- `/styleguide`: staff only, a static component demo with no data.
+- Per-IP login limit not hit on staging: the four lanes share one IP and would all be locked out; proven by test:security instead.
+- Tour: on staging, opening `/orders/<id>` as the VA landed on Today with "1 of 6" (the tour started and took the page over), on the phone even after Skip. Tour files belong to the designer lane: flagged there.
+- The `.png` that is really HTML is still on staging order 4170595372 as evidence until the fix deploys (a VA can remove it).
+
+## Shared files touched
+
+- `app/(app)/board/actions.ts` (designer lane): `saveCardAssetUploads` uses `assertKeysBelongTo` + `assertStoredImage` (byte sniffing). 3b8fa1b
+- `app/(app)/orders/new/actions.ts` (VA lane): `referenceUploadProblem` before a manual order stores keys or links. 3b8fa1b
+- `app/(app)/orders/page.tsx` (VA lane): `cleanSearchTerm` + `likeContains` on `q`. a778fa0
+- `lib/orders/card-detail.ts`: comment bodies scrubbed for designers. 0afb89c
+- `lib/utils.ts`: `isUuid` appended. 9cb0435
+- `lib/email/templates.ts`, `lib/integrations/gmail/mime.ts`: renderer only (no template copy changed). d1178e4, 3dc15be
+- Copy the SIMPLICITY lane may reword: `app/not-found.tsx`, `app/error.tsx`, `app/global-error.tsx` (new), the upload row messages "Not a photo: choose a JPG, PNG or HEIC", the proof page "Clear spots" (was "Clear pins").
+
+## Staging state left behind
+
+- 4170595372 (`c736e552`): awaiting_photos to ready_to_assign by my customer upload; 6 reference assets (4 STAGING-TEST photos, 1 HEIC with an empty type, 1 HTML-as-png), and my test note appended to its notes.
+- PC32168 (`c611ff72`): assigned by me (as the VA) to the staging designer, started, one STAGING-TEST submission, QC passed and proof sent (mock Gmail), approved by me as the customer: status approved.
+- PC32170: MOVED BY MISTAKE. My first designer script matched the wrong card: in_design 06:12 UTC, one STAGING-TEST submission, awaiting_qc 06:13 UTC. It had been assigned to the staging designer at 05:30 UTC by another lane (as staging-va). Whoever owns it: it is in QC with a test square, not your upload.
+- The staging designer's saved session had been revoked by someone; I signed it in again (states in the scratch dir only).
+- Wrong-password attempts: 4 on staging-admin and 1 on staging-designer (timing and UI checks), 5 on unknown `cs25-*` emails; all well under the locks.
