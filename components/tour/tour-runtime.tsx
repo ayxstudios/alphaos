@@ -175,6 +175,15 @@ function arrowPath(c: DOMRect, t: DOMRect): { line: string; head: string } | nul
   return { line: `M ${f(s)} C ${f(c1)}, ${f(c2)}, ${f(e)}`, head: `M ${f(h1)} L ${f(e)} L ${f(h2)}` };
 }
 
+/** Something the person opened (a dialog, a drawer) now sits on top of the element. */
+function covered(el: HTMLElement, r: DOMRect) {
+  const x = r.left + r.width / 2;
+  const y = r.top + r.height / 2;
+  if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return false;
+  const top = document.elementsFromPoint(x, y).find((e) => !e.closest("[data-tour-root]"));
+  return !!top && !el.contains(top) && !top.contains(el);
+}
+
 /** The nearest scrolling box around an element. */
 function scrollParent(el: HTMLElement): HTMLElement | null {
   for (let p = el.parentElement; p; p = p.parentElement) {
@@ -543,7 +552,9 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
       const lit = litRef.current;
       const reduced = reducedRef.current;
       const phoneNow = window.matchMedia(PHONE).matches;
-      const r = lit && lit.isConnected ? lit.getBoundingClientRect() : null;
+      let r = lit && lit.isConnected ? lit.getBoundingClientRect() : null;
+      // Once done, a dialog the person opened over it takes the stage: the ring lets go.
+      if (r && lit && phaseRef.current !== "turn" && covered(lit, r)) r = null;
       const box = r && r.width > 0 && r.height > 0 ? ringBox(r) : null;
       const arrived = arrivalRef.current !== seenArrival;
       if (spot) {
