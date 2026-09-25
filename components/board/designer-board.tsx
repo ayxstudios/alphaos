@@ -149,10 +149,6 @@ export function DesignerBoard({
     return null;
   }
 
-  // What a screen reader hears while dragging: the order number and the column
-  // title, never the order's internal id or the column's code name.
-  const title = (id: unknown) => COLUMNS.find((c) => c.key === id)?.title ?? "this column";
-  const cardName = (id: unknown) => locate(String(id))?.card.orderNumber ?? "The order";
   function onDragStart(e: DragStartEvent) {
     setActive(locate(String(e.active.id))?.card ?? null);
   }
