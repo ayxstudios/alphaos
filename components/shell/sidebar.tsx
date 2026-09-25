@@ -114,7 +114,9 @@ export function Sidebar({
         aria-current={active ? "page" : undefined}
         data-tour={`nav:${item.href}`}
         className={cn(
-          "group relative flex h-10 items-center gap-3 rounded-input px-3 text-sm font-medium",
+          "group relative flex items-center gap-3 rounded-input px-3 text-sm font-medium",
+          // The phone drawer: 44px rows; the laptop sidebar keeps 40px.
+          mobile ? "h-11" : "h-10",
           "transition-colors duration-150 ease-standard motion-hover",
           focusRing,
           collapsed && !mobile && "justify-center px-0",

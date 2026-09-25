@@ -47,13 +47,17 @@ export function TopBar({
   user,
   options,
   selected,
-  unread,
+  unread: unreadFromServer,
   recentNotifications,
   mobileMenuButton,
 }: TopBarProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
+  // Mark all read clears the badge at once; the server count takes over again
+  // when it changes (a new notification after that).
+  const [clearedAt, setClearedAt] = useState<number | null>(null);
+  const unread = clearedAt === unreadFromServer ? 0 : unreadFromServer;
 
   function choose(id: string, close: () => void) {
     close();
@@ -78,6 +82,7 @@ export function TopBar({
   }
 
   function markRead() {
+    setClearedAt(unreadFromServer);
     startTransition(async () => {
       await markAllNotificationsRead();
       router.refresh();
@@ -170,7 +175,8 @@ export function TopBar({
           <button
             type="button"
             aria-label="Open order search"
-            onClick={() => router.push("/orders")}
+            // Every open order, cursor in the search box: not the last view used.
+            onClick={() => router.push("/orders?view=active&focus=search")}
             className={cn(
               "inline-flex size-11 shrink-0 items-center justify-center rounded-input text-slate transition-colors hover:bg-canvas hover:text-ink sm:hidden",
               focusRing,
@@ -283,7 +289,7 @@ export function TopBar({
                       markRead();
                       close();
                     }}
-                    className="text-xs font-medium text-pigment hover:text-ink"
+                    className="-my-3 inline-flex min-h-11 items-center px-1 text-xs font-medium text-pigment hover:text-ink lg:my-0 lg:min-h-0"
                   >
                     Mark all read
                   </button>
@@ -305,7 +311,7 @@ export function TopBar({
                         if (href && /^\/(?![/\\])/.test(href)) router.push(href);
                       }}
                       className={cn(
-                        "rounded-input px-2 py-2 text-left transition-colors hover:bg-canvas",
+                        "min-h-11 rounded-input px-2 py-2 text-left transition-colors hover:bg-canvas lg:min-h-0",
                         focusRing,
                       )}
                     >
@@ -330,7 +336,7 @@ export function TopBar({
         <Popover
           ariaLabel="Account menu"
           triggerClassName={cn(
-            "inline-flex min-h-11 items-center gap-2 rounded-input px-1 py-1 sm:pr-2 lg:min-h-9",
+            "inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-input px-1 py-1 sm:pr-2 lg:min-h-9 lg:min-w-0",
             "transition-colors motion-hover hover:bg-canvas",
           )}
           trigger={
