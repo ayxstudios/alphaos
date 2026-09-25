@@ -108,7 +108,7 @@ function AdminTiles({ h }: { h: StaffHome }) {
       />
       <StatTile
         label="On time"
-        value={h.onTimeRate30d === null ? "No data" : `${h.onTimeRate30d}%`}
+        value={h.onTimeRate30d === null ? "Not yet" : `${h.onTimeRate30d}%`}
         hint={h.onTimeRate30d === null ? "Nothing shipped in 30 days" : "Shipped by the due date, 30 days"}
         tone={h.onTimeRate30d === null ? "neutral" : h.onTimeRate30d >= 90 ? "good" : h.onTimeRate30d >= 75 ? "warn" : "bad"}
         spark={{ points: h.shipped.values, labels: h.shipped.labels, color: "c2" }}

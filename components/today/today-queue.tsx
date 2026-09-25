@@ -21,9 +21,9 @@ const BANDS: TodayBand[] = ["now", "today", "soon"];
 /** Short kind names for the summary chips, in a fixed order. */
 const KIND_CHIP: { kind: TodayKind; label: string }[] = [
   { kind: "reply", label: "Replies" },
-  { kind: "details", label: "Details" },
+  { kind: "details", label: "Missing details" },
   { kind: "designer_late", label: "Late designs" },
-  { kind: "unassigned", label: "Unassigned" },
+  { kind: "unassigned", label: "Needs a designer" },
   { kind: "qc", label: "QC" },
   { kind: "tracking", label: "Tracking" },
   { kind: "print", label: "Print" },
