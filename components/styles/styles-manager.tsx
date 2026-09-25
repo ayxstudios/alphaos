@@ -210,8 +210,6 @@ function StyleCard({
           aria-label="Style name"
           className="h-9 max-w-xs font-semibold"
         />
-        {style.isDefault && <Badge variant="info" dot>Default</Badge>}
-        {!style.perFigureRate && <Badge variant="warning">Rate missing</Badge>}
         <label className="flex items-center gap-2 text-xs font-medium text-slate">
           Per figure
           <Input
@@ -229,6 +227,9 @@ function StyleCard({
             className="h-9 w-28"
           />
         </label>
+        {/* After the rate, so every card's name and rate line up. */}
+        {style.isDefault && <Badge variant="info" dot>Default</Badge>}
+        {!style.perFigureRate && <Badge variant="warning">Rate missing</Badge>}
         <div className="ml-auto flex items-center gap-2">
           <Button type="button" variant="secondary" size="sm" onClick={() => setAssignOpen(true)}>
             Designers · {style.designerIds.length}
