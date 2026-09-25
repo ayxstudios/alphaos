@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { CHART, useWidth, type ChartColor } from "./use-width";
-import { fmtInt, niceMax } from "./format";
+import { fmtInt, niceMax, niceMaxInt } from "./format";
 import { ChartTooltip, Legend } from "./tooltip";
 
 /** Axis labels use the smallest step of the type scale; a character is about 0.56em wide. */
@@ -39,8 +39,9 @@ export function Bars({
   const n = labels.length;
   const top = 8;
   const bottom = 24;
-  const rawMax = Math.max(0, ...series.flatMap((s) => s.values));
-  const max = niceMax(rawMax);
+  const all = series.flatMap((s) => s.values);
+  const rawMax = Math.max(0, ...all);
+  const max = all.every((v) => Number.isInteger(v)) ? niceMaxInt(rawMax) : niceMax(rawMax);
   const ticks = [0, 0.5, 1].map((f) => f * max);
   // Axis text is 12px, the smallest size in the type scale (about 6.8px a
   // character): the left gutter grows to fit the widest tick ("$1,200").
