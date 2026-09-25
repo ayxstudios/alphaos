@@ -345,6 +345,9 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
       const settle = async () => {
         let last = "";
         let same = 0;
+        // A smooth scroll can start a frame or two late on a busy phone: give it
+        // a moment before three still frames count as settled.
+        const from = performance.now();
         await waitFor(
           h,
           () => {
@@ -352,20 +355,21 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
             const key = `${Math.round(r.top)},${Math.round(r.left)}`;
             same = key === last ? same + 1 : 0;
             last = key;
-            return same >= 3;
+            return same >= 3 && performance.now() - from > 150;
           },
           900,
         );
       };
       let r = el.getBoundingClientRect();
-      // A row that scrolls sideways (the Orders tabs on a phone): centre it across.
-      if (r.left < 0 || r.right > window.innerWidth) {
+      // Fixed things (the bottom tabs, the sidebar) never need scrolling.
+      if (el.closest('nav[aria-label="Primary"], aside')) return;
+      // A row that scrolls sideways (the Orders tabs, the Settings sections on a
+      // phone): centre it across when it is cut off or tight against the right edge.
+      if (r.left < 0 || r.right > window.innerWidth - 8) {
         el.scrollIntoView({ block: "nearest", inline: "center", behavior });
         await settle();
         r = el.getBoundingClientRect();
       }
-      // Fixed things (the bottom tabs, the sidebar) never need scrolling.
-      if (el.closest('nav[aria-label="Primary"], aside')) return;
       const area = clearArea();
       if (r.top >= area.top && r.bottom <= area.bottom) return;
       const box = scrollParent(el);
