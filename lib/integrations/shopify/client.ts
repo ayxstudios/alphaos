@@ -252,6 +252,9 @@ export async function verifyShopifyToken(
     if (res.status === 401 || res.status === 403) {
       return { ok: false, error: "Token rejected (401/403). Check the access token and scopes." };
     }
+    if (res.status === 404) {
+      return { ok: false, error: "Shopify has no store at that address. Check the store domain (yourshop.myshopify.com)." };
+    }
     const body = (await res.json().catch(() => ({}))) as GraphqlBody<{ shop: { name: string } }>;
     const errors = errorList(body.errors);
     if (errors.length) return { ok: false, error: errors.map((e) => e.message).join("; ") };
