@@ -173,8 +173,11 @@ export async function sendAlphaEvent(tx: DbTx, evt: AlphaEvent): Promise<string>
 export async function askAlpha(q: AlphaAsk): Promise<AlphaAnswer> {
   if (!alphaConnected()) {
     return {
-      answer:
-        "Alpha is not connected on this workspace yet. Leave the question on the order as a comment and a person will answer it; once Alpha is connected it will answer here.",
+      // One plain sentence. On an order the question is already saved as a
+      // note (the order page says so), so a person picks it up from there.
+      answer: q.orderId
+        ? "Alpha is not connected yet, so a person will answer this instead."
+        : "Alpha is not connected yet, so ask your admin for now.",
       ruleId: null,
       escalated: false,
       connected: false,
