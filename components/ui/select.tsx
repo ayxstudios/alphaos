@@ -37,7 +37,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
           className={cn(
             controlBase,
             controlBorder(!!error),
-            "h-10 appearance-none pl-3 pr-9",
+            "h-10 appearance-none pl-3 pr-9 max-sm:h-11",
             focusRing,
             className,
           )}
