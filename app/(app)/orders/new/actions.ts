@@ -205,7 +205,9 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
           ? (shop.slaConfig as { turnaroundDays: number }).turnaroundDays
           : 3;
       const dueAt = input.dueAt ? parseDueDate(input.dueAt) : new Date(Date.now() + days * 86_400_000);
-      const platformOrderName = orderNumber;
+      // No shop number yet: a short readable one ("M-88B6DD") so every list,
+      // toast and customer email names the order, never "manual:<uuid>".
+      const platformOrderName = orderNumber ?? `M-${orderId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
       const platformOrderId = orderNumber ? `manual:${normalizeOrderNumber(orderNumber)}` : `manual:${orderId}`;
 
       await tx.insert(orders).values({
@@ -282,7 +284,7 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
       revalidatePath("/orders");
       revalidatePath("/board");
       revalidatePath("/orders");
-      return { ok: true as const, orderNumber: platformOrderName ?? "(no number)", orderId, assignedTo };
+      return { ok: true as const, orderNumber: platformOrderName, orderId, assignedTo };
     });
   } catch (e) {
     // Never echo a database error: drizzle's message carries the SQL and every
