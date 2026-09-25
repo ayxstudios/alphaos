@@ -20,3 +20,9 @@ export function styleLabel(name: string): string {
   const words = trimmed.replace(/[-_]+/g, " ").replace(/\s+/g, " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
+
+/** True for a canonical UUID string (any version). Route handlers check ids with
+ * this before a query, so a malformed id is a 400/404 and never a database error. */
+export function isUuid(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
