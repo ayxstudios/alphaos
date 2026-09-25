@@ -108,7 +108,13 @@ export function QcScreen({
     [],
   );
   const mark = useCallback(
-    (key: number, value: boolean) => setChecked((prev) => ({ ...prev, [key]: value })),
+    (key: number, value: boolean | null) =>
+      setChecked((prev) => {
+        const next = { ...prev };
+        if (value === null) delete next[key];
+        else next[key] = value;
+        return next;
+      }),
     [],
   );
   const tickAll = useCallback(() => {
@@ -256,17 +262,38 @@ export function QcScreen({
     goTo, tickAll, toggle, doPass, dismissLegend, openLegend,
   ]);
 
+  // One line that always says what to do next.
+  const nextStep =
+    failedCount > 0
+      ? signed
+        ? "Press Fail and tell the designer what to fix."
+        : `${failedCount} marked wrong. Sign your name, then press Fail.`
+      : allChecked
+        ? signed
+          ? "Press Pass. You will see the customer email before it sends."
+          : "All good. Sign your name, then press Pass."
+        : "Tap each line that looks right. Tap the cross if something is wrong.";
+
   const selectedIndex = ctx.versions.findIndex((v) => v.id === selectedVersionId);
   const selectedVersion = selectedIndex >= 0 ? ctx.versions[selectedIndex] : null;
   const isLatest = selectedIndex === ctx.versions.length - 1;
   const portraitLabel =
     selectedVersion == null
-      ? "Delivered portrait"
+      ? "Designer's portrait"
       : isLatest
-        ? "Delivered (latest)"
-        : `Delivered (v${selectedIndex + 1})`;
+        ? "Designer's portrait"
+        : `Designer's portrait (version ${selectedIndex + 1})`;
 
-  const initialFailedKeys = items.filter((it) => !checked[it.key]).map((it) => it.key);
+  // The fail box starts with what the reviewer already said: the lines marked
+  // wrong. With none marked, the unticked lines if some were ticked; with
+  // nothing touched, none (the reviewer picks). It used to pre-mark every
+  // unticked line, so one cross told the designer all five were wrong.
+  const markedWrong = items.filter((it) => checked[it.key] === false).map((it) => it.key);
+  const initialFailedKeys = markedWrong.length
+    ? markedWrong
+    : doneCount > 0
+      ? items.filter((it) => !checked[it.key]).map((it) => it.key)
+      : [];
 
   return (
     <Page className="max-w-none gap-3">
@@ -283,8 +310,7 @@ export function QcScreen({
       {!ctx.isReviewable && (
         <div className="flex items-center justify-between gap-2 rounded-card bg-amber/10 px-4 py-2">
           <span className="text-sm text-amber">
-            This order is no longer awaiting QC (now {ctx.status.replace(/_/g, " ")}). Nothing to
-            review.
+            Already checked. This order is now {ctx.status.replace(/_/g, " ")}.
           </span>
           <Button size="sm" variant="secondary" onClick={advance}>
             Next order
@@ -313,16 +339,15 @@ export function QcScreen({
           </div>
 
           <div className="mt-4 flex flex-col gap-3 border-t border-line/70 pt-4">
-            {ctx.isReviewable && !allChecked && (
-              <p className="text-xs text-slate">
-                Tick every item to unlock Pass. {doneCount}/{items.length} done
-                {failedCount > 0 && <>, <Badge variant="danger">{failedCount} marked X</Badge></>}
+            {ctx.isReviewable && (
+              <p className="text-sm text-slate" aria-live="polite">
+                {nextStep}
               </p>
             )}
             <SignatureInput value={signature} onChange={setSignature} expectedName={reviewerName} disabled={!ctx.isReviewable || pending} />
             <div className="flex gap-2">
               <Button
-                variant="danger"
+                variant={failedCount > 0 ? "danger" : "secondary"}
                 className="flex-1"
                 onClick={() => setFailOpen(true)}
                 loading={pending && acting === "fail"}
@@ -351,7 +376,7 @@ export function QcScreen({
           <span className="text-xs font-medium text-slate">Versions</span>
           {selectedVersion && ctx.versions.length > 1 && (
             <span className="text-xs text-slate">
-              Showing {isLatest ? "latest" : `v${selectedIndex + 1}`}, tap another to compare
+              Showing {isLatest ? "the newest" : `version ${selectedIndex + 1}`}. Tap another to compare.
             </span>
           )}
         </div>
@@ -432,16 +457,16 @@ function EmailPreviewDialog({
         <div className="min-h-0 p-5 xl:overflow-y-auto">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 id="qc-email-preview-title" className="font-display text-xl font-semibold text-ink">Preview customer email</h2>
+              <h2 id="qc-email-preview-title" className="font-display text-xl font-semibold text-ink">Check the email, then send</h2>
               <p className="mt-1 text-sm text-slate">
-                Template: <span className="font-medium text-ink">{preview.templateLabel}</span> · {preview.templateReason}
+                The customer gets this email with the portrait attached.
               </p>
             </div>
             <Badge variant="info">Order {preview.orderNumber}</Badge>
           </div>
 
           <div className="mt-4 rounded-card border border-line bg-canvas p-3">
-            <p className="mb-2 text-sm font-medium text-ink">Portrait attached to this email</p>
+            <p className="mb-2 text-sm font-medium text-ink">Attached portrait</p>
             {preview.attachment.url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -451,51 +476,43 @@ function EmailPreviewDialog({
               />
             ) : (
               <div className="flex h-64 items-center justify-center rounded-input bg-surface text-sm text-slate">
-                Preview unavailable, but the stored asset will be attached if readable.
+                No preview here, but the file will still be attached.
               </div>
             )}
-            <p className="mt-2 text-xs text-slate">
-              {preview.attachment.filename} · {preview.attachment.contentType}
-              {preview.attachment.sizeBytes ? ` · ${(preview.attachment.sizeBytes / 1024 / 1024).toFixed(1)} MB raw` : ""}
+            <p className="mt-2 text-xs text-slate [overflow-wrap:anywhere]">
+              {preview.attachment.filename}
             </p>
           </div>
 
-          <div className="mt-4 rounded-card border border-line p-3">
-            <p className="text-sm font-medium text-ink">QC checklist completed</p>
-            <div className="mt-2 grid gap-1 sm:grid-cols-2">
-              {checklist.items.map((item) => (
-                <div key={item.key} className="flex items-center gap-2 text-sm text-slate">
-                  <Check size={14} className="text-sage" />
-                  <span>{item.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <p className="mt-3 flex items-center gap-2 text-sm text-slate">
+            <Check size={14} className="text-sage" />
+            All {checklist.items.length} checks ticked. Email: {preview.templateLabel}.
+          </p>
         </div>
 
         <aside className="min-h-0 border-t border-line bg-canvas p-5 xl:overflow-y-auto xl:border-l xl:border-t-0">
-          <div className="rounded-card border border-line bg-surface p-3 text-sm">
+          <div className="text-sm">
             <p className="text-xs text-slate">To: <span className="text-ink">{preview.to}</span></p>
             <p className="mt-1 text-xs text-slate">Subject: <span className="font-medium text-ink">{preview.subject}</span></p>
-            <div className="mt-3 whitespace-pre-wrap rounded-input [overflow-wrap:anywhere] border border-line bg-canvas p-3 text-sm text-ink">
-              {body}
-            </div>
           </div>
 
-          <Textarea
-            label="Body edits for this send only"
-            value={body}
-            onChange={(event) => onBody(event.currentTarget.value)}
-            rows={12}
-            className="mt-4 font-mono text-xs"
-          />
+          <div className="mt-3">
+            <Textarea
+              label="Message"
+              hint="You can change it. Changes are for this email only."
+              value={body}
+              onChange={(event) => onBody(event.currentTarget.value)}
+              rows={14}
+              className="text-sm"
+            />
+          </div>
 
         </aside>
         </div>
 
         <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-line bg-surface px-5 py-3">
           <Button type="button" variant="ghost" onClick={onCancel} disabled={pending}>
-            Cancel
+            Back
           </Button>
           <Button type="button" onClick={onConfirm} loading={pending} disabled={!body.trim()}>
             Send email and pass QC

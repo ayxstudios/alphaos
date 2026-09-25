@@ -7,12 +7,12 @@ import { cn } from "@/lib/utils";
 import { Button, Textarea } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
 import { X } from "@/components/ui/icons";
-import type { ChecklistItem } from "@/lib/qc/checklist";
+import { splitChecklistLabel, type ChecklistItem } from "@/lib/qc/checklist";
 
 /**
- * Fail flow: pick which items failed (at least one) and write a mandatory reason.
- * Unticked items are pre-selected as failures — the VA confirms or adjusts. On
- * submit the reason + failed items go back to the designer.
+ * Fail flow: pick which items are wrong (at least one) and write a note for the
+ * designer. The lines the reviewer already marked wrong start selected (see
+ * QcScreen). On submit the note and the wrong items go back to the designer.
  */
 export function FailDialog({
   open,
@@ -88,9 +88,9 @@ export function FailDialog({
       >
         <div className="flex items-center justify-between border-b border-line p-4">
           <div>
-            <h2 className="font-display text-lg font-semibold text-ink">Fail this portrait</h2>
-            <p className="text-xs text-slate">
-              Select what&apos;s wrong and tell the designer how to fix it.
+            <h2 className="font-display text-lg font-semibold text-ink">Send it back to the designer</h2>
+            <p className="text-sm text-slate">
+              Pick what is wrong and say how to fix it.
             </p>
           </div>
           <button
@@ -98,7 +98,7 @@ export function FailDialog({
             onClick={onClose}
             aria-label="Close"
             className={cn(
-              "inline-flex size-8 items-center justify-center rounded-input text-slate",
+              "inline-flex size-11 items-center justify-center rounded-input text-slate",
               "transition-colors motion-hover hover:bg-canvas hover:text-ink",
               focusRing,
             )}
@@ -109,7 +109,7 @@ export function FailDialog({
 
         <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4">
           <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-ink">Failed items</span>
+            <span className="text-sm font-medium text-ink">What is wrong?</span>
             <div className="flex flex-col gap-1">
               {items.map((it) => {
                 const on = failed.has(it.key);
@@ -120,7 +120,7 @@ export function FailDialog({
                     onClick={() => toggle(it.key)}
                     aria-pressed={on}
                     className={cn(
-                      "flex items-start gap-2 rounded-input border p-2 text-left text-sm transition-colors motion-hover",
+                      "flex min-h-11 items-start gap-2 rounded-input border p-2.5 text-left text-sm transition-colors motion-hover",
                       on
                         ? "border-rose/40 bg-rose/10 text-ink"
                         : "border-line bg-surface text-slate hover:border-slate/40",
@@ -134,25 +134,30 @@ export function FailDialog({
                     >
                       {on ? "✕" : ""}
                     </span>
-                    <span className="leading-snug">{it.label}</span>
+                    <span className="leading-snug">
+                      <span className="font-semibold text-ink">{splitChecklistLabel(it.label).name}</span>
+                      {splitChecklistLabel(it.label).hint && (
+                        <span className="block">{splitChecklistLabel(it.label).hint}</span>
+                      )}
+                    </span>
                   </button>
                 );
               })}
             </div>
             {touched && failed.size === 0 && (
               <p className="text-xs text-rose" role="alert">
-                Select at least one failed item.
+                Pick at least one thing that is wrong.
               </p>
             )}
           </div>
 
           <Textarea
             ref={reasonRef}
-            label="Reason for the designer (required)"
-            placeholder="Be specific: e.g. left eye should be green, ring on wrong hand…"
+            label="Note for the designer"
+            placeholder="For example: the left eye should be green."
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            error={touched && !reasonTrimmed ? "A reason is required." : undefined}
+            error={touched && !reasonTrimmed ? "Write a short note so the designer knows what to fix." : undefined}
             rows={4}
           />
         </div>
@@ -162,7 +167,7 @@ export function FailDialog({
             Cancel
           </Button>
           <Button variant="danger" onClick={submit} loading={submitting} disabled={!canSubmit}>
-            Fail & return to designer
+            Fail and send back
           </Button>
         </div>
       </div>

@@ -93,7 +93,7 @@ export function CompareViewer({
         <div className="flex items-center gap-1.5 text-xs text-slate">
           <Search size={14} />
           <span className="tabular-nums">{Math.round(t.scale * 100)}%</span>
-          <span className="hidden sm:inline">· scroll to zoom, drag to pan, both sides move together</span>
+          <span className="hidden sm:inline">· scroll to zoom, drag to move, both pictures move together</span>
         </div>
         <div className="flex items-center gap-1.5">
           <Button
@@ -121,7 +121,7 @@ export function CompareViewer({
       {/* Panes */}
       <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-2">
         <Pane
-          label="Reference"
+          label="Customer photo"
           image={reference}
           transform={t}
           zoomed={zoomed}
@@ -150,14 +150,14 @@ export function CompareViewer({
       {references.length > 1 && (
         <div className="flex items-center gap-2 overflow-x-auto">
           <span className="shrink-0 text-xs text-slate">
-            {references.length} reference photos:
+            {references.length} customer photos:
           </span>
           {references.map((r, i) => (
             <button
               key={r.id}
               type="button"
               onClick={() => setRefIndex(i)}
-              aria-label={`Reference photo ${i + 1}`}
+              aria-label={`Customer photo ${i + 1}`}
               aria-pressed={i === refIndex}
               className={cn(
                 "size-12 shrink-0 overflow-hidden rounded-input border transition-colors motion-hover",

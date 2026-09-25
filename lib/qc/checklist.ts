@@ -23,13 +23,17 @@ export type ChecklistSnapshot = {
 /** Per-item pass/fail, keyed by item key. true = passed. */
 export type ItemResults = Record<number, boolean>;
 
-/** The house standard: five checks, in the order a VA scans them (owner 2026-09-09). */
+/**
+ * The house standard: five checks, in the order a VA scans them (owner 2026-09-09).
+ * Each label is "Name: what to look for", short enough to read at a glance
+ * (simplicity pass 2026-09-25); the board shows the name part only.
+ */
 export const DEFAULT_CHECKLIST: ChecklistItem[] = [
-  { key: 1, label: "Likeness: faces, eye colour, hair colour and hairstyle match the reference photos" },
-  { key: 2, label: "Count: number of people, pets and hands matches the order, nothing added, removed or duplicated" },
-  { key: 3, label: "Style: matches the ordered style and the house look, not too realistic or cartoonish" },
-  { key: 4, label: "Details: jewellery, tattoos, pet markings and any visible text are correct and legible" },
-  { key: 5, label: "Anatomy and finish: hands, fingers and ears are correct, no artefacts, edges clean at print size" },
+  { key: 1, label: "Likeness: faces, eyes and hair match the photos" },
+  { key: 2, label: "Count: right number of people and pets, nothing extra or missing" },
+  { key: 3, label: "Style: the style they ordered, not too real, not too cartoon" },
+  { key: 4, label: "Details: jewellery, tattoos, markings and any words are right" },
+  { key: 5, label: "Finish: hands, fingers and ears look right, edges are clean" },
 ];
 
 /**
@@ -70,4 +74,11 @@ function extractCustomChecklist(config: unknown): ChecklistItem[] | null {
 /** Keyboard hint for an item: 1-9, then 0 for a tenth. */
 export function shortcutFor(key: number): string {
   return String(key % 10);
+}
+
+/** "Likeness: faces, eyes and hair match the photos" -> { name, hint }. */
+export function splitChecklistLabel(label: string): { name: string; hint: string } {
+  const i = label.indexOf(":");
+  if (i <= 0) return { name: label, hint: "" };
+  return { name: label.slice(0, i).trim(), hint: label.slice(i + 1).trim() };
 }

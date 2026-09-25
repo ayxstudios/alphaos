@@ -22,7 +22,7 @@ function TimeInQc({ since }: { since: string | null }) {
   const label = h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : h > 0 ? `${h}h ${m}m` : `${m}m`;
   return (
     <span className={cn("text-xs font-medium tabular-nums", h >= 2 ? "text-amber" : "text-slate")}>
-      in QC {label}
+      waiting {label}
     </span>
   );
 }
@@ -79,7 +79,7 @@ export function QcHeader({
       <div className="flex items-center gap-2">
         {position > 0 && total > 0 && (
           <span className="text-xs tabular-nums text-slate">
-            {position} of {total} in queue
+            {position} of {total}
           </span>
         )}
         <Button size="sm" variant="secondary" onClick={onPrev} disabled={!hasPrev}>
