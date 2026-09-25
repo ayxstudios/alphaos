@@ -124,10 +124,12 @@ function snapshotFallbackAnswer(snapshot: Record<string, unknown> | null | undef
     const inDesign = n(s.inDesignCount);
     const qc = n(s.awaitingQcCount);
     const next = Array.isArray(s.nextDeadlines) ? (s.nextDeadlines as { orderNumber?: string }[]) : [];
+    // The same short status whatever was asked (the quick answer cannot read
+    // the question), so it says plainly that this is where the board stands.
     if (queue + inDesign + qc === 0) lines.push("Your board is clear right now.");
     else {
-      const queued = queue ? `${plural(queue, "order")} in your queue` : "Nothing new in your queue";
-      lines.push(`${queue ? "You have " : ""}${queued}, ${inDesign} in design and ${qc} waiting for QC.`);
+      const queued = queue ? `${plural(queue, "order")} in your queue` : "nothing new in your queue";
+      lines.push(`Here is where your board stands: ${queued}, ${inDesign} in design and ${qc} waiting for QC.`);
     }
     const due = next.map((d) => d.orderNumber).filter(Boolean).slice(0, 3);
     if (due.length) lines.push(`Due first: ${due.join(", then ")}.`);
