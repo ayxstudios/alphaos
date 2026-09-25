@@ -39,8 +39,7 @@ export function SignatureInput({
   return (
     <div className="flex flex-col gap-1.5">
       <label htmlFor="qc-signature" className="text-xs font-medium text-ink">
-        Sign off
-        <span className="ml-1 font-normal text-slate">type your name to unlock Pass and Fail</span>
+        Sign your name:
       </label>
       <input
         id="qc-signature"
@@ -55,7 +54,7 @@ export function SignatureInput({
         data-1p-ignore="true"
         data-form-type="other"
         name={`qc-signature-${autofillGuard}`}
-        placeholder="Your name, typed by hand"
+        placeholder="Your name"
         aria-describedby="qc-signature-hint"
         onPaste={(e) => e.preventDefault()}
         onDrop={(e) => e.preventDefault()}
@@ -80,9 +79,15 @@ export function SignatureInput({
           focusRing,
         )}
       />
-      <p id="qc-signature-hint" className={cn("text-xs", matches ? "text-sage" : "text-slate")}>
-        {matches ? `Signed as ${expectedName.trim()}.` : `Typed by hand, matching ${expectedName.trim()}.`}
-      </p>
+      {matches ? (
+        <p id="qc-signature-hint" className="text-xs text-sage">
+          Signed as {expectedName.trim()}.
+        </p>
+      ) : (
+        <span id="qc-signature-hint" className="sr-only">
+          Type your name, {expectedName.trim()}, to unlock Pass and Fail.
+        </span>
+      )}
     </div>
   );
 }
