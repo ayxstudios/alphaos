@@ -14,6 +14,11 @@
  *  - the Alpha chat widget forwards only an order the caller can see
  *    (lib/alpha/chat-scope.ts)
  *
+ *  - customer + security QA 2026-09-25: upload bytes must prove the photo type
+ *    (lib/uploads/sniff.ts, lib/uploads/verify.ts), upload keys must belong to
+ *    the order, ids are checked before a query (isUuid), and a wrong password
+ *    costs the same time for an unknown email as for a real one
+ *
  * Runs against the seeded local database (scripts/ci-local.sh). Everything it
  * creates is removed at the end.
  */
@@ -23,7 +28,7 @@ import { and, eq, inArray, like } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 
 import { withSystemContext } from "../lib/db";
-import { assignments, loginAttempts, messages, orders, proofs, rateLimits, users } from "../lib/db/schema";
+import { assets, assignments, loginAttempts, messages, orders, proofs, rateLimits, users } from "../lib/db/schema";
 import { scopeChatOrder } from "../lib/alpha/chat-scope";
 import { AccountLockedError, IP_MAX_FAILED, authenticate, loginClientIp } from "../lib/auth/login";
 import { hashPassword } from "../lib/auth/password";
@@ -34,6 +39,12 @@ import { MAX_FIGURES, parseFigureCount } from "../lib/orders/manual-input";
 import { mocksAllowed } from "../lib/mock/guard";
 import { secretsMatch } from "../lib/secret-compare";
 import { installMockTransport } from "../lib/mock/transport";
+import { sniffImageType, sniffMatchesDeclared } from "../lib/uploads/sniff";
+import { assertKeysBelongTo, assertStoredImage, referenceUploadProblem } from "../lib/uploads/verify";
+import { DEV_STORE_PREFIX, devStorePath, usingDevStore, writeDevStoreObject } from "../lib/uploads/store";
+import { isUuid } from "../lib/utils";
+import { saveCustomerUploads } from "../lib/uploads/data";
+import { rm } from "node:fs/promises";
 import { isMockMode as gelatoMockMode } from "../lib/integrations/gelato/client";
 import { isMockMode as lumaMockMode } from "../lib/integrations/lumaprints/client";
 
@@ -217,6 +228,15 @@ function emailHtmlEscaping() {
       html.includes('href="https://a.test/p?x=1&amp;y=2"'),
     anchors.join(" "),
   );
+  const sentence = textToHtml("Approve it here: https://app.test/proof/AbC_-9. Or reply (https://app.test/upload/x), thanks");
+  report(
+    "email HTML: a full stop or bracket after a link stays outside the href",
+    sentence.includes('href="https://app.test/proof/AbC_-9">') &&
+      sentence.includes('href="https://app.test/upload/x">') &&
+      !sentence.includes('AbC_-9."') &&
+      sentence.includes("overflow-wrap:anywhere"),
+    "the default proof template's link opened /proof/<token>. (Link not found) before; long links wrap on a phone",
+  );
 }
 
 function figureCounts() {
@@ -317,6 +337,155 @@ function machineSecrets() {
   );
 }
 
+const PNG_HEAD = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
+const JPG_HEAD = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0]);
+const WEBP_HEAD = Buffer.concat([Buffer.from("RIFF"), Buffer.from([0x24, 0, 0, 0]), Buffer.from("WEBPVP8 ")]);
+const HEIC_HEAD = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypheic"), Buffer.alloc(4), Buffer.from("mif1heic")]);
+const HTML_BYTES = Buffer.from("<!doctype html><script>alert(document.cookie)</script>");
+const PDF_BYTES = Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n");
+
+function uploadSniffing() {
+  report(
+    "upload sniff: real PNG, JPEG, WebP and HEIC headers are recognised",
+    sniffImageType(PNG_HEAD) === "image/png" &&
+      sniffImageType(JPG_HEAD) === "image/jpeg" &&
+      sniffImageType(WEBP_HEAD) === "image/webp" &&
+      sniffImageType(HEIC_HEAD) === "image/heic",
+    "magic bytes map to the four photo types phones send",
+  );
+  report(
+    "upload sniff: HTML, PDF, empty and mismatched files are refused",
+    !sniffMatchesDeclared(HTML_BYTES, "image/png") &&
+      !sniffMatchesDeclared(PDF_BYTES, "image/png") &&
+      !sniffMatchesDeclared(Buffer.alloc(0), "image/jpeg") &&
+      !sniffMatchesDeclared(PNG_HEAD, "image/jpeg") &&
+      sniffMatchesDeclared(HEIC_HEAD, "image/heif") &&
+      sniffMatchesDeclared(JPG_HEAD, "IMAGE/JPEG"),
+    "a .png that is really HTML or a PDF fails; heic and heif are one family; case-insensitive",
+  );
+  report(
+    "ids: isUuid accepts a uuid and refuses anything else",
+    isUuid(randomUUID()) && !isUuid("x") && !isUuid("") && !isUuid(null) && !isUuid(`${randomUUID()}'--`),
+    "route handlers answer a malformed id before any query",
+  );
+}
+
+async function uploadKeysAndBytes() {
+  if (!usingDevStore()) {
+    report("upload verify: stored bytes", false, "R2 is configured; this check needs the local dev store");
+    return;
+  }
+  const biz = randomUUID();
+  const order = randomUUID();
+  const prefix = `${DEV_STORE_PREFIX}${biz}/${order}/reference/`;
+  const good = `${prefix}${randomUUID()}.png`;
+  const html = `${prefix}${randomUUID()}.png`;
+  const empty = `${prefix}${randomUUID()}.png`;
+  try {
+    await writeDevStoreObject(good, "image/png", Buffer.concat([PNG_HEAD, Buffer.alloc(64)]));
+    await writeDevStoreObject(html, "image/png", HTML_BYTES);
+    const refused = async (key: string) => assertStoredImage(key).then(() => false, () => true);
+    report(
+      "upload verify: a real PNG passes, an HTML file stored as image/png is refused",
+      !(await refused(good)) && (await refused(html)) && (await refused(empty)),
+      "assertStoredImage reads the first bytes, not the Content-Type the browser sent; a missing file is refused",
+    );
+    const throws = (fn: () => void) => {
+      try {
+        fn();
+        return false;
+      } catch {
+        return true;
+      }
+    };
+    report(
+      "upload verify: keys must belong to this order",
+      !throws(() => assertKeysBelongTo([good], prefix)) &&
+        throws(() => assertKeysBelongTo([`${DEV_STORE_PREFIX}${biz}/${randomUUID()}/reference/${randomUUID()}.png`], prefix)) &&
+        throws(() => assertKeysBelongTo([`${prefix}../../x.png`], prefix)) &&
+        throws(() => assertKeysBelongTo([`${prefix}a/b.png`], prefix)),
+      "another order's key, a .. path and a nested path are all refused",
+    );
+    report(
+      "manual order photos: foreign keys, fake photos and non-http links give a plain message",
+      (await referenceUploadProblem([good], prefix, ["https://i.etsystatic.com/x.jpg"])) === null &&
+        (await referenceUploadProblem([html], prefix)) !== null &&
+        (await referenceUploadProblem([], prefix, ["javascript:alert(1)"])) !== null &&
+        (await referenceUploadProblem([`${DEV_STORE_PREFIX}${randomUUID()}/${order}/reference/${randomUUID()}.png`], prefix)) !== null,
+      "referenceUploadProblem returns null only when every key and link is fine",
+    );
+  } finally {
+    // Only this run's business folder (var/dev-uploads/<biz>), never the store itself.
+    await rm(devStorePath(`${DEV_STORE_PREFIX}${biz}/x`).replace(/\/x$/, ""), { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function customerUploadRefusesNonPhotos() {
+  const [order] = await withSystemContext((tx) =>
+    tx
+      .select({ id: orders.id, businessId: orders.businessId, token: orders.uploadToken, status: orders.status })
+      .from(orders)
+      .where(and(eq(orders.status, "awaiting_photos"), sql`${orders.uploadToken} is not null`))
+      .limit(1),
+  );
+  if (!order?.token) {
+    report("upload link: a non-photo is refused and named", false, "no awaiting_photos order with an upload token in the seed");
+    return;
+  }
+  const prefix = `${DEV_STORE_PREFIX}${order.businessId}/${order.id}/reference/`;
+  const html = `${prefix}${randomUUID()}.png`;
+  const good = `${prefix}${randomUUID()}.png`;
+  try {
+    await writeDevStoreObject(html, "image/png", HTML_BYTES);
+    await writeDevStoreObject(good, "image/png", Buffer.concat([PNG_HEAD, Buffer.alloc(64)]));
+    const res = await saveCustomerUploads(order.token, [good, html], "");
+    const [after] = await withSystemContext((tx) => tx.select({ status: orders.status }).from(orders).where(eq(orders.id, order.id)));
+    const rows = await withSystemContext((tx) => tx.select({ id: assets.id }).from(assets).where(inArray(assets.r2Key, [good, html])));
+    report(
+      "upload link: an HTML file named .png is refused, named by key, and nothing is saved",
+      !res.ok && JSON.stringify(res.notPhotos) === JSON.stringify([html]) && after?.status === order.status && rows.length === 0,
+      `ok=${res.ok} notPhotos=${res.ok ? "-" : (res.notPhotos ?? []).length} status ${order.status} -> ${after?.status}, asset rows ${rows.length}`,
+    );
+  } finally {
+    for (const k of [html, good]) await rm(devStorePath(k), { force: true }).catch(() => {});
+    for (const k of [html, good]) await rm(`${devStorePath(k)}.meta.json`, { force: true }).catch(() => {});
+  }
+}
+
+async function loginTimingEqual() {
+  const email = `cs25-timing-${stamp}@example.test`;
+  const userId = randomUUID();
+  await withSystemContext(async (tx) => {
+    await tx.insert(users).values({ id: userId, name: "Timing", email, role: "va", passwordHash: await hashPassword("timing-pass-1234") });
+  });
+  try {
+    const time = async (e: string) => {
+      const t = performance.now();
+      await authenticate(e, "wrong-password");
+      return performance.now() - t;
+    };
+    // Warm both paths once (the dummy hash is computed on first use).
+    await time(`cs25-nobody-${stamp}@example.test`);
+    await time(email);
+    let known = 0;
+    let unknown = 0;
+    for (let i = 0; i < 3; i++) {
+      known += await time(email);
+      unknown += await time(`cs25-nobody-${stamp}-${i}@example.test`);
+    }
+    report(
+      "login: a wrong password takes as long for an unknown email as for a real one",
+      unknown > known * 0.6,
+      `3 tries each: real account ${Math.round(known)} ms, unknown email ${Math.round(unknown)} ms (unknown must be > 60% of real)`,
+    );
+  } finally {
+    await withSystemContext(async (tx) => {
+      await tx.delete(loginAttempts).where(like(loginAttempts.email, `cs25-%${stamp}%`));
+      await tx.delete(users).where(eq(users.id, userId));
+    });
+  }
+}
+
 async function main() {
   machineSecrets();
   await loginIpLimit();
@@ -325,6 +494,10 @@ async function main() {
   emailHtmlEscaping();
   figureCounts();
   mocksNeverInProduction();
+  uploadSniffing();
+  await uploadKeysAndBytes();
+  await customerUploadRefusesNonPhotos();
+  await loginTimingEqual();
   console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);
   process.exit(failures === 0 ? 0 : 1);
 }

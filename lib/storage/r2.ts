@@ -123,6 +123,16 @@ export async function getObjectBuffer(key: string): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
+/** The first `bytes` of an object (a ranged GET), for content sniffing without reading a 25 MB file. */
+export async function getObjectHead(key: string, bytes: number): Promise<Buffer> {
+  const res = await client().send(new GetObjectCommand({ Bucket: bucket(), Key: key, Range: `bytes=0-${bytes - 1}` }));
+  if (!res.Body) throw new Error("R2 object response had no body");
+  const chunks: Buffer[] = [];
+  const stream = res.Body as AsyncIterable<Uint8Array>;
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks).subarray(0, bytes);
+}
+
 /** Hard-delete an object (retention sweep). */
 export async function deleteObject(key: string): Promise<void> {
   await client().send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }));

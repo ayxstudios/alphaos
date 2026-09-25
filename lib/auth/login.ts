@@ -3,7 +3,7 @@ import { eq, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { users, loginAttempts, rateLimits } from "@/lib/db/schema";
-import { verifyPassword } from "./password";
+import { burnPasswordCheck, verifyPassword } from "./password";
 import type { Role } from "./config";
 
 const MAX_FAILED = 10;
@@ -80,12 +80,14 @@ export async function authenticate(
     .where(eq(users.email, email));
   // A deactivated account (user.active = false) fails exactly like a wrong
   // password: null, and the login form's calm "ask your admin" line.
+  // Every path spends one bcrypt compare, so the answer time never says
+  // whether the email has an account.
   const ok =
-    !!user?.passwordHash &&
-    user.active &&
-    (await verifyPassword(password, user.passwordHash));
+    user?.passwordHash && user.active
+      ? await verifyPassword(password, user.passwordHash)
+      : await burnPasswordCheck(password);
 
-  if (!ok) {
+  if (!ok || !user) {
     await registerFailure(email, attempt?.failedCount ?? 0, now);
     if (ip) await registerIpFailure(ip);
     return null;

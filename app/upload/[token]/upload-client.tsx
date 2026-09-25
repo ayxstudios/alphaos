@@ -19,7 +19,8 @@ type FileState = {
   file: File;
   previewUrl: string | null;
   progress: number; // 0..100
-  status: "pending" | "uploading" | "done" | "error";
+  /** "rejected" = never sent (too big, not a photo); "error" = an upload that failed and can be retried. */
+  status: "pending" | "uploading" | "done" | "error" | "rejected";
   error: string | null;
   key: string | null;
 };
@@ -30,6 +31,12 @@ const MAX_BYTES = 25 * 1024 * 1024;
 
 function newId(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+/** Same rule as the server (lib/uploads/data.ts normaliseType): a photo type, or a photo extension when the browser reports no type (HEIC). */
+function isPhoto(file: File): boolean {
+  if (/^image\/(jpeg|png|webp|gif|heic|heif)$/i.test(file.type)) return true;
+  return !file.type && /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name);
 }
 
 function canPreview(file: File): boolean {
@@ -75,7 +82,13 @@ export function UploadClient({ token, ask, detail, receivedCount, open, devStore
       const next: FileState[] = [];
       for (const file of incoming.slice(0, room)) {
         if (file.size > MAX_BYTES) {
-          next.push({ id: newId(), file, previewUrl: null, progress: 0, status: "error", error: "Over 25 MB", key: null });
+          next.push({ id: newId(), file, previewUrl: null, progress: 0, status: "rejected", error: "Over 25 MB", key: null });
+          continue;
+        }
+        // Say it on the row the moment it is added (a PDF used to wait for
+        // Send and a message at the bottom of the page).
+        if (!isPhoto(file)) {
+          next.push({ id: newId(), file, previewUrl: null, progress: 0, status: "rejected", error: "Not a photo: choose a JPG, PNG or HEIC", key: null });
           continue;
         }
         next.push({
@@ -106,7 +119,8 @@ export function UploadClient({ token, ask, detail, receivedCount, open, devStore
     if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
   }
 
-  const uploadable = files.filter((f) => f.status !== "error");
+  // A failed upload ("error") can be retried with Send; a rejected file never counts.
+  const uploadable = files.filter((f) => f.status !== "rejected");
   const canSubmit = !submitting && open && (uploadable.length > 0 || note.trim().length > 0);
 
   async function onSubmit() {
@@ -119,6 +133,7 @@ export function UploadClient({ token, ask, detail, receivedCount, open, devStore
       const alreadyDoneKeys = files.filter((f) => f.status === "done").map((f) => f.key);
 
       let justUploadedKeys: string[] = [];
+      let justUploaded: { key: string; name: string }[] = [];
       if (toUpload.length) {
         const presign = await presignAction(
           token,
@@ -163,12 +178,34 @@ export function UploadClient({ token, ask, detail, receivedCount, open, devStore
           return;
         }
         justUploadedKeys = results.filter((r) => r.ok).map((r) => r.key);
+        justUploaded = toUpload.flatMap((f) => {
+          const r = results.find((x) => x.id === f.id);
+          return r?.ok ? [{ key: r.key, name: f.file.name }] : [];
+        });
       }
 
       const allKeys = [...alreadyDoneKeys, ...justUploadedKeys].filter((k): k is string => !!k);
+      const nameByKey = new Map<string, string>();
+      for (const f of files) if (f.key) nameByKey.set(f.key, f.file.name);
+      for (const r of justUploaded) nameByKey.set(r.key, r.name);
       const savedRes = await saveAction(token, allKeys, note);
       if (!savedRes.ok) {
-        setError(savedRes.message);
+        const bad = savedRes.notPhotos ?? [];
+        if (bad.length) {
+          // Name the file on its own row and leave the rest ready to send
+          // again (the server keeps nothing from a refused batch).
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.key && bad.includes(f.key)
+                ? { ...f, status: "rejected", error: "Not a photo: choose a JPG, PNG or HEIC", previewUrl: null }
+                : f,
+            ),
+          );
+          const names = bad.map((k) => nameByKey.get(k)).filter((n): n is string => !!n);
+          setError(`${names.join(", ") || "One file"} ${names.length > 1 ? "are" : "is"} not a photo. Send again to add the rest.`);
+        } else {
+          setError(savedRes.message);
+        }
         setSubmitting(false);
         return;
       }
@@ -244,7 +281,10 @@ export function UploadClient({ token, ask, detail, receivedCount, open, devStore
           <UploadIcon />
         </span>
         <p className="text-base font-medium text-ink">Tap to choose photos</p>
-        <p className="text-xs text-slate">or drag them here, JPG, PNG or HEIC, up to 25 MB each</p>
+        <p className="text-xs text-slate">
+          {/* A phone cannot drag; the hint is for a laptop only. */}
+          <span className="hidden sm:inline">or drag them here, </span>JPG, PNG or HEIC, up to 25 MB each
+        </p>
         <input
           ref={inputRef}
           type="file"
@@ -285,7 +325,7 @@ export function UploadClient({ token, ask, detail, receivedCount, open, devStore
                     />
                   </div>
                 )}
-                {f.status === "error" && <p className="text-xs text-rose">{f.error}</p>}
+                {(f.status === "error" || f.status === "rejected") && <p className="text-xs text-rose">{f.error}</p>}
                 {f.status === "done" && <p className="text-xs text-sage">Uploaded</p>}
               </div>
               {f.status !== "uploading" && (
@@ -293,7 +333,7 @@ export function UploadClient({ token, ask, detail, receivedCount, open, devStore
                   type="button"
                   onClick={() => removeFile(f.id)}
                   aria-label={`Remove ${f.file.name}`}
-                  className="shrink-0 rounded-full p-1.5 text-slate hover:bg-canvas hover:text-ink"
+                  className="-mr-1.5 flex size-11 shrink-0 items-center justify-center rounded-full text-slate hover:bg-canvas hover:text-ink"
                 >
                   <CloseIcon />
                 </button>

@@ -5,10 +5,36 @@ import type { NextConfig } from "next";
 const BUILD_ID =
   process.env.VERCEL_DEPLOYMENT_ID || process.env.VERCEL_GIT_COMMIT_SHA || `local-${Date.now().toString(36)}`;
 
+// Security headers on every response (customer + security QA 2026-09-25).
+// Before this the app sent none of them, so the public proof page (an Approve
+// button behind a token) could be framed by another site, a browser could
+// sniff a served file into a different type, and a proof or upload URL (the
+// token IS the credential) leaked in the Referer of any outbound link.
+//  - frame-ancestors 'none' + X-Frame-Options DENY: nothing embeds the app.
+//    Vercel's preview toolbar runs in the page itself, not in a frame.
+//  - nosniff: a response is only ever what its Content-Type says.
+//  - strict-origin-when-cross-origin: no path (no token) leaves the origin.
+//  - Permissions-Policy: the app uses none of these device features. The
+//    upload page's file picker and phone camera capture work without them.
+//  - HSTS: Vercel already sends it on *.vercel.app; set here too so a custom
+//    domain gets it as well.
+// A full script-src CSP is deliberately not set: Next.js inline runtime
+// scripts need a per-request nonce, which is a larger change than this pass.
+const SECURITY_HEADERS = [
+  { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()" },
+  { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+];
+
 const nextConfig: NextConfig = {
   // Several dev servers can run from one checkout (parallel QA lanes); each
   // needs its own build folder or they corrupt each other's output.
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  // No "X-Powered-By: Next.js" on responses (nothing needs to know the stack).
+  poweredByHeader: false,
   // Keep the Neon WebSocket driver and `ws` out of the webpack server bundle.
   // Bundling `ws` mangles its frame-masking fallback ("b.mask is not a
   // function"), which breaks every server-side DB query at runtime even though
@@ -30,6 +56,10 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
+      {
+        source: "/(.*)",
+        headers: SECURITY_HEADERS,
+      },
       {
         // The service worker must always be re-checked so a deploy takes over.
         source: "/sw.js",

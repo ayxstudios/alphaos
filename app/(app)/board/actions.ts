@@ -25,8 +25,8 @@ import {
   extFor,
   isR2Configured,
   presignUpload,
-  headObject,
 } from "@/lib/storage/r2";
+import { assertKeysBelongTo, assertStoredImage } from "@/lib/uploads/verify";
 
 export type MoveResult =
   | { ok: true; status: OrderStatus }
@@ -189,10 +189,7 @@ export async function saveCardAssetUploads(input: {
         .for("update")
         .limit(1);
       if (!order) throw new Error("Order not found");
-      const expectedPrefix = `${order.businessId}/${order.id}/${input.type}/`;
-      if (r2Keys.some((key) => !key.startsWith(expectedPrefix) || !/^[A-Za-z0-9-]+\.[A-Za-z0-9]+$/.test(key.slice(expectedPrefix.length)))) {
-        throw new Error("Upload key does not match this order");
-      }
+      assertKeysBelongTo(r2Keys, `${order.businessId}/${order.id}/${input.type}/`);
       if (user.role === "designer" && input.type !== "submission") {
         throw new Error("Designers can only upload finished portraits");
       }
@@ -200,20 +197,8 @@ export async function saveCardAssetUploads(input: {
         throw new Error("Finished portraits can only be uploaded while the card is in design");
       }
 
-      await Promise.all(
-        r2Keys.map(async (key) => {
-          const head = await headObject(key);
-          if (!head.contentType || !ALLOWED_IMAGE_TYPES.test(head.contentType)) {
-            throw new Error("Uploaded file is not a supported image");
-          }
-          if (!head.contentLength || head.contentLength <= 0) {
-            throw new Error("Uploaded file is empty");
-          }
-          if (head.contentLength > MAX_UPLOAD_BYTES) {
-            throw new Error("Uploaded file is over 25 MB");
-          }
-        }),
-      );
+      // Type, size and the bytes themselves (a .png that is really HTML is refused).
+      await Promise.all(r2Keys.map((key) => assertStoredImage(key)));
 
       await tx.insert(assets).values(
         r2Keys.map((r2Key) => ({

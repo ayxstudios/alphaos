@@ -99,9 +99,15 @@ export const config = {
   // each page's own session and role checks (every page under app/(app) runs
   // auth() and redirects by role before it reads any data). Full document
   // loads, where a clean 307 matters, still pass through here unchanged.
+  //
+  // The buyer pages (/proof/<token>, /upload/<token>) are public and never
+  // read a session, so they skip it too: a buyer's page loads without that
+  // extra round trip, and a buyer's browser is never handed the staff
+  // sign-in cookies (csrf-token, callback-url) the auth wrapper sets
+  // (customer + security QA 2026-09-25).
   matcher: [
     {
-      source: "/((?!api|_next/static|_next/image|favicon.ico|.*\\.).*)",
+      source: "/((?!api|_next/static|_next/image|favicon.ico|proof/|upload/|.*\\.).*)",
       missing: [{ type: "header", key: "rsc" }],
     },
   ],

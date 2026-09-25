@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 
 import { auth } from "@/lib/auth";
+import { isUuid } from "@/lib/utils";
 import { withUserContext } from "@/lib/db";
 import { getShopCredentials } from "@/lib/db/credentials";
 import {
@@ -24,14 +25,16 @@ export async function GET(req: NextRequest) {
   }
 
   const shopId = req.nextUrl.searchParams.get("shopId");
-  if (!shopId) {
+  if (!isUuid(shopId)) {
     return NextResponse.redirect(new URL("/settings?error=missing_shop", origin));
   }
 
   const user = { id: session.user.id, role: session.user.role };
-  const creds = (await withUserContext(user, (tx) =>
-    getShopCredentials(tx, shopId),
-  )) as EtsyCredentials;
+  // An unknown shop id sends the admin back to Settings, never a 500.
+  const creds = (await withUserContext(user, (tx) => getShopCredentials(tx, shopId)).catch(() => null)) as EtsyCredentials | null;
+  if (!creds) {
+    return NextResponse.redirect(new URL("/settings?error=missing_shop", origin));
+  }
 
   if (!creds.keystring) {
     return NextResponse.redirect(new URL("/settings?error=no_keystring", origin));

@@ -108,11 +108,13 @@ export function ProofClient({
             </span>
           ))}
         </figure>
-      ) : (
+      ) : actionable && !outcome ? (
+        // "Being prepared" only while a decision is still to come; a decided
+        // proof with no image left says nothing here (its outcome card does).
         <div className="rounded-card border border-dashed border-line bg-surface p-8 text-center text-sm text-slate">
           Your proof is being prepared. Please check back shortly.
         </div>
-      )}
+      ) : null}
 
       {/* Outcome (read-only once decided) ------------------------------ */}
       {outcome ? (
@@ -188,7 +190,7 @@ export function ProofClient({
                 {PROOF_ISSUES.map((issue) => (
                   <label
                     key={issue.key}
-                    className="flex cursor-pointer items-center gap-3 rounded-input border border-line px-3 py-2.5 text-sm text-ink has-[:checked]:border-pigment has-[:checked]:bg-pigment-soft motion-hover"
+                    className="flex min-h-11 cursor-pointer items-center gap-3 rounded-input border border-line px-3 py-2.5 text-sm text-ink has-[:checked]:border-pigment has-[:checked]:bg-pigment-soft motion-hover"
                   >
                     <input
                       type="checkbox"
@@ -219,9 +221,9 @@ export function ProofClient({
                   <button
                     type="button"
                     onClick={() => setPins([])}
-                    className="font-medium text-pigment underline-offset-2 hover:underline"
+                    className="-my-2 inline-flex h-11 items-center px-2 font-medium text-pigment underline-offset-2 hover:underline"
                   >
-                    Clear pins
+                    Clear spots
                   </button>
                 </div>
               )}

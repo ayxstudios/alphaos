@@ -89,8 +89,12 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
 
     const events: CardEvent[] = rows.map((r) => {
       const meta = (r.metadata ?? null) as Record<string, unknown> | null;
-      const body =
+      const rawBody =
         r.action === "comment" && typeof meta?.body === "string" ? (meta.body as string) : null;
+      // A comment is free text a VA (or Alpha's saved answer) wrote, and it can
+      // carry the customer's address; the same scrub as the metadata applies
+      // (customer + security QA 2026-09-25).
+      const body = rawBody !== null && user.role === "designer" ? rawBody.replace(EMAIL_RE, "[hidden]") : rawBody;
       return {
         id: r.id,
         action: r.action,

@@ -42,10 +42,14 @@ export default async function ProofPage({
           <h1 className="text-2xl font-semibold text-ink">Your portrait is ready</h1>
           <p className="text-sm text-slate">Order {proof.orderNumber}</p>
         </div>
-        <p className="max-w-sm text-sm text-slate">
-          Take a look below. If everything looks perfect, approve it, or let us
-          know what to change.
-        </p>
+        {/* Only while the customer can still decide: an approved proof used
+            to keep asking them to approve it. */}
+        {proof.actionable && (
+          <p className="max-w-sm text-sm text-slate">
+            Take a look below. If everything looks perfect, approve it, or let us
+            know what to change.
+          </p>
+        )}
       </header>
 
       <ProofClient
