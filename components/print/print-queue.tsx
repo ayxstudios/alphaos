@@ -154,7 +154,7 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
         {/* Who and what, one line each. */}
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <Link href={`/orders/${order.id}`} className="text-base font-semibold text-ink hover:text-pigment">
+            <Link href={`/orders/${order.id}`} className="-my-2.5 py-2.5 text-base font-semibold text-ink hover:text-pigment">
               {order.orderNumber}
             </Link>
             <Badge variant={chip.variant} dot={isTrouble}>{chip.label}</Badge>
@@ -236,9 +236,9 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
           <Info label="Provider" value={job ? providerLabel(job.provider) : providerLabel(provider)} />
           <Info label="Provider status" value={job?.providerStatus ?? "Not checked yet"} />
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 text-sm sm:gap-y-2">
           {order.artworkUrl && (
-            <a href={order.artworkUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-pigment hover:text-ink">
+            <a href={order.artworkUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-1 font-medium text-pigment hover:text-ink sm:min-h-0">
               Open latest portrait <ArrowRight size={14} />
             </a>
           )}
@@ -246,11 +246,11 @@ function PrintOrderCard({ order }: { order: PrintQueueItemVM }) {
             href={PROVIDER_DASHBOARD[job?.provider ?? order.defaultProvider]}
             target="_blank"
             rel="noreferrer"
-            className={cn("inline-flex items-center gap-1 font-medium hover:text-ink", isTrouble ? "text-rose" : "text-pigment")}
+            className={cn("inline-flex min-h-11 items-center gap-1 font-medium hover:text-ink sm:min-h-0", isTrouble ? "text-rose" : "text-pigment")}
           >
             Open {providerName} dashboard <ArrowRight size={14} />
           </a>
-          <Link href={`/orders/${order.id}`} className="font-medium text-pigment hover:text-ink">Open order</Link>
+          <Link href={`/orders/${order.id}`} className="inline-flex min-h-11 items-center font-medium text-pigment hover:text-ink sm:min-h-0">Open order</Link>
         </div>
       </Disclosure>
     </DataPanel>
