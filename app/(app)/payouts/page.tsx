@@ -47,7 +47,7 @@ function money(value: string | number | null): string {
 }
 
 function formatDate(date: Date | null): string {
-  return formatAt(date, { day: "2-digit", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }, "-");
+  return formatAt(date, { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" }, "-");
 }
 
 function styleSummary(breakdown: EarningBreakdown[] | null): string {
