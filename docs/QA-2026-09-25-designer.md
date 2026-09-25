@@ -106,3 +106,4 @@ Walked, phone then laptop:
 | 142bb29 | Text fields are 16px on a touch screen (globals.css, unlayered, laptops keep 14px) |
 | 9b97afc | Alpha AI message box and Send 44px |
 | 77fa5ce | Alpha AI quick answer: "Nothing new in your queue, 1 in design and 1 waiting for QC. Due first: PC32148, then PC32151." |
+| 3a8b3ae | Board (found reading the drop code against the transition table): a Failed QC or Revisions card dropped on In Design was sent to the server as in_design to in_design ("Illegal transition"); an Awaiting QC card dropped on In Design is a QC fail, which needs QC's signed reason, so the designer got a sign-off error. Both now leave the card where it was; Awaiting QC back to My Queue still works, as the Quick guide says |
