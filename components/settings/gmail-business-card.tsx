@@ -142,9 +142,11 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
     setPollError(null);
     startPoll(async () => {
       try {
-        setPoll(await triggerGmailPoll(gmail.businessId));
-      } catch (e) {
-        setPollError(e instanceof Error ? e.message : "Could not check replies");
+        const res = await triggerGmailPoll(gmail.businessId);
+        if (res.ok) setPoll(res.data);
+        else setPollError(res.message);
+      } catch {
+        setPollError("Could not check replies. Try again in a moment.");
       }
     });
   }

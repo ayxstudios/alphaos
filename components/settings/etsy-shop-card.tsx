@@ -60,9 +60,11 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
     setSummary(null);
     startTransition(async () => {
       try {
-        setSummary(await triggerSync(shop.id));
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Sync failed");
+        const res = await triggerSync(shop.id);
+        if (res.ok) setSummary(res.data);
+        else setError(res.message);
+      } catch {
+        setError("Could not sync. Try again in a moment.");
       }
     });
   }
@@ -89,9 +91,11 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
     setSummary(null);
     startBackfill(async () => {
       try {
-        setSummary(await backfillEtsyShop(shop.id));
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Backfill failed");
+        const res = await backfillEtsyShop(shop.id);
+        if (res.ok) setSummary(res.data);
+        else setError(res.message);
+      } catch {
+        setError("Could not re-import. Try again in a moment.");
       }
     });
   }

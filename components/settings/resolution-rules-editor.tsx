@@ -213,8 +213,8 @@ export function ResolutionRulesEditor({
           photoRequestEnabled: photoReq,
         });
         setSaved("Rules saved.");
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Save failed");
+      } catch {
+        setError("Could not save the rules. Try again.");
       }
     });
   }
@@ -225,8 +225,8 @@ export function ResolutionRulesEditor({
     startReresolve(async () => {
       try {
         setSummary(await reresolveShopOrders(shopId));
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Could not update existing orders");
+      } catch {
+        setError("Could not update existing orders. Try again.");
       }
     });
   }

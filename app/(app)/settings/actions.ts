@@ -18,7 +18,7 @@ import { shops, businesses, emailTemplates, printProductMappings, styles, users 
 import { reresolveShop, type ReresolveSummary } from "@/lib/orders/resolution";
 import type { FigureRule } from "@/lib/integrations/figures";
 import type { GmailCredentials } from "@/lib/integrations/gmail";
-import { pollMailbox, GmailClient, GmailNotConnectedError, type InboundSummary } from "@/lib/integrations/gmail";
+import { pollMailbox, GmailClient, GmailNotConnectedError, GmailReauthRequiredError, type InboundSummary } from "@/lib/integrations/gmail";
 import {
   DEFAULT_TEMPLATES,
   EDITABLE_TEMPLATE_KEYS,
@@ -35,6 +35,7 @@ import { previewNotificationSweep, type NotificationSweepResult } from "@/lib/no
 import { ensureBackfillCutoff } from "@/lib/orders/archive";
 import {
   syncShopReceipts,
+  ReauthRequiredError as EtsyReauthRequiredError,
   type SyncSummary,
   type EtsyCredentials,
   type EtsyIntegrationConfig,
@@ -79,6 +80,37 @@ function plainError(e: unknown, fallback = "Could not save. Try again."): string
   const msg = e instanceof Error ? e.message : "";
   if (!msg || /duplicate key|violates|constraint|ECONN|fetch failed|timeout|syntax|relation|column/i.test(msg)) return fallback;
   return msg;
+}
+
+/**
+ * A shop or mailbox action's result. Next hides a thrown error's text in a
+ * production build ("An error occurred in the Server Components render"), so
+ * these actions return the reason instead of throwing it.
+ */
+export type Outcome<T> = { ok: true; data: T } | { ok: false; message: string };
+
+/** One calm line for a failed Etsy / Shopify / Gmail call; the raw error goes to the log. */
+function integrationMessage(e: unknown, service: "Etsy" | "Shopify" | "Gmail"): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  console.log(JSON.stringify({ ts: new Date().toISOString(), level: "error", component: "settings", integration: service.toLowerCase(), error: raw }));
+  if (e instanceof GmailNotConnectedError) return "Connect Gmail first.";
+  if (e instanceof GmailReauthRequiredError || e instanceof EtsyReauthRequiredError || /token exchange failed|invalid_client|invalid_grant|unauthori[sz]ed|\b40[13]\b|rejected/i.test(raw)) {
+    return service === "Shopify"
+      ? "Shopify did not accept the saved keys. Check them and press Test."
+      : `${service} needs reconnecting. Press Reconnect${service === "Gmail" ? " Gmail" : ""} and sign in again.`;
+  }
+  if (/\b429\b|throttl|rate limit/i.test(raw)) return `${service} is busy right now. Try again in a minute.`;
+  if (/fetch failed|ECONN|ENOTFOUND|timeout|network/i.test(raw)) return `Could not reach ${service}. Try again in a moment.`;
+  return `${service} did not answer as expected. Try again in a moment.`;
+}
+
+async function outcome<T>(service: "Etsy" | "Shopify" | "Gmail", run: () => Promise<T>): Promise<Outcome<T>> {
+  try {
+    return { ok: true, data: await run() };
+  } catch (e) {
+    if (e instanceof Error && e.message === "Only an admin can change settings") return { ok: false, message: e.message };
+    return { ok: false, message: integrationMessage(e, service) };
+  }
 }
 
 /**
@@ -192,20 +224,24 @@ export async function saveShopBackfillCutoff(formData: FormData): Promise<SaveRe
   }
 }
 
-export async function triggerSync(shopId: string): Promise<SyncSummary> {
-  await requireAdmin();
-  const summary = await syncShopReceipts(shopId, { trigger: "manual" });
-  revalidatePath("/settings");
-  return summary;
+export async function triggerSync(shopId: string): Promise<Outcome<SyncSummary>> {
+  return outcome("Etsy", async () => {
+    await requireAdmin();
+    const summary = await syncShopReceipts(shopId, { trigger: "manual" });
+    revalidatePath("/settings");
+    return summary;
+  });
 }
 
 /** Backfill an Etsy shop's full history (re-scan from the widened window). */
-export async function backfillEtsyShop(shopId: string): Promise<SyncSummary> {
-  const user = await requireAdmin();
-  await resetCursor(user, shopId);
-  const summary = await syncShopReceipts(shopId, { mode: "backfill", trigger: "backfill" });
-  revalidatePath("/settings");
-  return summary;
+export async function backfillEtsyShop(shopId: string): Promise<Outcome<SyncSummary>> {
+  return outcome("Etsy", async () => {
+    const user = await requireAdmin();
+    await resetCursor(user, shopId);
+    const summary = await syncShopReceipts(shopId, { mode: "backfill", trigger: "backfill" });
+    revalidatePath("/settings");
+    return summary;
+  });
 }
 
 /* --- Shopify ------------------------------------------------------------ */
@@ -355,21 +391,25 @@ async function saveShopifyCredentialsInner(formData: FormData): Promise<ShopifyS
   return { ok: true, message: "Shopify keys saved.", webhook };
 }
 
-export async function triggerShopifySync(shopId: string): Promise<ShopifySyncSummary> {
-  await requireAdmin();
-  const summary = await syncShopOrders(shopId, { trigger: "manual" });
-  revalidatePath("/settings");
-  return summary;
+export async function triggerShopifySync(shopId: string): Promise<Outcome<ShopifySyncSummary>> {
+  return outcome("Shopify", async () => {
+    await requireAdmin();
+    const summary = await syncShopOrders(shopId, { trigger: "manual" });
+    revalidatePath("/settings");
+    return summary;
+  });
 }
 
-export async function registerShopifyWebhooks(shopId: string): Promise<ShopifyWebhookRegistrationResult> {
-  const user = await requireAdmin();
-  const creds = (await withUserContext(user, (tx) =>
-    getShopCredentials(tx, shopId),
-  )) as ShopifyCredentials;
-  const result = await ensureShopifyOrdersCreateWebhook(shopId, await freshShopifyCredentials(creds));
-  revalidatePath("/settings");
-  return result;
+export async function registerShopifyWebhooks(shopId: string): Promise<Outcome<ShopifyWebhookRegistrationResult>> {
+  return outcome("Shopify", async () => {
+    const user = await requireAdmin();
+    const creds = (await withUserContext(user, (tx) =>
+      getShopCredentials(tx, shopId),
+    )) as ShopifyCredentials;
+    const result = await ensureShopifyOrdersCreateWebhook(shopId, await freshShopifyCredentials(creds));
+    revalidatePath("/settings");
+    return result;
+  });
 }
 
 /** Reset a shop's sync cursor and run a full window sync (idempotent). */
@@ -389,14 +429,16 @@ async function resetCursor(user: RequestUser, shopId: string): Promise<void> {
  * automated customer email suppressed (a historical import must never message a
  * customer). Imports are idempotent, so re-scanning is safe.
  */
-export async function backfillShopifyShop(shopId: string): Promise<ShopifySyncSummary> {
-  const user = await requireAdmin();
-  await resetCursor(user, shopId);
-  const summary = await syncShopOrders(shopId, { suppressCustomerEmail: true, mode: "backfill", trigger: "backfill" });
-  revalidatePath("/settings");
-  revalidatePath("/orders");
-  revalidatePath("/board");
-  return summary;
+export async function backfillShopifyShop(shopId: string): Promise<Outcome<ShopifySyncSummary>> {
+  return outcome("Shopify", async () => {
+    const user = await requireAdmin();
+    await resetCursor(user, shopId);
+    const summary = await syncShopOrders(shopId, { suppressCustomerEmail: true, mode: "backfill", trigger: "backfill" });
+    revalidatePath("/settings");
+    revalidatePath("/orders");
+    revalidatePath("/board");
+    return summary;
+  });
 }
 
 /* --- Figure/style resolution rules (per shop, Etsy or Shopify) ----------- */
@@ -522,11 +564,13 @@ export async function saveGmailClient(formData: FormData): Promise<SaveResult> {
 }
 
 /** Manually run the inbound reply poller for one business (admin test hook). */
-export async function triggerGmailPoll(businessId: string): Promise<InboundSummary> {
-  await requireAdmin();
-  const summary = await pollMailbox(businessId);
-  revalidatePath("/settings");
-  return summary;
+export async function triggerGmailPoll(businessId: string): Promise<Outcome<InboundSummary>> {
+  return outcome("Gmail", async () => {
+    await requireAdmin();
+    const summary = await pollMailbox(businessId);
+    revalidatePath("/settings");
+    return summary;
+  });
 }
 
 /**
@@ -652,7 +696,7 @@ export async function sendGmailTest(businessId: string, toRaw: string): Promise<
       await client.send({ to, subject: `Test: ${rendered.subject}`, text: rendered.body });
       results.push({ key, label: TEMPLATE_META[key].label, ok: true });
     } catch (e) {
-      results.push({ key, label: TEMPLATE_META[key].label, ok: false, error: e instanceof Error ? e.message : "Send failed" });
+      results.push({ key, label: TEMPLATE_META[key].label, ok: false, error: integrationMessage(e, "Gmail") });
     }
   }
   const okAll = results.every((r) => r.ok);

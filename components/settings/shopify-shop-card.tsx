@@ -135,9 +135,11 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
     setSummary(null);
     startSync(async () => {
       try {
-        setSummary(await triggerShopifySync(shop.id));
-      } catch (e) {
-        setSyncError(e instanceof Error ? e.message : "Sync failed");
+        const res = await triggerShopifySync(shop.id);
+        if (res.ok) setSummary(res.data);
+        else setSyncError(res.message);
+      } catch {
+        setSyncError("Could not sync. Try again in a moment.");
       }
     });
   }
@@ -148,9 +150,11 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
     setSummary(null);
     startBackfill(async () => {
       try {
-        setSummary(await backfillShopifyShop(shop.id));
-      } catch (e) {
-        setSyncError(e instanceof Error ? e.message : "Backfill failed");
+        const res = await backfillShopifyShop(shop.id);
+        if (res.ok) setSummary(res.data);
+        else setSyncError(res.message);
+      } catch {
+        setSyncError("Could not re-import. Try again in a moment.");
       }
     });
   }
@@ -159,9 +163,11 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
     setWebhookError(null);
     startWebhookRegistration(async () => {
       try {
-        setWebhookStatus(await registerShopifyWebhooks(shop.id));
-      } catch (e) {
-        setWebhookError(e instanceof Error ? e.message : "Webhook registration failed");
+        const res = await registerShopifyWebhooks(shop.id);
+        if (res.ok) setWebhookStatus(res.data);
+        else setWebhookError(res.message);
+      } catch {
+        setWebhookError("Could not set up instant orders. Try again in a moment.");
       }
     });
   }
