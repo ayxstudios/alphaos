@@ -181,10 +181,37 @@ export function DesignerBoard({
     return moveTo(found.card, found.col, "inDesign");
   }
 
+  // What a screen reader hears while a card is dragged: the order number and
+  // the column's name (dnd-kit's defaults read out the order's database id and
+  // the column key, and describe keyboard dragging this board does not offer).
+  const numberOf = (id: string | number) => locate(String(id))?.card.orderNumber ?? "The card";
+  const titleOf = (id: string | number) => COLUMNS.find((c) => c.key === id)?.title ?? "that column";
+  const accessibility = {
+    screenReaderInstructions: {
+      draggable: "Press Enter to open this card. With a mouse or a finger, drag it to another column to move it.",
+    },
+    announcements: {
+      onDragStart: ({ active }: { active: { id: string | number } }) => `Picked up ${numberOf(active.id)}.`,
+      onDragOver: ({ active, over }: { active: { id: string | number }; over: { id: string | number } | null }) =>
+        over ? `${numberOf(active.id)} is over ${titleOf(over.id)}.` : `${numberOf(active.id)} is not over a column.`,
+      onDragEnd: ({ active, over }: { active: { id: string | number }; over: { id: string | number } | null }) =>
+        over && DROP_TARGETS.has(String(over.id) as ColKey)
+          ? `${numberOf(active.id)} moved to ${titleOf(over.id)}.`
+          : `${numberOf(active.id)} stayed where it was.`,
+      onDragCancel: ({ active }: { active: { id: string | number } }) => `${numberOf(active.id)} stayed where it was.`,
+    },
+  };
+
   return (
     // A fixed id keeps dnd-kit's aria-describedby the same on the server and
     // in the browser (its counter otherwise differs: a hydration mismatch).
-    <DndContext id="designer-board" sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+    <DndContext
+      id="designer-board"
+      sensors={sensors}
+      accessibility={accessibility}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+    >
       {/* Phone-first designer view: cards stack in one column, big Start/Submit
           buttons instead of drag. Staff (and designers on a wide screen) get
           the Trello-style drag board below. */}
