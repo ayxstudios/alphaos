@@ -16,6 +16,7 @@ import { DayLine, HomeSection, RowLabel, StatTile } from "./primitives";
  */
 export async function StaffHome({ user, businessId, role }: { user: RequestUser; businessId: string; role: "admin" | "va" }) {
   const h = await getStaffHome(user, businessId);
+  const doneCount = h.stages.find((s) => s.key === "done")?.n ?? 0;
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
       <DayLine>{daySentence(h)}</DayLine>
@@ -48,8 +49,15 @@ export async function StaffHome({ user, businessId, role }: { user: RequestUser;
             ariaLabel="Orders placed and shipped per day, last 14 days"
           />
         </HomeSection>
-        <HomeSection quiet title="Where every open order is" description={`${fmtInt(h.openOrders)} open orders by stage`} action={{ label: "Orders", href: "/orders" }}>
-          <StackedBar segments={h.stages.map((s) => ({ key: s.key, label: s.label, value: s.n, color: s.color }))} height={22} ariaLabel="Open orders by stage" />
+        {/* Open orders only: finished ones used to share the bar (19 open
+            beside "Done 77"), so the bar did not add up to the number above it. */}
+        <HomeSection
+          quiet
+          title="Where every open order is"
+          description={`${fmtInt(h.openOrders)} open orders by stage${doneCount ? `, ${fmtInt(doneCount)} done` : ""}`}
+          action={{ label: "Orders", href: "/orders" }}
+        >
+          <StackedBar segments={h.stages.filter((s) => s.key !== "done").map((s) => ({ key: s.key, label: s.label, value: s.n, color: s.color }))} height={22} ariaLabel="Open orders by stage" />
           <ShopRows shops={h.shops} />
         </HomeSection>
       </div>
