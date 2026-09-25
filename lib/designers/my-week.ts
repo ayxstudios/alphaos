@@ -5,7 +5,8 @@
  * looking at one designer. The week starts Monday 00:00 in the DESIGNER'S OWN
  * timezone (never the server's), same as the deadlines they're shown.
  */
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, ne, sql } from "drizzle-orm";
+import { currentPeriod } from "@/lib/orders/earnings";
 
 import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
 import { activityLog, assignments, earnings, orders, users } from "@/lib/db/schema";
@@ -68,7 +69,8 @@ async function loadWeek(tx: Tx, target: string): Promise<DesignerWeek> {
       assignments,
       and(eq(assignments.orderId, earnings.orderId), eq(assignments.designerId, target), eq(assignments.active, true)),
     )
-    .where(and(eq(earnings.designerId, target), gte(earnings.createdAt, weekStart)));
+    // A voided earning (the order was cancelled or refunded) is not an order done.
+    .where(and(eq(earnings.designerId, target), ne(earnings.status, "voided"), gte(earnings.createdAt, weekStart)));
 
   const [weekTotal] = await tx
     .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
@@ -93,7 +95,8 @@ async function loadWeek(tx: Tx, target: string): Promise<DesignerWeek> {
       and(
         eq(earnings.designerId, target),
         inArray(earnings.status, ["pending", "paid"]),
-        gte(earnings.createdAt, sql`date_trunc('month', now())`),
+        // The Money page's own month (earnings.period), so the two always agree.
+        eq(earnings.period, currentPeriod()),
       ),
     );
 

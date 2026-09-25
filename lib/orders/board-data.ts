@@ -1,4 +1,5 @@
 import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { currentPeriod } from "@/lib/orders/earnings";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import {
@@ -437,7 +438,7 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
       tx
         .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
         .from(earnings)
-        .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), gte(earnings.createdAt, sql`date_trunc('month', now())`))),
+        .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), eq(earnings.period, currentPeriod()))),
       tx
         .select({
           id: earnings.id,
