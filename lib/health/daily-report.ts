@@ -18,6 +18,7 @@ import {
   shops,
   users,
 } from "@/lib/db/schema";
+import { peopleMail } from "@/lib/email/noise";
 import { detectGmailMailboxStalls, type GmailMailboxStall } from "@/lib/integrations/gmail";
 import { JOB_NAMES, type JobName, type JobRunStatus } from "@/lib/jobs/ledger";
 import { liveOrderSql, liveOrderWhere } from "@/lib/orders/archive";
@@ -796,7 +797,7 @@ async function computeHealthMetrics(run: TxRunner, scope: HealthScope): Promise<
     shopsRows,
     gmailMailboxRows,
     emailRows,
-    unmatchedRow,
+    unmatchedRows,
     blockedRow,
     overdueRow,
     yesterdayOrdersIn,
@@ -858,9 +859,16 @@ async function computeHealthMetrics(run: TxRunner, scope: HealthScope): Promise<
             inArray(messages.status, ["queued", "failed"]),
           ),
         )),
+    // Stale unmatched replies are read row by row (four short fields) so
+    // notifications and marketing mail are left out, as on Today (lib/email/noise.ts).
     run((tx) =>
       tx
-        .select({ n: sql<number>`count(*)::int` })
+        .select({
+          address: messages.address,
+          subject: messages.subject,
+          channel: messages.channel,
+          kind: sql<string | null>`${messages.metadata}->>'kind'`,
+        })
         .from(messages)
         .where(
           all(
@@ -974,7 +982,7 @@ async function computeHealthMetrics(run: TxRunner, scope: HealthScope): Promise<
   const queuedEmails = emailRows[0]?.queued ?? 0;
   const failedEmails = emailRows[0]?.failed ?? 0;
   const blockedEarnings = blockedRow[0]?.n ?? 0;
-  const staleUnmatchedReplies = unmatchedRow[0]?.n ?? 0;
+  const staleUnmatchedReplies = peopleMail(unmatchedRows).length;
   const overdueNow = overdueRow[0]?.count ?? 0;
   const worstDueAt = overdueRow[0]?.worstDueAt ?? null;
   const worstOverdueHours = worstDueAt ? hoursBetween(now, worstDueAt) : null;

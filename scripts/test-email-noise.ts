@@ -1,6 +1,6 @@
 // Calm pass: notifications and marketing mail never count as "Needs you",
 // while a real person (Etsy buyer, customer on a free mail host) always does.
-import { noiseReason } from "../lib/email/noise";
+import { noiseReason, peopleMail } from "../lib/email/noise";
 let failed = 0;
 const check = (name: string, ok: boolean, detail = "") => { console.log(`${ok ? "ok  " : "FAIL"} ${name}${detail ? "  " + detail : ""}`); if (!ok) failed++; };
 const noise = (name: string, m: Parameters<typeof noiseReason>[0]) => check(`noise: ${name}`, noiseReason(m) !== null, String(noiseReason(m)));
@@ -23,6 +23,17 @@ person("customer with info@ address", { address: "info@janesbakery.com.au", subj
 person("customer named newton", { address: "newton@outlook.com", subject: "Photos", channel: "email" });
 person("reply mentioning a sale", { address: "sam@yahoo.com", subject: "Re: is the sale still on?", channel: "email" });
 person("no address", { address: null, subject: null, channel: "email" });
+
+// The SLA sweep and the daily health report keep only the people (peopleMail).
+const tray = [
+  { id: "person", address: "Jane Doe <jane.doe@gmail.com>", subject: "Re: my portrait", channel: "email" },
+  { id: "shopify", address: "Shopify <mailer@shopify.com>", subject: "[Shopify] Order #1001 placed", channel: "email" },
+  { id: "etsy-sale", address: "Etsy", subject: "You made a sale on Etsy", channel: "etsy", kind: "sale" },
+  { id: "etsy-buyer", address: "Sam", subject: "Message from Sam", channel: "etsy", kind: "message" },
+  { id: "auto-reply", address: "jane@gmail.com", subject: "Out of Office: Re: PC32164", channel: "email" },
+];
+const kept = peopleMail(tray).map((m) => m.id).join(",");
+check("peopleMail keeps only people, rows intact", kept === "person,etsy-buyer", kept);
 
 console.log(failed ? `test-email-noise FAILED (${failed})` : "test-email-noise OK");
 process.exit(failed ? 1 : 0);

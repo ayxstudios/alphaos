@@ -16,6 +16,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import { ALERT_TYPES, type AlertType } from "./types";
+import { peopleMail } from "@/lib/email/noise";
 import { plural } from "@/lib/utils";
 import { runDesignerLaneSweep, type DesignerLaneResult } from "./designer-sweep";
 
@@ -549,7 +550,7 @@ async function buildAlerts(tx: Tx, now: Date, opts: NotificationSweepOptions): P
       dedupeKey: `unmatched_reply_24h:${message.id}`,
       recipients: staff.vas,
       title: "Unmatched reply is older than 24h",
-      body: `${message.fromAddress ?? "A customer"} has been waiting ${duration(now.getTime() - message.createdAt.getTime())}.`,
+      body: `${message.address ?? "A customer"} has been waiting ${duration(now.getTime() - message.createdAt.getTime())}.`,
       href: "/orders?view=active",
       metadata: { messageId: message.id, createdAt: message.createdAt.toISOString() },
     });
@@ -696,12 +697,16 @@ async function loadShopStale(tx: Tx, now: Date, opts: NotificationSweepOptions) 
 }
 
 async function loadUnmatchedStale(tx: Tx, now: Date, opts: NotificationSweepOptions) {
-  return tx
+  const rows = await tx
     .select({
       id: messages.id,
       businessId: messages.businessId,
-      fromAddress: messages.address,
+      address: messages.address,
       createdAt: messages.createdAt,
+      // What lib/email/noise.ts reads to tell notifications and marketing from people.
+      subject: messages.subject,
+      channel: messages.channel,
+      kind: sql<string | null>`${messages.metadata}->>'kind'`,
     })
     .from(messages)
     .where(
@@ -714,6 +719,8 @@ async function loadUnmatchedStale(tx: Tx, now: Date, opts: NotificationSweepOpti
         ...(businessFilter(messages.businessId, opts) ? [businessFilter(messages.businessId, opts)!] : []),
       ),
     );
+  // A notification or marketing email is nobody waiting on a reply: no alert (same rule as Today).
+  return peopleMail(rows);
 }
 
 async function buildPresenceGapAlerts(

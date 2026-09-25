@@ -83,3 +83,12 @@ export function noiseReason(m: MailLike): string | null {
 export function isNoiseMail(m: MailLike): boolean {
   return noiseReason(m) !== null;
 }
+
+/**
+ * Only the mail from people. The Today queue, Messages, the SLA sweep's
+ * "unmatched reply is older than 24h" alert and the daily health report's
+ * stale unmatched replies all leave out the same notifications and marketing.
+ */
+export function peopleMail<T extends MailLike>(rows: T[]): T[] {
+  return rows.filter((r) => !isNoiseMail(r));
+}

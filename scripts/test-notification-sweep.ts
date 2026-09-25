@@ -1,6 +1,8 @@
 /**
  * Notification SLA sweep invariants: first fire, duplicate suppression,
- * repeat escalation windows, stale-shop refire, and the in-app-only presence gap.
+ * repeat escalation windows, stale-shop refire, the in-app-only presence gap,
+ * and unmatched replies older than 24h (people only: notifications and
+ * marketing mail never alert, and never count in the daily health report).
  */
 import "./load-env";
 import { randomUUID } from "node:crypto";
@@ -13,12 +15,14 @@ import {
   businesses,
   designerBusinesses,
   designerProfiles,
+  messages,
   notificationFires,
   notifications,
   orders,
   shops,
   users,
 } from "../lib/db/schema";
+import { loadHealthMetricsForSystem } from "../lib/health/daily-report";
 import { runNotificationSweep } from "../lib/notifications/sla-sweep";
 import { ALERT_TYPES } from "../lib/notifications/types";
 
@@ -30,6 +34,8 @@ const ids = {
   vaId: randomUUID(),
   designerId: randomUUID(),
   orderId: randomUUID(),
+  personMailId: randomUUID(),
+  noiseMailIds: [randomUUID(), randomUUID(), randomUUID()],
 };
 
 function report(name: string, pass: boolean, detail: string) {
@@ -86,6 +92,15 @@ async function setup(now: Date) {
       dueAt: new Date(now.getTime() - 7 * 60 * 60 * 1000),
       uploadToken: randomUUID(),
     });
+    // Unmatched inbound mail, two days old: one person, three notifications / marketing.
+    const old = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+    const inbound = { businessId: ids.businessId, direction: "inbound" as const, status: "received" as const, createdAt: old };
+    await tx.insert(messages).values([
+      { ...inbound, id: ids.personMailId, channel: "email", address: "Jane Doe <jane.doe@gmail.com>", subject: "Re: my portrait" },
+      { ...inbound, id: ids.noiseMailIds[0]!, channel: "email", address: "Shopify <mailer@shopify.com>", subject: "[Shopify] Order #1001 placed" },
+      { ...inbound, id: ids.noiseMailIds[1]!, channel: "email", address: "newsletter@supplier.com", subject: "September news" },
+      { ...inbound, id: ids.noiseMailIds[2]!, channel: "etsy", address: "Etsy", subject: "You made a sale on Etsy", metadata: { kind: "sale" } },
+    ]);
     await tx.insert(assignments).values({
       businessId: ids.businessId,
       orderId: ids.orderId,
@@ -101,6 +116,7 @@ async function cleanup() {
     await tx.delete(alphaEvents).where(eq(alphaEvents.businessId, ids.businessId));
     await tx.delete(notifications).where(eq(notifications.businessId, ids.businessId));
     await tx.delete(notificationFires).where(eq(notificationFires.businessId, ids.businessId));
+    await tx.delete(messages).where(eq(messages.businessId, ids.businessId));
     await tx.delete(orders).where(eq(orders.id, ids.orderId));
     await tx.delete(shops).where(eq(shops.id, ids.shopId));
     await tx.delete(designerBusinesses).where(eq(designerBusinesses.businessId, ids.businessId));
@@ -118,12 +134,33 @@ async function main() {
     const first = await runNotificationSweep(now, { businessIds: [ids.businessId] });
     let byType = await counts();
     report(
-      "first sweep fires overdue, escalation, and stale shop alerts",
-      first.fired === 3 &&
+      "first sweep fires overdue, escalation, stale shop and one unmatched reply alert",
+      first.fired === 4 &&
         byType.fires[ALERT_TYPES.orderOverdue] === 1 &&
         byType.fires[ALERT_TYPES.orderOverdueEscalated] === 1 &&
-        byType.fires[ALERT_TYPES.shopSyncStale] === 1,
+        byType.fires[ALERT_TYPES.shopSyncStale] === 1 &&
+        byType.fires[ALERT_TYPES.mailUnmatchedReplyStale] === 1,
       JSON.stringify({ first, byType }),
+    );
+
+    const mailFires = await withSystemContext((tx) =>
+      tx
+        .select({ subjectId: notificationFires.subjectId })
+        .from(notificationFires)
+        .where(eq(notificationFires.alertType, ALERT_TYPES.mailUnmatchedReplyStale)),
+    );
+    const firedFor = new Set(mailFires.map((r) => r.subjectId));
+    report(
+      "notification and marketing mail never raises an unmatched reply alert",
+      firedFor.has(ids.personMailId) && ids.noiseMailIds.every((id) => !firedFor.has(id)),
+      JSON.stringify({ person: firedFor.has(ids.personMailId), noise: ids.noiseMailIds.map((id) => firedFor.has(id)) }),
+    );
+
+    const health = await loadHealthMetricsForSystem({ kind: "business", businessId: ids.businessId, businessName: "Sweep Test" });
+    report(
+      "daily health counts only the person's mail as a stale unmatched reply",
+      health.pipeline.staleUnmatchedReplies === 1,
+      JSON.stringify({ staleUnmatchedReplies: health.pipeline.staleUnmatchedReplies }),
     );
 
     const second = await runNotificationSweep(now, { businessIds: [ids.businessId] });
@@ -133,7 +170,8 @@ async function main() {
       second.fired === 0 &&
         byType.fires[ALERT_TYPES.orderOverdue] === 1 &&
         byType.fires[ALERT_TYPES.orderOverdueEscalated] === 1 &&
-        byType.fires[ALERT_TYPES.shopSyncStale] === 1,
+        byType.fires[ALERT_TYPES.shopSyncStale] === 1 &&
+        byType.fires[ALERT_TYPES.mailUnmatchedReplyStale] === 1,
       JSON.stringify({ second, byType }),
     );
 
