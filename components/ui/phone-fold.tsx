@@ -45,9 +45,17 @@ export function PhoneFold({
   const hashKey = hashIds.join(",");
 
   useEffect(() => {
-    const hash = window.location.hash.replace(/^#/, "");
-    const wanted = !!hash && hashKey.split(",").includes(hash);
-    setOpen(wanted || window.matchMedia(DESKTOP).matches);
+    const wanted = () => {
+      const hash = window.location.hash.replace(/^#/, "");
+      return !!hash && hashKey.split(",").includes(hash);
+    };
+    setOpen(wanted() || window.matchMedia(DESKTOP).matches);
+    // A link to an anchor inside, followed on this same page, opens it too.
+    const onHash = () => {
+      if (wanted()) setOpen(true);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
   }, [hashKey]);
 
   const shown = cn(open === null ? "hidden lg:block" : open ? "block" : "hidden", staticFromLg && "lg:block");
