@@ -7,7 +7,16 @@ import { REPLY_TEMPLATE_OPTIONS, type ReplyTemplateChoice } from "@/lib/orders/r
 import { Button, Select, Textarea, useToast } from "@/components/ui";
 import { Copy } from "@/components/ui/icons";
 
-export function ReplyDraft({ orderId, defaultTemplate }: { orderId: string; defaultTemplate: ReplyTemplateChoice }) {
+export function ReplyDraft({
+  orderId,
+  defaultTemplate,
+  pasteInto = "email",
+}: {
+  orderId: string;
+  defaultTemplate: ReplyTemplateChoice;
+  /** Where the VA pastes it: the Etsy conversation, or their email to the customer. */
+  pasteInto?: "etsy" | "email";
+}) {
   const toast = useToast();
   const [template, setTemplate] = useState<ReplyTemplateChoice>(defaultTemplate);
   const [subject, setSubject] = useState("");
@@ -39,7 +48,11 @@ export function ReplyDraft({ orderId, defaultTemplate }: { orderId: string; defa
   async function copy() {
     try {
       await navigator.clipboard.writeText(body);
-      toast({ variant: "success", title: "Copied", description: "Paste it into Etsy (or wherever the customer replies)." });
+      toast({
+        variant: "success",
+        title: "Copied",
+        description: pasteInto === "etsy" ? "Paste it into the Etsy conversation." : "Paste it into your email to the customer.",
+      });
     } catch {
       toast({ variant: "danger", title: "Could not copy", description: "Select the text and copy it by hand." });
     }

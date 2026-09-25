@@ -17,15 +17,20 @@ import { BLANK_TEMPLATE_KEY, type ReplyTemplateChoice } from "./reply-templates"
 export { BLANK_TEMPLATE_KEY, REPLY_TEMPLATE_OPTIONS, type ReplyTemplateChoice, type ReplyTemplateOption } from "./reply-templates";
 
 /** The template most likely to be right for this order's current status. */
-export function defaultReplyTemplate(status: OrderStatus): ReplyTemplateChoice {
+/**
+ * The draft a VA most likely wants for this order right now. "Revision ready"
+ * says the revised portrait is attached, so it only fits once a revised proof
+ * is out (awaiting approval after a revision round); while the designer is
+ * still drawing there is nothing to send, so the draft starts blank.
+ */
+export function defaultReplyTemplate(status: OrderStatus, revisionCount = 0): ReplyTemplateChoice {
   switch (status) {
     case "awaiting_photos":
       return "photo_request";
     case "awaiting_approval":
+      return revisionCount > 0 ? "revision_received" : "proof_ready_digital_single";
     case "approved":
       return "proof_ready_digital_single";
-    case "in_design":
-      return "revision_received";
     default:
       return BLANK_TEMPLATE_KEY;
   }

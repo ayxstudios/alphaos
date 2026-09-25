@@ -260,6 +260,7 @@ export default async function OrderDetailPage({
         platformOrderName: orders.platformOrderName,
         source: orders.source,
         status: orders.status,
+        revisionCount: orders.revisionCount,
         dueAt: orders.dueAt,
         placedAt: orders.placedAt,
         createdAt: orders.createdAt,
@@ -779,7 +780,11 @@ export default async function OrderDetailPage({
                 }
               />
               <div className="mt-3">
-                <ReplyDraft orderId={order.id} defaultTemplate={defaultReplyTemplate(order.status as OrderStatus)} />
+                <ReplyDraft
+                  orderId={order.id}
+                  defaultTemplate={defaultReplyTemplate(order.status as OrderStatus, order.revisionCount)}
+                  pasteInto={order.source === "etsy" ? "etsy" : "email"}
+                />
               </div>
             </DataPanel>
           )}
@@ -804,13 +809,15 @@ export default async function OrderDetailPage({
                     return (
                       <li key={m.id} className="px-4 py-3">
                         <div className="mb-1 flex flex-wrap items-center gap-2">
-                          <Badge variant={inbound ? "info" : "neutral"} dot>
-                            {inbound ? "Customer reply" : "Sent"}
-                          </Badge>
-                          {!inbound && m.status !== "sent" && (
-                            <Badge variant={m.status === "failed" ? "danger" : "warning"} dot>
-                              {m.status}
-                            </Badge>
+                          {/* One badge that says where the email is, never "Sent" beside "draft". */}
+                          {inbound ? (
+                            <Badge variant="info" dot>Customer reply</Badge>
+                          ) : m.status === "sent" ? (
+                            <Badge variant="neutral" dot>Sent</Badge>
+                          ) : m.status === "failed" ? (
+                            <Badge variant="danger" dot>Not sent</Badge>
+                          ) : (
+                            <Badge variant="warning" dot>{m.status === "queued" ? "Waiting to send" : "Draft, not sent"}</Badge>
                           )}
                           <span className="text-xs text-slate">{fmtDateTime(when)}</span>
                         </div>
@@ -819,7 +826,7 @@ export default async function OrderDetailPage({
                         {editable && suggestion && <ReplyClassificationSuggestion suggestion={suggestion} />}
                         {editable && inbound && m.body && (
                           <details className="mt-3 rounded-input bg-canvas p-2">
-                            <summary className="cursor-pointer text-xs font-medium text-pigment">
+                            <summary className="-m-2 cursor-pointer p-2 py-3.5 text-xs font-medium text-pigment sm:py-2">
                               Create revision from this email
                             </summary>
                             <div className="mt-2">
