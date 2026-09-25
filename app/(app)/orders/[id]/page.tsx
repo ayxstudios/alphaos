@@ -770,8 +770,8 @@ export default async function OrderDetailPage({
                 title="Draft reply"
                 description={
                   order.source === "etsy"
-                    ? "Copy this, paste it into the Etsy conversation, then tap Mark as sent."
-                    : "Copy this, paste it into your email to the customer, then tap Mark as sent."
+                    ? "Copy it, send it in the Etsy conversation, then tap Mark as sent."
+                    : "Copy it, send it from your email, then tap Mark as sent."
                 }
               />
               <div className="mt-3">
@@ -800,14 +800,21 @@ export default async function OrderDetailPage({
                     return (
                       <li key={m.id} className="px-4 py-3">
                         <div className="mb-1 flex flex-wrap items-center gap-2">
-                          <Badge variant={inbound ? "info" : "neutral"} dot>
-                            {inbound ? "Customer reply" : "Sent"}
+                          {/* One chip: an outbound draft is not "Sent" (it read "Sent" + "draft"). */}
+                          <Badge
+                            variant={inbound ? "info" : m.status === "sent" ? "neutral" : m.status === "failed" ? "danger" : "warning"}
+                            dot
+                          >
+                            {inbound
+                              ? "Customer reply"
+                              : m.status === "sent"
+                                ? "Sent"
+                                : m.status === "failed"
+                                  ? "Not sent"
+                                  : m.status === "draft"
+                                    ? "Not sent yet"
+                                    : m.status}
                           </Badge>
-                          {!inbound && m.status !== "sent" && (
-                            <Badge variant={m.status === "failed" ? "danger" : "warning"} dot>
-                              {m.status}
-                            </Badge>
-                          )}
                           <span className="text-xs text-slate">{fmtDateTime(when)}</span>
                         </div>
                         {m.subject && <p className="text-sm font-medium text-ink">{m.subject}</p>}
@@ -877,7 +884,7 @@ export default async function OrderDetailPage({
 
           {editable && (
             <Disclosure
-              summary="Reassign or request a revision"
+              summary="Change designer or ask for a revision"
               defaultOpen={nextAction.kind === "assign"}
             >
               <div className="flex flex-col gap-4">
@@ -898,7 +905,7 @@ export default async function OrderDetailPage({
                   />
                   {!canCreateRevision && (
                     <p className="mt-2 text-xs text-slate">
-                      Revisions can start once an order is awaiting customer, approved, printing, shipped, delivered or complete.
+                      You can ask for a revision once the customer has seen the portrait.
                     </p>
                   )}
                 </div>
@@ -1046,7 +1053,7 @@ function Fact({
 }) {
   return (
     <div className="bg-surface p-4">
-      <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-slate">
         <Icon size={13} className="shrink-0" />
         {label}
       </div>

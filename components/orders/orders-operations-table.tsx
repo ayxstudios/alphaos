@@ -807,17 +807,12 @@ export function OrdersOperationsTable({
                     </div>
                     <div>
                       <dt className="text-xs text-slate">Due</dt>
-                      <dd className="text-ink">
-                        {row.isOverdue && (
-                          <Badge variant="danger" dot className="mb-1">
-                            Overdue
-                          </Badge>
-                        )}
-                        <span className="block">{fmtDate(row.dueAt)}</span>
+                      <dd className={row.isOverdue ? "font-medium text-rose" : "text-ink"}>
+                        {row.isOverdue ? `Late, ${fmtDate(row.dueAt)}` : fmtDate(row.dueAt)}
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-xs text-slate">This step</dt>
+                      <dt className="text-xs text-slate">Time on this step</dt>
                       <dd className={cn("font-medium", row.stageTimer.isOverdue ? "text-rose" : "text-ink")}>
                         {formatStageRemaining(row.stageTimer)}
                       </dd>

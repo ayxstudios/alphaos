@@ -214,9 +214,9 @@ function reviewReasonText(input: {
   if (input.derivedStatus !== "Needs VA Review") return null;
   if (input.status === "triage") return "Draft order. Choose the order type.";
   if (!input.email) return "No customer email yet. Add it.";
-  if (input.unresolvedFigures) return "Figure count unknown. Set it.";
+  if (input.unresolvedFigures) return "How many people or pets? Set it.";
   if (input.fulfilmentConflict) return "Says both digital and print. Check which.";
-  if (!input.assignee) return "No designer is free. Assign one.";
+  if (!input.assignee) return "Needs a designer. Assign one.";
   return "Open it and check what is missing.";
 }
 
