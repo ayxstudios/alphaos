@@ -141,8 +141,10 @@ function isSelected(el: HTMLElement) {
 }
 
 /** The page has painted its real content (no loading skeletons left). */
-function pageReady(path: string) {
-  return location.pathname === path && !!document.querySelector("main h1") && !document.querySelector("main .animate-pulse");
+function pageReady(path: string, before: Element | null = null) {
+  const h1 = document.querySelector("main h1");
+  // `before` is the old page's heading: until it is gone, the new page has not painted.
+  return location.pathname === path && !!h1 && h1 !== before && !document.querySelector("main .animate-pulse");
 }
 
 /**
@@ -185,6 +187,7 @@ export async function runStep(h: Hooks, step: TourStep, open = false): Promise<v
     return;
   }
   if (location.pathname !== step.path) {
+    const before = document.querySelector("main h1");
     if (open) {
       h.rest(step.acts[0].say);
       h.router.push(step.path);
@@ -195,7 +198,7 @@ export async function runStep(h: Hooks, step: TourStep, open = false): Promise<v
     }
     // A busy server can take a while to answer the menu press: wait for the page itself.
     await waitFor(h, () => location.pathname === step.path, 60000);
-    await waitFor(h, () => pageReady(step.path), 15000);
+    await waitFor(h, () => pageReady(step.path, before), 15000);
   }
 
   // The first act the page can do right now (short grace for late content).
@@ -208,7 +211,8 @@ export async function runStep(h: Hooks, step: TourStep, open = false): Promise<v
     }
     return null;
   };
-  const got = await waitFor(h, pick, 1200);
+  // Just walked in: a busy server can stream the page's parts in a little late.
+  const got = await waitFor(h, pick, walked || open ? 3000 : 1200);
   if (!got) {
     // Nothing to act on here. Just walked in with the menu: that was the step.
     if (walked) return;
