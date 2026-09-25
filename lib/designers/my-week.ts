@@ -12,7 +12,7 @@ import { activityLog, assignments, earnings, orders, users } from "@/lib/db/sche
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { WITH_CUSTOMER_STATUSES } from "@/lib/orders/board-constants";
 import { loadDesignerContact, type DesignerContact } from "@/lib/designers/profile";
-import { DEFAULT_TIMEZONE, startOfWeekInTimezone, formatInTimezone } from "@/lib/designers/quiet-hours";
+import { DEFAULT_TIMEZONE, startOfDayInTimezone, startOfWeekInTimezone, formatInTimezone } from "@/lib/designers/quiet-hours";
 import { formatDeadline } from "@/lib/time";
 
 export type UpcomingDeadline = {
@@ -45,6 +45,8 @@ async function loadWeek(tx: Tx, target: string): Promise<DesignerWeek> {
   const contact = await loadDesignerContact(tx, target);
   const now = new Date();
   const weekStart = startOfWeekInTimezone(now, contact?.timezone);
+  // "Earned today" is the designer's own day too (the month follows the Money page's period).
+  const dayStart = startOfDayInTimezone(now, contact?.timezone);
 
   // On time = the designer handed the order to QC by THEIR OWN deadline (the
   // assignment's due_at, CLAUDE.md Deadlines), not whether the whole order
@@ -80,7 +82,7 @@ async function loadWeek(tx: Tx, target: string): Promise<DesignerWeek> {
       and(
         eq(earnings.designerId, target),
         inArray(earnings.status, ["pending", "paid"]),
-        gte(earnings.createdAt, sql`date_trunc('day', now())`),
+        gte(earnings.createdAt, dayStart),
       ),
     );
 
