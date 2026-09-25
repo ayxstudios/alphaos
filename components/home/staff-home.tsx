@@ -109,7 +109,13 @@ function AdminTiles({ h }: { h: StaffHome }) {
       <StatTile
         label="On time"
         value={h.onTimeRate30d === null ? "No data" : `${h.onTimeRate30d}%`}
-        hint={h.onTimeRate30d === null ? "Nothing shipped in 30 days" : "Shipped by the due date, 30 days"}
+        hint={
+          h.onTimeRate30d !== null
+            ? "Shipped by the due date, 30 days"
+            : h.shipped7d + h.shippedPrev7d > 0
+              ? "Counts from the next order marked shipped"
+              : "Nothing shipped in 30 days"
+        }
         tone={h.onTimeRate30d === null ? "neutral" : h.onTimeRate30d >= 90 ? "good" : h.onTimeRate30d >= 75 ? "warn" : "bad"}
         spark={{ points: h.shipped.values, labels: h.shipped.labels, color: "c2" }}
       />
@@ -147,7 +153,7 @@ function MailLine({ unmatched, failed }: { unmatched: number; failed: number }) 
   const n = unmatched + failed;
   if (!n) return null;
   return (
-    <Link href="/emails" className="flex items-center gap-2 rounded-input bg-canvas px-3 py-2 text-sm text-ink hover:bg-pigment-soft/60">
+    <Link href="/emails" className="flex min-h-11 items-center gap-2 rounded-input bg-canvas px-3 py-2 text-sm text-ink hover:bg-pigment-soft/60">
       <Mail size={16} className="text-pigment" />
       <span className="min-w-0 truncate">
         {unmatched ? `${unmatched} message${unmatched === 1 ? "" : "s"} not matched to an order` : ""}
