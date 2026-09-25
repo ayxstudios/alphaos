@@ -49,6 +49,9 @@ export DATABASE_URL="postgresql://app_user:$APP_PW@localhost:$PGPORT/$DB"
 export ENCRYPTION_KEY="${CI_ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000001}"
 export AUTH_SECRET="ci-local-auth-secret-not-real"
 export MOCK_INTEGRATIONS=1
+# Uploads go to the local dev store: the bench never touches real R2, and the
+# upload checks (stored bytes, refused HTML) only run against the dev store.
+export R2_ENDPOINT="" R2_BUCKET="" R2_ACCESS_KEY_ID="" R2_SECRET_ACCESS_KEY=""
 export PRINT_PROVIDER_MOCK=1
 export ANTHROPIC_API_KEY="mock_sk-ant-ci"
 export NOTIFICATIONS_ENABLED=false
