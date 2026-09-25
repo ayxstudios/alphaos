@@ -196,41 +196,48 @@ function StyleCard({
 
   return (
     <div className="rounded-card border border-line bg-surface p-4 shadow-sm">
+      {/* Phone: name on its own line, then the rate, then the two buttons.
+          Laptop: one row. Widths sit on wrappers (the Input's own w-full wins
+          over a width class on it). */}
       <div className="flex flex-wrap items-center gap-2">
-        <Input
-          value={nameDraft}
-          onChange={(e) => setNameDraft(e.target.value)}
-          onBlur={saveName}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              (e.target as HTMLInputElement).blur();
-            }
-          }}
-          aria-label="Style name"
-          className="h-9 max-w-xs font-semibold"
-        />
-        <label className="flex items-center gap-2 text-xs font-medium text-slate">
-          Per figure
+        <div className="w-full sm:w-64">
           <Input
-            value={rateDraft}
-            onChange={(e) => setRateDraft(e.target.value)}
-            onBlur={saveRate}
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            onBlur={saveName}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
                 (e.target as HTMLInputElement).blur();
               }
             }}
-            inputMode="decimal"
-            aria-label={`${style.name} rate per figure`}
-            className="h-9 w-28"
+            aria-label="Style name"
+            className="h-9 font-semibold"
           />
+        </div>
+        <label className="flex items-center gap-2 text-xs font-medium text-slate">
+          Per figure
+          <span className="w-28">
+            <Input
+              value={rateDraft}
+              onChange={(e) => setRateDraft(e.target.value)}
+              onBlur={saveRate}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+              inputMode="decimal"
+              aria-label={`${style.name} rate per figure`}
+              className="h-9"
+            />
+          </span>
         </label>
         {/* After the rate, so every card's name and rate line up. */}
         {style.isDefault && <Badge variant="info" dot>Default</Badge>}
         {!style.perFigureRate && <Badge variant="warning">Rate missing</Badge>}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
           <Button type="button" variant="secondary" size="sm" onClick={() => setAssignOpen(true)}>
             Designers · {style.designerIds.length}
           </Button>
