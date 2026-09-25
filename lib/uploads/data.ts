@@ -4,7 +4,8 @@ import { withSystemContext, SYSTEM_ACTOR_ID, type Tx } from "@/lib/db";
 import { activityLog, assets, businesses, notifications, orderItems, orders, users } from "@/lib/db/schema";
 import { runTransition, OrderTransitionError } from "@/lib/orders/transitions";
 import { ALLOWED_IMAGE_TYPES, MAX_UPLOAD_BYTES, extFor } from "@/lib/storage/r2";
-import { DEV_STORE_PREFIX, headStored, presignPut, usingDevStore } from "./store";
+import { SNIFF_BYTES, sniffMatchesDeclared } from "./sniff";
+import { DEV_STORE_PREFIX, headStored, presignPut, readStoredHead, usingDevStore } from "./store";
 
 /**
  * Everything the PUBLIC upload page may render. Deliberately minimal (same
@@ -208,6 +209,13 @@ export async function saveCustomerUploads(token: string, keys: string[], note: s
         });
         if (!head.contentType || !ALLOWED_IMAGE_TYPES.test(head.contentType)) throw new Error("One of the files is not a supported photo.");
         if (!head.contentLength || head.contentLength <= 0 || head.contentLength > MAX_UPLOAD_BYTES) throw new Error("One of the files is over 25 MB.");
+        // The stored Content-Type is what the browser claimed. The bytes decide:
+        // a .png that is really an HTML page or a PDF is refused here, before
+        // any asset row exists (customer + security QA 2026-09-25).
+        const first = await readStoredHead(key, SNIFF_BYTES).catch(() => {
+          throw new Error("One of your photos did not finish uploading. Please add it again.");
+        });
+        if (!sniffMatchesDeclared(first, head.contentType)) throw new Error("One of the files is not a supported photo.");
       }
 
       if (r2Keys.length) {

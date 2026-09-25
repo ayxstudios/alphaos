@@ -3,6 +3,7 @@ import path from "node:path";
 
 import {
   getObjectBuffer as r2GetObjectBuffer,
+  getObjectHead as r2GetObjectHead,
   headObject as r2Head,
   isR2Configured,
   presignUpload as r2PresignUpload,
@@ -59,6 +60,19 @@ export async function headStored(key: string): Promise<{ contentType: string | n
 export async function readStoredObject(key: string): Promise<Buffer> {
   if (!isDevStoreKey(key)) return r2GetObjectBuffer(key);
   return fs.readFile(devStorePath(key));
+}
+
+/** The first `bytes` of a stored object (R2 ranged GET, or the dev store file), for content sniffing. */
+export async function readStoredHead(key: string, bytes: number): Promise<Buffer> {
+  if (!isDevStoreKey(key)) return r2GetObjectHead(key, bytes);
+  const handle = await fs.open(devStorePath(key), "r");
+  try {
+    const buf = Buffer.alloc(bytes);
+    const { bytesRead } = await handle.read(buf, 0, bytes, 0);
+    return buf.subarray(0, bytesRead);
+  } finally {
+    await handle.close();
+  }
 }
 
 /** Write a dev-store object (the PUT route handler). */
