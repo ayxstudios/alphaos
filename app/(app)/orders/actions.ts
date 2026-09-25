@@ -234,8 +234,8 @@ export async function markOrderComplete(orderId: string): Promise<CompleteOrderR
     if (err instanceof OrderTransitionError) return { ok: false, message: err.message };
     throw err;
   }
-  revalidatePath(`/orders/${orderId}`);
-  revalidatePath("/orders");
+  // "layout" refreshes this order's own page in the same response as the toast.
+  revalidatePath("/orders", "layout");
   return { ok: true, message: "The order is complete." };
 }
 
