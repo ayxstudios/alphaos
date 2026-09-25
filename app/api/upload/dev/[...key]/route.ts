@@ -5,11 +5,16 @@ import { usingDevStore, DEV_STORE_PREFIX, writeDevStoreObject } from "@/lib/uplo
 /**
  * Local-dev-only stand-in for an R2 presigned PUT. `presignPut()` in
  * lib/uploads/store.ts only ever hands the browser a URL under this route when
- * R2 env vars are absent (`usingDevStore()`), so this is unreachable — and
- * refuses outright — whenever real storage is configured.
+ * R2 env vars are absent (`usingDevStore()`), so this is unreachable, and
+ * refuses outright, whenever real storage is configured or the code runs on
+ * a Vercel deployment.
  */
 export async function PUT(req: NextRequest, ctx: { params: Promise<{ key: string[] }> }) {
-  if (!usingDevStore()) {
+  // Never on a deployed environment, whatever the storage env says: an
+  // unauthenticated PUT that writes to the function's disk has no place on
+  // Vercel (customer + security QA 2026-09-25). Vercel sets VERCEL=1 on every
+  // deployment; local dev and CI never do.
+  if (process.env.VERCEL || !usingDevStore()) {
     return NextResponse.json({ error: "Dev upload store is disabled (R2 is configured)" }, { status: 404 });
   }
   const { key } = await ctx.params;
