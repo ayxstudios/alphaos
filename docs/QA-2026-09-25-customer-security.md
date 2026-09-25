@@ -191,6 +191,26 @@ in the HTML is the designer's own; no customer last name.
 `alphaos_ci_cs25`: all pass.
 
 
+## Round 2 (after the fixes)
+
+Staging still runs the unfixed build, so round 2 re-ran the staging probes
+for drift and re-walked the fixed pages on the local server (same commit as
+this branch, local db `alphaos_cs25`).
+
+- API matrix, four callers: identical to round 1 (only live counts in the
+  Alpha answers moved). Wrong machine secrets: identical, all 401.
+- Designer replays on staging with a fresh designer session (8 staff/admin
+  actions: makeSignInLink, setEmailSendingEnabled, resetMemberPassword,
+  voidEarningAction, approveAndSend, bulkChangeOrderStatus,
+  confirmReplyApproval, createManualPrintJob): none ran; bulkChangeOrderStatus
+  answers "Only admin and VAs can manage orders."; no sign-in link minted in
+  the last hour. VA replay of addTrackingAndCompleteOrder with a fake order:
+  calm "Choose a valid print provider.".
+- Suites: `bash scripts/ci-local.sh` equivalent on `alphaos_ci_cs25` (proxy
+  4460): 23/23 pass (test:security flaked once on "fetch failed" to the local
+  proxy under load 300+, passed on the re-run). `npx tsc --noEmit` 0,
+  `npm run lint` 0.
+
 ## The 12 P3s from docs/QA-2026-09-23-security-r2.md, re-decided
 
 | # | P3 | Now |
