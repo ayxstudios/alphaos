@@ -57,7 +57,7 @@ The {{business_name}} team`,
     subject: "Your {{business_name}} portrait proofs are ready",
     body: `Hi {{first_name}}!
 
-Your digital portraits from {{business_name}} are now ready for you. Attached to this email is the high-resolution image.
+Your digital portraits from {{business_name}} are now ready for you. Attached to this email are the high-resolution images.
 
 If there's anything you'd like us to refine or adjust, please let us know.
 
@@ -85,7 +85,7 @@ The {{business_name}} team`,
     subject: "Your {{business_name}} portrait proofs are ready",
     body: `Hi {{first_name}}!
 
-Your portrait proofs from {{business_name}} are now ready for you. Attached to this email is the high-resolution image.
+Your portrait proofs from {{business_name}} are now ready for you. Attached to this email are the high-resolution images.
 
 If there's anything you'd like us to refine or adjust, please let us know.
 
@@ -210,7 +210,7 @@ The PixArt Creatives Team`,
 
 Your digital portraits from PixArt Creatives are now ready for you. Attached to this email is the high-resolution image of your beloved pets.
 
-We've captured the unique personality and essence of your pets in these stunning portraits. If there's anything you'd like us to refine or adjust, please let us know. Our team is dedicated to ensuring your pet portraits exceeds your expectations.
+We've captured the unique personality and essence of your pets in these stunning portraits. If there's anything you'd like us to refine or adjust, please let us know. Our team is dedicated to ensuring your pet portraits exceed your expectations.
 
 Limited time only! Want to get your portrait printed at a discount? Use this link here:
 https://pixartcreatives.co/products/print-ship
@@ -247,9 +247,9 @@ The PixArt Creatives Team`,
     subject: "Your PixArt portrait proofs are ready",
     body: `Hi {{first_name}}!
 
-Your digital portraits from PixArt Creatives are now ready for you. Attached to this email is the high-resolution images of your beloved pets.
+Your digital portraits from PixArt Creatives are now ready for you. Attached to this email are the high-resolution images of your beloved pets.
 
-We've captured the unique personality and essence of your pets in this stunning portrait. If there's anything you'd like us to refine or adjust, please let us know. Our team is dedicated to ensuring your pet's portrait exceeds your expectations.
+We've captured the unique personality and essence of your pets in these stunning portraits. If there's anything you'd like us to refine or adjust, please let us know. Our team is dedicated to ensuring your pets' portraits exceed your expectations.
 
 Once you confirm, we will have it sent to our printing department to be printed and shipped off to you.
 
