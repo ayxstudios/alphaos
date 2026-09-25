@@ -6,9 +6,26 @@ import { runNotificationDryRun } from "@/app/(app)/settings/actions";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, useToast } from "@/components/ui";
 import type { NotificationSweepResult } from "@/lib/notifications/sla-sweep";
 
+/** Each alert in the words the bell uses; an unknown one falls back to its key, made readable. */
+const ALERT_LABEL: Record<string, string> = {
+  "order.due_soon": "Order due soon",
+  "order.overdue": "Order overdue",
+  "order.overdue_escalated": "Order still overdue (to admins)",
+  "order.intake_stale": "New order waiting over 2 days",
+  "proof.no_response": "Customer has not answered a proof",
+  "shop.sync_stale": "Shop has not synced",
+  "mail.unmatched_reply_stale": "Customer reply not matched to an order",
+  "notification.presence_gap": "Nobody has seen alerts lately",
+  "designer.nudge_24h": "Designer reminder after a day",
+  "designer.reassigned_48h": "Order moved to another designer after 2 days",
+  "designer.reassign_blocked": "Order could not be moved to another designer",
+};
+
 function label(type: string): string {
-  return type.replaceAll("_", " ").replaceAll(".", " / ");
+  return ALERT_LABEL[type] ?? type.replaceAll("_", " ").replaceAll(".", ": ");
 }
+
+const ROLE_LABEL: Record<string, string> = { admin: "Admin", va: "VA", designer: "Designer" };
 
 function n(value: number): string {
   return new Intl.NumberFormat("en").format(value);
@@ -21,17 +38,25 @@ export function NotificationDryRunPanel() {
 
   function run() {
     startTransition(async () => {
-      const result = await runNotificationDryRun();
-      if (!result.ok) {
-        toast({ variant: "danger", title: "Test failed", description: result.message });
-        return;
+      try {
+        const result = await runNotificationDryRun();
+        if (!result.ok) {
+          toast({ variant: "danger", title: "Test did not run", description: result.message });
+          return;
+        }
+        setReport(result.report);
+        const r = result.report;
+        toast({
+          variant: r.wouldFire > 0 ? "warning" : "success",
+          title: "Test done, nothing was sent",
+          description:
+            r.wouldFire > 0
+              ? `${n(r.wouldFire)} reminder${r.wouldFire === 1 ? "" : "s"} would go out as ${n(r.wouldCreateNotifications)} alert${r.wouldCreateNotifications === 1 ? "" : "s"}.`
+              : "No reminder is due right now.",
+        });
+      } catch {
+        toast({ variant: "danger", title: "Test did not run", description: "Try again in a moment." });
       }
-      setReport(result.report);
-      toast({
-        variant: result.report.wouldFire > 0 ? "warning" : "success",
-        title: "Test complete",
-        description: `${n(result.report.wouldFire)} fires would create ${n(result.report.wouldCreateNotifications)} notifications.`,
-      });
     });
   }
 
@@ -59,7 +84,7 @@ export function NotificationDryRunPanel() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <Metric label="Checked" value={report.candidates} />
               <Metric label="Would send" value={report.wouldFire} tone={report.wouldFire ? "warning" : "success"} />
-              <Metric label="Would notify" value={report.wouldCreateNotifications} />
+              <Metric label="Alerts" value={report.wouldCreateNotifications} />
               <Metric label="Already sent" value={report.skippedDuplicate} />
               <Metric label="No recipients" value={report.noRecipients} />
             </div>
@@ -67,7 +92,7 @@ export function NotificationDryRunPanel() {
             <div className="grid gap-4 lg:grid-cols-2">
               <SummaryTable
                 title="By alert type"
-                columns={["Alert", "Would fire", "Would notify", "Candidates"]}
+                columns={["Alert", "Would send", "Alerts", "Checked"]}
                 rows={report.byType.map((row) => [
                   label(row.alertType),
                   n(row.wouldFire),
@@ -77,7 +102,7 @@ export function NotificationDryRunPanel() {
               />
               <SummaryTable
                 title="By business"
-                columns={["Business", "Would fire", "Would notify", "Candidates"]}
+                columns={["Business", "Would send", "Alerts", "Checked"]}
                 rows={report.byBusiness.map((row) => [
                   row.businessName,
                   n(row.wouldFire),
@@ -92,7 +117,7 @@ export function NotificationDryRunPanel() {
               columns={["Recipient", "Role", "Would receive"]}
               rows={report.topRecipients.map((row) => [
                 row.name ? `${row.name} · ${row.email}` : row.email,
-                row.role,
+                ROLE_LABEL[row.role] ?? row.role,
                 n(row.wouldReceive),
               ])}
               empty="Nobody would be notified."
