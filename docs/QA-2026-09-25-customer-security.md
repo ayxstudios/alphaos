@@ -35,6 +35,8 @@ Machine note: the iMac ran at a load average of 380 to 620 during this run
 | P3 | Admin `POST /api/etsy/sync`, `POST /api/shopify/sync`, `GET /api/etsy/connect` with a bad shop id: HTTP 500 with an empty body. | 404 JSON / back to Settings. | 9cb0435 |
 | P3 | Proof and upload pages ran the staff auth middleware: one extra round trip to the function region per buyer page load, and the buyer's browser got `authjs.csrf-token` and `callback-url` cookies. | Matcher skips `/proof/` and `/upload/`. | 0c1849c |
 | P3 | A designer's card feed showed an email address a VA typed into a comment (metadata was scrubbed, comment bodies were not). | Same scrub on comment bodies for designers. | 0afb89c |
+| P3 | Upload page: a PDF was only refused after Send, with one message at the bottom naming the file, and it blocked the good photos in the same batch; a 26 MB file marked "Over 25 MB" still went to the server and blocked the batch; a failed upload could not be retried (Send disabled); the remove button was 28 px; "or drag them here" on a phone. | Rejected files are marked on their own row at once and skipped; failed uploads retry; 44 px remove; drag hint laptop only. | 6539abd |
+| P3 | Proof page: an approved proof still said "If everything looks perfect, approve it, or let us know what to change", and a decided proof with no image said "Your proof is being prepared. Please check back shortly." Change options were 40 px; "Clear pins" was a 20 px text link next to "spots marked". | Intro only while a decision is open; placeholder only while undecided; 44 px options and Clear spots. | 6c5a49a |
 | P3 | `/api/upload/dev/*` (unauthenticated PUT to the function disk) relied on R2 env being present to refuse. | Refuses on every Vercel deployment as well. | 63dc8d5 |
 
 ## Round 1
@@ -122,6 +124,41 @@ never a person. Found: the full stop inside the proof link (P2 above), long
 links pushing the phone view sideways, and "Your The ..." (both fixed).
 Subjects carry the raw first name as header text (RFC 2047 encoded when
 non-ASCII), which is correct for a plain-text header.
+
+### Customer pages (A1 to A5)
+
+Staging, as a stranger (no cookies), phone 390x844 and laptop 1440x900.
+
+| Screen | Phone | Laptop | Under 10 because |
+|---|---|---|---|
+| Upload link, open order (4170595372) | 8 | 9 | Drag hint on a phone; PDF refused only after Send and it blocked the rest; 28 px remove (fixed 6539abd, verified locally). |
+| Upload: PNG + JPG + WebP + HEIC + note with `<b>`, quotes, unicode | 9 | 9 | Uploaded, done state, order moved awaiting_photos to ready_to_assign through the state machine (activity: `via upload_link`, 4 photos); the VA sees the note as text (escaped), photos under Reference photos. Save took about 8 s under load. |
+| Upload: HEIC with an EMPTY browser type (Mac/Windows) | 10 | 10 | Accepted (the server fills the type from the extension). |
+| Upload: PDF, 26 MB | 6 | 6 | See above (fixed). |
+| Upload: `.png` that is really HTML, dropped on the laptop | 3 | 3 | Accepted on staging (unfixed build): the order now has an HTML "photo" (asset `...216ba141.png`, 1 of 6 on 4170595372). Fixed 3219f00: refused before any row (test:security). |
+| Upload: second visit | 10 | 10 | "We already have 4 photos from you", can add more. |
+| Upload: wrong token, `<script>` token, 200-char token | 10 | 10 | HTTP 404, calm "Link not found". |
+| Upload: closed order (PC32149, complete) | 10 | 10 | HTTP 200 with "This order is closed, so photos can no longer be added." |
+| Proof (local, fixed build; staging had no proof to open, see below) | 9 | 9 | Decided proof kept asking to approve (fixed 6c5a49a). Watermarked preview (`/api/proof/<token>/preview`, "PROOF . PIXART" tiles), no cookies set, only business name, order number and the portrait on the page (no customer name, email, address or price). |
+| Proof: approve twice | 10 | 10 | Confirm step, "Portrait approved"; reload shows the same; 23 replayed approve calls: 19 "A decision has already been recorded", then "Too many attempts" (20/min per IP and per token); exactly one `order.approved` row. |
+| Proof: request a change with 2 spots and `<img onerror>` + 250 words | 10 | 10 | "Changes requested"; the VA order page shows the note as text, no overflow. |
+| Proof: wrong token | 10 | 10 | HTTP 404 "Link not found". |
+| Login: wrong password (real and unknown email) | 10 | 10 | Same "Wrong email or password. Try again, or ask your admin.", email kept, cursor back in Password; `autocomplete` email / current-password. |
+| Login: 10 failures on one email (local) | 10 | 10 | 11th try, even with the RIGHT password: "Too many tries. Wait 15 minutes, then try again."; once the lock expires the right password signs in. Per-IP limit (30/15 min) proven by test:security (not hit on staging: the four lanes share one IP). |
+| 404 `/nope` (local, fixed) | 10 | 10 | Branded, plain, "Go to sign in", tab "Page not found", HTTP 404. Staging still shows Next's default (verified locally until the merge deploys). |
+| `/styleguide` | n/a | n/a | Staff only (307 to /login signed out, 307 to /board for a designer); a static component demo with no data. Harmless, kept. |
+| `/api/upload/dev/*` | n/a | n/a | 404 on staging for everyone. |
+
+Sign-in links (`/auth/link/<token>`): test:login-link on the local CI db
+(valid, reused on purpose, revoked, expired, deactivated, password reset
+revokes, bad links count toward the per-IP limit): all pass. 32 random
+bytes, stored hashed. Upload tokens are random UUIDs (122 bits), proof tokens
+32 random bytes; both are rate limited per IP and per token.
+
+Tab titles: in a browser the proof and upload 404s read "Your portrait
+proof" / "Send us your photos" (the page's metadata streams in after the
+not-found head), which is right for a buyer; the root 404 reads "Page not
+found". Only a raw curl of the first bytes showed "AlphaOS".
 
 ### Local suites
 
