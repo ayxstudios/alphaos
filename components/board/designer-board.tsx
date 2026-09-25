@@ -8,6 +8,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  type Announcements,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
@@ -121,6 +122,17 @@ export function DesignerBoard({
     return null;
   }
 
+  // What a screen reader hears while dragging: the order number and the column
+  // title, never the order's internal id or the column's code name.
+  const title = (id: unknown) => COLUMNS.find((c) => c.key === id)?.title ?? "this column";
+  const cardName = (id: unknown) => locate(String(id))?.card.orderNumber ?? "The order";
+  const announcements: Announcements = {
+    onDragStart: ({ active }) => `Picked up ${cardName(active.id)}.`,
+    onDragOver: ({ active, over }) => (over ? `${cardName(active.id)} is over ${title(over.id)}.` : `${cardName(active.id)} is not over a column.`),
+    onDragEnd: ({ active, over }) => (over ? `${cardName(active.id)} moved to ${title(over.id)}.` : `${cardName(active.id)} put back.`),
+    onDragCancel: ({ active }) => `${cardName(active.id)} put back.`,
+  };
+
   function onDragStart(e: DragStartEvent) {
     setActive(locate(String(e.active.id))?.card ?? null);
   }
@@ -184,7 +196,13 @@ export function DesignerBoard({
   return (
     // A fixed id keeps dnd-kit's aria-describedby the same on the server and
     // in the browser (its counter otherwise differs: a hydration mismatch).
-    <DndContext id="designer-board" sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+    <DndContext
+      id="designer-board"
+      sensors={sensors}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      accessibility={{ announcements }}
+    >
       {/* Phone-first designer view: cards stack in one column, big Start/Submit
           buttons instead of drag. Staff (and designers on a wide screen) get
           the Trello-style drag board below. */}
