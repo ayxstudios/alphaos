@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Badge, Button, Input, Select, useToast, Checkbox } from "@/components/ui";
 import { AlertTriangle, ChevronDown } from "@/components/ui/icons";
+import { styleLabel } from "@/lib/utils";
 import {
   assignProductToStyle,
   createStyleFromProduct,
@@ -89,7 +90,7 @@ export function UnrecognisedPanel({
                   setSelected(e.target.checked ? new Set(defaulted.map(keyOf)) : new Set())
                 }
               />
-              Went to {defaultStyleName ?? "the default style"} by default · {defaulted.length}
+              Went to {defaultStyleName ? styleLabel(defaultStyleName) : "the default style"} by default · {defaulted.length}
             </label>
             <Button
               type="button"
@@ -99,7 +100,7 @@ export function UnrecognisedPanel({
               disabled={!defaultStyleName || toConfirm.length === 0}
               onClick={() => run(() => confirmProductsAsDefault(toConfirm), "Confirmed")}
             >
-              Confirm {selected.size ? selected.size : defaulted.length} as {defaultStyleName ?? "default"}
+              Confirm {selected.size ? selected.size : defaulted.length} as {defaultStyleName ? styleLabel(defaultStyleName) : "default"}
             </Button>
           </div>
           <div className="flex flex-col divide-y divide-line/70 overflow-hidden rounded-b-input bg-canvas/40">
@@ -220,7 +221,7 @@ function ProductRow({
           <p className="text-xs text-slate">
             {product.sku ? `${skuLabel(product.sku)} · ` : ""}
             {product.orders} order{product.orders === 1 ? "" : "s"}
-            {product.via === "default" && product.defaultStyle ? ` · went to ${product.defaultStyle} by default` : ""}
+            {product.via === "default" && product.defaultStyle ? ` · went to ${styleLabel(product.defaultStyle)} by default` : ""}
           </p>
         </div>
       </div>
@@ -233,7 +234,7 @@ function ProductRow({
         >
           <option value="">{correcting ? "Correct to…" : "Choose style…"}</option>
           {styles.map((s) => (
-            <option key={s.id} value={s.id}>{s.name}</option>
+            <option key={s.id} value={s.id}>{styleLabel(s.name)}</option>
           ))}
           <option value={NEW}>+ New style…</option>
         </Select>
