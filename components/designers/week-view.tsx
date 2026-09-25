@@ -17,7 +17,8 @@ function money(n: number): string {
 const CHANNEL: Record<string, string> = { whatsapp: "WhatsApp", email: "Email", sms: "SMS", telegram: "Telegram" };
 
 function pct(n: number | null): string {
-  return n == null ? "-" : `${Math.round(n * 100)}%`;
+  // Nothing handed in this week yet: say so, not a lone hyphen.
+  return n == null ? "None yet" : `${Math.round(n * 100)}%`;
 }
 
 /**
