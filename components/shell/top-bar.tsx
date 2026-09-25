@@ -330,7 +330,7 @@ export function TopBar({
         <Popover
           ariaLabel="Account menu"
           triggerClassName={cn(
-            "inline-flex min-h-11 items-center gap-2 rounded-input px-1 py-1 sm:pr-2 lg:min-h-9",
+            "inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-input px-1 py-1 sm:pr-2 lg:min-h-9 lg:min-w-0",
             "transition-colors motion-hover hover:bg-canvas",
           )}
           trigger={
