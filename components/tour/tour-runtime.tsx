@@ -200,10 +200,73 @@ function placeCard(phone: boolean, card: { w: number; h: number }, ring: Box | n
 }
 
 /**
+ * Words and icons on the page between the card and the ring (not the target,
+ * not the tour): a vertical arrow picks a lane that crosses none of them, so it
+ * never runs through a button's label on its way to the ring.
+ */
+function laneObstacles(c: DOMRect, t: DOMRect): Box[] {
+  const top = Math.min(t.bottom, c.bottom);
+  const bottom = Math.max(t.top, c.top);
+  if (bottom - top < 8) return [];
+  const band: Box = { top, left: 0, width: window.innerWidth, height: bottom - top };
+  const lit = document.querySelector("[data-tour-lit]");
+  const skip = (n: Node) => {
+    const el = n instanceof Element ? n : n.parentElement;
+    return !el || !!el.closest("[data-tour-root]") || (!!lit && lit.contains(el));
+  };
+  const out: Box[] = [];
+  const add = (r: DOMRect) => {
+    const b = { top: r.top, left: r.left, width: r.width, height: r.height };
+    if (b.width > 0 && b.height > 0 && overlap(b, band)) out.push(b);
+  };
+  const root = document.querySelector("main") ?? document.body;
+  const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    if (!n.textContent?.trim() || skip(n)) continue;
+    range.selectNodeContents(n);
+    for (const r of range.getClientRects()) add(r);
+  }
+  for (const svg of root.querySelectorAll("svg")) if (!skip(svg)) add(svg.getBoundingClientRect());
+  return out;
+}
+
+const bezier = (s: Pt, c1: Pt, c2: Pt, e: Pt, u: number): Pt => {
+  const v = 1 - u;
+  return {
+    x: v * v * v * s.x + 3 * v * v * u * c1.x + 3 * v * u * u * c2.x + u * u * u * e.x,
+    y: v * v * v * s.y + 3 * v * v * u * c1.y + 3 * v * u * u * c2.y + u * u * u * e.y,
+  };
+};
+
+function controls(s: Pt, e: Pt, vertical: boolean): [Pt, Pt] {
+  const k = (vertical ? Math.abs(e.y - s.y) : Math.abs(e.x - s.x)) * 0.5;
+  const c1 = vertical ? { x: s.x, y: s.y + Math.sign(e.y - s.y) * k } : { x: s.x + Math.sign(e.x - s.x) * k, y: s.y };
+  const c2 = vertical ? { x: e.x, y: e.y - Math.sign(e.y - s.y) * k } : { x: e.x - Math.sign(e.x - s.x) * k, y: e.y };
+  return [c1, c2];
+}
+
+/** True when the curve (plus a little air) runs through any of the boxes. */
+function crosses(s: Pt, e: Pt, vertical: boolean, boxes: Box[]) {
+  if (!boxes.length) return false;
+  const [c1, c2] = controls(s, e, vertical);
+  const air = 4;
+  for (let i = 0; i <= 24; i++) {
+    const p = bezier(s, c1, c2, e, i / 24);
+    for (const b of boxes) {
+      if (p.x > b.left - air && p.x < b.left + b.width + air && p.y > b.top - air && p.y < b.top + b.height + air) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * A gentle curve from the card's edge to the ring's edge, entering the
  * target straight on, with a small open arrowhead. Null when they touch.
+ * `obstacles` (asked for only when needed) lists what the curve should not
+ * run through; it slides along the ring's edge to the nearest clear lane.
  */
-function arrowPath(c: DOMRect, t: DOMRect): { line: string; head: string } | null {
+function arrowPath(c: DOMRect, t: DOMRect, obstacles?: () => Box[]): { line: string; head: string } | null {
   const tc = { x: t.left + t.width / 2, y: t.top + t.height / 2 };
   const cc = { x: c.left + c.width / 2, y: c.top + c.height / 2 };
   const off = 8;
@@ -213,12 +276,37 @@ function arrowPath(c: DOMRect, t: DOMRect): { line: string; head: string } | nul
   if (t.bottom <= c.top - 24 || t.top >= c.bottom + 24) {
     vertical = true;
     const up = t.bottom <= c.top;
-    e = { x: clamp(tc.x, t.left + 14, t.right - 14), y: up ? t.bottom + off : t.top - off };
-    // Leave the card a little to the side of the target, so the line curves.
-    const side = cc.x >= e.x ? 1 : -1;
+    const ey = up ? t.bottom + off : t.top - off;
+    const sy = up ? c.top - off : c.bottom + off;
     const lean = Math.min(56, c.width / 4);
-    s = { x: clamp(e.x + side * lean, c.left + 28, c.right - 28), y: up ? c.top - off : c.bottom + off };
-    if (Math.abs(s.x - e.x) < 16) s.x = clamp(e.x - side * lean, c.left + 28, c.right - 28);
+    const lane = (ex: number, side: number) => {
+      const end = { x: ex, y: ey };
+      // Leave the card a little to the side of the target, so the line curves.
+      const start = { x: clamp(ex + side * lean, c.left + 28, c.right - 28), y: sy };
+      if (Math.abs(start.x - ex) < 16) start.x = clamp(ex - side * lean, c.left + 28, c.right - 28);
+      return [start, end] as const;
+    };
+    const lo = t.left + 14;
+    const hi = t.right - 14;
+    const ex0 = clamp(tc.x, lo, hi);
+    const side0 = cc.x >= ex0 ? 1 : -1;
+    [s, e] = lane(ex0, side0);
+    const boxes = obstacles?.() ?? [];
+    if (crosses(s, e, true, boxes)) {
+      // Nearest clear lane first, either side of the middle, the curve leaning either way.
+      search: for (let d = 16; d <= hi - lo; d += 16) {
+        for (const ex of [ex0 + d, ex0 - d]) {
+          if (ex < lo || ex > hi) continue;
+          for (const side of [cc.x >= ex ? 1 : -1, cc.x >= ex ? -1 : 1]) {
+            const [ls, le] = lane(ex, side);
+            if (!crosses(ls, le, true, boxes)) {
+              [s, e] = [ls, le];
+              break search;
+            }
+          }
+        }
+      }
+    }
   } else if (t.right <= c.left - 24 || t.left >= c.right + 24) {
     vertical = false;
     const leftOf = t.right <= c.left;
@@ -231,9 +319,7 @@ function arrowPath(c: DOMRect, t: DOMRect): { line: string; head: string } | nul
   } else return null;
   const dist = Math.hypot(e.x - s.x, e.y - s.y);
   if (dist < 24) return null;
-  const k = (vertical ? Math.abs(e.y - s.y) : Math.abs(e.x - s.x)) * 0.5;
-  const c1 = vertical ? { x: s.x, y: s.y + Math.sign(e.y - s.y) * k } : { x: s.x + Math.sign(e.x - s.x) * k, y: s.y };
-  const c2 = vertical ? { x: e.x, y: e.y - Math.sign(e.y - s.y) * k } : { x: e.x - Math.sign(e.x - s.x) * k, y: e.y };
+  const [c1, c2] = controls(s, e, vertical);
   // The arrowhead follows the curve's direction at its end.
   const dx = e.x - c2.x;
   const dy = e.y - c2.y;
@@ -669,6 +755,9 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
     let lastRing = "";
     let lastCard = "";
     let lastArrow = "";
+    // What the arrow steers around, measured again only when the card or the ring moves.
+    let laneKey = "";
+    let laneBoxes: Box[] = [];
     let seenArrival = -1;
     let shown = false;
     let cardPlaced = false;
@@ -778,7 +867,17 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
       const line = arrowRef.current;
       const head = headRef.current;
       if (line && head && spot && sheet) {
-        const path = box && shown ? arrowPath(sheet.getBoundingClientRect(), spot.getBoundingClientRect()) : null;
+        const cr = sheet.getBoundingClientRect();
+        const tr = spot.getBoundingClientRect();
+        const rk = [cr.left, cr.top, cr.width, cr.height, tr.left, tr.top, tr.width, tr.height].map(Math.round).join(",");
+        const obstacles = () => {
+          if (laneKey !== rk) {
+            laneKey = rk;
+            laneBoxes = laneObstacles(cr, tr);
+          }
+          return laneBoxes;
+        };
+        const path = box && shown ? arrowPath(cr, tr, obstacles) : null;
         const key = path ? path.line : "none";
         if (key !== lastArrow) {
           line.setAttribute("d", path?.line ?? "");
