@@ -49,7 +49,7 @@ export default async function HelpPage() {
                     {step.title}
                     <span className="sr-only">{done ? ", seen in the tour" : ", not seen yet"}</span>
                   </p>
-                  <p className="text-sm text-slate">{stepWhat(step)}</p>
+                  <p className="text-sm text-pretty text-slate">{stepWhat(step)}</p>
                 </div>
                 <PointMeButton step={i} title={step.title} />
               </li>

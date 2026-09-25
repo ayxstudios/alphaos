@@ -37,6 +37,9 @@ type Box = { top: number; left: number; width: number; height: number };
 type Pt = { x: number; y: number };
 
 const PHONE = "(max-width: 1023px)";
+/** Phone: past this gap (px) between a target and the bottom sheet, the sheet sits just under the target (PHONE_NEAR_GAP away). */
+const PHONE_FAR = 200;
+const PHONE_NEAR_GAP = 56;
 /** Glide between targets, card moves, arrow draw: all inside 220 to 400ms. */
 const GLIDE_MS = 320;
 const PULSE_MS = 400;
@@ -99,7 +102,15 @@ function focusable(el: HTMLElement) {
 // ring reads as two rings). A text box always takes focus, so typing just works.
 let keyboardLast = false;
 if (typeof window !== "undefined") {
-  window.addEventListener("keydown", (e) => (keyboardLast = e.key === "Tab" || e.key === "Enter" || e.key === " " || keyboardLast), true);
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      // Enter or Space typed into a text box (a search, a phone keyboard's Go) is typing, not moving by keyboard.
+      const typing = e.target instanceof HTMLElement && e.target.matches("input, textarea, select, [contenteditable]");
+      if (e.key === "Tab" || ((e.key === "Enter" || e.key === " ") && !typing)) keyboardLast = true;
+    },
+    true,
+  );
   window.addEventListener("pointerdown", () => (keyboardLast = false), true);
 }
 function shouldFocus(el: HTMLElement) {
@@ -135,7 +146,18 @@ function placeCard(phone: boolean, card: { w: number; h: number }, ring: Box | n
     const inTabs = ring.top + ring.height / 2 > vh - TAB_BAR;
     const y = bottomY(inTabs ? 56 : 12);
     const zone = { top: y - 24, left: 0, width: vw, height: card.h + 24 };
-    if (!overlap(ring, zone)) return { x, y, place: "bottom" };
+    // Keep the arrow short: the sheet sits near the target, never across half the page.
+    const under = ring.top + ring.height + PHONE_NEAR_GAP;
+    const above = ring.top - PHONE_NEAR_GAP - card.h;
+    if (!overlap(ring, zone)) {
+      // A target high on the screen that could not be scrolled down to the
+      // sheet (the top of a page): the sheet comes up to sit just under it.
+      if (!inTabs && y - (ring.top + ring.height) > PHONE_FAR && under + card.h <= y) return { x, y: under, place: "under" };
+      return { x, y, place: "bottom" };
+    }
+    // The bottom sheet would cover it (an item low in the drawer): just above it, else just under it.
+    if (above >= TOP_BAR + 8) return { x, y: above, place: "above" };
+    if (under + card.h <= vh - TAB_BAR - 8) return { x, y: under, place: "under" };
     const top = TOP_BAR + 8;
     if (!overlap(ring, { top, left: 0, width: vw, height: card.h + 24 })) return { x, y: top, place: "top" };
     return { x, y, place: "bottom" };
@@ -146,8 +168,11 @@ function placeCard(phone: boolean, card: { w: number; h: number }, ring: Box | n
   const cy = ring.top + ring.height / 2;
   const fits = (b: Box) => b.left >= m && b.top >= m && b.left + b.width <= vw - m && b.top + b.height <= vh - m;
   const air = { top: ring.top - 8, left: ring.left - 8, width: ring.width + 16, height: ring.height + 16 };
+  // A card below or above a target in the page stays over the page, not over the sidebar.
+  const inPage = document.querySelector("main")?.getBoundingClientRect().left ?? 0;
+  const fromLeft = ring.left >= inPage ? inPage + m : m;
   const cands = (gap: number) => {
-    const across = clamp(cx - card.w / 2, m, vw - card.w - m);
+    const across = clamp(cx - card.w / 2, fromLeft, vw - card.w - m);
     const down = clamp(cy - card.h / 2, m, vh - card.h - m);
     const all: Record<string, Box> = {
       right: { left: ring.left + ring.width + gap, top: down, width: card.w, height: card.h },

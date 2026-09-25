@@ -12,9 +12,18 @@ The tour points, the person clicks. For each thing to press:
   element, with a 2px pigment ring around it: one gentle pulse when it
   arrives, then still;
 - a thin curved pigment arrow with a small open arrowhead runs from the step
-  card to the ring (no shadows, no glow);
+  card to the ring (no shadows, no glow). Under the 2px line sits a thin 5px
+  surface-coloured underlay at 85%, so the line stays crisp where it crosses
+  text; it is a flat backing, not a glow;
 - the card says what the thing is (a short title) and what to press (one
   line under it), with "2 of 6", and quiet Back and Skip links. Esc skips.
+
+Focus: the ring never steals focus from a mouse or touch user (a browser
+focus ring inside the pigment ring reads as two rings). Focus moves onto the
+ringed element only for a keyboard user (last input was Tab, or Enter or
+Space on a control; Enter typed in a text box, such as a phone keyboard's Go
+after a search, does not count), and always for a text box (the search), so
+typing just works.
 
 There is no Next button: the person's own click is the next. Nothing is
 pressed, typed, sent, assigned, passed, uploaded or deleted for them. A
@@ -48,11 +57,17 @@ sample file (drawn in the palette) lands there, and no file picker opens.
 - Phone (390x844): the card is a sheet just above the bottom tabs, 8px from
   each side. A target below it is scrolled up to sit just above it, so the
   arrow stays short. A tab in the bottom bar gets the ring around the tab
-  and the sheet lifts to leave room for the arrow. If a target cannot be
-  scrolled clear, the sheet moves to the top. Controls are 44px.
+  and the sheet lifts to leave room for the arrow. The arrow never runs over
+  half the page: a target high on the screen that cannot come down to the
+  sheet (the top of a page) gets the sheet just under it (56px away), and a
+  target the bottom sheet would cover (an item low in the More drawer) gets
+  the sheet just above it, else just under it, else at the top. A row that
+  scrolls sideways (the Orders tabs, the Settings sections) is centred first
+  when its item is cut off or within 8px of the edge. Controls are 44px.
 - Laptop (1440x900): a 360px card beside the target, 64px away, never on
   it: to the right of a sidebar item, else below, above or to the side,
-  whichever fits; the arrow runs between them.
+  whichever fits; the arrow runs between them. A card below or above a
+  target in the page stays over the page, never over the sidebar.
 - Both: 12px card radius, the largest shadow token, calm type (16px
   semibold title, 14px slate line).
 
