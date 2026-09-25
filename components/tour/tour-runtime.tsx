@@ -94,6 +94,18 @@ function focusable(el: HTMLElement) {
   return el.matches("a[href], button, input, select, textarea, summary, [tabindex]");
 }
 
+// How the person last moved: a keyboard user gets focus moved onto the ringed
+// element; a mouse or touch user does not (a focus ring inside the pigment
+// ring reads as two rings). A text box always takes focus, so typing just works.
+let keyboardLast = false;
+if (typeof window !== "undefined") {
+  window.addEventListener("keydown", (e) => (keyboardLast = e.key === "Tab" || e.key === "Enter" || e.key === " " || keyboardLast), true);
+  window.addEventListener("pointerdown", () => (keyboardLast = false), true);
+}
+function shouldFocus(el: HTMLElement) {
+  return el.matches("input, textarea, select") || (keyboardLast && focusable(el));
+}
+
 function overlap(a: Box, b: Box) {
   const w = Math.min(a.left + a.width, b.left + b.width) - Math.max(a.left, b.left);
   const h = Math.min(a.top + a.height, b.top + b.height) - Math.max(a.top, b.top);
@@ -185,9 +197,10 @@ function arrowPath(c: DOMRect, t: DOMRect): { line: string; head: string } | nul
     const leftOf = t.right <= c.left;
     e = { x: leftOf ? t.right + off : t.left - off, y: clamp(tc.y, t.top + 12, t.bottom - 12) };
     const side = cc.y >= e.y ? 1 : -1;
-    const lean = Math.min(28, c.height / 4);
+    // A short hop (a sidebar item beside its card) reads best as a straight arrow.
+    const lean = Math.abs(e.x - (leftOf ? c.left : c.right)) < 120 ? 0 : Math.min(28, c.height / 4);
     s = { x: leftOf ? c.left - off : c.right + off, y: clamp(e.y + side * lean, c.top + 20, c.bottom - 20) };
-    if (Math.abs(s.y - e.y) < 12) s.y = clamp(e.y - side * lean, c.top + 20, c.bottom - 20);
+    if (lean && Math.abs(s.y - e.y) < 12) s.y = clamp(e.y - side * lean, c.top + 20, c.bottom - 20);
   } else return null;
   const dist = Math.hypot(e.x - s.x, e.y - s.y);
   if (dist < 24) return null;
@@ -200,7 +213,7 @@ function arrowPath(c: DOMRect, t: DOMRect): { line: string; head: string } | nul
   const len = Math.hypot(dx, dy) || 1;
   const ux = dx / len;
   const uy = dy / len;
-  const size = 8;
+  const size = 10;
   const spread = 0.5;
   const h1 = { x: e.x - size * (ux * Math.cos(spread) - uy * Math.sin(spread)), y: e.y - size * (uy * Math.cos(spread) + ux * Math.sin(spread)) };
   const h2 = { x: e.x - size * (ux * Math.cos(-spread) - uy * Math.sin(-spread)), y: e.y - size * (uy * Math.cos(-spread) + ux * Math.sin(-spread)) };
@@ -385,7 +398,7 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
           firstRingRef.current = performance.now() - startAtRef.current;
           sheetRef.current?.setAttribute("data-first-ring-ms", String(Math.round(firstRingRef.current)));
         }
-        if (focusable(el)) el.focus({ preventScroll: true });
+        if (shouldFocus(el)) el.focus({ preventScroll: true });
         setPhase("turn");
         await new Promise<void>((resolve, reject) => {
           const abort = () => {
@@ -426,6 +439,8 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
       for (const s of steps.slice(from, from + 2)) router.prefetch(s.path, FULL);
       setPhase("wait");
       setLine(firstLine(steps[from]));
+      setLinkKind("");
+      setAnnounce("");
       setIndex(from);
       setMode(next === "one" ? "one" : "try");
       setRun((r) => r + 1);

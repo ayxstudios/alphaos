@@ -193,6 +193,8 @@ export async function runStep(h: Hooks, step: TourStep, open = false): Promise<v
       walked = true;
       h.rest(step.acts[0].say);
     }
+    // A busy server can take a while to answer the menu press: wait for the page itself.
+    await waitFor(h, () => location.pathname === step.path, 60000);
     await waitFor(h, () => pageReady(step.path), 15000);
   }
 

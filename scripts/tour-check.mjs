@@ -448,6 +448,8 @@ async function walkRole(browser, role, vp) {
   await shot(page, `${tag}-help`);
   const pick = Math.min(1, u.steps - 1);
   await page.locator('button[aria-label^="Point me to it:"]').nth(pick).click();
+  // The runtime mounts after the press: wait for its card before reading the turn.
+  await page.locator('[data-tour-sheet][data-mode="one"]').waitFor({ timeout: 30000 });
   let one = await nextTurn(page, "one");
   check(`${tag}: Point me to it lights that step`, one.mode === "one" && one.step === pick, `${one.mode} ${one.step}`);
   await assertPointing(page, `${tag} point me (${one.act} ${one.litTag})`, one, phone);
