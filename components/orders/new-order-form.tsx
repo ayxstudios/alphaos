@@ -554,8 +554,8 @@ export function NewOrderForm({
         )}
 
         {mode === "complete" && existing && (
-          <details className="border-t border-line/60 pt-3">
-            <summary className="cursor-pointer text-xs font-medium text-slate">Raw shop data</summary>
+          <details className="border-t border-line/60 pt-1 sm:pt-2">
+            <summary className="cursor-pointer py-3.5 text-xs font-medium text-slate sm:py-1">Raw shop data</summary>
             <pre className="mt-2 max-h-64 overflow-auto rounded-input bg-canvas p-2 text-xs text-ink">
               {JSON.stringify(existing.rawImport, null, 2)}
             </pre>
