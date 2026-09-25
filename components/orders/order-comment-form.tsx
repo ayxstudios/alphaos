@@ -33,7 +33,7 @@ export function OrderCommentForm({ orderId }: { orderId: string }) {
         value={body}
         onChange={(event) => setBody(event.currentTarget.value)}
         rows={3}
-        placeholder="Add a VA note, customer update, designer context, or follow-up result..."
+        placeholder="Write a note for your team"
       />
       <Button
         type="button"

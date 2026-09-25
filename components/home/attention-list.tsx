@@ -22,14 +22,14 @@ const KIND_TONE: Record<TodayKind, string> = {
 const KIND_SHORT: Record<TodayKind, string> = {
   reply: "Message",
   details: "Details",
-  proof_silent: "Quiet proof",
+  proof_silent: "No answer",
   photos_silent: "No photos",
   qc: "QC",
   unassigned: "Assign",
   designer_late: "Late",
   tracking: "Tracking",
   print: "Print",
-  triage: "Triage",
+  triage: "Order type",
 };
 
 /**

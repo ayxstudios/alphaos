@@ -1,18 +1,19 @@
 import type { Role } from "@/lib/auth/config";
 
 /**
- * The first-run tour, per role: a short list of demonstrations on the real
- * screen. Shared by the tour (components/tour) and the Quick guide (/help).
+ * The first-run tour, per role: a short list of steps on the real screen.
+ * Shared by the tour (components/tour) and the Quick guide (/help).
  *
- * Each step lives on one page (`path`). The ghost cursor travels there with
- * the real sidebar item (laptop) or bottom tab / More menu (phone), then does
- * the step's `act` for real: opening a list, a tab, a drawer, the search box,
- * a filter. Nothing is ever sent, assigned, passed or uploaded. Then the
- * person does the same thing themselves.
+ * Each step lives on one page (`path`). The tour points, the person clicks
+ * (owner, 2026-09-25): the page dims, the real element is ringed, an arrow
+ * runs from the step card to it, and the step completes on the person's own
+ * click. To reach the page the tour first rings the page's menu item (the
+ * sidebar, the bottom tab, or More then the item). Nothing is ever pressed,
+ * sent, assigned, passed or uploaded for them.
  *
  * `say` is the step's copy: two short plain sentences, 12 to 22 words. The
- * first says what the thing is, the second what to do (what the pointer
- * demonstrates). Second person, no jargon.
+ * first says what the thing is, the second what to press. Second person, no
+ * jargon.
  *
  * Targets are CSS selectors, tried in order; `css@@Text` also requires the
  * element's text to start with Text. The first visible match wins.
@@ -22,19 +23,20 @@ export type Sel = string[];
 export type TourAct =
   /** The step's own sidebar item / bottom tab is the thing to press. */
   | { kind: "nav"; say: string }
-  /** Press an element on the page. `undo` puts the page back before "Your turn". */
+  /** Press an element on the page. */
   | {
       kind: "click";
       target: Sel;
       say: string;
-      undo: "back" | "close" | "reclick" | { click: Sel };
+      /** Unused since the tour stopped demonstrating (2026-09-25); kept so copy edits merge cleanly. */
+      undo?: "back" | "close" | "reclick" | { click: Sel };
       via?: Sel;
       /** When the target is already the selected one, quietly open this first. */
       reset?: string;
     }
-  /** Type into a search box and press Enter (the demo types a name from the page). */
-  | { kind: "search"; target: Sel; say: string; sample: Sel }
-  /** Show a sample file landing on an upload drop zone. Never uploads. */
+  /** Type into a search box and press Enter. `sample` is unused since 2026-09-25. */
+  | { kind: "search"; target: Sel; say: string; sample?: Sel }
+  /** An upload drop zone: the person's press is caught (no file picker) and a sample lands. `via` opens it. */
   | { kind: "drop"; target: Sel; say: string; via?: Sel };
 
 export type TourStep = {
@@ -57,7 +59,7 @@ const VA_STEPS: TourStep[] = [
     title: "Today",
     path: "/today",
     acts: [],
-    nav: { kind: "nav", say: "Today lists what needs you first. Open it and work from the top down." },
+    nav: { kind: "nav", say: "Today lists what needs you first. Tap Today and work from the top down." },
   },
   {
     id: "search",
@@ -83,7 +85,7 @@ const VA_STEPS: TourStep[] = [
         target: ['[data-tour="page:orders"]'],
         undo: "back",
         reset: "/orders?view=active",
-        say: "Some orders arrive missing information. Open Needs details to see which ones need you.",
+        say: "Some orders arrive with details missing. Open Needs details to fill them in.",
       },
     ],
     nav: { kind: "nav", say: "Orders holds every order from every shop. Open it to find the one you need." },
@@ -97,10 +99,10 @@ const VA_STEPS: TourStep[] = [
         kind: "click",
         target: ['main a[href^="/qc/"]@@Start QC'],
         undo: "back",
-        say: "Finished portraits wait here for your check. Press Start QC to review the next one.",
+        say: "QC is where you check each finished portrait. Press Start QC to check the next one.",
       },
     ],
-    nav: { kind: "nav", say: "Finished portraits wait here for your check. Open QC to see what is waiting." },
+    nav: { kind: "nav", say: "QC is where you check each finished portrait. Open QC to see what is waiting." },
   },
   {
     id: "messages",

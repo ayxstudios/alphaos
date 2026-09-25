@@ -84,12 +84,12 @@ export function EmailWorkspace({
       </section>
 
       <Disclosure
-        summary={<span className="flex items-center gap-2"><Mail size={15} className="text-slate" /> Waiting to send</span>}
-        hint={pendingOutbox.length ? `${pendingOutbox.length} draft${pendingOutbox.length === 1 ? "" : "s"}` : "nothing queued"}
+        summary={<span className="flex items-center gap-2"><Mail size={15} className="text-slate" /> Not sent yet</span>}
+        hint={pendingOutbox.length ? `${pendingOutbox.length} email${pendingOutbox.length === 1 ? "" : "s"}` : "none"}
         defaultOpen={pendingOutbox.some((m) => m.status !== "queued")}
       >
         {pendingOutbox.length === 0 ? (
-          <p className="py-1 text-sm text-slate">Nothing waiting to send.</p>
+          <p className="py-1 text-sm text-slate">Every email has gone out.</p>
         ) : (
           <div className="-mx-4 divide-y divide-line/70">
             {pendingOutbox.map((item) => <DraftCard key={item.messageId} item={item} sendingEnabled={sendingEnabled} />)}

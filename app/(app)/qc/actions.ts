@@ -72,10 +72,10 @@ async function requireVa(): Promise<RequestUser | { error: Extract<QcResult, { o
   const session = await auth();
   const role = session?.user?.role;
   if (!session?.user) {
-    return { error: { ok: false, code: "auth", message: "Not signed in" } };
+    return { error: { ok: false, code: "auth", message: "Please sign in again." } };
   }
   if (role !== "admin" && role !== "va") {
-    return { error: { ok: false, code: "forbidden", message: "QC is VA/admin only" } };
+    return { error: { ok: false, code: "forbidden", message: "Only VAs and admins can do QC." } };
   }
   return { id: session.user.id, role };
 }
@@ -105,7 +105,7 @@ export async function submitQcPass(input: {
   return {
     ok: false,
     code: "email_preview_required",
-    message: "Pass QC from the email preview so the attachment is verified before sending.",
+    message: "Press Pass, then send it from the email screen.",
   };
 }
 
@@ -125,7 +125,7 @@ export async function prepareQcEmailPreview(input: {
     const ctx = await readQcEmailContext(tx, input.orderId);
     if (!ctx.ok) return ctx;
     if (ctx.order.status !== input.expectedFrom || ctx.order.status !== "awaiting_qc") {
-      return { ok: false as const, code: "stale", message: "This order is no longer awaiting QC." };
+      return { ok: false as const, code: "stale", message: "Someone already checked this one." };
     }
     const proof = await ensureProof(tx, ctx.order);
     const selection = selectProofTemplate(ctx);
@@ -138,7 +138,7 @@ export async function prepareQcEmailPreview(input: {
     });
     const attachment = await describeAssetAttachment(tx, ctx.asset.id, ctx.order.orderNumber);
     if (!attachment) {
-      return { ok: false as const, code: "attachment", message: "The portrait asset could not be read." };
+      return { ok: false as const, code: "attachment", message: "The portrait file could not be opened. Ask the designer to add it again." };
     }
     return {
       ok: true as const,
@@ -195,7 +195,7 @@ export async function confirmQcPassAndSend(input: {
     const ctx = await readQcEmailContext(tx, input.orderId);
     if (!ctx.ok) return ctx;
     if (ctx.order.status !== input.expectedFrom || ctx.order.status !== "awaiting_qc") {
-      return { ok: false as const, code: "stale", message: "This order is no longer awaiting QC." };
+      return { ok: false as const, code: "stale", message: "Someone already checked this one." };
     }
     // The transition's own gate (sign-off, authoritative checklist) runs after
     // the send, so check it now: a refused pass must never email the customer.
@@ -212,7 +212,7 @@ export async function confirmQcPassAndSend(input: {
       return {
         ok: false as const,
         code: "stale_asset",
-        message: "A newer portrait was uploaded after the preview opened. Refresh QC and review the latest file.",
+        message: "The designer added a newer portrait. Refresh and check that one.",
       };
     }
     const proof = await ensureProof(tx, ctx.order);
@@ -220,19 +220,19 @@ export async function confirmQcPassAndSend(input: {
       return { ok: false as const, code: "stale_proof", message: "The proof link changed. Refresh and preview again." };
     }
     const attachment = await describeAssetAttachment(tx, ctx.asset.id, ctx.order.orderNumber);
-    if (!attachment) return { ok: false as const, code: "attachment", message: "The portrait asset could not be read." };
+    if (!attachment) return { ok: false as const, code: "attachment", message: "The portrait file could not be opened. Ask the designer to add it again." };
     if (attachment.fingerprint && input.attachmentFingerprint && attachment.fingerprint !== input.attachmentFingerprint) {
       return {
         ok: false as const,
         code: "stale_asset",
-        message: "The portrait file changed after the preview opened. Refresh QC and review the current file.",
+        message: "The portrait changed while you were looking. Refresh and check it again.",
       };
     }
     if (await qcPassEmailInFlight(tx, { orderId: ctx.order.id, proofId: proof.id })) {
       return {
         ok: false as const,
         code: "already_sent",
-        message: "This proof email was just sent. Refresh QC to see where the order is now.",
+        message: "This email was just sent. Refresh to see where the order is now.",
       };
     }
 
@@ -335,10 +335,10 @@ export async function confirmQcPassAndSend(input: {
         businessId: prepared.businessId,
         orderId: prepared.orderId,
         messageId: prepared.messageId,
-        error: `Email sent, but order transition failed: ${message}`,
+        error: `The email went out, but the order did not move on. Tell an admin. (${message})`,
       });
     });
-    return { ok: false, code: "transition_failed_after_send", message: `Email sent, but order transition failed: ${message}` };
+    return { ok: false, code: "transition_failed_after_send", message: `The email went out, but the order did not move on. Tell an admin. (${message})` };
   }
 }
 
@@ -365,10 +365,10 @@ export async function submitQcFail(input: {
   const reason = input.reason.trim();
 
   if (failed.length === 0) {
-    return { ok: false, code: "precondition", message: "Select at least one failed item" };
+    return { ok: false, code: "precondition", message: "Pick at least one thing that is wrong." };
   }
   if (!reason) {
-    return { ok: false, code: "precondition", message: "A reason is required to fail QC" };
+    return { ok: false, code: "precondition", message: "Write a note for the designer first." };
   }
 
   const failedSet = new Set(failed);
@@ -398,7 +398,7 @@ function assertAllTicked(
 ): QcResult {
   const allTicked = checklist.items.every((it) => itemResults[it.key] === true);
   if (!allTicked) {
-    return { ok: false, code: "precondition", message: "All checklist items must be ticked to pass" };
+    return { ok: false, code: "precondition", message: "Tick every line before you pass." };
   }
   return { ok: true, status: "awaiting_qc" };
 }
@@ -442,7 +442,7 @@ async function readQcEmailContext(tx: Tx, orderId: string) {
     .where(eq(orderItems.orderId, orderId));
   if (!itemRows.length) return { ok: false as const, code: "items", message: "This order has no items." };
   if (itemRows.some((item) => item.figureCount == null)) {
-    return { ok: false as const, code: "figures", message: "Resolve figure count before sending a proof email." };
+    return { ok: false as const, code: "figures", message: "Set how many people and pets are in this order first." };
   }
 
   const [asset] = await tx

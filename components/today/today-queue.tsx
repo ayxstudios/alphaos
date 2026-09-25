@@ -21,15 +21,15 @@ const BANDS: TodayBand[] = ["now", "today", "soon"];
 /** Short kind names for the summary chips, in a fixed order. */
 const KIND_CHIP: { kind: TodayKind; label: string }[] = [
   { kind: "reply", label: "Replies" },
-  { kind: "details", label: "Details" },
+  { kind: "details", label: "Missing details" },
   { kind: "designer_late", label: "Late designs" },
-  { kind: "unassigned", label: "Unassigned" },
+  { kind: "unassigned", label: "Needs a designer" },
   { kind: "qc", label: "QC" },
   { kind: "tracking", label: "Tracking" },
   { kind: "print", label: "Print" },
-  { kind: "proof_silent", label: "Quiet proofs" },
+  { kind: "proof_silent", label: "Unanswered proofs" },
   { kind: "photos_silent", label: "No photos" },
-  { kind: "triage", label: "Triage" },
+  { kind: "triage", label: "Order type" },
 ];
 
 /** Rows shown per section before "Show more" (then this many more per click). */
@@ -163,12 +163,12 @@ export function TodayQueueList({ groups }: { groups: Record<TodayBand, TodayItem
               <span className="flex min-w-0 items-baseline gap-2">
                 <span className="font-display text-base font-semibold text-ink">{meta.title}</span>
                 <span className="truncate text-sm text-slate">
-                  {done ? "nothing here" : meta.hint(total)}
+                  {done ? "all clear" : meta.hint(total)}
                 </span>
               </span>
               <span className="flex shrink-0 items-center gap-2">
                 {done ? (
-                  <span className="text-xs font-medium text-sage">Done</span>
+                  <CheckCircle size={18} className="text-sage" aria-hidden />
                 ) : (
                   <ChevronDown size={18} className={cn("text-slate transition-transform", isOpen && "rotate-180")} />
                 )}

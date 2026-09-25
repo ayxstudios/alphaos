@@ -14,7 +14,6 @@ import {
   Check,
   LogOut,
   Search,
-  Eye,
   Bot,
   HelpCircle,
   Compass,
@@ -199,7 +198,7 @@ export function TopBar({
           <Bot size={18} />
           <span className="hidden sm:inline">Alpha AI</span>
         </button>
-        {/* Help: watch the tour, try it step by step, or open the one-page guide. */}
+        {/* Help: the guided tour (it points, you click), or the one-page guide. */}
         <div data-tour="help">
           <Popover
             ariaLabel="Help"
@@ -216,22 +215,6 @@ export function TopBar({
                   role="menuitem"
                   onClick={() => {
                     close();
-                    window.dispatchEvent(new CustomEvent(TOUR_START_EVENT, { detail: { mode: "watch" } }));
-                  }}
-                  className={cn(
-                    "flex min-h-11 items-center gap-2 rounded-input px-2 text-left text-sm text-ink lg:min-h-9",
-                    "transition-colors motion-hover hover:bg-canvas",
-                    focusRing,
-                  )}
-                >
-                  <Eye size={16} className="text-slate" />
-                  Watch how it works
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    close();
                     window.dispatchEvent(new CustomEvent(TOUR_START_EVENT, { detail: { mode: "try" } }));
                   }}
                   className={cn(
@@ -241,7 +224,7 @@ export function TopBar({
                   )}
                 >
                   <Compass size={16} className="text-slate" />
-                  Try it myself
+                  Show me around
                 </button>
                 <Link
                   href="/help"

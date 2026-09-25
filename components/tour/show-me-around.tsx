@@ -4,11 +4,11 @@ import { useEffect } from "react";
 
 import { cn } from "@/lib/utils";
 import { focusRing } from "@/components/ui/styles";
-import { ArrowRight } from "@/components/ui/icons";
+import { ArrowRight, Compass } from "@/components/ui/icons";
 import { startTour } from "@/lib/tour/request";
 
-/** Plays the whole tour on its own: the Quick guide's main button. */
-export function WatchButton({ className }: { className?: string }) {
+/** Starts the guided tour (it points, the person clicks): the Quick guide's main button. */
+export function ShowMeAroundButton({ className }: { className?: string }) {
   // Someone on the guide is about to press one of these: fetch the tour now.
   useEffect(() => {
     void import("./tour-runtime");
@@ -17,35 +17,33 @@ export function WatchButton({ className }: { className?: string }) {
     <button
       type="button"
       data-tour-warm=""
-      onClick={() => startTour({ mode: "watch" })}
+      onClick={() => startTour({ mode: "try" })}
       className={cn(
         "inline-flex min-h-11 items-center gap-2 rounded-input bg-pigment px-4 text-sm font-medium text-surface transition-opacity motion-hover hover:opacity-90 lg:min-h-10",
         focusRing,
         className,
       )}
     >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-        <path d="M7 4.5v15l12-7.5z" />
-      </svg>
-      Watch how it works
+      <Compass size={16} />
+      Show me around
     </button>
   );
 }
 
-/** Plays one step's demonstration, then lets the person try it. */
-export function ShowMeButton({ step, title }: { step: number; title: string }) {
+/** Opens one step's page with that step lit; the person does it. */
+export function PointMeButton({ step, title }: { step: number; title: string }) {
   return (
     <button
       type="button"
       data-tour-warm=""
       onClick={() => startTour({ mode: "one", step })}
-      aria-label={`Show me: ${title}`}
+      aria-label={`Point me to it: ${title}`}
       className={cn(
         "inline-flex min-h-11 shrink-0 items-center gap-1 rounded-input px-2 text-sm font-medium text-pigment transition-colors motion-hover hover:text-ink lg:min-h-9",
         focusRing,
       )}
     >
-      Show me <ArrowRight size={14} />
+      Point me to it <ArrowRight size={14} />
     </button>
   );
 }

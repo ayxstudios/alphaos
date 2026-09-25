@@ -92,7 +92,7 @@ export function ReplyDraft({
         }}
         rows={8}
         disabled={loading}
-        hint="Edit freely before copying. This never sends anything by itself."
+        hint="Change it as you like. Nothing sends from here."
       />
       <div className="flex flex-wrap items-center gap-2">
         <Button type="button" size="sm" onClick={copy} disabled={!body.trim()}>

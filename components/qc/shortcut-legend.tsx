@@ -5,12 +5,12 @@ import { focusRing } from "@/components/ui/styles";
 import { X } from "@/components/ui/icons";
 
 const SHORTCUTS: { keys: string; action: string }[] = [
-  { keys: "1-9, 0", action: "Toggle checklist item" },
-  { keys: "A", action: "Tick all items" },
-  { keys: "Enter", action: "Pass (when all ticked)" },
+  { keys: "1-9, 0", action: "Tick or untick a line" },
+  { keys: "A", action: "Tick all" },
+  { keys: "Enter", action: "Pass (when all are ticked)" },
   { keys: "F", action: "Fail" },
   { keys: "J / K", action: "Next / previous order" },
-  { keys: "?", action: "Toggle this legend" },
+  { keys: "?", action: "Show or hide this list" },
 ];
 
 /** Dismissible shortcut legend, re-openable with `?`. Laptop and up only (it would cover the phone tab bar). */

@@ -7,14 +7,14 @@ import { GUIDE_ANSWERS } from "@/lib/tour/guide";
 import { cn } from "@/lib/utils";
 import { DataPanel, Disclosure, Page, PageHeader } from "@/components/ui";
 import { Check } from "@/components/ui/icons";
-import { ShowMeButton, WatchButton } from "@/components/tour/show-me-around";
+import { PointMeButton, ShowMeAroundButton } from "@/components/tour/show-me-around";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Quick guide: one calm screen. The tour's steps, each with "Show me" to
- * play that one demonstration on the real page, and the common questions
- * folded away underneath.
+ * Quick guide: one calm screen. The tour's steps, each with "Point me to
+ * it" to open that page with the step lit (the person does it), and the
+ * common questions folded away underneath.
  */
 export default async function HelpPage() {
   const session = await auth();
@@ -27,7 +27,7 @@ export default async function HelpPage() {
 
   return (
     <Page className="max-w-2xl">
-      <PageHeader title="Quick guide" description="Press Show me and watch it happen on the real page." actions={<WatchButton />} />
+      <PageHeader title="Quick guide" description="Point me to it opens the page and rings what to press." actions={<ShowMeAroundButton />} />
 
       <DataPanel>
         <ol className="divide-y divide-line/70" data-tour-guide="">
@@ -51,7 +51,7 @@ export default async function HelpPage() {
                   </p>
                   <p className="text-sm text-slate">{stepWhat(step)}</p>
                 </div>
-                <ShowMeButton step={i} title={step.title} />
+                <PointMeButton step={i} title={step.title} />
               </li>
             );
           })}

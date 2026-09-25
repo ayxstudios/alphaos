@@ -1,135 +1,135 @@
 # The first-run tour
 
-Owner brief (2026-09-23): "go in and do the tutorial like a real user. There
-needs to be more showing than telling, and it needs to be super easy to
-get... absolutely perfect."
+Owner order (2026-09-25): "The tutorial is too fast and camel, it should be
+normal paced and you should have them click it, you only point to what they
+should click. like circle it on there, and point with arrows and stuff."
 
 ## What it does
 
-Every step is a demonstration on the person's real screen. A ghost pointer
-(an arrow in pigment on a laptop, a tap ring on a phone) goes to the real
-element and presses it, and the real page responds: a page opens, a tab
-switches, a drawer slides in, a search runs. Then the page is put back and
-the same element is lit with "Your turn"; the step completes the moment the
-person does it themselves. No Next button. Back and Skip are small quiet
-links, Esc skips.
+The tour points, the person clicks. For each thing to press:
 
-"Watch how it works" plays every step on its own in about 34 seconds, with a
-pause button, then offers "Now you try" (the interactive tour) or "Got it".
-Both are on the welcome card and in the "?" menu. The Quick guide (/help) is
-one screen: each step with a "Show me" that plays just that demonstration,
-then hands it over.
+- the page dims softly (ink at 34%) around a rounded cut-out of the real
+  element, with a 2px pigment ring around it: one gentle pulse when it
+  arrives, then still;
+- a thin curved pigment arrow with a small open arrowhead runs from the step
+  card to the ring (no shadows, no glow);
+- the card says what the thing is (a short title) and what to press (one
+  line under it), with "2 of 6", and quiet Back and Skip links. Esc skips.
 
-Nothing is ever sent, assigned, passed, uploaded or deleted. The upload step
-shows a sample file (drawn in the palette) landing on the drop zone; on the
-person's turn their press is caught and the sample lands again, so no file
-picker opens and nothing uploads.
+There is no Next button: the person's own click is the next. Nothing is
+pressed, typed, sent, assigned, passed, uploaded or deleted for them. A
+shield blocks presses anywhere but the ringed element; a press elsewhere
+gives the ring one soft pulse and nothing else.
+
+To reach a step's page the tour first rings the page's menu item (the
+sidebar on a laptop, the bottom tab on a phone, or More then the item), with
+the step's own line for that page. On the page it rings the thing to press.
+The only things the tour ever does itself are quiet housekeeping: closing a
+drawer the person opened in an earlier step when the next step lies
+elsewhere, and opening a list at its plain view when the thing to press is
+already the selected one.
+
+Pace: every motion is 220 to 400ms (ring glide 320, card move 320, arrow
+draw 360, pulse 400, a 420ms sage "Done" before the next step). Nothing
+moves on its own once it has arrived, and there are no countdowns. With
+reduced motion there is no glide, pulse or draw: things simply appear.
+
+The welcome card offers "Show me around" and "Skip" (and "Later" in its
+corner). "Watch how it works" (the old auto-play) is gone everywhere. The
+"?" menu has "Show me around" and "Quick guide". The Quick guide lists the
+steps; each has "Point me to it", which opens that step's page with that one
+thing lit and closes once the person has done it.
+
+The upload step rings the drop zone. The person's press on it is caught, a
+sample file (drawn in the palette) lands there, and no file picker opens.
+
+## Layout
+
+- Phone (390x844): the card is a sheet just above the bottom tabs, 8px from
+  each side. A target below it is scrolled up to sit just above it, so the
+  arrow stays short. A tab in the bottom bar gets the ring around the tab
+  and the sheet lifts to leave room for the arrow. If a target cannot be
+  scrolled clear, the sheet moves to the top. Controls are 44px.
+- Laptop (1440x900): a 360px card beside the target, 64px away, never on
+  it: to the right of a sidebar item, else below, above or to the side,
+  whichever fits; the arrow runs between them.
+- Both: 12px card radius, the largest shadow token, calm type (16px
+  semibold title, 14px slate line).
 
 ## Steps per role
 
 Each step has two short plain sentences, 12 to 22 words: what the thing is,
-then what to do (owner, 2026-09-24: "some telling, but like simple text, not
-a whole essay"). On a phone they wrap to two lines at most.
+then what to press. The card shows the first as its title.
 
-| Role | Step | The real action | Line |
+| Role | Step | What is ringed | Line |
 | --- | --- | --- | --- |
-| VA | Today | the Today menu item | Today lists what needs you first. Open it and work from the top down. |
-| VA | Find an order | types a customer's name into Orders search, Enter | Search finds any order fast. Type a customer's name, then press Enter. |
-| VA | Needs details | the Needs details tab | Some orders arrive missing information. Open Needs details to see which ones need you. |
-| VA | QC | Start QC (opens the review screen, read only) | Finished portraits wait here for your check. Press Start QC to review the next one. |
-| VA | Messages | opens All mail | Messages holds every customer email. Open All mail to read or search them. |
-| VA | Print | opens an order's Details | Print lists approved orders ready to print. Open Details to see where each one is. |
+| VA | Today | the Today menu item | Today lists what needs you first. Tap Today and work from the top down. |
+| VA | Find an order | Orders menu item, then the search box (type, Enter) | Search finds any order fast. Type a customer's name, then press Enter. |
+| VA | Needs details | the Needs details tab | Some orders arrive with details missing. Open Needs details to fill them in. |
+| VA | QC | QC menu item, then Start QC | QC is where you check each finished portrait. Press Start QC to check the next one. |
+| VA | Messages | Messages menu item, then All mail | Messages holds every customer email. Open All mail to read or search them. |
+| VA | Print | Print menu item, then an order's Details | Print lists approved orders ready to print. Open Details to see where each one is. |
 | Designer | My Board | the My Board menu item / tab | My Board holds every order given to you. Open it to see what is due first. |
-| Designer | Open a card | opens the order card | Each card is one order with the customer's photos. Open a card to see the details. |
-| Designer | Upload | sample file onto the drop zone | Your finished portrait goes on the order card. Add it here when the design is done. |
+| Designer | Open a card | an order card | Each card is one order with the customer's photos. Open a card to see the details. |
+| Designer | Upload | the drop zone in the open card | Your finished portrait goes on the order card. Add it here when the design is done. |
 | Designer | My Week | the My Week menu item / tab | My Week shows your deadlines and what you earned. Check it at the start of each day. |
-| Admin | Orders | the Overdue tab | Orders holds every order from every shop. Open Overdue to see the late ones first. |
-| Admin | Team and sign-ins | the Designers group tab | Team and sign-ins lists everyone who can sign in. Choose a group to see who is in it. |
-| Admin | Portrait Styles | opens a style's Designers drawer | Each style goes to the designers who draw it. Open Designers to choose who they are. |
-| Admin | Settings | the Customer Email section | Settings connects your shops, email and printers. Open Customer Email to connect your mailbox. |
-| Admin | Money | a designer's earnings | Money shows what each designer has earned. Choose a designer to see their orders. |
-| Admin | Health | the All Businesses view | Health flags problems behind the scenes. Choose All Businesses to check every shop at once. |
+| Admin | Orders | Orders menu item, then the Overdue tab | Orders holds every order from every shop. Open Overdue to see the late ones first. |
+| Admin | Team and sign-ins | Designers menu item, then the second group tab | Team and sign-ins lists everyone who can sign in. Choose a group to see who is in it. |
+| Admin | Portrait Styles | Portrait Styles menu item, then a style's Designers button | Each style goes to the designers who draw it. Open Designers to choose who they are. |
+| Admin | Settings | Settings menu item, then Customer Email | Settings connects your shops, email and printers. Open Customer Email to connect your mailbox. |
+| Admin | Money | Money menu item, then a designer | Money shows what each designer has earned. Choose a designer to see their orders. |
+| Admin | Health | System Health menu item, then All Businesses | Health flags problems behind the scenes. Choose All Businesses to check every shop at once. |
 
-When a page has nothing to act on (an empty QC queue, no earnings yet) the
-step falls back to the page's own menu item with its own line. When the
-target is already selected (the Orders view is remembered), the page is
-first quietly opened at its plain view so the press visibly changes
-something.
+While the menu item is ringed the card shows the step's page line (for
+example "Orders holds every order from every shop. Open it to find the one
+you need."). On a phone, when the page is under More, More is ringed first:
+"Messages is in the More menu at the bottom. Tap More, then tap Messages."
+
+When a page has nothing to act on (an empty QC queue, no earnings yet), the
+menu item that brought the person there was the step. When the target is
+already selected (the Orders view is remembered), the page is first quietly
+opened at its plain view so the press visibly changes something. If the
+designer's card is not open for the upload step, the card is ringed first.
 
 ## How it is built
 
 - `components/tour/tour.tsx`: the only part on every page. Decides whether
   the welcome card is due (`lib/tour/state.ts`, unchanged rules) and listens
-  for `TOUR_START_EVENT`. The rest is `next/dynamic` with `ssr: false`, so
-  an ordinary page load never fetches it. Resting on "?" (or a Show me)
-  loads and mounts it idle, so a start is instant.
-- `components/tour/tour-runtime.tsx`: the pointer, the lit ring, the shield,
-  the sheet, watch pacing, "Your turn" detection, persistence, focus and
-  aria-live. Motion is transforms and opacity only (400ms glide, 120ms press,
-  400ms ripple, 220ms sheet moves); with reduced motion the pointer jumps
-  and the ripple is a still ring.
-- `lib/tour/player.ts`: finds real elements, travels with the real menu
-  (sidebar, bottom tab, or More then the item), presses them with a real
-  click, types into search the way typing does, puts the page back (back,
-  close, re-click), and counts server wait apart from its own motion.
+  for `TOUR_START_EVENT`. The runtime is loaded on demand; resting on "?"
+  (or a Quick guide button) loads and mounts it idle, so a start is instant.
+- `components/tour/tour-runtime.tsx`: the spotlight (one element: a rounded
+  box whose 2px pigment shadow is the ring and whose 200vmax shadow is the
+  dim), the pulse, the arrow (one SVG, drawn from where the card and the ring
+  really are each frame), card placement, the shield, completion on the
+  person's own click / Enter / press, persistence, focus and aria-live.
+- `lib/tour/player.ts`: finds real elements and walks a step as a chain of
+  links (menu item, then the thing on the page); never presses anything.
 - `lib/tour/steps.ts`: the steps above, as CSS targets with fallbacks.
-- Speed: on start the next two pages are fully prefetched (data included),
-  and each step fetches the page after it, again after each progress save
-  (a server action clears the router cache). A search submit on your turn is
-  done as a client navigation to the same URL, so the tour never reloads the
-  page under the person.
-- Phone: the sheet floats just above the bottom tabs, which stay real
-  targets; it moves to the top whenever it would cover the lit element.
-  Controls are 44px. A row that scrolls sideways (the Orders tabs) is
-  scrolled so the target is fully on screen.
+- Speed: on start the first two pages are prefetched with their data, and
+  each step prefetches the page after it. A search submit is done as a
+  client navigation to the same URL, so the page never reloads under the
+  tour.
 - Persistence: as before. Finished or skipped never shows again on its own;
   Later waits for the next sign-in, up to 3 times; a run in progress resumes
   after a reload in the same sign-in.
 
-Markers added for the tour: `data-tour="card:<status>"` on board cards,
-`card:upload` and `card:drop` in the card modal, `order:customer` on the
-Orders table's customer name (the search demo types it). The "?" menu gained
-"Watch how it works".
+Markers used by the tour: `data-tour="nav:<path>"`, `tab:<path>`,
+`tab:more`, `card:<status>` on board cards, `card:upload` and `card:drop` in
+the card modal, `page:orders` on the Needs details tab, `team` on the Team
+panel, `order:customer` on the Orders table.
 
 ## Checking it
 
-`npm run test:tour` (local database only, see `scripts/local-db/setup-tour-db.sh`).
-For each role on a laptop (1280x800) and a phone (390x844, touch, reduced
-motion): watch plays end to end, interactive completes every step by
-performing the real action, Done is saved and never re-shows, "?" Watch and
-Show me around, Back, Esc, the Quick guide's Show me, and Later x3.
-Timing gates: Start to first pointer movement under 300ms; each step's own
-demonstration under 4s (server rendering time is reported beside it, not
-counted); the watch's own length 30 to 45s. Screenshots per step in
-`var/tour-shots/`, timings in `var/tour-shots/timings.json`.
-
-## Judge loop (2026-09-24)
-
-Played headless as a brand new person, from the welcome card through Watch,
-Now you try and the Quick guide, reading every step's screenshot. Scored 1 to
-10 on: shows more than tells (S), instantly understandable (U), fast (F),
-nothing awkward or robotic in copy or motion (A), fits the calm design (D).
-
-| Round | Role | S | U | F | A | D | What was wrong, what changed |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | VA, laptop | 9 | 9 | 7 | 7 | 9 | The pointer stayed on screen during "Your turn", so it looked like the tour would press it; a leftover ripple dot sat on the page; the search demo typed "No" (it read the email column, not a name); demos on the second visit to a route waited on the network. Fixed: the pointer lifts before your turn, the ripple fades to nothing, the demo types the first customer name (`order:customer`), pages are fully prefetched one step ahead. |
-| 1 | Designer, phone | 8 | 9 | 8 | 6 | 8 | My Board and My Week were shown as loading skeletons; the ring kept outlining the card behind the open card modal; the sample file rode off the right edge; the watch felt rushed (about 20s). Fixed: menu steps wait for the real page, the ring lets go of anything a dialog now covers, the sample starts inside the screen, watch pacing counts only the tour's own time (target 36s) with a short rest before each press. |
-| 2 | Admin, phone | 9 | 9 | 9 | 8 | 9 | Travel through More was right; a tab row that scrolls sideways (Orders views) left the lit tab half off screen; "Overdue" was already the remembered view, so the press changed nothing. Fixed: targets are scrolled fully into view sideways too, and an already selected tab starts from the plain view first. |
-| 2 | VA, phone | 9 | 10 | 10 | 8 | 10 | After a press that opens a new page, the tap ring hovered over empty space (QC); after the tab row scrolled, the ring sat on the neighbouring tab. Fixed: the finger lifts after a press that changes page, and moves back onto the element when the row scrolls under it. |
-| 2 | Designer, phone | 10 | 9 | 10 | 9 | 10 | On "Your turn" the sample file was still showing, so the drop zone looked done already; "Drop" is wrong on a phone (it is a tap). Fixed: the sample shows for 0.7s then clears before your turn; the line is "Add your finished portrait here." |
-| 3 | VA, laptop + phone | 10 | 10 | 10 | 10 | 10 | Clean: one line per step, every step visibly does the thing, your turn is obvious and completes on the press. |
-| 3 | Designer, laptop + phone | 10 | 10 | 10 | 10 | 10 | Clean. |
-| 3 | Admin, laptop + phone | 10 | 10 | 10 | 10 | 10 | Clean. Money with no earnings falls back to the Money menu item, which reads naturally. |
-
-"Fast" judges the tour's own motion and response. Page render time on the
-local dev server (reported as "server" by the check) is not counted; app
-loading speed is owned elsewhere.
-
-## Last measured (warm dev server, `npm run test:tour`: 706 passed, 0 failed)
-
-- Start to first pointer movement: 8 to 13ms on a laptop, 25 to 36ms on a
-  phone (limit 300ms), including from the "?" menu.
-- Each step's own demonstration: 0.3 to 2.6s (limit 4s).
-- Watch how it works: 36s for VA and admin, 30.5 to 32.5s for designer.
-- The tour runtime ships as its own async chunk; ordinary pages never load it
-  (the check asserts no `tour-runtime` request before the tour opens).
+`npm run test:tour` (local database only, see
+`scripts/local-db/setup-tour-db.sh`). For each role on a laptop (1440x900)
+and a phone (390x844, touch): the welcome offers Show me around and Skip and
+no Watch; for every ringed thing the ring surrounds the real element, the
+page is dimmed around a cut-out, an arrow runs from the card to the ring,
+the card is on screen, never on the element, says "N of M", has no Next
+button and 44px controls on a phone, the copy is two sentences of 12 to 22
+words, motion is 220 to 400ms; nothing moves or changes for 1.2s after
+arrival and no click reaches the page that a person did not make; the check
+then does the real thing and the step must move on by itself. Then Done is
+saved and never re-shows, "?" has no Watch item and Show me around rings
+within 300ms, Back, Esc, the Quick guide's Point me to it, and Later x3.
+Screenshots per ringed thing in `var/tour-shots/`.
