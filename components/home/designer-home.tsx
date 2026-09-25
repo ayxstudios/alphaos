@@ -34,16 +34,17 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
         <StatTile label="Due today" value={fmtInt(h.dueToday)} hint={h.overdue ? `${h.overdue} already late` : "Nothing late"} tone={h.overdue ? "bad" : h.dueToday ? "warn" : "good"} href="/board" />
         <StatTile label="In my queue" value={fmtInt(h.board.queue)} hint={`${h.board.inDesign + h.board.revisions} in design`} href="/board" />
         <StatTile
-          label="Figures this week"
+          // A rolling 7 days (the chart below), not the calendar week the
+          // earnings tile counts: named so the two never read as the same week.
+          label="Figures, last 7 days"
           value={fmtInt(h.figures7d)}
-          // Nothing last week to compare with: say what the number covers
-          // instead of a "new" pill.
+          // Nothing the 7 days before to compare with: a plain word, no "new" pill.
           delta={
             h.figuresPrev7d > 0
-              ? { pct: pctDelta(h.figures7d, h.figuresPrev7d), good: "up", window: "vs last week", base: h.figuresPrev7d, fallback: "Last 7 days" }
+              ? { pct: pctDelta(h.figures7d, h.figuresPrev7d), good: "up", window: "vs the 7 days before", base: h.figuresPrev7d, fallback: "Delivered" }
               : undefined
           }
-          hint={h.figuresPrev7d > 0 ? undefined : "Last 7 days"}
+          hint={h.figuresPrev7d > 0 ? undefined : "Delivered"}
           spark={{ points: h.figures.values, labels: h.figures.labels, color: "c2" }}
         />
         <StatTile label="Earned this week" value={fmtMoney(h.week.earningsThisWeek)} hint={`${fmtMoney(h.week.earningsThisMonth)} this month`} tone="good" href="/me" />
