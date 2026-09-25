@@ -286,6 +286,8 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
   const litRef = useRef<HTMLElement | null>(null);
   /** The link the person is being asked to do, and how to finish it. */
   const waiterRef = useRef<{ link: TourLink; done: () => void } | null>(null);
+  /** Where the person's last press is taking them (an in-app link), until it arrives. */
+  const pendingNavRef = useRef<string | null>(null);
   const phaseRef = useRef<Phase>("wait");
   const reducedRef = useRef(false);
   const startAtRef = useRef(0);
@@ -515,9 +517,14 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
       // A save clears the router cache, so the next page is fetched after it.
       if (mode === "try") void save({ type: "step", step: index }).then(ahead);
       else ahead();
+      pendingNavRef.current = null;
       await runStep(h, current, mode === "one");
       setPhase("ok");
       setAnnounce("Done.");
+      // The person's press opens a page: let it arrive before the next ring, so
+      // nothing changes under the next step (a busy server can take a while).
+      const pending = pendingNavRef.current;
+      if (pending) await waitFor(h, () => location.pathname + location.search === pending, 15000);
       await new Promise((r) => setTimeout(r, OK_MS));
       if (ac.signal.aborted) return;
       if (mode === "one") stop("none");
@@ -563,6 +570,11 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
         return;
       }
       if (w.link.kind === "search") return; // done when they press Enter
+      const a = e.target instanceof Element ? e.target.closest<HTMLAnchorElement>("a[href]") : null;
+      if (a && !e.defaultPrevented) {
+        const to = new URL(a.href, location.href);
+        if (to.origin === location.origin && to.pathname + to.search !== location.pathname + location.search) pendingNavRef.current = to.pathname + to.search;
+      }
       w.done();
     };
     const onSubmit = (e: SubmitEvent) => {

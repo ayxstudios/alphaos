@@ -271,28 +271,36 @@ async function assertPointing(page, label, m, phone) {
   await page.waitForTimeout(LIMITS.still);
   const later = await measure(page);
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  check(`${label}: still after arrival (ring, arrow, card, page)`, same(m.ring, later.ring) && same(m.arrow, later.arrow) && same(m.sheet, later.sheet) && m.path === later.path && later.phase === "turn", `${m.path} -> ${later.path}, ${later.phase}`);
+  check(`${label}: still after arrival (ring, arrow, card, page)`, same(m.ring, later.ring) && same(m.arrow, later.arrow) && same(m.sheet, later.sheet) && m.path === later.path && later.phase === "turn", `${m.path} -> ${later.path}, ${later.phase}${["ring", "arrow", "sheet"].filter((k) => !same(m[k], later[k])).map((k) => `; ${k} ${JSON.stringify(m[k])} -> ${JSON.stringify(later[k])}`).join("")}`);
   check(`${label}: nothing pressed for the person`, later.auto.length === 0, later.auto.join(" | "));
 }
 
 /** The person does the ringed thing, for real. */
 async function perform(page, label, m) {
   const lit = page.locator("[data-tour-lit]");
+  let chooser = null;
   if (m.act === "search") {
     await lit.fill("Gwen");
     await lit.press("Enter");
   } else if (m.act === "drop") {
-    const chooser = page.waitForEvent("filechooser", { timeout: 1500 }).then(() => true, () => false);
+    chooser = page.waitForEvent("filechooser", { timeout: 1500 }).then(() => true, () => false);
     await lit.click();
-    check(`${label}: no real upload (no file picker)`, !(await chooser));
   } else await lit.click();
+  // Moved on: the ringed thing is done (sage), or the tour is already at the next one.
   const moved = await page
-    .waitForFunction(() => {
-      const d = document.querySelector("[data-tour-sheet]")?.dataset;
-      return !d || d.phase !== "turn" || !["try", "one"].includes(d.mode);
-    }, null, { timeout: 10000 })
+    .waitForFunction(
+      ([step, tag]) => {
+        const d = document.querySelector("[data-tour-sheet]")?.dataset;
+        const now = document.querySelector("[data-tour-lit]");
+        const nowTag = now ? now.getAttribute("data-tour") || now.tagName.toLowerCase() : "";
+        return !d || d.phase !== "turn" || !["try", "one"].includes(d.mode) || Number(d.step) !== step || nowTag !== tag;
+      },
+      [m.step, m.litTag],
+      { timeout: 10000 },
+    )
     .then(() => true, () => false);
-  check(`${label}: completes on the person's own action`, moved);
+  if (chooser) check(`${label}: no real upload (no file picker)`, !(await chooser));
+  check(`${label}: completes on the person's own action`, moved, moved ? "" : JSON.stringify(await measure(page).then((x) => ({ phase: x.phase, step: x.step, act: x.act, lit: x.litTag, path: x.path, auto: x.auto }))));
 }
 
 /** Waits for the next ringed thing, or for the tour to leave `mode`. */
