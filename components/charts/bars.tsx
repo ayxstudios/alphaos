@@ -6,6 +6,10 @@ import { CHART, useWidth, type ChartColor } from "./use-width";
 import { fmtInt, niceMax } from "./format";
 import { ChartTooltip, Legend } from "./tooltip";
 
+/** Axis labels use the smallest step of the type scale; a character is about 0.56em wide. */
+const AXIS_PX = 12;
+const CHAR_W = AXIS_PX * 0.56;
+
 export type BarSeries = { name: string; color: ChartColor; values: number[] };
 
 /**
@@ -34,22 +38,24 @@ export function Bars({
   const [hover, setHover] = useState<number | null>(null);
   const n = labels.length;
   const top = 8;
-  const bottom = 22;
-  const left = 30;
-  const plotW = Math.max(0, width - left);
-  const plotH = height - top - bottom;
+  const bottom = 24;
   const rawMax = Math.max(0, ...series.flatMap((s) => s.values));
   const max = niceMax(rawMax);
+  const ticks = [0, 0.5, 1].map((f) => f * max);
+  // Axis text is 12px, the smallest size in the type scale (about 6.8px a
+  // character): the left gutter grows to fit the widest tick ("$1,200").
+  const left = Math.max(30, ...ticks.map((t) => format(t).length * CHAR_W + 10));
+  const plotW = Math.max(0, width - left);
+  const plotH = height - top - bottom;
   const groupW = n > 0 ? plotW / n : 0;
   const gap = 2;
   const innerPad = Math.min(10, groupW * 0.18);
   const barW = Math.max(3, (groupW - innerPad * 2 - gap * (series.length - 1)) / Math.max(1, series.length));
   const y = (v: number) => top + (1 - v / max) * plotH;
-  // Space x labels by their real width (10px text is about 5.6px a character,
-  // plus a gap), so "Fri 11 Sat 12" never runs together.
-  const labelW = Math.max(26, ...labels.map((l) => l.length * 5.6 + 10));
+  // Space x labels by their real width plus a gap, so "Fri 11 Sat 12" never
+  // runs together.
+  const labelW = Math.max(30, ...labels.map((l) => l.length * CHAR_W + 12));
   const every = tickEvery ?? (groupW < labelW ? Math.ceil(labelW / Math.max(1, groupW)) : 1);
-  const ticks = [0, 0.5, 1].map((f) => f * max);
 
   return (
     <div className="flex flex-col gap-2">
@@ -69,7 +75,7 @@ export function Bars({
           {ticks.map((t) => (
             <g key={t}>
               <line x1={left} x2={width} y1={y(t)} y2={y(t)} stroke={CHART.line} strokeWidth={1} />
-              <text x={left - 6} y={y(t) + 3.5} textAnchor="end" fontSize={10} fill={CHART.slate}>
+              <text x={left - 6} y={y(t) + 4} textAnchor="end" fontSize={AXIS_PX} fill={CHART.slate}>
                 {format(t)}
               </text>
             </g>
@@ -102,11 +108,11 @@ export function Bars({
                   // Keep the first and last labels inside the chart (today's
                   // label used to be cut off at the right edge).
                   const cx = left + i * groupW + groupW / 2;
-                  const half = (lab.length * 5.6) / 2;
+                  const half = (lab.length * CHAR_W) / 2;
                   const anchor = cx + half > width ? "end" : cx - half < 0 ? "start" : "middle";
                   const x = anchor === "end" ? width - 1 : anchor === "start" ? 1 : cx;
                   return (
-                    <text x={x} y={height - 6} textAnchor={anchor} fontSize={10} fill={CHART.slate}>
+                    <text x={x} y={height - 6} textAnchor={anchor} fontSize={AXIS_PX} fill={CHART.slate}>
                       {lab}
                     </text>
                   );
