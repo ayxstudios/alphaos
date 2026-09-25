@@ -162,7 +162,7 @@ function ShopRow({ shop, catalog }: { shop: ShopStylesVM; catalog: string[] }) {
                       type="button"
                       aria-label={`Remove ${s}`}
                       onClick={() => remove(s)}
-                      className={cn("rounded p-0.5 hover:bg-sage/20", focusRing)}
+                      className={cn("-my-3 -mr-1 inline-flex size-11 items-center justify-center rounded sm:m-0 sm:size-auto sm:p-0.5 hover:bg-sage/20", focusRing)}
                     >
                       <X size={12} />
                     </button>

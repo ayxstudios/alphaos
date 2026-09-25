@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 
 import { saveDailyHealthEmailSettings } from "@/app/(app)/settings/actions";
-import { Badge, Button, useToast } from "@/components/ui";
+import { Badge, Button, useToast, Checkbox } from "@/components/ui";
 import { ChevronDown } from "@/components/ui/icons";
 
 export type DailyHealthAdminVM = {
@@ -76,9 +76,7 @@ export function DailyHealthEmailSettingsPanel({
 
       <div className="border-t border-line p-4">
         <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-input bg-canvas/70 p-3">
-          <input
-            type="checkbox"
-            className="size-5 shrink-0 accent-pigment sm:size-4"
+          <Checkbox
             checked={enabled}
             onChange={(event) => setEnabled(event.currentTarget.checked)}
           />
@@ -95,9 +93,7 @@ export function DailyHealthEmailSettingsPanel({
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {admins.map((admin) => (
                 <label key={admin.id} className="flex cursor-pointer items-start gap-3 rounded-input bg-canvas/70 p-3">
-                  <input
-                    type="checkbox"
-                    className="mt-0.5 size-5 shrink-0 accent-pigment sm:size-4"
+                  <Checkbox
                     checked={selected.has(admin.id)}
                     onChange={(event) => toggleRecipient(admin.id, event.currentTarget.checked)}
                   />

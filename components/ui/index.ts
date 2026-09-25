@@ -8,6 +8,7 @@ export {
   CardFooter,
 } from "./card";
 export { Input } from "./input";
+export { Checkbox } from "./checkbox";
 export { Textarea } from "./textarea";
 export { Select } from "./select";
 export {

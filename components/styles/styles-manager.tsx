@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Badge, Button, Drawer, Input, useToast } from "@/components/ui";
+import { Badge, Button, Drawer, Input, useToast, Checkbox } from "@/components/ui";
 import { Brush, Plus, XCircle } from "@/components/ui/icons";
 import {
   createStyle,
@@ -278,12 +278,10 @@ function StyleCard({
       {/* Default toggle + assigned summary */}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line/70 pt-3">
         <label className="inline-flex min-h-11 cursor-pointer items-center gap-3 text-sm text-ink sm:min-h-0 sm:gap-2">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={style.isDefault}
             disabled={pending}
             onChange={(e) => onRun(() => setStyleDefault(style.id, e.target.checked))}
-            className="size-5 shrink-0 rounded border-line accent-pigment sm:size-4"
           />
           Default style when no rule matches
         </label>
@@ -375,11 +373,9 @@ function AssignDesignersDrawer({
         <div className="mt-3 flex flex-col divide-y divide-line">
           {designers.map((d) => (
             <label key={d.id} className="flex min-h-11 cursor-pointer items-center gap-3 py-2.5 text-sm text-ink">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={selected.has(d.id)}
                 onChange={() => toggle(d.id)}
-                className="size-5 shrink-0 rounded border-line accent-pigment sm:size-4"
               />
               {d.name}
             </label>

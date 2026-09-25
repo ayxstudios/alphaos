@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Badge, Button, Input, Select, useToast } from "@/components/ui";
+import { Badge, Button, Input, Select, useToast, Checkbox } from "@/components/ui";
 import { AlertTriangle, ChevronDown } from "@/components/ui/icons";
 import {
   assignProductToStyle,
@@ -83,13 +83,11 @@ export function UnrecognisedPanel({
         <div className="mt-3">
           <div className="flex flex-wrap items-center gap-2 rounded-t-input bg-amber/5 px-3 py-2">
             <label className="flex min-h-11 cursor-pointer items-center gap-3 text-xs font-medium text-slate sm:min-h-0 sm:gap-2">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={allDefaultedSelected}
                 onChange={(e) =>
                   setSelected(e.target.checked ? new Set(defaulted.map(keyOf)) : new Set())
                 }
-                className="size-5 shrink-0 rounded border-line accent-pigment sm:size-4"
               />
               Went to {defaultStyleName ?? "the default style"} by default · {defaulted.length}
             </label>
@@ -208,14 +206,12 @@ function ProductRow({
           on a phone instead of being cut short. */}
       <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
         {onToggle && (
-          // The label pads the 20px box to a 44px tap area on a phone.
-          <label className="-m-3 flex shrink-0 cursor-pointer p-3 sm:m-0 sm:p-0">
-            <input
-              type="checkbox"
+          // The checkbox itself is a 44px tap area on a phone.
+          <label className="flex shrink-0 pt-0.5 sm:pt-0">
+            <Checkbox
               checked={!!checked}
               onChange={onToggle}
               aria-label={`Select ${product.title ?? "product"}`}
-              className="mt-0.5 size-5 shrink-0 rounded border-line accent-pigment sm:mt-0 sm:size-4"
             />
           </label>
         )}

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { savePrintProviderCredentials, clearPrintProviderCredentials } from "@/app/(app)/settings/actions";
-import { Badge, Button, Input, DataPanel, useToast } from "@/components/ui";
+import { Badge, Button, Input, DataPanel, useToast, Checkbox } from "@/components/ui";
 import { Printer } from "@/components/ui/icons";
 
 export type PrintProviderCredentialsVM = {
@@ -180,12 +180,10 @@ function LumaCard({ creds }: { creds: PrintProviderCredentialsVM }) {
           autoComplete="off"
         />
         <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-ink sm:min-h-0 sm:gap-2">
-          <input
-            type="checkbox"
+          <Checkbox
             name="sandbox"
             checked={sandbox}
             onChange={(e) => setSandbox(e.currentTarget.checked)}
-            className="size-5 shrink-0 rounded border-line accent-pigment sm:size-4"
           />
           Use sandbox (us.api-sandbox.lumaprints.com)
         </label>

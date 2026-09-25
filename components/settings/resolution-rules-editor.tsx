@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 
-import { Button, InfoBubble, Input, Select, Textarea } from "@/components/ui";
+import { Button, InfoBubble, Input, Select, Textarea, Checkbox } from "@/components/ui";
 import { Plus, XCircle } from "@/components/ui/icons";
 import {
   saveShopResolutionRules,
@@ -67,18 +67,18 @@ function StringList({
               <span className="min-w-0 flex-1 truncate text-xs text-ink">{v}</span>
               <button
                 type="button"
-                className="text-slate hover:text-rose"
+                className="-my-1.5 -mr-2.5 inline-flex size-11 shrink-0 items-center justify-center text-slate hover:text-rose sm:m-0 sm:size-auto"
                 onClick={() => onChange(values.filter((x) => x !== v))}
                 aria-label={`Remove ${v}`}
               >
-                <XCircle size={13} />
+                <XCircle size={16} />
               </button>
             </div>
           ))}
           {values.length > 5 && (
             <button
               type="button"
-              className="w-full px-2.5 py-1.5 text-left text-xs font-medium text-pigment hover:bg-pigment-soft"
+              className="min-h-11 w-full px-2.5 py-1.5 text-left text-xs font-medium text-pigment hover:bg-pigment-soft sm:min-h-0"
               onClick={() => setShowAll((value) => !value)}
             >
               {showAll ? "Show fewer" : `Show all ${values.length}`}
@@ -294,7 +294,7 @@ export function ResolutionRulesEditor({
               <button
                 type="button"
                 onClick={() => setFigure((rs) => rs.filter((_, j) => j !== i))}
-                className="flex size-10 shrink-0 items-center justify-center rounded-input text-slate hover:text-rose"
+                className="flex size-11 shrink-0 items-center justify-center rounded-input text-slate hover:text-rose sm:size-10"
                 aria-label="Remove rule"
               >
                 <XCircle size={18} />
@@ -344,14 +344,8 @@ export function ResolutionRulesEditor({
 
       {/* Photo-request behaviour */}
       <label className="flex cursor-pointer items-start gap-3 border-t border-line pt-3 sm:gap-2">
-        {/* 20px box on a phone inside a 44px-tall tap row (the label). */}
-        <span className="flex min-h-11 shrink-0 items-center sm:min-h-0 sm:pt-0.5">
-          <input
-            type="checkbox"
-            checked={photoReq}
-            onChange={(e) => setPhotoReq(e.target.checked)}
-            className="size-5 rounded border-line accent-pigment sm:size-4"
-          />
+        <span className="flex h-5 shrink-0 items-center sm:mt-0.5 sm:h-4">
+          <Checkbox checked={photoReq} onChange={(e) => setPhotoReq(e.target.checked)} />
         </span>
         <span className="text-sm text-ink">
           <span className="inline-flex items-center gap-1.5">
