@@ -98,7 +98,7 @@ export function FailDialog({
             onClick={onClose}
             aria-label="Close"
             className={cn(
-              "inline-flex size-8 items-center justify-center rounded-input text-slate",
+              "inline-flex size-11 items-center justify-center rounded-input text-slate sm:size-8",
               "transition-colors motion-hover hover:bg-canvas hover:text-ink",
               focusRing,
             )}
