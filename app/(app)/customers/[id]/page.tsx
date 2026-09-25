@@ -407,7 +407,7 @@ export default async function CustomerDetailPage({
         title={customerName(customer)}
         description={customer.email}
         eyebrow={
-          <Link href="/customers" className="text-pigment hover:underline">
+          <Link href="/customers" className="-my-3.5 inline-block py-3.5 text-pigment hover:underline sm:my-0 sm:py-0">
             Customers
           </Link>
         }
@@ -495,7 +495,7 @@ export default async function CustomerDetailPage({
                         <div className="min-w-0">
                           <Link
                             href={`/orders/${order.id}`}
-                            className="text-sm font-semibold text-ink hover:text-pigment"
+                            className="-my-3.5 inline-block py-3.5 text-sm font-semibold text-ink hover:text-pigment sm:my-0 sm:py-0"
                           >
                             {order.number ?? order.fallbackNumber}
                           </Link>
