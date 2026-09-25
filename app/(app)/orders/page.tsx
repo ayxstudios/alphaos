@@ -736,7 +736,7 @@ export default async function OrdersPage({
         actions={
           <Link
             href="/orders/new"
-            className="inline-flex h-10 items-center gap-2 rounded-input bg-pigment px-3.5 text-sm font-medium text-surface transition-opacity hover:opacity-90"
+            className="inline-flex h-11 items-center gap-2 rounded-input bg-pigment px-3.5 text-sm font-medium text-surface sm:h-10 transition-opacity hover:opacity-90"
           >
             <Plus size={16} />
             New order
@@ -763,7 +763,7 @@ export default async function OrdersPage({
         <details className="relative shrink-0">
           <summary
             className={cn(
-              "flex h-10 cursor-pointer list-none items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-colors [&::-webkit-details-marker]:hidden",
+              "flex h-11 cursor-pointer list-none items-center gap-1.5 rounded-full px-3.5 sm:h-10 text-sm font-medium transition-colors [&::-webkit-details-marker]:hidden",
               selectedIsMore ? "bg-ink text-surface" : "bg-surface text-slate shadow-card hover:text-ink",
             )}
           >
@@ -778,7 +778,7 @@ export default async function OrdersPage({
                 href={viewHref(currentParams, view.key)}
                 title={view.description}
                 className={cn(
-                  "flex items-center justify-between gap-3 rounded-input px-2.5 py-2 text-sm transition-colors hover:bg-canvas",
+                  "flex min-h-11 items-center justify-between gap-3 rounded-input px-2.5 py-2 text-sm transition-colors hover:bg-canvas sm:min-h-0",
                   view.key === selectedView ? "font-semibold text-pigment" : "text-ink",
                 )}
               >
@@ -881,7 +881,7 @@ export default async function OrdersPage({
               <Link
                 key={f.key}
                 href={filterHref(currentParams, f.key, "")}
-                className="inline-flex h-8 items-center gap-1.5 rounded-full bg-pigment-soft pl-3 pr-2 text-xs font-medium text-pigment transition-colors hover:bg-pigment hover:text-surface"
+                className="inline-flex h-11 items-center gap-1.5 rounded-full bg-pigment-soft pl-3 pr-2 text-xs sm:h-8 font-medium text-pigment transition-colors hover:bg-pigment hover:text-surface"
                 aria-label={`Remove filter ${f.label}`}
               >
                 {f.label}
@@ -968,7 +968,7 @@ function ViewPill({
       aria-current={active ? "page" : undefined}
       data-tour={tourId}
       className={cn(
-        "inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-3.5 text-sm font-medium transition-colors",
+        "inline-flex h-11 shrink-0 items-center gap-2 rounded-full px-3.5 text-sm font-medium transition-colors sm:h-10",
         active ? "bg-ink text-surface" : "bg-surface text-slate shadow-card hover:text-ink",
       )}
     >

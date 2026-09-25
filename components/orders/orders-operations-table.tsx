@@ -604,7 +604,7 @@ export function OrdersOperationsTable({
           {columnMenuOpen && (
             <div className="absolute right-0 top-10 z-30 w-56 rounded-card bg-surface p-2 shadow-lg">
               <div className="flex items-center justify-between gap-2 border-b border-line/60 px-2 pb-2">
-                <p className="text-xs font-semibold uppercase text-slate">Visible columns</p>
+                <p className="text-xs font-semibold text-slate">Visible columns</p>
                 <button type="button" onClick={resetColumns} className="text-xs font-medium text-pigment hover:text-ink">
                   Reset
                 </button>
@@ -639,7 +639,7 @@ export function OrdersOperationsTable({
             <select
               value={designerId}
               onChange={(event) => setDesignerId(event.currentTarget.value)}
-              className="h-9 max-w-full rounded-input bg-surface/10 px-2 text-sm text-surface outline-none focus-visible:ring-2 focus-visible:ring-surface [&>option]:text-ink"
+              className="h-11 max-w-full rounded-input bg-surface/10 sm:h-9 px-2 text-sm text-surface outline-none focus-visible:ring-2 focus-visible:ring-surface [&>option]:text-ink"
               aria-label="Choose designer"
             >
               <option value="">Designer…</option>
@@ -653,7 +653,7 @@ export function OrdersOperationsTable({
             <select
               value={targetStatus}
               onChange={(event) => setTargetStatus(event.currentTarget.value as OrderStatus)}
-              className="h-9 max-w-full rounded-input bg-surface/10 px-2 text-sm text-surface outline-none focus-visible:ring-2 focus-visible:ring-surface [&>option]:text-ink"
+              className="h-11 max-w-full rounded-input bg-surface/10 sm:h-9 px-2 text-sm text-surface outline-none focus-visible:ring-2 focus-visible:ring-surface [&>option]:text-ink"
               aria-label="Choose status"
             >
               <option value="">Status…</option>
@@ -668,7 +668,7 @@ export function OrdersOperationsTable({
               type="button"
               onClick={() => setSelected(new Set())}
               aria-label="Clear selection"
-              className="ml-auto inline-flex size-8 items-center justify-center rounded-input text-surface/70 transition-colors hover:bg-surface/10 hover:text-surface"
+              className="ml-auto inline-flex size-11 items-center justify-center rounded-input text-surface/70 sm:size-8 transition-colors hover:bg-surface/10 hover:text-surface"
             >
               <X size={16} />
             </button>
@@ -776,17 +776,20 @@ export function OrdersOperationsTable({
               className={cn("p-4", urgent && "bg-rose/[0.025]", selected.has(row.id) && "bg-pigment-soft/60")}
             >
               <div className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={selected.has(row.id)}
-                  onChange={() => toggleOne(row.id)}
-                  aria-label={`Select order ${row.orderNumber}`}
-                  className="mt-1 size-5 shrink-0 rounded border-line text-pigment focus:ring-pigment"
-                />
+                {/* The label pads the 20px box to a 44px tap area. */}
+                <label className="-m-3 flex shrink-0 cursor-pointer p-3 pt-4">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(row.id)}
+                    onChange={() => toggleOne(row.id)}
+                    aria-label={`Select order ${row.orderNumber}`}
+                    className="size-5 shrink-0 rounded border-line text-pigment focus:ring-pigment"
+                  />
+                </label>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <Link href={`/orders/${row.id}`} prefetch={false} className="text-base font-semibold text-ink hover:text-pigment">
+                      <Link href={`/orders/${row.id}`} prefetch={false} className="-my-3 inline-block py-3 text-base font-semibold text-ink hover:text-pigment">
                         {row.orderNumber}
                       </Link>
                       <p className="break-words text-sm text-slate">{row.customer}</p>
@@ -933,7 +936,7 @@ function Pagination({
         href={pageHref(currentParams, page - 1)}
         aria-disabled={page <= 1}
         className={cn(
-          "inline-flex h-8 items-center rounded-input px-2 text-sm font-medium transition-colors",
+          "inline-flex h-11 items-center rounded-input px-2 text-sm font-medium transition-colors sm:h-8",
           page <= 1 ? "pointer-events-none text-slate/40" : "text-pigment hover:bg-pigment-soft",
         )}
       >
@@ -946,7 +949,7 @@ function Pagination({
         href={pageHref(currentParams, page + 1)}
         aria-disabled={page >= totalPages}
         className={cn(
-          "inline-flex h-8 items-center rounded-input px-2 text-sm font-medium transition-colors",
+          "inline-flex h-11 items-center rounded-input px-2 text-sm font-medium transition-colors sm:h-8",
           page >= totalPages ? "pointer-events-none text-slate/40" : "text-pigment hover:bg-pigment-soft",
         )}
       >
