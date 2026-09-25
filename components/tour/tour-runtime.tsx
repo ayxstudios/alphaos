@@ -287,7 +287,7 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
   /** The link the person is being asked to do, and how to finish it. */
   const waiterRef = useRef<{ link: TourLink; done: () => void } | null>(null);
   /** Where the person's last press is taking them (an in-app link), until it arrives. */
-  const pendingNavRef = useRef<string | null>(null);
+  const pendingNavRef = useRef<{ to: string; from: string } | null>(null);
   const phaseRef = useRef<Phase>("wait");
   const reducedRef = useRef(false);
   const startAtRef = useRef(0);
@@ -361,8 +361,9 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
         );
       };
       let r = el.getBoundingClientRect();
-      // Fixed things (the bottom tabs, the sidebar) never need scrolling.
-      if (el.closest('nav[aria-label="Primary"], aside')) return;
+      // Fixed things (the bottom tabs, the shell's sidebar) never need scrolling.
+      // An aside inside the page (the Settings sections) scrolls like the page.
+      if (el.closest('nav[aria-label="Primary"]') || (el.closest("aside") && !el.closest("main"))) return;
       // A row that scrolls sideways (the Orders tabs, the Settings sections on a
       // phone): centre it across when it is cut off or tight against the right edge.
       if (r.left < 0 || r.right > window.innerWidth - 8) {
@@ -526,9 +527,20 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
       setPhase("ok");
       setAnnounce("Done.");
       // The person's press opens a page: let it arrive before the next ring, so
-      // nothing changes under the next step (a busy server can take a while).
+      // nothing changes under the next step. A busy server can take a while, so
+      // this is patient; the address leaving where the press happened counts as
+      // arrived too (a page that tidies its own address).
       const pending = pendingNavRef.current;
-      if (pending) await waitFor(h, () => location.pathname + location.search === pending, 15000);
+      if (pending) {
+        await waitFor(
+          h,
+          () => {
+            const now = location.pathname + location.search;
+            return now === pending.to || now !== pending.from;
+          },
+          45000,
+        );
+      }
       await new Promise((r) => setTimeout(r, OK_MS));
       if (ac.signal.aborted) return;
       if (mode === "one") stop("none");
@@ -577,7 +589,8 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
       const a = e.target instanceof Element ? e.target.closest<HTMLAnchorElement>("a[href]") : null;
       if (a && !e.defaultPrevented) {
         const to = new URL(a.href, location.href);
-        if (to.origin === location.origin && to.pathname + to.search !== location.pathname + location.search) pendingNavRef.current = to.pathname + to.search;
+        const from = location.pathname + location.search;
+        if (to.origin === location.origin && to.pathname + to.search !== from) pendingNavRef.current = { to: to.pathname + to.search, from };
       }
       w.done();
     };
