@@ -4,6 +4,7 @@ import { Countdown } from "./countdown";
 import { cardLabels, LABEL_CLASS, optionName, revisionNote } from "./card-meta";
 import type { BoardCard } from "@/lib/orders/board-data";
 import { isWithCustomer } from "@/lib/orders/board-constants";
+import { optionsSummary } from "@/lib/orders/options-summary";
 
 /**
  * Presentational order card — Trello-style with a cover photo, colour labels
@@ -28,6 +29,8 @@ export function OrderCard({
   const revision = card.qcFail ?? card.customerRevision;
   const revisionTone = card.qcFail ? "rose" : "pigment";
   const note = revision ? revisionNote(revision.reason, revision.failedItems) : null;
+  const summary = optionsSummary(card.options);
+  const fullOptions = card.options.map((o) => `${optionName(o.name)}: ${o.value}`).join("\n");
 
   return (
     <div
@@ -87,19 +90,13 @@ export function OrderCard({
           <p className="line-clamp-2 text-sm text-ink">{card.title}</p>
         )}
 
-        {card.options.length > 0 && (
-          <ul className="flex flex-wrap gap-1">
-            {card.options.slice(0, 3).map((o, i) => (
-              <li
-                key={i}
-                // Wraps instead of truncating: the answer ("No Thanks") sits
-                // at the end of a long shop question and must stay visible.
-                className="max-w-full break-words rounded bg-canvas px-1.5 py-0.5 text-xs text-slate"
-              >
-                <span className="text-ink">{optionName(o.name)}:</span> {o.value}
-              </li>
-            ))}
-          </ul>
+        {/* The shop's raw options as one human line ("2 people + 1 pet ·
+            8x10 · Rush order"); every option in full is one tap away, in the
+            card that opens. */}
+        {summary && (
+          <p className="truncate text-xs text-slate" title={fullOptions}>
+            {summary}
+          </p>
         )}
 
         {/* Compact revision cue — the full detail lives in the modal, but the
