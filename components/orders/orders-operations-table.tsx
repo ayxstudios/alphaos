@@ -593,7 +593,8 @@ export function OrdersOperationsTable({
         <span className="tabular-nums">
           {firstResult}-{lastResult} of {total}
         </span>
-        <div ref={columnMenuRef} className="relative">
+        {/* Columns only shapes the desktop table, so a phone does not show it; the saved setting stays. */}
+        <div ref={columnMenuRef} className="relative hidden md:block">
           <Button
             type="button"
             size="sm"
