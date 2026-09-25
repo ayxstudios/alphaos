@@ -174,7 +174,16 @@ function customerAssetKey(businessId: string, orderId: string, ext: string): str
   return usingDevStore() ? `${DEV_STORE_PREFIX}${base}` : base;
 }
 
-export type SaveResult = { ok: true; receivedCount: number; status: string } | { ok: false; message: string };
+export type SaveResult =
+  | { ok: true; receivedCount: number; status: string }
+  /** `notPhotos`: the keys whose bytes are not a photo, so the page can mark those rows and send the rest. */
+  | { ok: false; message: string; notPhotos?: string[] };
+
+class NotPhotosError extends Error {
+  constructor(readonly keys: string[]) {
+    super("One of the files is not a photo.");
+  }
+}
 
 /**
  * After the browser PUTs succeed: verify each object really landed (size and
@@ -201,6 +210,7 @@ export async function saveCustomerUploads(token: string, keys: string[], note: s
         throw new Error("Upload does not belong to this order.");
       }
 
+      const notPhotos: string[] = [];
       for (const key of r2Keys) {
         // A key that never landed (or a storage hiccup) must read as a plain
         // retry to the customer, never the storage SDK's error name.
@@ -215,8 +225,9 @@ export async function saveCustomerUploads(token: string, keys: string[], note: s
         const first = await readStoredHead(key, SNIFF_BYTES).catch(() => {
           throw new Error("One of your photos did not finish uploading. Please add it again.");
         });
-        if (!sniffMatchesDeclared(first, head.contentType)) throw new Error("One of the files is not a supported photo.");
+        if (!sniffMatchesDeclared(first, head.contentType)) notPhotos.push(key);
       }
+      if (notPhotos.length) throw new NotPhotosError(notPhotos);
 
       if (r2Keys.length) {
         await tx.insert(assets).values(
@@ -275,6 +286,7 @@ export async function saveCustomerUploads(token: string, keys: string[], note: s
       return { ok: true as const, receivedCount: received.length, status };
     });
   } catch (err) {
+    if (err instanceof NotPhotosError) return { ok: false, message: err.message, notPhotos: err.keys };
     return { ok: false, message: err instanceof Error ? err.message : "Could not save your photos. Please try again." };
   }
 }

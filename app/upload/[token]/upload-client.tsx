@@ -133,6 +133,7 @@ export function UploadClient({ token, ask, detail, receivedCount, open, devStore
       const alreadyDoneKeys = files.filter((f) => f.status === "done").map((f) => f.key);
 
       let justUploadedKeys: string[] = [];
+      let justUploaded: { key: string; name: string }[] = [];
       if (toUpload.length) {
         const presign = await presignAction(
           token,
@@ -177,12 +178,34 @@ export function UploadClient({ token, ask, detail, receivedCount, open, devStore
           return;
         }
         justUploadedKeys = results.filter((r) => r.ok).map((r) => r.key);
+        justUploaded = toUpload.flatMap((f) => {
+          const r = results.find((x) => x.id === f.id);
+          return r?.ok ? [{ key: r.key, name: f.file.name }] : [];
+        });
       }
 
       const allKeys = [...alreadyDoneKeys, ...justUploadedKeys].filter((k): k is string => !!k);
+      const nameByKey = new Map<string, string>();
+      for (const f of files) if (f.key) nameByKey.set(f.key, f.file.name);
+      for (const r of justUploaded) nameByKey.set(r.key, r.name);
       const savedRes = await saveAction(token, allKeys, note);
       if (!savedRes.ok) {
-        setError(savedRes.message);
+        const bad = savedRes.notPhotos ?? [];
+        if (bad.length) {
+          // Name the file on its own row and leave the rest ready to send
+          // again (the server keeps nothing from a refused batch).
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.key && bad.includes(f.key)
+                ? { ...f, status: "rejected", error: "Not a photo: choose a JPG, PNG or HEIC", previewUrl: null }
+                : f,
+            ),
+          );
+          const names = bad.map((k) => nameByKey.get(k)).filter((n): n is string => !!n);
+          setError(`${names.join(", ") || "One file"} ${names.length > 1 ? "are" : "is"} not a photo. Send again to add the rest.`);
+        } else {
+          setError(savedRes.message);
+        }
         setSubmitting(false);
         return;
       }

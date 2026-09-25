@@ -28,7 +28,7 @@ import { and, eq, inArray, like } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 
 import { withSystemContext } from "../lib/db";
-import { assignments, loginAttempts, messages, orders, proofs, rateLimits, users } from "../lib/db/schema";
+import { assets, assignments, loginAttempts, messages, orders, proofs, rateLimits, users } from "../lib/db/schema";
 import { scopeChatOrder } from "../lib/alpha/chat-scope";
 import { AccountLockedError, IP_MAX_FAILED, authenticate, loginClientIp } from "../lib/auth/login";
 import { hashPassword } from "../lib/auth/password";
@@ -43,6 +43,7 @@ import { sniffImageType, sniffMatchesDeclared } from "../lib/uploads/sniff";
 import { assertKeysBelongTo, assertStoredImage, referenceUploadProblem } from "../lib/uploads/verify";
 import { DEV_STORE_PREFIX, devStorePath, usingDevStore, writeDevStoreObject } from "../lib/uploads/store";
 import { isUuid } from "../lib/utils";
+import { saveCustomerUploads } from "../lib/uploads/data";
 import { rm } from "node:fs/promises";
 import { isMockMode as gelatoMockMode } from "../lib/integrations/gelato/client";
 import { isMockMode as lumaMockMode } from "../lib/integrations/lumaprints/client";
@@ -419,6 +420,38 @@ async function uploadKeysAndBytes() {
   }
 }
 
+async function customerUploadRefusesNonPhotos() {
+  const [order] = await withSystemContext((tx) =>
+    tx
+      .select({ id: orders.id, businessId: orders.businessId, token: orders.uploadToken, status: orders.status })
+      .from(orders)
+      .where(and(eq(orders.status, "awaiting_photos"), sql`${orders.uploadToken} is not null`))
+      .limit(1),
+  );
+  if (!order?.token) {
+    report("upload link: a non-photo is refused and named", false, "no awaiting_photos order with an upload token in the seed");
+    return;
+  }
+  const prefix = `${DEV_STORE_PREFIX}${order.businessId}/${order.id}/reference/`;
+  const html = `${prefix}${randomUUID()}.png`;
+  const good = `${prefix}${randomUUID()}.png`;
+  try {
+    await writeDevStoreObject(html, "image/png", HTML_BYTES);
+    await writeDevStoreObject(good, "image/png", Buffer.concat([PNG_HEAD, Buffer.alloc(64)]));
+    const res = await saveCustomerUploads(order.token, [good, html], "");
+    const [after] = await withSystemContext((tx) => tx.select({ status: orders.status }).from(orders).where(eq(orders.id, order.id)));
+    const rows = await withSystemContext((tx) => tx.select({ id: assets.id }).from(assets).where(inArray(assets.r2Key, [good, html])));
+    report(
+      "upload link: an HTML file named .png is refused, named by key, and nothing is saved",
+      !res.ok && JSON.stringify(res.notPhotos) === JSON.stringify([html]) && after?.status === order.status && rows.length === 0,
+      `ok=${res.ok} notPhotos=${res.ok ? "-" : (res.notPhotos ?? []).length} status ${order.status} -> ${after?.status}, asset rows ${rows.length}`,
+    );
+  } finally {
+    for (const k of [html, good]) await rm(devStorePath(k), { force: true }).catch(() => {});
+    for (const k of [html, good]) await rm(`${devStorePath(k)}.meta.json`, { force: true }).catch(() => {});
+  }
+}
+
 async function loginTimingEqual() {
   const email = `cs25-timing-${stamp}@example.test`;
   const userId = randomUUID();
@@ -463,6 +496,7 @@ async function main() {
   mocksNeverInProduction();
   uploadSniffing();
   await uploadKeysAndBytes();
+  await customerUploadRefusesNonPhotos();
   await loginTimingEqual();
   console.log(failures === 0 ? `\nAll checks passed.` : `\n${failures} check(s) failed.`);
   process.exit(failures === 0 ? 0 : 1);
