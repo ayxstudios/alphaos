@@ -127,3 +127,118 @@ buttons, and nothing that tells me what Pass or Fail will actually do.
 - Designer phone: "Submit for QC" could not be tapped by Playwright right after an upload (the tap point hit the
   customer photo); a script click worked. Board lane should check the sheet's stacking on a real phone.
 - QC list row on the phone: the "Late" pill and the time overlap.
+
+## Round 1: what changed
+
+Rule followed: fewer words, one clear next step, nothing removed. Every action still exists (tick, untick, mark
+wrong, undo wrong, Tick all, keys 1-5 / A / F / Enter / J / K, zoom, versions, email edit, Cancel).
+
+### QC review (components/qc, lib/qc/checklist.ts)
+
+- Checklist line: the checkbox, the separate tick button and the cross were three controls. Now the whole line is
+  the tick (tap it, 44px tall) and there is one cross button (44px) for "wrong"; tapping the cross again undoes it.
+  The duplicate tick button is gone because tapping the line does exactly the same thing.
+- Each line shows the name in bold and what to look for underneath.
+- Checklist heading "Checklist 0/5" -> "Does it match? 0 of 5".
+- Checks (lib/qc/checklist.ts DEFAULT_CHECKLIST, same keys, same "Name: detail" shape the board relies on):
+  - "Likeness: faces, eye colour, hair colour and hairstyle match the reference photos" -> "Likeness: faces, eyes and hair match the photos"
+  - "Count: number of people, pets and hands matches the order, nothing added, removed or duplicated" -> "Count: right number of people and pets, nothing extra or missing"
+  - "Style: matches the ordered style and the house look, not too realistic or cartoonish" -> "Style: the style they ordered, not too real, not too cartoon"
+  - "Details: jewellery, tattoos, pet markings and any visible text are correct and legible" -> "Details: jewellery, tattoos, markings and any words are right"
+  - "Anatomy and finish: hands, fingers and ears are correct, no artefacts, edges clean at print size" -> "Finish: hands, fingers and ears look right, edges are clean"
+- Three helper lines ("Tick every item to unlock Pass. 0/5 done", "1 marked X", the sign-off hint) -> ONE line that
+  always says the next step:
+  - nothing wrong yet: "Tap each line that looks right. Tap the cross if something is wrong."
+  - all ticked: "All good. Sign your name, then press Pass." then "Press Pass. You will see the customer email before it sends."
+  - something marked wrong: "1 marked wrong. Sign your name, then press Fail." then "Press Fail and tell the designer what to fix."
+- Sign-off field untouched: "Sign your name:" with placeholder "Your name" (owner order).
+- Pass vs Fail: Fail is a quiet outline button until a line is marked wrong, then it turns solid red. Pass stays purple.
+- Header: "in QC 48m" -> "waiting 48m"; "1 of 3 in queue" -> "1 of 3".
+- Pictures: "Reference" -> "Customer photo"; "Delivered (latest)" -> "Designer's portrait"; "Delivered (v1)" ->
+  "Designer's portrait (version 1)"; "3 reference photos:" -> "3 customer photos:";
+  "scroll to zoom, drag to pan, both sides move together" -> "scroll to zoom, drag to move, both pictures move together".
+- "This order is no longer awaiting QC (now in design). Nothing to review." -> "Already checked. This order is now in design."
+- Versions hint "Showing latest, tap another to compare" -> "Showing the newest. Tap another to compare."
+- Email preview:
+  - "Preview customer email" -> "Check the email, then send" + "The customer gets this email with the portrait attached."
+  - "Template: Proof ready . physical . single . Physical order with one figure." -> small line "All 5 checks ticked. Email: Proof ready . physical . single."
+  - "Portrait attached to this email" -> "Attached portrait"; "PixArt-PC32162.png . image/png . 0.0 MB raw" -> "PixArt-PC32162.png".
+  - The five checks repeated in full -> gone (the one line above says all 5 were ticked).
+  - The email body was shown twice (a preview box and an edit box). Now once, as the edit box "Message" with the hint
+    "You can change it. Changes are for this email only." (was "Body edits for this send only").
+  - "Cancel" -> "Back". "Send email and pass QC" kept.
+- Fail box:
+  - BUG FIX: it pre-marked every unticked line as wrong, so crossing one told the designer all five were wrong. Now it
+    starts with the lines you marked wrong; if none, the unticked ones only when you had ticked some; else nothing.
+  - "Fail this portrait / Select what's wrong and tell the designer how to fix it." -> "Send it back to the designer / Pick what is wrong and say how to fix it."
+  - "Failed items" -> "What is wrong?"; "Select at least one failed item." -> "Pick at least one thing that is wrong."
+  - "Reason for the designer (required)" -> "Note for the designer"; placeholder "Be specific: e.g. left eye should be green, ring on wrong hand..." -> "For example: the left eye should be green."
+  - "A reason is required." -> "Write a short note so the designer knows what to fix."
+  - "Fail & return to designer" -> "Fail and send back". Close button 32px -> 44px, lines 44px tall.
+- Keyboard list: "Toggle checklist item" -> "Tick or untick a line", "Tick all items" -> "Tick all", "Toggle this legend" -> "Show or hide this list".
+
+### QC list (app/(app)/qc/page.tsx)
+
+- "3 portraits waiting, soonest due first." -> "Check each portrait before the customer sees it. 3 waiting, most urgent first."
+- Row: the bare time on the right ("58 min", which sat on top of the Late pill on a phone) -> "Waiting 58 min . Staging Designer . 3 figures . Cartoon".
+- Empty: "Nothing waiting for QC / When a designer submits a portrait it lands here." -> "Nothing to check / When a designer finishes a portrait, it shows up here."
+
+### QC messages (app/(app)/qc/actions.ts, lib/orders/transitions.ts)
+
+- "Not signed in" -> "Please sign in again."; "QC is VA/admin only" -> "Only VAs and admins can do QC."
+- "Pass QC from the email preview so the attachment is verified before sending." -> "Press Pass, then send it from the email screen."
+- "This order is no longer awaiting QC." -> "Someone already checked this one."
+- "The portrait asset could not be read." -> "The portrait file could not be opened. Ask the designer to add it again."
+- "A newer portrait was uploaded after the preview opened. Refresh QC and review the latest file." -> "The designer added a newer portrait. Refresh and check that one."
+- "The portrait file changed after the preview opened. Refresh QC and review the current file." -> "The portrait changed while you were looking. Refresh and check it again."
+- "This proof email was just sent. Refresh QC to see where the order is now." -> "This email was just sent. Refresh to see where the order is now."
+- "Email sent, but order transition failed: X" -> "The email went out, but the order did not move on. Tell an admin. (X)"
+- "Select at least one failed item" -> "Pick at least one thing that is wrong."; "A reason is required to fail QC" -> "Write a note for the designer first."
+- "All checklist items must be ticked to pass" / "Cannot pass QC: every checklist item must be ticked." -> "Tick every line before you pass."
+- "Cannot fail QC: mark at least one checklist item as failed." -> "Mark at least one line as wrong before you fail."
+- "Cannot fail QC: a reason for the designer is required." -> "Write a note for the designer before you fail."
+- "The sign-off must match the name on your account (X)." -> "Sign with the name on your account: X."
+- "Resolve figure count before sending a proof email." -> "Set how many people and pets are in this order first."
+
+### Tour and Quick guide (lib/tour, components/tour, docs/TOUR.md)
+
+- Today: "Open it and work from the top down." -> "Tap Today and work from the top down."
+- Needs details: "Some orders arrive missing information. Open Needs Details to see which ones need you." -> "Some orders arrive with details missing. Open Needs details to fill them in."
+- QC: "Finished portraits wait here for your check. Press Start QC to review the next one." -> "QC is where you check each finished portrait. Press Start QC to check the next one." (and the menu version).
+- BUG FIX: the watch tour now clears its demo search before the next step (the Needs details step showed an empty list).
+- Quick guide answers shortened, all still true. "How do I pass or fail QC?" now: "Open QC and press Start QC. Look at
+  the customer photo and the portrait side by side. Tap each line that looks right, or the cross if something is wrong.
+  Sign your name. Pass shows you the customer email before it sends. Fail asks what is wrong, then sends it back to the designer."
+  Other answers: dropped repeated clauses ("nothing moves until a person confirms", "the customer's due date stays the same",
+  "in the card or under it", "until QC checks it") and split long sentences.
+
+### Home and Today (components/home, lib/home/staff.ts, components/today)
+
+- "For today ... / Nothing for later" -> "... / Nothing else coming" ("N for later" -> "N more coming soon").
+- "Replies to send ... / 15 to link to an order" -> "15 with no order yet" ("All linked to orders" -> "All on their orders").
+- "Overdue orders ... / 1 waiting for QC" -> "N more due today" / "Nothing else due today".
+- "What is waiting / By kind, everything in the queue" -> "Everything on Today, by kind".
+- "Where every open order is / 39 open orders by stage" -> "Open orders by stage / 39 open".
+- "Designer load / Work in progress against each daily limit" -> "How busy designers are / Orders each one has, out of their daily limit".
+- Queue kind "Triage" -> "Order type" (Home, Do first chip, Today chip); "Quiet proofs" -> "Unanswered proofs" (short chip "No answer").
+- Do first line "N for later" -> "N soon". Today empty band "nothing here  Done" -> "all clear" + a green tick.
+
+### Orders and order page
+
+- Card hints: "No designer is free. Assign one." -> "Needs a designer. Assign one."; "Figure count unknown. Set it." -> "How many people or pets? Set it."
+- Phone card Due: an "Overdue" pill above the date -> one red line "Late, 25 Sept 2026". "This step" -> "Time on this step".
+- Order page: capital labels CUSTOMER / EMAIL / DESIGNER / DUE -> normal case.
+- Draft reply: "Copy this, paste it into your email to the customer, then tap Mark as sent." -> "Copy it, send it from your email, then tap Mark as sent." (Etsy: "Copy it, send it in the Etsy conversation, then tap Mark as sent.")
+  "Edit freely before copying. This never sends anything by itself." -> "Change it as you like. Nothing sends from here."
+- Messages on the order: "Sent" + "draft" (two chips that contradict) -> one chip: "Sent", "Not sent yet" or "Not sent".
+- "Reassign or request a revision" -> "Change designer or ask for a revision".
+- "Revisions can start once an order is awaiting customer, approved, printing, shipped, delivered or complete." -> "You can ask for a revision once the customer has seen the portrait."
+- Note placeholder "Add a VA note, customer update, designer context, or follow-up result..." -> "Write a note for your team".
+
+### Messages, board, Settings, Money
+
+- Messages: "Waiting to send / 131 drafts" -> "Not sent yet / 131 emails"; "Nothing waiting to send." -> "Every email has gone out."
+- Board card: failed checks "Count, Style, Details, Anatomy and finish" -> "To fix: Count, Style, ..."; "Figures ?" -> "Figures not set";
+  sheet "Ready for QC. To change it first, add a new version." -> "Ready. Press Submit for QC, or add a new version first."; capital labels in the sheet -> normal case.
+- Settings: "Live-order cutoff set / All shops protected" -> "Start date for live orders set / Older orders come in archived".
+- Money empty state: "Designers earn when their orders are complete. Pick another month to look back." -> "Pick another month to look back." (the header already says it).
