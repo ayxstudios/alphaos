@@ -45,9 +45,9 @@ export function Bars({
   const innerPad = Math.min(10, groupW * 0.18);
   const barW = Math.max(3, (groupW - innerPad * 2 - gap * (series.length - 1)) / Math.max(1, series.length));
   const y = (v: number) => top + (1 - v / max) * plotH;
-  // Space x labels by their real width (10px text is about 5.6px a character,
+  // Space x labels by their real width (11px text is about 6.2px a character,
   // plus a gap), so "Fri 11 Sat 12" never runs together.
-  const labelW = Math.max(26, ...labels.map((l) => l.length * 5.6 + 10));
+  const labelW = Math.max(28, ...labels.map((l) => l.length * 6.2 + 10));
   const every = tickEvery ?? (groupW < labelW ? Math.ceil(labelW / Math.max(1, groupW)) : 1);
   const ticks = [0, 0.5, 1].map((f) => f * max);
 
@@ -69,7 +69,7 @@ export function Bars({
           {ticks.map((t) => (
             <g key={t}>
               <line x1={left} x2={width} y1={y(t)} y2={y(t)} stroke={CHART.line} strokeWidth={1} />
-              <text x={left - 6} y={y(t) + 3.5} textAnchor="end" fontSize={10} fill={CHART.slate}>
+              <text x={left - 6} y={y(t) + 3.5} textAnchor="end" fontSize={11} fill={CHART.slate}>
                 {format(t)}
               </text>
             </g>
@@ -106,7 +106,7 @@ export function Bars({
                   const anchor = cx + half > width ? "end" : cx - half < 0 ? "start" : "middle";
                   const x = anchor === "end" ? width - 1 : anchor === "start" ? 1 : cx;
                   return (
-                    <text x={x} y={height - 6} textAnchor={anchor} fontSize={10} fill={CHART.slate}>
+                    <text x={x} y={height - 6} textAnchor={anchor} fontSize={11} fill={CHART.slate}>
                       {lab}
                     </text>
                   );
