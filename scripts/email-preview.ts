@@ -49,7 +49,7 @@ for (const business of businesses) {
     const file = `${business.slug}-${key}.html`;
     writeFileSync(
       path.join(outDir, file),
-      `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${key}</title></head><body style="margin:0;background:#eee"><div style="font:12px/16px monospace;padding:8px;background:#fff;border-bottom:1px solid #ccc">From: ${escape(from)}<br>Subject: ${escape(rendered.subject)}</div><div style="padding:8px;background:#fff">${html}</div><hr><pre style="white-space:pre-wrap;font:12px/16px monospace;padding:8px;background:#fff">${escape(rendered.body)}</pre></body></html>`,
+      `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${key}</title></head><body style="margin:0;background:#eee"><div style="font:12px/16px monospace;padding:8px;background:#fff;border-bottom:1px solid #ccc;overflow-wrap:anywhere">From: ${escape(from)}<br>Subject: ${escape(rendered.subject)}</div><div style="padding:8px;background:#fff">${html}</div><hr><pre style="white-space:pre-wrap;overflow-wrap:anywhere;font:12px/16px monospace;padding:8px;background:#fff">${escape(rendered.body)}</pre></body></html>`,
     );
     rows.push(`<li><a href="${file}">${business.name}: ${TEMPLATE_META[key].label}</a> ${ok ? "ok" : "PROBLEM"}</li>`);
     console.log(
