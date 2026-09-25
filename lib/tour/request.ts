@@ -5,9 +5,9 @@
  */
 export const TOUR_START_EVENT = "alphaos:tour-start";
 
-export type TourMode = "watch" | "try" | "one";
+export type TourMode = "try" | "one";
 
-/** `detail` of TOUR_START_EVENT. `one` plays a single step (the Quick guide's "Show me"). */
+/** `detail` of TOUR_START_EVENT. `one` opens a single step's page with it lit (the Quick guide's "Point me to it"). */
 export type TourStartDetail = { mode?: TourMode; step?: number };
 
 export type TourRequest =
