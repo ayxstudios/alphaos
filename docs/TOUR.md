@@ -153,3 +153,15 @@ then does the real thing and the step must move on by itself. Then Done is
 saved and never re-shows, "?" has no Watch item and Show me around rings
 within 300ms, Back, Esc, the Quick guide's Point me to it, and Later x3.
 Screenshots per ringed thing in `var/tour-shots/`.
+
+## Last measured
+
+2026-09-26, 06:03, `node scripts/tour-check.mjs --base http://localhost:3476` on the built app
+(`next start`, local database), all three roles on a laptop (1440x900) and a phone (390x844), plus
+Later x3:
+
+- 1298 passed, 0 failed, 0 reported.
+- First ring after Show me around: 4 to 5ms for every role and viewport, from the welcome card and
+  from the "?" menu (limit 300ms; machine load 9.5 to 15, so all timings were judged).
+- Screenshots: 81 looked at, 79 scored 9, lowest 8 (two shots of the designer phone card step, the arrow crosses the
+  "Add the portrait" label). Details in docs/QA-2026-09-25-tour.md.
