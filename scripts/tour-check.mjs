@@ -150,7 +150,7 @@ async function signIn(page, email) {
   await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
   await page.fill('input[name="email"]', email);
   await page.fill('input[name="password"]', PASSWORD);
-  await Promise.all([page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 90000 }), page.click('button[type="submit"]')]);
+  await Promise.all([page.waitForURL((u) => !u.pathname.startsWith("/login"), { timeout: 300000 }), page.click('button[type="submit"]')]);
   await page.waitForLoadState("domcontentloaded");
 }
 
@@ -348,8 +348,9 @@ async function walkRole(browser, role, vp) {
   const context = await browser.newContext({ viewport: vp.viewport, isMobile: !!vp.isMobile, hasTouch: !!vp.hasTouch, deviceScaleFactor: vp.deviceScaleFactor || 1 });
   await context.addInitScript(AUTO_WATCH);
   const page = await context.newPage();
-  page.setDefaultNavigationTimeout(120000);
-  page.setDefaultTimeout(60000);
+  // A loaded machine can take minutes to compile a route on a dev server; these are ceilings, not targets.
+  page.setDefaultNavigationTimeout(300000);
+  page.setDefaultTimeout(180000);
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e).slice(0, 200)));
   page.on("console", (msg) => {
@@ -469,6 +470,8 @@ async function later(browser) {
   resetOnboarding(u.email);
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const page = await context.newPage();
+  page.setDefaultNavigationTimeout(300000);
+  page.setDefaultTimeout(180000);
   for (let n = 1; n <= 3; n++) {
     await signIn(page, u.email);
     const welcome = page.locator('[data-tour-sheet][data-mode="welcome"]');
