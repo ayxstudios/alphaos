@@ -149,7 +149,7 @@ function pageReady(path: string) {
  * Submits a GET search form in place (client navigation, same URL the form
  * would load), so the tour never reloads the page under the person.
  */
-export function submitGet(h: Pick<Hooks, "router">, form: HTMLFormElement) {
+export function submitGet(h: { router: Pick<Hooks["router"], "push"> }, form: HTMLFormElement) {
   const params = new URLSearchParams();
   for (const [k, v] of new FormData(form)) if (typeof v === "string" && v !== "") params.set(k, v);
   const action = form.getAttribute("action") || location.pathname;
@@ -214,7 +214,6 @@ export async function runStep(h: Hooks, step: TourStep, open = false): Promise<v
     return;
   }
   const { act, via } = got;
-  if (act.kind === "nav") return;
   if (via) {
     // The drop zone lives inside a card: the person opens the card first.
     await h.point({ sel: via, line: act.say, kind: "click" });
