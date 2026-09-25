@@ -25,7 +25,7 @@ export async function StaffHome({ user, businessId, role }: { user: RequestUser;
         <HomeSection title="Do first" description={h.attention.counts.total ? doFirstLine(h.attention.counts) : undefined} action={h.attention.counts.total ? { label: "Full queue", href: "/today" } : undefined} className="lg:col-span-3">
           <AttentionList items={h.attention.top} total={h.attention.counts.total} />
         </HomeSection>
-        <HomeSection title="What is waiting" description="By kind, everything in the queue" className="lg:col-span-2">
+        <HomeSection title="What is waiting" description="Everything on Today, by kind" className="lg:col-span-2">
           {h.attention.byKind.length === 0 ? (
             <p className="text-sm text-slate">Nothing waiting.</p>
           ) : (
@@ -48,14 +48,14 @@ export async function StaffHome({ user, businessId, role }: { user: RequestUser;
             ariaLabel="Orders placed and shipped per day, last 14 days"
           />
         </HomeSection>
-        <HomeSection quiet title="Where every open order is" description={`${fmtInt(h.openOrders)} open orders by stage`} action={{ label: "Orders", href: "/orders" }}>
+        <HomeSection quiet title="Open orders by stage" description={`${fmtInt(h.openOrders)} open`} action={{ label: "Orders", href: "/orders" }}>
           <StackedBar segments={h.stages.map((s) => ({ key: s.key, label: s.label, value: s.n, color: s.color }))} height={22} ariaLabel="Open orders by stage" />
           <ShopRows shops={h.shops} />
         </HomeSection>
       </div>
 
       <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
-        <HomeSection quiet title="Designer load" description="Work in progress against each daily limit" action={{ label: "Boards", href: "/board" }}>
+        <HomeSection quiet title="How busy designers are" description="Orders each one has, out of their daily limit" action={{ label: "Boards", href: "/board" }}>
           {h.designers.length === 0 ? (
             <p className="text-sm text-slate">No designers on the roster yet.</p>
           ) : (
@@ -132,13 +132,12 @@ function AdminTiles({ h }: { h: StaffHome }) {
 
 function VaTiles({ h }: { h: StaffHome }) {
   const replies = h.attention.byKind.find((k) => k.kind === "reply")?.n ?? 0;
-  const qc = h.attention.byKind.find((k) => k.kind === "qc")?.n ?? 0;
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <StatTile label="Needs you now" value={fmtInt(h.attention.counts.now)} hint="Someone is waiting" tone={h.attention.counts.now === 0 ? "good" : "bad"} href="/today" />
-      <StatTile label="For today" value={fmtInt(h.attention.counts.today)} hint={h.attention.counts.soon ? `${h.attention.counts.soon} for later` : "Nothing for later"} tone={h.attention.counts.today === 0 ? "good" : "warn"} href="/today" />
-      <StatTile label="Replies to send" value={fmtInt(replies)} hint={h.messages.unmatched ? `${h.messages.unmatched} to link to an order` : "All linked to orders"} href="/emails" />
-      <StatTile label="Overdue orders" value={fmtInt(h.overdue)} hint={qc ? `${qc} waiting for QC` : `${h.dueToday} due today`} tone={h.overdue === 0 ? "good" : "bad"} href="/orders?view=overdue" />
+      <StatTile label="For today" value={fmtInt(h.attention.counts.today)} hint={h.attention.counts.soon ? `${h.attention.counts.soon} more coming soon` : "Nothing else coming"} tone={h.attention.counts.today === 0 ? "good" : "warn"} href="/today" />
+      <StatTile label="Replies to send" value={fmtInt(replies)} hint={h.messages.unmatched ? `${h.messages.unmatched} with no order yet` : "All on their orders"} href="/emails" />
+      <StatTile label="Overdue orders" value={fmtInt(h.overdue)} hint={h.dueToday ? `${h.dueToday} more due today` : "Nothing else due today"} tone={h.overdue === 0 ? "good" : "bad"} href="/orders?view=overdue" />
     </div>
   );
 }
@@ -186,7 +185,7 @@ function doFirstLine(c: { now: number; today: number; soon: number }): string {
   return [
     c.now ? `${c.now} need${c.now === 1 ? "s" : ""} you now` : null,
     c.today ? `${c.today} today` : null,
-    c.soon ? `${c.soon} for later` : null,
+    c.soon ? `${c.soon} soon` : null,
   ]
     .filter(Boolean)
     .join(", ");

@@ -44,13 +44,13 @@ export type StaffHome = {
 export const KIND_LABEL: Record<TodayKind, string> = {
   reply: "Replies",
   details: "Details",
-  proof_silent: "Quiet proofs",
+  proof_silent: "Unanswered proofs",
   qc: "QC checks",
   tracking: "Tracking",
   designer_late: "Late designs",
   unassigned: "Unassigned",
   print: "Print",
-  triage: "Triage",
+  triage: "Order type",
   photos_silent: "No photos",
 };
 
