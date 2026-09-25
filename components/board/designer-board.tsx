@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -74,12 +74,26 @@ export function DesignerBoard({
     openId ? (Object.values(initial).flat().find((c) => c.orderId === openId) ?? null) : null,
   );
 
+  const warnedOpen = useRef<string | null>(null);
   useEffect(() => setCols(initial), [initial]);
   // The same board reached again with a different ?open= (it stays mounted).
+  // An order that is not on this board (finished long ago, given to someone
+  // else, or not theirs) says so instead of silently showing the board.
   useEffect(() => {
     if (!openId) return;
     const found = Object.values(initial).flat().find((c) => c.orderId === openId);
     if (found) setOpenCard(found);
+    else if (warnedOpen.current !== openId) {
+      warnedOpen.current = openId;
+      toast({
+        variant: "warning",
+        title: "That order is not on this board",
+        description: "It may be finished, or with another designer now.",
+      });
+      const url = new URL(window.location.href);
+      url.searchParams.delete("open");
+      window.history.replaceState(window.history.state, "", url.pathname + url.search);
+    }
     // Only a new ?open= should open a card, not every refresh of `initial`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openId]);
