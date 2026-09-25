@@ -545,7 +545,7 @@ export default async function OrderDetailPage({
             {editable && (
               <Link
                 href={`/orders/${order.id}/complete`}
-                className="inline-flex h-9 items-center gap-2 rounded-input bg-surface px-3 text-sm font-medium text-ink shadow-card transition-colors hover:bg-canvas"
+                className="inline-flex h-11 items-center gap-2 rounded-input bg-surface px-3 text-sm font-medium text-ink shadow-card transition-colors hover:bg-canvas sm:h-9"
               >
                 <Pencil size={15} />
                 Edit
@@ -582,7 +582,7 @@ export default async function OrderDetailPage({
         {nextAction.kind === "link" && (
           <Link
             href={nextAction.href}
-            className="inline-flex h-10 w-full shrink-0 items-center justify-center gap-1.5 rounded-input bg-pigment px-4 text-sm font-medium text-surface transition-opacity hover:opacity-90 sm:w-auto"
+            className="inline-flex h-11 w-full shrink-0 items-center justify-center gap-1.5 rounded-input bg-pigment px-4 text-sm font-medium text-surface transition-opacity hover:opacity-90 sm:h-10 sm:w-auto"
           >
             {nextAction.cta}
             <ArrowRight size={14} />
