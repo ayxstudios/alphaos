@@ -136,3 +136,15 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Phones: iOS Safari zooms the whole page into any text field under 16px the
+   moment it is tapped (the card's comment box, Alpha AI, sign-in), and the
+   page stays zoomed after. Text fields are 16px on a touch screen. Unlayered,
+   so it wins over a field's text-sm utility; a laptop keeps the 14px fields. */
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
