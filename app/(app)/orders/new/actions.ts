@@ -98,6 +98,13 @@ export async function presignReferenceUploads(input: {
   }
 }
 
+/** A typed email that is clearly not one ("not-an-email", "sara@") is refused, not stored. */
+function emailProblem(value: string | undefined): string | null {
+  const email = value?.trim();
+  if (!email) return null;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? null : "That email does not look right. Check it, or leave it empty.";
+}
+
 function splitName(name: string | undefined): [string | null, string | null] {
   const n = name?.trim();
   if (!n) return [null, null];
@@ -132,6 +139,12 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
   }
   const orderId = input.orderId?.trim() || randomUUID();
   const orderNumber = input.orderNumber?.trim() || null;
+  // An order nobody can find or contact is not an order: it needs a number or a customer.
+  if (!orderNumber && !input.customerName?.trim() && !input.customerEmail?.trim()) {
+    return { ok: false, message: "Enter the order number or the customer's name, so the order can be found." };
+  }
+  const badEmail = emailProblem(input.customerEmail);
+  if (badEmail) return { ok: false, message: badEmail };
   const figures = parseFigureCount(input.figureCount);
   if (!figures.ok) return { ok: false, message: figures.message };
   const figureCount = figures.value;
@@ -192,7 +205,9 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
           ? (shop.slaConfig as { turnaroundDays: number }).turnaroundDays
           : 3;
       const dueAt = input.dueAt ? parseDueDate(input.dueAt) : new Date(Date.now() + days * 86_400_000);
-      const platformOrderName = orderNumber;
+      // No shop number yet: a short readable one ("M-88B6DD") so every list,
+      // toast and customer email names the order, never "manual:<uuid>".
+      const platformOrderName = orderNumber ?? `M-${orderId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
       const platformOrderId = orderNumber ? `manual:${normalizeOrderNumber(orderNumber)}` : `manual:${orderId}`;
 
       await tx.insert(orders).values({
@@ -269,7 +284,7 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
       revalidatePath("/orders");
       revalidatePath("/board");
       revalidatePath("/orders");
-      return { ok: true as const, orderNumber: platformOrderName ?? "(no number)", orderId, assignedTo };
+      return { ok: true as const, orderNumber: platformOrderName, orderId, assignedTo };
     });
   } catch (e) {
     // Never echo a database error: drizzle's message carries the SQL and every
@@ -304,6 +319,8 @@ export async function completeOrderDetails(input: {
   if (input.productType !== "digital" && input.productType !== "physical") {
     return { ok: false, message: "Choose a product type" };
   }
+  const badEmail = emailProblem(input.customerEmail);
+  if (badEmail) return { ok: false, message: badEmail };
   const figures = parseFigureCount(input.figureCount);
   if (!figures.ok) return { ok: false, message: figures.message };
   const figureCount = figures.value;

@@ -104,7 +104,7 @@ export function EmailWorkspace({
       {ignoredSenders.length > 0 && (
         <Disclosure
           summary={<span className="flex items-center gap-2"><AlertTriangle size={15} className="text-slate" /> Ignored senders</span>}
-          hint={`${ignoredSenders.filter((s) => s.active).length} active`}
+          hint={`${ignoredSenders.filter((s) => s.active).length} ignored`}
         >
           <div className="-mx-4 divide-y divide-line/70">
             {ignoredSenders.map((sender) => (
@@ -139,9 +139,9 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
 
   return (
     <div className="px-4 py-3">
-      <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full flex-wrap items-center gap-2 text-left">
+      <button type="button" onClick={() => setOpen((o) => !o)} className="-my-3 flex w-full flex-wrap items-center gap-2 py-3 text-left">
         {item.templateLabel && <Badge variant="info">{item.templateLabel}</Badge>}
-        {queued && <Badge variant="warning" dot>System queued</Badge>}
+        {queued && <Badge variant="warning" dot>Sending soon</Badge>}
         {item.status === "failed" && <Badge variant="danger" dot>Failed</Badge>}
         {item.skippedReason && <Badge variant="warning" dot>Skipped</Badge>}
         {item.orderFinished && <Badge variant="warning" dot>Order {item.orderFinished}</Badge>}
@@ -181,20 +181,20 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
                 {item.status === "failed" ? "Retry send" : "Approve & send"}
               </Button>
             )}
-            {item.orderId && <Link href={`/orders/${item.orderId}`} className="text-sm font-medium text-pigment hover:text-ink">Open order</Link>}
+            {item.orderId && <Link href={`/orders/${item.orderId}`} className="inline-flex min-h-11 items-center text-sm font-medium text-pigment hover:text-ink sm:min-h-0">Open order</Link>}
             {!queued && !manualSent && <Button type="button" size="sm" variant="ghost" onClick={() => setManualSent(true)}>Mark sent manually</Button>}
             {!discarding ? (
               <Button type="button" size="sm" variant="ghost" className="ml-auto" onClick={() => setDiscarding(true)}>Discard</Button>
             ) : (
               <div className="ml-auto flex items-center gap-2">
-                <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason" aria-label="Discard reason" className="h-8 w-48" />
+                <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why discard it?" aria-label="Why discard it" className="h-8 w-48" />
                 <Button type="button" size="sm" variant="danger" disabled={!reason.trim()} onClick={() => run(() => discardDraft(item.messageId, reason))}>Confirm</Button>
               </div>
             )}
           </div>
           {manualSent && (
             <div className="mt-2 flex flex-wrap items-center gap-2 rounded-input border border-line bg-canvas p-2">
-              <Input value={manualReason} onChange={(e) => setManualReason(e.target.value)} placeholder="Manual send reason" className="h-8 w-72" />
+              <Input value={manualReason} onChange={(e) => setManualReason(e.target.value)} placeholder="How was it sent? e.g. from Etsy" aria-label="How was it sent" className="h-8 w-72 max-w-full" />
               <Button type="button" size="sm" disabled={!manualReason.trim()} onClick={() => run(() => markEmailSentManually(item.messageId, manualReason))}>Confirm manual send</Button>
             </div>
           )}
@@ -223,7 +223,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
     <div className="relative px-4 py-3">
       {/* The "waiting over a day" dot sits in the gutter, so every row's text lines up with the header. */}
       {stale && <span className="absolute left-1.5 top-[1.35rem] size-1.5 rounded-full bg-rose" aria-hidden="true" title="Waiting over 24h" />}
-      <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-3 text-left" aria-expanded={open}>
+      <button type="button" onClick={() => setOpen((o) => !o)} className="-my-3 flex w-full items-center gap-3 py-3 text-left" aria-expanded={open}>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-ink">{reply.subject || "(no subject)"}</span>
           <span className="block truncate text-xs text-slate">{reply.fromAddress ?? "unknown sender"}</span>
@@ -237,7 +237,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
           {reply.suggestion && (
             <div className="mt-3 flex flex-wrap items-center gap-2 rounded-input border border-pigment/20 bg-pigment-soft/40 p-2.5 text-sm">
               <span className="text-ink">
-                Suggested by {reply.suggestion.reason}: <strong>{reply.suggestion.orderNumber}</strong> ({reply.suggestion.customerName})
+                {reply.suggestion.reason === "sender" ? "Same sender as" : "The subject names"} <strong>{reply.suggestion.orderNumber}</strong> ({reply.suggestion.customerName})
               </span>
               <Button type="button" size="sm" className="ml-auto" loading={pending} onClick={() => run(() => linkReplyToOrder(reply.messageId, reply.suggestion!.orderId))}>
                 Link
@@ -275,9 +275,11 @@ function IgnoredSenderRow({ sender }: { sender: IgnoredSender }) {
   const { run } = useActionRunner();
   return (
     <div className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm">
-      <Badge variant={sender.active ? "warning" : "neutral"}>{sender.active ? "Active" : "Off"}</Badge>
-      <span className="font-medium text-ink">{sender.value}</span>
-      <span className="text-xs text-slate">{sender.matchType}</span>
+      <Badge variant={sender.active ? "warning" : "neutral"}>{sender.active ? "Ignored" : "Restored"}</Badge>
+      <span className="font-medium text-ink [overflow-wrap:anywhere]">{sender.value}</span>
+      {sender.matchType !== "email" && (
+        <span className="text-xs text-slate">{sender.matchType === "domain" ? "whole domain" : "any address containing this"}</span>
+      )}
       {sender.active && (
         <Button type="button" size="sm" variant="ghost" className="ml-auto" onClick={() => run(() => removeIgnoredSender(sender.id))}>
           Restore sender

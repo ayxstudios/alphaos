@@ -232,6 +232,11 @@ export function NewOrderForm({
   function submit() {
     setError(null);
     setFlash(null);
+    if (mode === "create" && !orderNumber.trim() && !customerName.trim() && !customerEmail.trim()) {
+      setError("Enter the order number or the customer's name, so the order can be found.");
+      firstFieldRef.current?.focus();
+      return;
+    }
     const r2Keys = photos.filter((p): p is Extract<Photo, { kind: "r2" }> => p.kind === "r2").map((p) => p.key);
     const photoUrls = photos.filter((p) => p.kind === "url").map((p) => p.url);
     startSubmit(async () => {
@@ -476,25 +481,35 @@ export function NewOrderForm({
         <Step n={mode === "create" ? 4 : 3} title="Reference photos">
         <div className="flex flex-col gap-2">
           {r2Enabled ? (
-            <div
+            <>
+            <button
+              type="button"
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
                 void uploadFiles(Array.from(e.dataTransfer.files));
               }}
               onClick={() => fileRef.current?.click()}
-              className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-card bg-canvas py-6 text-sm text-slate transition-colors hover:bg-pigment-soft"
+              className="flex cursor-pointer flex-col items-center justify-center gap-1 rounded-card bg-canvas py-6 text-sm text-slate transition-colors hover:bg-pigment-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pigment"
             >
               <Camera size={18} />
-              {uploading ? "Uploading…" : "Drag & drop images here, or click to choose"}
-              <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => e.target.files && void uploadFiles(Array.from(e.target.files))} />
-            </div>
+              {uploading ? (
+                "Uploading…"
+              ) : (
+                <>
+                  <span className="sm:hidden">Tap to add photos</span>
+                  <span className="hidden sm:inline">Drag photos here, or click to choose</span>
+                </>
+              )}
+            </button>
+            <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => e.target.files && void uploadFiles(Array.from(e.target.files))} />
+            </>
           ) : (
-            <p className="text-xs text-amber">File upload unavailable (storage not configured). Paste URLs below.</p>
+            <p className="text-xs text-amber">Photo upload is off here. Paste photo links below.</p>
           )}
           {!showUrlInput ? (
             <Button type="button" variant="secondary" size="sm" className="w-fit" onClick={() => setShowUrlInput(true)}>
-              <Plus size={14} /> Add image URL
+              <Plus size={14} /> Add a photo link
             </Button>
           ) : (
             <div className="flex items-end gap-2">
@@ -516,7 +531,7 @@ export function NewOrderForm({
                 <span key={i} className="relative inline-block">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={p.kind === "r2" ? p.previewUrl : p.url} alt="" className="size-14 rounded-input object-cover shadow-card" />
-                  <button type="button" onClick={() => setPhotos((ps) => ps.filter((_, j) => j !== i))} className="absolute -right-1.5 -top-1.5 rounded-full bg-surface text-slate hover:text-rose" aria-label="Remove photo">
+                  <button type="button" onClick={() => setPhotos((ps) => ps.filter((_, j) => j !== i))} className="absolute -right-1.5 -top-1.5 rounded-full bg-surface text-slate after:absolute after:-inset-3.5 after:content-[''] hover:text-rose" aria-label="Remove photo">
                     <XCircle size={16} />
                   </button>
                 </span>
@@ -554,8 +569,8 @@ export function NewOrderForm({
         )}
 
         {mode === "complete" && existing && (
-          <details className="border-t border-line/60 pt-3">
-            <summary className="cursor-pointer text-xs font-medium text-slate">Raw shop data</summary>
+          <details className="border-t border-line/60 pt-1 sm:pt-2">
+            <summary className="cursor-pointer py-3.5 text-xs font-medium text-slate sm:py-1">Raw shop data</summary>
             <pre className="mt-2 max-h-64 overflow-auto rounded-input bg-canvas p-2 text-xs text-ink">
               {JSON.stringify(existing.rawImport, null, 2)}
             </pre>

@@ -35,7 +35,7 @@ a whole essay"). On a phone they wrap to two lines at most.
 | --- | --- | --- | --- |
 | VA | Today | the Today menu item | Today lists what needs you first. Open it and work from the top down. |
 | VA | Find an order | types a customer's name into Orders search, Enter | Search finds any order fast. Type a customer's name, then press Enter. |
-| VA | Needs details | the Needs Details tab | Some orders arrive missing information. Open Needs Details to see which ones need you. |
+| VA | Needs details | the Needs details tab | Some orders arrive missing information. Open Needs details to see which ones need you. |
 | VA | QC | Start QC (opens the review screen, read only) | Finished portraits wait here for your check. Press Start QC to review the next one. |
 | VA | Messages | opens All mail | Messages holds every customer email. Open All mail to read or search them. |
 | VA | Print | opens an order's Details | Print lists approved orders ready to print. Open Details to see where each one is. |

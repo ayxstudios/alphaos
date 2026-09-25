@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 
 import { addTrackingAndCompleteOrder } from "@/app/(app)/orders/actions";
 import { Button, Input, Select, useToast } from "@/components/ui";
@@ -29,7 +28,6 @@ export function TrackingCompleteForm({
   /** Shows a Cancel button that closes the form without saving. */
   onCancel?: () => void;
 }) {
-  const router = useRouter();
   const toast = useToast();
   const [selectedProvider, setSelectedProvider] = useState<PrintProvider>(provider ?? "gelato");
   const [trackingNumber, setTrackingNumber] = useState("");
@@ -65,7 +63,6 @@ export function TrackingCompleteForm({
       setTrackingCompany("");
       setTrackingUrl("");
       setShowTrackingUrl(false);
-      router.refresh();
     });
   }
 
@@ -117,7 +114,7 @@ export function TrackingCompleteForm({
         ) : (
           <button
             type="button"
-            className="w-fit text-sm font-medium text-pigment transition-colors hover:text-ink disabled:opacity-50"
+            className="inline-flex min-h-11 w-fit items-center text-sm font-medium text-pigment transition-colors hover:text-ink disabled:opacity-50 sm:min-h-0"
             disabled={disabled || pending}
             onClick={() => setShowTrackingUrl(true)}
           >

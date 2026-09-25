@@ -147,7 +147,7 @@ function MailLine({ unmatched, failed }: { unmatched: number; failed: number }) 
   const n = unmatched + failed;
   if (!n) return null;
   return (
-    <Link href="/emails" className="flex items-center gap-2 rounded-input bg-canvas px-3 py-2 text-sm text-ink hover:bg-pigment-soft/60">
+    <Link href="/emails" className="flex min-h-11 items-center gap-2 rounded-input bg-canvas px-3 py-2 text-sm text-ink hover:bg-pigment-soft/60">
       <Mail size={16} className="text-pigment" />
       <span className="min-w-0 truncate">
         {unmatched ? `${unmatched} message${unmatched === 1 ? "" : "s"} not matched to an order` : ""}

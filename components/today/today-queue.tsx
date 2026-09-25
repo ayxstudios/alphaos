@@ -129,7 +129,7 @@ export function TodayQueueList({ groups }: { groups: Record<TodayBand, TodayItem
     <div className="flex flex-col gap-4">
       {/* What the queue is made of. Tap a chip to see only that kind. */}
       {chips.length > 1 && (
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filter by kind">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-1.5" role="group" aria-label="Filter by kind">
           <Chip active={kind === null} onClick={() => setKind(null)}>
             All <span className="tabular-nums opacity-70">{all.length}</span>
           </Chip>
@@ -194,7 +194,7 @@ export function TodayQueueList({ groups }: { groups: Record<TodayBand, TodayItem
                         <div className="min-w-0 flex-1">
                           <div className="flex min-w-0 items-center gap-2">
                             <ShopBadge platform={item.platform} name={item.shop} className="shrink-0 text-xs md:w-36" />
-                            <Link href={`/orders/${item.orderId}`} prefetch={false} className={cn("shrink-0 text-xs font-semibold tabular-nums text-ink hover:text-pigment md:w-24", focusRing)}>
+                            <Link href={`/orders/${item.orderId}`} prefetch={false} className={cn("-my-3.5 shrink-0 py-3.5 text-xs font-semibold tabular-nums text-ink hover:text-pigment md:my-0 md:w-24 md:py-0", focusRing)}>
                               {item.orderNumber}
                             </Link>
                             <span className="hidden min-w-0 text-sm text-ink md:inline">{item.todo}</span>
@@ -210,7 +210,7 @@ export function TodayQueueList({ groups }: { groups: Record<TodayBand, TodayItem
                           // No viewport prefetch: every row is a different order, each one a request of its own on a phone (docs/PERF.md).
                           prefetch={false}
                           className={cn(
-                            "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-input px-3 text-sm font-medium",
+                            "inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-input px-3 text-sm font-medium sm:h-9",
                             band === "now" ? "bg-pigment text-surface hover:opacity-90" : "bg-canvas text-ink hover:bg-pigment-soft",
                             focusRing,
                           )}
@@ -257,7 +257,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "inline-flex h-8 items-center gap-1 rounded-full px-3 text-sm font-medium transition-colors motion-hover",
+        "inline-flex h-11 items-center gap-1 rounded-full px-3.5 text-sm font-medium transition-colors motion-hover sm:h-8 sm:px-3",
         active ? "bg-ink text-surface" : "bg-surface text-ink shadow-card hover:bg-canvas",
         focusRing,
       )}

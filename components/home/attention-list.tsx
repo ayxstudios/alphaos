@@ -53,7 +53,7 @@ export function AttentionList({ items, total, allHref = "/today" }: { items: Tod
           <li key={it.id} className="flex items-center gap-3 py-2.5">
             <span className={cn("hidden w-20 shrink-0 rounded-chip px-2 py-0.5 text-center text-xs font-medium sm:block", KIND_TONE[it.kind])}>{KIND_SHORT[it.kind]}</span>
             {/* The whole row opens the order: on a phone the action button is hidden. */}
-            <Link href={it.action.href} prefetch={false} className={cn("min-w-0 flex-1 rounded-input", focusRing)}>
+            <Link href={it.action.href} prefetch={false} className={cn("-my-2.5 min-w-0 flex-1 rounded-input py-2.5", focusRing)}>
               <div className="flex min-w-0 items-center gap-2 text-xs text-slate">
                 <ShopBadge platform={it.platform} name={it.shop} className="min-w-0 text-xs" />
                 <span className="shrink-0 font-semibold text-ink">{it.orderNumber}</span>
@@ -74,7 +74,7 @@ export function AttentionList({ items, total, allHref = "/today" }: { items: Tod
       {total > items.length && (
         <Link
           href={allHref}
-          className={cn("mt-2 inline-flex h-10 items-center justify-center gap-2 rounded-input bg-pigment-soft px-4 text-sm font-medium text-pigment hover:bg-pigment/15", focusRing)}
+          className={cn("mt-2 inline-flex h-11 items-center justify-center gap-2 rounded-input bg-pigment-soft sm:h-10 px-4 text-sm font-medium text-pigment hover:bg-pigment/15", focusRing)}
         >
           See all {total} in the queue
           <ArrowRight size={15} />

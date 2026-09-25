@@ -102,7 +102,7 @@ export function ComposeButton({
               <button
                 type="button"
                 onClick={close}
-                className="flex size-8 items-center justify-center rounded-input text-slate hover:bg-canvas hover:text-ink"
+                className="-mr-1.5 flex size-11 items-center justify-center rounded-input text-slate hover:bg-canvas hover:text-ink sm:mr-0 sm:size-8"
                 aria-label="Close"
               >
                 <X size={16} />

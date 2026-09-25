@@ -188,7 +188,7 @@ function nextSuggestedAction(input: {
     case "awaiting_details":
       return { kind: "link", label: "Complete the order details", cta: "Complete details", href: `/orders/${orderId}/complete` };
     case "triage":
-      return { kind: "link", label: "Check the order and choose its type", cta: "Open", href: `/orders/${orderId}/complete` };
+      return { kind: "link", label: "Check the order and choose its type", cta: "Choose type", href: `/orders/${orderId}/complete` };
     case "awaiting_photos":
       return { kind: "link", label: "Waiting on the customer's photos", cta: "Add photos", href: `/orders/${orderId}/complete` };
     case "ready_to_assign":
@@ -260,6 +260,7 @@ export default async function OrderDetailPage({
         platformOrderName: orders.platformOrderName,
         source: orders.source,
         status: orders.status,
+        revisionCount: orders.revisionCount,
         dueAt: orders.dueAt,
         placedAt: orders.placedAt,
         createdAt: orders.createdAt,
@@ -530,7 +531,11 @@ export default async function OrderDetailPage({
         description={`Ordered ${fmtDateTime(order.placedAt ?? order.createdAt)}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <StatusChip status={order.status as OrderStatus} />
+            {/* Assigned but not started reads the same as on Orders and Boards. */}
+            <StatusChip
+              status={order.status as OrderStatus}
+              label={order.status === "ready_to_assign" && hasDesigner ? "Not started" : undefined}
+            />
             {editable && order.customerEmail && (
               <ComposeButton
                 businessId={order.businessId}
@@ -545,7 +550,7 @@ export default async function OrderDetailPage({
             {editable && (
               <Link
                 href={`/orders/${order.id}/complete`}
-                className="inline-flex h-9 items-center gap-2 rounded-input bg-surface px-3 text-sm font-medium text-ink shadow-card transition-colors hover:bg-canvas"
+                className="inline-flex h-11 items-center gap-2 rounded-input bg-surface px-3 text-sm font-medium text-ink shadow-card transition-colors hover:bg-canvas sm:h-9"
               >
                 <Pencil size={15} />
                 Edit
@@ -582,7 +587,7 @@ export default async function OrderDetailPage({
         {nextAction.kind === "link" && (
           <Link
             href={nextAction.href}
-            className="inline-flex h-10 w-full shrink-0 items-center justify-center gap-1.5 rounded-input bg-pigment px-4 text-sm font-medium text-surface transition-opacity hover:opacity-90 sm:w-auto"
+            className="inline-flex h-11 w-full shrink-0 items-center justify-center gap-1.5 rounded-input bg-pigment px-4 text-sm font-medium text-surface transition-opacity hover:opacity-90 sm:h-10 sm:w-auto"
           >
             {nextAction.cta}
             <ArrowRight size={14} />
@@ -733,7 +738,7 @@ export default async function OrderDetailPage({
                 editable && references.length > 0 ? (
                   <Link
                     href={`/orders/${order.id}/complete`}
-                    className="text-sm font-medium text-pigment hover:text-ink"
+                    className="-my-3 inline-flex min-h-11 items-center text-sm font-medium text-pigment hover:text-ink sm:my-0 sm:min-h-0"
                   >
                     Manage
                   </Link>
@@ -747,7 +752,7 @@ export default async function OrderDetailPage({
                 {editable && (
                   <Link
                     href={`/orders/${order.id}/complete`}
-                    className="mt-3 inline-flex h-8 items-center gap-2 rounded-input bg-pigment px-3 text-sm font-medium text-surface transition-opacity hover:opacity-90"
+                    className="mt-3 inline-flex h-11 items-center gap-2 rounded-input bg-pigment px-3 text-sm font-medium text-surface transition-opacity hover:opacity-90 sm:h-8"
                   >
                     <Plus size={14} />
                     Add photos
@@ -775,7 +780,11 @@ export default async function OrderDetailPage({
                 }
               />
               <div className="mt-3">
-                <ReplyDraft orderId={order.id} defaultTemplate={defaultReplyTemplate(order.status as OrderStatus)} />
+                <ReplyDraft
+                  orderId={order.id}
+                  defaultTemplate={defaultReplyTemplate(order.status as OrderStatus, order.revisionCount)}
+                  pasteInto={order.source === "etsy" ? "etsy" : "email"}
+                />
               </div>
             </DataPanel>
           )}
@@ -800,13 +809,15 @@ export default async function OrderDetailPage({
                     return (
                       <li key={m.id} className="px-4 py-3">
                         <div className="mb-1 flex flex-wrap items-center gap-2">
-                          <Badge variant={inbound ? "info" : "neutral"} dot>
-                            {inbound ? "Customer reply" : "Sent"}
-                          </Badge>
-                          {!inbound && m.status !== "sent" && (
-                            <Badge variant={m.status === "failed" ? "danger" : "warning"} dot>
-                              {m.status}
-                            </Badge>
+                          {/* One badge that says where the email is, never "Sent" beside "draft". */}
+                          {inbound ? (
+                            <Badge variant="info" dot>Customer reply</Badge>
+                          ) : m.status === "sent" ? (
+                            <Badge variant="neutral" dot>Sent</Badge>
+                          ) : m.status === "failed" ? (
+                            <Badge variant="danger" dot>Not sent</Badge>
+                          ) : (
+                            <Badge variant="warning" dot>{m.status === "queued" ? "Waiting to send" : "Draft, not sent"}</Badge>
                           )}
                           <span className="text-xs text-slate">{fmtDateTime(when)}</span>
                         </div>
@@ -815,7 +826,7 @@ export default async function OrderDetailPage({
                         {editable && suggestion && <ReplyClassificationSuggestion suggestion={suggestion} />}
                         {editable && inbound && m.body && (
                           <details className="mt-3 rounded-input bg-canvas p-2">
-                            <summary className="cursor-pointer text-xs font-medium text-pigment">
+                            <summary className="-m-2 cursor-pointer p-2 py-3.5 text-xs font-medium text-pigment sm:py-2">
                               Create revision from this email
                             </summary>
                             <div className="mt-2">
@@ -1046,7 +1057,7 @@ function Fact({
 }) {
   return (
     <div className="bg-surface p-4">
-      <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-slate">
         <Icon size={13} className="shrink-0" />
         {label}
       </div>
@@ -1054,7 +1065,16 @@ function Fact({
         className={cn("mt-1.5 break-words text-sm font-semibold", muted ? "text-slate" : "text-ink")}
         title={value}
       >
-        {value}
+        {/* An email breaks after the @ on a phone, never mid-word. */}
+        {value.includes("@") ? (
+          <>
+            {value.slice(0, value.indexOf("@") + 1)}
+            <wbr />
+            {value.slice(value.indexOf("@") + 1)}
+          </>
+        ) : (
+          value
+        )}
       </div>
     </div>
   );

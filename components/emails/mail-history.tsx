@@ -70,14 +70,14 @@ export function MailHistory({
           <div className="flex items-center justify-between border-t border-line/70 px-4 pt-3 text-sm">
             <Link
               href={`/emails?q=${encodeURIComponent(q)}&showSuppressed=${includeSuppressed ? "1" : "0"}&page=${Math.max(1, page - 1)}&pageSize=${pageSize}`}
-              className={page <= 1 ? "pointer-events-none text-slate/50" : "font-medium text-pigment hover:text-ink"}
+              className={page <= 1 ? "pointer-events-none inline-flex min-h-11 min-w-11 items-center text-slate/50 sm:min-h-0 sm:min-w-0" : "inline-flex min-h-11 min-w-11 items-center justify-center font-medium text-pigment hover:text-ink sm:min-h-0 sm:min-w-0"}
             >
               Previous
             </Link>
             <span className="text-slate">Page {page} of {totalPages}</span>
             <Link
               href={`/emails?q=${encodeURIComponent(q)}&showSuppressed=${includeSuppressed ? "1" : "0"}&page=${Math.min(totalPages, page + 1)}&pageSize=${pageSize}`}
-              className={page >= totalPages ? "pointer-events-none text-slate/50" : "font-medium text-pigment hover:text-ink"}
+              className={page >= totalPages ? "pointer-events-none inline-flex min-h-11 min-w-11 items-center text-slate/50 sm:min-h-0 sm:min-w-0" : "inline-flex min-h-11 min-w-11 items-center justify-center font-medium text-pigment hover:text-ink sm:min-h-0 sm:min-w-0"}
             >
               Next
             </Link>
@@ -117,7 +117,8 @@ function MailRow({ item, businessId }: { item: MailHistoryItem; businessId: stri
       <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate">
         <span>{inbound ? "From" : "To"} {item.address ?? "unknown"}</span>
         {item.customerName && <span>· {item.customerName}</span>}
-        {item.orderNumber && <Link href={`/orders/${item.orderId}`} className="font-medium text-pigment hover:text-ink">· {item.orderNumber}</Link>}
+        {/* The order number is a fact here; "Open order" below is the one link, a full tap target on a phone. */}
+        {item.orderNumber && <span className="font-medium text-ink">· {item.orderNumber}</span>}
       </div>
       {item.preview && <MailBody item={item} />}
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -134,8 +135,8 @@ function MailRow({ item, businessId }: { item: MailHistoryItem; businessId: stri
             variant="ghost"
           />
         )}
-        {item.orderId && <Link href={`/orders/${item.orderId}`} className="text-sm font-medium text-pigment hover:text-ink">Open order</Link>}
-        {item.customerId && <Link href={`/customers/${item.customerId}`} className="text-sm font-medium text-pigment hover:text-ink">Open customer</Link>}
+        {item.orderId && <Link href={`/orders/${item.orderId}`} className="inline-flex min-h-11 items-center text-sm font-medium text-pigment hover:text-ink sm:min-h-0">Open order</Link>}
+        {item.customerId && <Link href={`/customers/${item.customerId}`} className="inline-flex min-h-11 items-center text-sm font-medium text-pigment hover:text-ink sm:min-h-0">Open customer</Link>}
         {item.suppressed && (
           <Button type="button" size="sm" variant="ghost" onClick={() => run(() => unsuppressMessage(item.messageId))}>Restore</Button>
         )}
@@ -176,7 +177,7 @@ function MailBody({ item }: { item: MailHistoryItem }) {
         type="button"
         onClick={toggle}
         aria-expanded={open}
-        className="mt-1 text-xs font-medium text-pigment hover:text-ink"
+        className="mt-1 inline-flex min-h-11 items-center text-xs font-medium text-pigment hover:text-ink sm:min-h-0"
       >
         {loading ? "Loading…" : open ? "Show less" : "Show more"}
       </button>

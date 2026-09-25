@@ -234,8 +234,8 @@ export async function markOrderComplete(orderId: string): Promise<CompleteOrderR
     if (err instanceof OrderTransitionError) return { ok: false, message: err.message };
     throw err;
   }
-  revalidatePath(`/orders/${orderId}`);
-  revalidatePath("/orders");
+  // "layout" refreshes this order's own page in the same response as the toast.
+  revalidatePath("/orders", "layout");
   return { ok: true, message: "The order is complete." };
 }
 
@@ -318,6 +318,17 @@ export async function bulkReassignOrders(
     }
 
     return { ok: true as const, changed, skipped };
+  }).catch((error: unknown) => {
+    // Two people assigning the same order at the same moment: the second
+    // insert meets the one-active-assignment rule. Nothing was saved for this
+    // person, so say what happened instead of failing the page.
+    if (isUniqueViolation(error, "assignments_active_order_uq")) {
+      return {
+        ok: false as const,
+        message: "Someone else assigned this order a moment ago. Refresh to see who has it, then try again if needed.",
+      };
+    }
+    throw error;
   });
 
   if (!result.ok) return result;
@@ -777,4 +788,13 @@ export async function teachOrderStyleNew(orderId: string, nameRaw: string): Prom
   if (created == null) return { ok: false, message: "Order not found" };
   if (typeof created !== "string") return { ok: false, message: `A style called "${name}" already exists` };
   return teachOrderStyle(orderId, created);
+}
+
+/** A Postgres unique violation (23505), optionally on one named constraint. */
+function isUniqueViolation(error: unknown, constraint?: string): boolean {
+  for (let e: unknown = error; e && typeof e === "object"; e = (e as { cause?: unknown }).cause) {
+    const pg = e as { code?: string; constraint?: string; message?: string };
+    if (pg.code === "23505") return !constraint || pg.constraint === constraint || !!pg.message?.includes(constraint);
+  }
+  return false;
 }
