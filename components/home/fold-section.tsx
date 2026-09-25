@@ -100,7 +100,6 @@ export function FoldSection({
         {action && <ActionLink action={action} />}
       </div>
 
-      {always && <div className={cn("min-w-0", !open && "max-md:mt-3")}>{always}</div>}
 
       <div id={bodyId} className={cn("min-w-0 flex-col gap-4 md:flex", open ? "flex" : "hidden")}>
         {children}
@@ -110,6 +109,8 @@ export function FoldSection({
           </div>
         )}
       </div>
+      {/* After the body, as before: while folded on a phone it sits right under the header. */}
+      {always && <div className={cn("min-w-0", !open && "max-md:mt-3")}>{always}</div>}
     </section>
   );
 }
