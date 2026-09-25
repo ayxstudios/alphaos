@@ -137,11 +137,12 @@
   }
 }
 
-/* Phone: iOS Safari zooms the whole page into any field under 16px when it is
-   tapped, and a field is a 44px tap target. Unlayered, so it wins over the
-   text-sm and h-10 utilities on every field. */
-@media (max-width: 639px) {
-  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]),
+/* Touch screens and phones: iOS Safari zooms the whole page into any text field
+   under 16px the moment it is tapped (the card comment box, Alpha AI, sign-in)
+   and the page stays zoomed after, and a field is a 44px tap target. Unlayered,
+   so it wins over the text-sm and h-10 utilities; a laptop keeps 14px fields. */
+@media (max-width: 639px), (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="hidden"]):not([type="file"]),
   select,
   textarea {
     font-size: 16px;

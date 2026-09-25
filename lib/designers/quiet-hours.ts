@@ -129,6 +129,13 @@ export function zoneOffsetLabel(tz: string | null | undefined, at = new Date()):
   return part?.value ?? zone;
 }
 
+/** Start of today (00:00) in the designer's timezone, as UTC: "earned today" counts their day, not the server's. */
+export function startOfDayInTimezone(now: Date, tz: string | null | undefined): Date {
+  const zone = isValidTimezone(tz) ? tz : DEFAULT_TIMEZONE;
+  const lp = localParts(now, zone);
+  return zonedTimeToUtc({ y: lp.y, mo: lp.mo, d: lp.d, h: 0, mi: 0 }, zone);
+}
+
 /** Start of the current week (Monday 00:00) in the designer's timezone, as UTC. */
 export function startOfWeekInTimezone(now: Date, tz: string | null | undefined): Date {
   const zone = isValidTimezone(tz) ? tz : DEFAULT_TIMEZONE;

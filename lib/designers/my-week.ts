@@ -5,14 +5,15 @@
  * looking at one designer. The week starts Monday 00:00 in the DESIGNER'S OWN
  * timezone (never the server's), same as the deadlines they're shown.
  */
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, ne, sql } from "drizzle-orm";
+import { currentPeriod } from "@/lib/orders/earnings";
 
 import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
 import { activityLog, assignments, earnings, orders, users } from "@/lib/db/schema";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { WITH_CUSTOMER_STATUSES } from "@/lib/orders/board-constants";
 import { loadDesignerContact, type DesignerContact } from "@/lib/designers/profile";
-import { DEFAULT_TIMEZONE, startOfWeekInTimezone, formatInTimezone } from "@/lib/designers/quiet-hours";
+import { DEFAULT_TIMEZONE, startOfDayInTimezone, startOfWeekInTimezone, formatInTimezone } from "@/lib/designers/quiet-hours";
 import { formatDeadline } from "@/lib/time";
 
 export type UpcomingDeadline = {
@@ -45,6 +46,8 @@ async function loadWeek(tx: Tx, target: string): Promise<DesignerWeek> {
   const contact = await loadDesignerContact(tx, target);
   const now = new Date();
   const weekStart = startOfWeekInTimezone(now, contact?.timezone);
+  // "Earned today" is the designer's own day too (the month follows the Money page's period).
+  const dayStart = startOfDayInTimezone(now, contact?.timezone);
 
   // On time = the designer handed the order to QC by THEIR OWN deadline (the
   // assignment's due_at, CLAUDE.md Deadlines), not whether the whole order
@@ -66,7 +69,8 @@ async function loadWeek(tx: Tx, target: string): Promise<DesignerWeek> {
       assignments,
       and(eq(assignments.orderId, earnings.orderId), eq(assignments.designerId, target), eq(assignments.active, true)),
     )
-    .where(and(eq(earnings.designerId, target), gte(earnings.createdAt, weekStart)));
+    // A voided earning (the order was cancelled or refunded) is not an order done.
+    .where(and(eq(earnings.designerId, target), ne(earnings.status, "voided"), gte(earnings.createdAt, weekStart)));
 
   const [weekTotal] = await tx
     .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
@@ -80,7 +84,7 @@ async function loadWeek(tx: Tx, target: string): Promise<DesignerWeek> {
       and(
         eq(earnings.designerId, target),
         inArray(earnings.status, ["pending", "paid"]),
-        gte(earnings.createdAt, sql`date_trunc('day', now())`),
+        gte(earnings.createdAt, dayStart),
       ),
     );
 
@@ -91,7 +95,8 @@ async function loadWeek(tx: Tx, target: string): Promise<DesignerWeek> {
       and(
         eq(earnings.designerId, target),
         inArray(earnings.status, ["pending", "paid"]),
-        gte(earnings.createdAt, sql`date_trunc('month', now())`),
+        // The Money page's own month (earnings.period), so the two always agree.
+        eq(earnings.period, currentPeriod()),
       ),
     );
 

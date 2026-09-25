@@ -5,18 +5,18 @@ import type { OrderStatus } from "@/lib/orders/transitions";
 export const TZ = "Australia/Melbourne";
 const DAY = 86_400_000;
 
-/** 'YYYY-MM-DD' in Melbourne for a Date. */
-export function dayKey(d: Date): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+/** 'YYYY-MM-DD' in Melbourne (or `zone`, e.g. a designer's own) for a Date. */
+export function dayKey(d: Date, zone: string = TZ): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 }
 
-/** The last `n` calendar days (oldest first), keys + short labels. */
-export function lastDays(n: number, now = new Date()): { key: string; label: string }[] {
+/** The last `n` calendar days (oldest first) in Melbourne (or `zone`), keys + short labels. */
+export function lastDays(n: number, now = new Date(), zone: string = TZ): { key: string; label: string }[] {
   const out: { key: string; label: string }[] = [];
-  const fmt = new Intl.DateTimeFormat("en-AU", { timeZone: TZ, weekday: "short", day: "numeric" });
+  const fmt = new Intl.DateTimeFormat("en-AU", { timeZone: zone, weekday: "short", day: "numeric" });
   for (let i = n - 1; i >= 0; i--) {
     const d = new Date(now.getTime() - i * DAY);
-    out.push({ key: dayKey(d), label: fmt.format(d).replace(",", "") });
+    out.push({ key: dayKey(d, zone), label: fmt.format(d).replace(",", "") });
   }
   return out;
 }

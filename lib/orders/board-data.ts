@@ -1,4 +1,5 @@
 import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { currentPeriod } from "@/lib/orders/earnings";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import {
@@ -14,7 +15,7 @@ import {
   proofs,
   designerProfiles,
 } from "@/lib/db/schema";
-import { DEFAULT_TIMEZONE, isValidTimezone } from "@/lib/designers/quiet-hours";
+import { DEFAULT_TIMEZONE, isValidTimezone, startOfDayInTimezone } from "@/lib/designers/quiet-hours";
 import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
 import { issueLabels } from "@/lib/proofs/issues";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
@@ -397,7 +398,16 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
     // The live columns (queue/in-design/QC) and the capped Complete column are
     // independent queries — same with the earnings figures below — so they all
     // go over the wire together instead of one round trip after another.
-    const [activeRows, completeRows, [daily], [period], earningRows, [profile]] = await Promise.all([
+    // The board owner's zone first: "Today" (earnings) is their day, like every deadline they see.
+    const [profile] = await tx
+      .select({ timezone: designerProfiles.timezone })
+      .from(designerProfiles)
+      .where(eq(designerProfiles.userId, target))
+      .limit(1);
+    const timeZone = isValidTimezone(profile?.timezone ?? null) ? (profile?.timezone as string) : DEFAULT_TIMEZONE;
+    const dayStart = startOfDayInTimezone(new Date(), timeZone);
+
+    const [activeRows, completeRows, [daily], [period], earningRows] = await Promise.all([
       tx
         .select(BOARD_ROW_SELECT)
         .from(orders)
@@ -424,11 +434,11 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
       tx
         .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
         .from(earnings)
-        .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), gte(earnings.createdAt, sql`date_trunc('day', now())`))),
+        .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), gte(earnings.createdAt, dayStart))),
       tx
         .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
         .from(earnings)
-        .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), gte(earnings.createdAt, sql`date_trunc('month', now())`))),
+        .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), eq(earnings.period, currentPeriod()))),
       tx
         .select({
           id: earnings.id,
@@ -447,11 +457,6 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
         .where(eq(earnings.designerId, target))
         .orderBy(desc(earnings.createdAt))
         .limit(20),
-      tx
-        .select({ timezone: designerProfiles.timezone })
-        .from(designerProfiles)
-        .where(eq(designerProfiles.userId, target))
-        .limit(1),
     ]);
 
     const rows = [...activeRows, ...completeRows];
@@ -479,7 +484,7 @@ export async function getDesignerBoard(user: RequestUser, designerId?: string): 
         withCustomer: pick((r) => (WITH_CUSTOMER_STATUSES as readonly string[]).includes(r.status)),
         complete: cards.filter((c) => meta.get(c.orderId)!.status === "complete"),
       },
-      timeZone: isValidTimezone(profile?.timezone ?? null) ? (profile?.timezone as string) : DEFAULT_TIMEZONE,
+      timeZone,
       dailyEarnings: Number(daily?.total ?? 0),
       periodEarnings: Number(period?.total ?? 0),
       earningHistory: earningRows.map((earning) => ({

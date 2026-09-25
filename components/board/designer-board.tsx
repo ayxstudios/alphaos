@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -8,7 +8,6 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  type Announcements,
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
@@ -39,6 +38,20 @@ const COLUMN_TO_STATUS: Record<ColKey, OrderStatus> = {
 };
 const DRAG_SOURCES = new Set<ColKey>(["myQueue", "inDesign", "failedQc", "awaitingQc", "revisions"]);
 const DROP_TARGETS = new Set<ColKey>(["myQueue", "inDesign", "awaitingQc"]);
+
+/**
+ * Whether a drop is a real move. A Failed QC or Revisions card is already in
+ * design, so dropping it on In Design changes nothing (the server called it an
+ * "Illegal transition"). Awaiting QC back to In Design is QC's own move (a QC
+ * fail, with a signed reason): it needs the QC screen, so the board leaves the
+ * card where it was. Back to My Queue stays open, as the Quick guide says.
+ */
+function canDrop(from: ColKey, to: ColKey | null): to is ColKey {
+  if (!to || from === to || !DROP_TARGETS.has(to)) return false;
+  if (COLUMN_TO_STATUS[from] === COLUMN_TO_STATUS[to]) return false;
+  if (from === "awaitingQc" && to === "inDesign") return false;
+  return true;
+}
 
 const COLUMNS: { key: ColKey; title: string }[] = [
   { key: "myQueue", title: "My Queue" },
@@ -75,12 +88,26 @@ export function DesignerBoard({
     openId ? (Object.values(initial).flat().find((c) => c.orderId === openId) ?? null) : null,
   );
 
+  const warnedOpen = useRef<string | null>(null);
   useEffect(() => setCols(initial), [initial]);
   // The same board reached again with a different ?open= (it stays mounted).
+  // An order that is not on this board (finished long ago, given to someone
+  // else, or not theirs) says so instead of silently showing the board.
   useEffect(() => {
     if (!openId) return;
     const found = Object.values(initial).flat().find((c) => c.orderId === openId);
     if (found) setOpenCard(found);
+    else if (warnedOpen.current !== openId) {
+      warnedOpen.current = openId;
+      toast({
+        variant: "warning",
+        title: "That order is not on this board",
+        description: "It may be finished, or with another designer now.",
+      });
+      const url = new URL(window.location.href);
+      url.searchParams.delete("open");
+      window.history.replaceState(window.history.state, "", url.pathname + url.search);
+    }
     // Only a new ?open= should open a card, not every refresh of `initial`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openId]);
@@ -126,13 +153,6 @@ export function DesignerBoard({
   // title, never the order's internal id or the column's code name.
   const title = (id: unknown) => COLUMNS.find((c) => c.key === id)?.title ?? "this column";
   const cardName = (id: unknown) => locate(String(id))?.card.orderNumber ?? "The order";
-  const announcements: Announcements = {
-    onDragStart: ({ active }) => `Picked up ${cardName(active.id)}.`,
-    onDragOver: ({ active, over }) => (over ? `${cardName(active.id)} is over ${title(over.id)}.` : `${cardName(active.id)} is not over a column.`),
-    onDragEnd: ({ active, over }) => (over ? `${cardName(active.id)} moved to ${title(over.id)}.` : `${cardName(active.id)} put back.`),
-    onDragCancel: ({ active }) => `${cardName(active.id)} put back.`,
-  };
-
   function onDragStart(e: DragStartEvent) {
     setActive(locate(String(e.active.id))?.card ?? null);
   }
@@ -175,7 +195,7 @@ export function DesignerBoard({
     setActive(null);
     const found = locate(String(e.active.id));
     const to = e.over ? (String(e.over.id) as ColKey) : null;
-    if (!found || !to || !DROP_TARGETS.has(to)) return;
+    if (!found || !canDrop(found.col, to)) return;
     await moveTo(found.card, found.col, to);
   }
 
@@ -193,15 +213,40 @@ export function DesignerBoard({
     return moveTo(found.card, found.col, "inDesign");
   }
 
+  // What a screen reader hears while a card is dragged: the order number and
+  // the column's name (dnd-kit's defaults read out the order's database id and
+  // the column key, and describe keyboard dragging this board does not offer).
+  const numberOf = (id: string | number) => locate(String(id))?.card.orderNumber ?? "The card";
+  const canDropFrom = (active: string | number, over: string | number) => {
+    const from = locate(String(active))?.col;
+    return !!from && canDrop(from, String(over) as ColKey);
+  };
+  const titleOf = (id: string | number) => COLUMNS.find((c) => c.key === id)?.title ?? "that column";
+  const accessibility = {
+    screenReaderInstructions: {
+      draggable: "Press Enter to open this card. With a mouse or a finger, drag it to another column to move it.",
+    },
+    announcements: {
+      onDragStart: ({ active }: { active: { id: string | number } }) => `Picked up ${numberOf(active.id)}.`,
+      onDragOver: ({ active, over }: { active: { id: string | number }; over: { id: string | number } | null }) =>
+        over ? `${numberOf(active.id)} is over ${titleOf(over.id)}.` : `${numberOf(active.id)} is not over a column.`,
+      onDragEnd: ({ active, over }: { active: { id: string | number }; over: { id: string | number } | null }) =>
+        over && canDropFrom(active.id, over.id)
+          ? `${numberOf(active.id)} moved to ${titleOf(over.id)}.`
+          : `${numberOf(active.id)} stayed where it was.`,
+      onDragCancel: ({ active }: { active: { id: string | number } }) => `${numberOf(active.id)} stayed where it was.`,
+    },
+  };
+
   return (
     // A fixed id keeps dnd-kit's aria-describedby the same on the server and
     // in the browser (its counter otherwise differs: a hydration mismatch).
     <DndContext
       id="designer-board"
       sensors={sensors}
+      accessibility={accessibility}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      accessibility={{ announcements }}
     >
       {/* Phone-first designer view: cards stack in one column, big Start/Submit
           buttons instead of drag. Staff (and designers on a wide screen) get

@@ -334,7 +334,7 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
               rows={1}
               disabled={pending}
               className={cn(
-                "max-h-[120px] min-h-10 flex-1 resize-none rounded-input border border-line bg-canvas px-3 py-2 text-sm text-ink",
+                "max-h-[120px] min-h-11 flex-1 resize-none rounded-input border border-line bg-canvas px-3 py-2 text-sm text-ink",
                 "placeholder:text-slate/75 focus:bg-surface",
                 focusRing,
               )}
@@ -345,7 +345,7 @@ export function AlphaChat({ user }: { user: { name: string; email: string; role:
               disabled={pending || !input.trim()}
               onClick={() => void send(input)}
               className={cn(
-                "inline-flex size-10 shrink-0 items-center justify-center rounded-input bg-pigment text-surface",
+                "inline-flex size-11 shrink-0 items-center justify-center rounded-input bg-pigment text-surface",
                 "transition-opacity motion-hover hover:opacity-90 disabled:opacity-40",
                 focusRing,
               )}

@@ -124,9 +124,15 @@ function snapshotFallbackAnswer(snapshot: Record<string, unknown> | null | undef
     const inDesign = n(s.inDesignCount);
     const qc = n(s.awaitingQcCount);
     const next = Array.isArray(s.nextDeadlines) ? (s.nextDeadlines as { orderNumber?: string }[]) : [];
+    // The same short status whatever was asked (the quick answer cannot read
+    // the question), so it says plainly that this is where the board stands.
     if (queue + inDesign + qc === 0) lines.push("Your board is clear right now.");
-    else lines.push(`You have ${plural(queue, "order")} in your queue, ${inDesign} in design and ${qc} waiting for QC.`);
-    if (next[0]?.orderNumber) lines.push(`Next deadline: ${next.map((d) => d.orderNumber).filter(Boolean).slice(0, 3).join(", ")}.`);
+    else {
+      const queued = queue ? `${plural(queue, "order")} in your queue` : "nothing new in your queue";
+      lines.push(`Here is where your board stands: ${queued}, ${inDesign} in design and ${qc} waiting for QC.`);
+    }
+    const due = next.map((d) => d.orderNumber).filter(Boolean).slice(0, 3);
+    if (due.length) lines.push(`Due first: ${due.join(", then ")}.`);
     if (n(s.revisionsThisWeek) > 0) lines.push(`${plural(n(s.revisionsThisWeek), "revision")} came back this week.`);
   } else {
     const now = n(s.now);

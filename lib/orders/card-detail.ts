@@ -164,7 +164,7 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
             id: a.id,
             type: a.type as CardImage["type"],
             url,
-            uploadedBy: a.uploadedByName ?? a.uploadedByEmail ?? null,
+            uploadedBy: a.uploadedByName ?? (user.role === "designer" ? null : a.uploadedByEmail) ?? null,
             createdAt: a.createdAt.toISOString(),
           });
         }

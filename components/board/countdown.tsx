@@ -38,7 +38,7 @@ export function Countdown({
 
   const tone = overdue ? "text-rose" : diff <= 4 * 3_600_000 ? "text-amber" : "text-slate";
   return (
-    <span className={cn("text-xs font-medium tabular-nums", tone)}>
+    <span className={cn("text-xs font-medium tabular-nums", tone)} suppressHydrationWarning>
       {overdue ? `overdue ${label}` : `${label} left`}
     </span>
   );

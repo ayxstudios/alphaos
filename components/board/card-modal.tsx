@@ -17,6 +17,7 @@ import {
   LABEL_CLASS,
   optionName,
   relativeTime,
+  exactTime,
   revisionNote,
 } from "./card-meta";
 import {
@@ -32,6 +33,10 @@ import type { CardDetail, CardEvent, CardImage } from "@/lib/orders/card-detail"
 import { formatAt, formatDeadline } from "@/lib/time";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+// The same types the server accepts (lib/storage/r2.ts ALLOWED_IMAGE_TYPES): a
+// file outside them is refused here, in plain words, before any upload starts.
+const UPLOAD_TYPES = /^image\/(jpeg|png|webp|gif|heic|heif)$/i;
+const UPLOAD_ACCEPT = "image/png,image/jpeg,image/webp,image/gif,image/heic,image/heif";
 type ViewerRole = "admin" | "va" | "designer";
 type UploadProgress = {
   name: string;
@@ -256,7 +261,9 @@ export function CardModal({
                 ) : events.length === 0 ? (
                   <p className="text-sm text-slate">No activity yet.</p>
                 ) : (
-                  events.map((e) => <FeedItem key={e.id} event={e} viewerRole={viewerRole} />)
+                  events.map((e) => (
+                    <FeedItem key={e.id} event={e} viewerRole={viewerRole} timeZone={viewerRole === "designer" ? timeZone : undefined} />
+                  ))
                 )}
               </div>
             </Disclosure>
@@ -418,19 +425,29 @@ function CardUploadPanel({
       toast({ variant: "warning", title: "Upload not open", description: designerNote });
       return;
     }
-    const images = files.filter((file) => file.type.startsWith("image/"));
-    if (!images.length) {
-      toast({ variant: "danger", title: "No images selected" });
+    const images = files.filter((file) => UPLOAD_TYPES.test(file.type));
+    const refused = files.find((file) => !UPLOAD_TYPES.test(file.type));
+    if (refused) {
+      // One wrong file stops the lot, so nothing half-uploads without the person noticing.
+      toast({
+        variant: "danger",
+        title: "That file can't be added",
+        description: `${refused.name} is not a PNG, JPG, WebP or HEIC image. Save it as a PNG or JPG and try again.`,
+      });
+      if (fileRef.current) fileRef.current.value = "";
       return;
     }
+    if (!images.length) return;
     const empty = images.find((file) => file.size === 0);
     if (empty) {
-      toast({ variant: "danger", title: "Empty file", description: `${empty.name} is empty (0 bytes). Choose the saved image again.` });
+      toast({ variant: "danger", title: "That file is empty", description: `${empty.name} has nothing in it. Choose the saved image again.` });
+      if (fileRef.current) fileRef.current.value = "";
       return;
     }
     const tooBig = images.find((file) => file.size > MAX_UPLOAD_BYTES);
     if (tooBig) {
-      toast({ variant: "danger", title: "Upload too large", description: `${tooBig.name} is over 25 MB.` });
+      toast({ variant: "danger", title: "That file is too big", description: `${tooBig.name} is over 25 MB. Save a smaller copy (a full-size JPG is usually well under) and add that.` });
+      if (fileRef.current) fileRef.current.value = "";
       return;
     }
 
@@ -585,7 +602,7 @@ function CardUploadPanel({
         <input
           ref={fileRef}
           type="file"
-          accept="image/*"
+          accept={UPLOAD_ACCEPT}
           multiple
           className="hidden"
           onChange={(event) => event.target.files && void upload(Array.from(event.target.files))}
@@ -630,10 +647,10 @@ function CardUploadPanel({
       )}
       {progress.length > 0 && (
         <div className="mt-3 space-y-2">
-          {progress.map((row) => {
+          {progress.map((row, i) => {
             const pct = row.total > 0 ? Math.round((row.loaded / row.total) * 100) : 0;
             return (
-              <div key={row.name} className="space-y-1">
+              <div key={`${i}-${row.name}`} className="space-y-1">
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <span className="truncate text-ink">{row.name}</span>
                   <span className={row.status === "failed" ? "text-rose" : "text-slate"}>
@@ -722,7 +739,7 @@ function DueLine({
 function Meta({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-1">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate">{label}</p>
+      <p className="text-xs font-medium text-slate">{label}</p>
       {children}
     </div>
   );
@@ -852,9 +869,14 @@ function RevisionBlock({
   );
 }
 
-function FeedItem({ event, viewerRole }: { event: CardEvent; viewerRole: ViewerRole }) {
+function FeedItem({ event, viewerRole, timeZone }: { event: CardEvent; viewerRole: ViewerRole; timeZone?: string }) {
   const actor = eventActor(event);
-  const when = relativeTime(event.createdAt);
+  // A designer reads every time in their own zone (like their deadline); staff in the business's.
+  const when = (
+    <time dateTime={event.createdAt} title={exactTime(event.createdAt, timeZone)}>
+      {relativeTime(event.createdAt, Date.now(), timeZone)}
+    </time>
+  );
 
   if (event.action === "comment") {
     return (
