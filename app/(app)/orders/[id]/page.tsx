@@ -188,7 +188,7 @@ function nextSuggestedAction(input: {
     case "awaiting_details":
       return { kind: "link", label: "Complete the order details", cta: "Complete details", href: `/orders/${orderId}/complete` };
     case "triage":
-      return { kind: "link", label: "Check the order and choose its type", cta: "Open", href: `/orders/${orderId}/complete` };
+      return { kind: "link", label: "Check the order and choose its type", cta: "Choose type", href: `/orders/${orderId}/complete` };
     case "awaiting_photos":
       return { kind: "link", label: "Waiting on the customer's photos", cta: "Add photos", href: `/orders/${orderId}/complete` };
     case "ready_to_assign":
@@ -530,7 +530,11 @@ export default async function OrderDetailPage({
         description={`Ordered ${fmtDateTime(order.placedAt ?? order.createdAt)}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <StatusChip status={order.status as OrderStatus} />
+            {/* Assigned but not started reads the same as on Orders and Boards. */}
+            <StatusChip
+              status={order.status as OrderStatus}
+              label={order.status === "ready_to_assign" && hasDesigner ? "Not started" : undefined}
+            />
             {editable && order.customerEmail && (
               <ComposeButton
                 businessId={order.businessId}
