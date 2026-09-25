@@ -13,6 +13,14 @@ const initialState: LoginState = {};
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState(loginAction, initialState);
   const passwordRef = useRef<HTMLInputElement>(null);
+  const backRef = useRef<HTMLInputElement>(null);
+
+  // A link opened while signed out (an order from a notification) comes back
+  // to that page after sign-in. Read on the client so the page stays static.
+  useEffect(() => {
+    const back = new URLSearchParams(window.location.search).get("callbackUrl");
+    if (back && backRef.current) backRef.current.value = back;
+  }, []);
 
   // A wrong password keeps the email and puts the cursor back in Password.
   useEffect(() => {
@@ -33,6 +41,7 @@ export default function LoginPage() {
 
       <Card className="p-6">
         <form action={formAction} className="flex flex-col gap-4">
+          <input type="hidden" name="callbackUrl" ref={backRef} defaultValue="" />
           {state.error && (
             <div
               role="alert"
