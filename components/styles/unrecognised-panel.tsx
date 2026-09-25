@@ -82,14 +82,14 @@ export function UnrecognisedPanel({
       {defaulted.length > 0 && (
         <div className="mt-3">
           <div className="flex flex-wrap items-center gap-2 rounded-t-input bg-amber/5 px-3 py-2">
-            <label className="flex items-center gap-2 text-xs font-medium text-slate">
+            <label className="flex min-h-11 cursor-pointer items-center gap-3 text-xs font-medium text-slate sm:min-h-0 sm:gap-2">
               <input
                 type="checkbox"
                 checked={allDefaultedSelected}
                 onChange={(e) =>
                   setSelected(e.target.checked ? new Set(defaulted.map(keyOf)) : new Set())
                 }
-                className="size-4 rounded border-line text-pigment focus:ring-pigment"
+                className="size-5 shrink-0 rounded border-line accent-pigment sm:size-4"
               />
               Went to {defaultStyleName ?? "the default style"} by default · {defaulted.length}
             </label>
@@ -208,14 +208,14 @@ function ProductRow({
           on a phone instead of being cut short. */}
       <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
         {onToggle && (
-          // The label pads the 16px box to a 44px tap area on a phone.
-          <label className="-m-3.5 flex shrink-0 cursor-pointer p-3.5 sm:m-0 sm:p-0">
+          // The label pads the 20px box to a 44px tap area on a phone.
+          <label className="-m-3 flex shrink-0 cursor-pointer p-3 sm:m-0 sm:p-0">
             <input
               type="checkbox"
               checked={!!checked}
               onChange={onToggle}
               aria-label={`Select ${product.title ?? "product"}`}
-              className="mt-0.5 size-4 shrink-0 rounded border-line text-pigment focus:ring-pigment sm:mt-0"
+              className="mt-0.5 size-5 shrink-0 rounded border-line accent-pigment sm:mt-0 sm:size-4"
             />
           </label>
         )}

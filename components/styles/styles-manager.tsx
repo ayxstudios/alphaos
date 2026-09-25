@@ -277,13 +277,13 @@ function StyleCard({
 
       {/* Default toggle + assigned summary */}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line/70 pt-3">
-        <label className="inline-flex items-center gap-2 text-sm text-ink">
+        <label className="inline-flex min-h-11 cursor-pointer items-center gap-3 text-sm text-ink sm:min-h-0 sm:gap-2">
           <input
             type="checkbox"
             checked={style.isDefault}
             disabled={pending}
             onChange={(e) => onRun(() => setStyleDefault(style.id, e.target.checked))}
-            className="size-4 rounded border-line text-pigment focus:ring-pigment"
+            className="size-5 shrink-0 rounded border-line accent-pigment sm:size-4"
           />
           Default style when no rule matches
         </label>
@@ -374,12 +374,12 @@ function AssignDesignersDrawer({
       ) : (
         <div className="mt-3 flex flex-col divide-y divide-line">
           {designers.map((d) => (
-            <label key={d.id} className="flex cursor-pointer items-center gap-3 py-2.5 text-sm text-ink">
+            <label key={d.id} className="flex min-h-11 cursor-pointer items-center gap-3 py-2.5 text-sm text-ink">
               <input
                 type="checkbox"
                 checked={selected.has(d.id)}
                 onChange={() => toggle(d.id)}
-                className="size-4 rounded border-line text-pigment focus:ring-pigment"
+                className="size-5 shrink-0 rounded border-line accent-pigment sm:size-4"
               />
               {d.name}
             </label>

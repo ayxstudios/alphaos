@@ -75,10 +75,10 @@ export function DailyHealthEmailSettingsPanel({
       </summary>
 
       <div className="border-t border-line p-4">
-        <label className="flex items-center gap-3 rounded-input bg-canvas/70 p-3">
+        <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-input bg-canvas/70 p-3">
           <input
             type="checkbox"
-            className="h-4 w-4 accent-pigment"
+            className="size-5 shrink-0 accent-pigment sm:size-4"
             checked={enabled}
             onChange={(event) => setEnabled(event.currentTarget.checked)}
           />
@@ -94,16 +94,16 @@ export function DailyHealthEmailSettingsPanel({
           ) : (
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {admins.map((admin) => (
-                <label key={admin.id} className="flex items-start gap-3 rounded-input bg-canvas/70 p-3">
+                <label key={admin.id} className="flex cursor-pointer items-start gap-3 rounded-input bg-canvas/70 p-3">
                   <input
                     type="checkbox"
-                    className="mt-1 h-4 w-4 accent-pigment"
+                    className="mt-0.5 size-5 shrink-0 accent-pigment sm:size-4"
                     checked={selected.has(admin.id)}
                     onChange={(event) => toggleRecipient(admin.id, event.currentTarget.checked)}
                   />
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium text-ink">{admin.name ?? admin.email}</span>
-                    <span className="block truncate text-xs text-slate">{admin.email}</span>
+                    <span className="block break-all text-xs text-slate">{admin.email}</span>
                   </span>
                 </label>
               ))}

@@ -343,13 +343,16 @@ export function ResolutionRulesEditor({
       </div>
 
       {/* Photo-request behaviour */}
-      <label className="flex items-start gap-2 border-t border-line pt-3">
-        <input
-          type="checkbox"
-          checked={photoReq}
-          onChange={(e) => setPhotoReq(e.target.checked)}
-          className="mt-0.5"
-        />
+      <label className="flex cursor-pointer items-start gap-3 border-t border-line pt-3 sm:gap-2">
+        {/* 20px box on a phone inside a 44px-tall tap row (the label). */}
+        <span className="flex min-h-11 shrink-0 items-center sm:min-h-0 sm:pt-0.5">
+          <input
+            type="checkbox"
+            checked={photoReq}
+            onChange={(e) => setPhotoReq(e.target.checked)}
+            className="size-5 rounded border-line accent-pigment sm:size-4"
+          />
+        </span>
         <span className="text-sm text-ink">
           <span className="inline-flex items-center gap-1.5">
             Auto photo request

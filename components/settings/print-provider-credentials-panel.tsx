@@ -179,13 +179,13 @@ function LumaCard({ creds }: { creds: PrintProviderCredentialsVM }) {
           placeholder="e.g. 818"
           autoComplete="off"
         />
-        <label className="flex items-center gap-2 text-sm text-ink">
+        <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-ink sm:min-h-0 sm:gap-2">
           <input
             type="checkbox"
             name="sandbox"
             checked={sandbox}
             onChange={(e) => setSandbox(e.currentTarget.checked)}
-            className="size-4 rounded border-line accent-pigment"
+            className="size-5 shrink-0 rounded border-line accent-pigment sm:size-4"
           />
           Use sandbox (us.api-sandbox.lumaprints.com)
         </label>
