@@ -325,6 +325,20 @@ export function renderTemplate(
 }
 
 function substitute(input: string, vars: TemplateVars): string {
+  // A business called "The Custom Portrait Shop" read "Your The Custom
+  // Portrait Shop portrait" and "The The Custom Portrait Shop team" in every
+  // default template (customer + security QA 2026-09-25). After "your" or
+  // "the", the name drops its own leading "The". Stored templates get the
+  // same treatment, so no admin has to reword anything.
+  const name = (vars as Record<string, string | undefined>).business_name;
+  const bare = name?.replace(/^the\s+/i, "");
+  if (name && bare && bare !== name) {
+    // "your", "the", or either with one word between ("your revised").
+    input = input.replace(
+      /\b(your|the)((?: [a-z]+)?) \{\{\s*business_name\s*\}\}/gi,
+      (_, word: string, between: string) => `${word}${between} ${bare}`,
+    );
+  }
   return input.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, name: string) => {
     const value = (vars as Record<string, string | undefined>)[name];
     return value ?? "";
