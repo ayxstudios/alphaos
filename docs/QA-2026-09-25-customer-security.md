@@ -94,7 +94,13 @@ manage orders." and writes nothing. `makeSignInLink`, `setEmailSendingEnabled`,
 `resetMemberPassword`, `approveAndSend`, `voidEarningAction` answer `{}` with
 no action run for a designer (the VA cookie on the same path runs
 `makeSignInLink` and gets "Only an admin can make sign-in links"), so the
-designer never reaches them. Local replay below proves the in-code guards.
+designer never reaches them. Local replay proves the in-code guards: with
+the business's email sending switched OFF in the local db, a designer's
+`setEmailSendingEnabled(biz, true)` answered `{}` and a VA's answered the
+thrown "Forbidden" (digest only in production); the switch stayed off both
+times. A designer's makeSignInLink / resetMemberPassword / setMemberActive
+on the local admin: `{}`, no link row, admin still active, sessions intact;
+the VA got "Only an admin can make sign-in links".
 
 Raw `db` in request paths: `lib/auth/login.ts`, `login-link.ts`,
 `session-check.ts`, `lib/proofs/rate-limit.ts` only, all before a session
