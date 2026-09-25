@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
 import {
   Button,
@@ -9,6 +10,7 @@ import {
   Select,
   Badge,
   InfoBubble,
+  useToast,
 } from "@/components/ui";
 import { ChevronDown } from "@/components/ui/icons";
 import {
@@ -60,6 +62,9 @@ const MODE_LABEL: Record<AuthMode, string> = {
 };
 
 export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [saving, startSave] = useTransition();
   const [mode, setMode] = useState<AuthMode>(shop.authType);
   const [domain, setDomain] = useState(shop.shopDomain ?? "");
   const [clientId, setClientId] = useState("");
@@ -75,6 +80,11 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [webhookStatus, setWebhookStatus] = useState<ShopifyWebhookStatus>(shop.webhookStatus);
   const [webhookError, setWebhookError] = useState<string | null>(shop.webhookStatus.error ?? null);
+  // A save registers the webhook on the server: show the fresh status after the refresh.
+  useEffect(() => {
+    setWebhookStatus(shop.webhookStatus);
+    setWebhookError(shop.webhookStatus.error ?? null);
+  }, [shop.webhookStatus]);
 
   function onTest() {
     setTest(null);
@@ -96,14 +106,40 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
     });
   }
 
+  function onSave(formData: FormData) {
+    startSave(async () => {
+      try {
+        const res = await saveShopifyCredentials(formData);
+        if (!res.ok) {
+          toast({ variant: "danger", title: "Not saved", description: res.message });
+          return;
+        }
+        setClientId("");
+        setClientSecret("");
+        setAccessToken("");
+        setWebhookSecret("");
+        toast({
+          variant: res.webhook.ok ? "success" : "warning",
+          title: res.message,
+          description: res.webhook.message,
+        });
+        router.refresh();
+      } catch {
+        toast({ variant: "danger", title: "Not saved", description: "Could not save. Try again." });
+      }
+    });
+  }
+
   function onSync() {
     setSyncError(null);
     setSummary(null);
     startSync(async () => {
       try {
-        setSummary(await triggerShopifySync(shop.id));
-      } catch (e) {
-        setSyncError(e instanceof Error ? e.message : "Sync failed");
+        const res = await triggerShopifySync(shop.id);
+        if (res.ok) setSummary(res.data);
+        else setSyncError(res.message);
+      } catch {
+        setSyncError("Could not sync. Try again in a moment.");
       }
     });
   }
@@ -114,9 +150,11 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
     setSummary(null);
     startBackfill(async () => {
       try {
-        setSummary(await backfillShopifyShop(shop.id));
-      } catch (e) {
-        setSyncError(e instanceof Error ? e.message : "Backfill failed");
+        const res = await backfillShopifyShop(shop.id);
+        if (res.ok) setSummary(res.data);
+        else setSyncError(res.message);
+      } catch {
+        setSyncError("Could not re-import. Try again in a moment.");
       }
     });
   }
@@ -125,9 +163,11 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
     setWebhookError(null);
     startWebhookRegistration(async () => {
       try {
-        setWebhookStatus(await registerShopifyWebhooks(shop.id));
-      } catch (e) {
-        setWebhookError(e instanceof Error ? e.message : "Webhook registration failed");
+        const res = await registerShopifyWebhooks(shop.id);
+        if (res.ok) setWebhookStatus(res.data);
+        else setWebhookError(res.message);
+      } catch {
+        setWebhookError("Could not set up instant orders. Try again in a moment.");
       }
     });
   }
@@ -146,7 +186,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="truncate text-sm font-semibold text-ink">{shop.name}</span>
-            <span className="rounded bg-canvas px-1.5 py-0.5 text-xs font-medium uppercase text-slate">Shopify</span>
+            <span className="rounded bg-canvas px-1.5 py-0.5 text-xs font-medium text-slate">Shopify</span>
             {shop.status === "connected" ? (
               <Badge variant="success" dot>Connected</Badge>
             ) : (
@@ -174,7 +214,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
                 Orders come in through the staff seat every 15 minutes, no app token needed. Saving a real Admin API token below switches this shop to it.
               </p>
             )}
-            <form action={saveShopifyCredentials} className="grid gap-3 rounded-input bg-canvas/70 p-3">
+            <form action={onSave} className="grid gap-3 rounded-input bg-canvas/70 p-3">
               <input type="hidden" name="shopId" value={shop.id} />
               <input type="hidden" name="authType" value={mode} />
 
@@ -253,7 +293,7 @@ export function ShopifyShopCard({ shop }: { shop: ShopifyShopVM }) {
                 <Button type="button" variant="secondary" size="sm" onClick={onTest} loading={testing}>
                   Test
                 </Button>
-                <Button type="submit" size="sm">
+                <Button type="submit" size="sm" loading={saving}>
                   Save credentials
                 </Button>
               </div>

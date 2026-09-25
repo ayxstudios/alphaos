@@ -18,7 +18,7 @@ import { shops, businesses, emailTemplates, printProductMappings, styles, users 
 import { reresolveShop, type ReresolveSummary } from "@/lib/orders/resolution";
 import type { FigureRule } from "@/lib/integrations/figures";
 import type { GmailCredentials } from "@/lib/integrations/gmail";
-import { pollMailbox, GmailClient, GmailNotConnectedError, type InboundSummary } from "@/lib/integrations/gmail";
+import { pollMailbox, GmailClient, GmailNotConnectedError, GmailReauthRequiredError, type InboundSummary } from "@/lib/integrations/gmail";
 import {
   DEFAULT_TEMPLATES,
   EDITABLE_TEMPLATE_KEYS,
@@ -28,12 +28,14 @@ import {
   resolveTemplate,
   type TemplateKey,
 } from "@/lib/email/templates";
+import { unknownPlaceholders } from "@/lib/email/template-meta";
 import { skipStaleBacklog } from "@/lib/email/backlog-guard";
 import { appUrl, uploadUrl } from "@/lib/urls";
 import { previewNotificationSweep, type NotificationSweepResult } from "@/lib/notifications/sla-sweep";
 import { ensureBackfillCutoff } from "@/lib/orders/archive";
 import {
   syncShopReceipts,
+  ReauthRequiredError as EtsyReauthRequiredError,
   type SyncSummary,
   type EtsyCredentials,
   type EtsyIntegrationConfig,
@@ -63,8 +65,52 @@ function cutoffFromDateInput(value: string): string {
 
 async function requireAdmin(): Promise<RequestUser> {
   const session = await auth();
-  if (session?.user?.role !== "admin") throw new Error("Forbidden");
+  if (session?.user?.role !== "admin") throw new Error("Only an admin can change settings");
   return { id: session.user.id, role: "admin" };
+}
+
+/** What a form save reports back: shown in a toast, never a thrown error. */
+export type SaveResult = { ok: true; message?: string } | { ok: false; message: string };
+
+/**
+ * A message a person can act on. Our own validation text passes through;
+ * anything that smells like a database or network error becomes one calm line.
+ */
+function plainError(e: unknown, fallback = "Could not save. Try again."): string {
+  const msg = e instanceof Error ? e.message : "";
+  if (!msg || /duplicate key|violates|constraint|ECONN|fetch failed|timeout|syntax|relation|column/i.test(msg)) return fallback;
+  return msg;
+}
+
+/**
+ * A shop or mailbox action's result. Next hides a thrown error's text in a
+ * production build ("An error occurred in the Server Components render"), so
+ * these actions return the reason instead of throwing it.
+ */
+export type Outcome<T> = { ok: true; data: T } | { ok: false; message: string };
+
+/** One calm line for a failed Etsy / Shopify / Gmail call; the raw error goes to the log. */
+function integrationMessage(e: unknown, service: "Etsy" | "Shopify" | "Gmail"): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  console.log(JSON.stringify({ ts: new Date().toISOString(), level: "error", component: "settings", integration: service.toLowerCase(), error: raw }));
+  if (e instanceof GmailNotConnectedError) return "Connect Gmail first.";
+  if (e instanceof GmailReauthRequiredError || e instanceof EtsyReauthRequiredError || /token exchange failed|invalid_client|invalid_grant|unauthori[sz]ed|\b40[13]\b|rejected/i.test(raw)) {
+    return service === "Shopify"
+      ? "Shopify did not accept the saved keys. Check them and press Test."
+      : `${service} needs reconnecting. Press Reconnect${service === "Gmail" ? " Gmail" : ""} and sign in again.`;
+  }
+  if (/\b429\b|throttl|rate limit/i.test(raw)) return `${service} is busy right now. Try again in a minute.`;
+  if (/fetch failed|ECONN|ENOTFOUND|timeout|network/i.test(raw)) return `Could not reach ${service}. Try again in a moment.`;
+  return `${service} did not answer as expected. Try again in a moment.`;
+}
+
+async function outcome<T>(service: "Etsy" | "Shopify" | "Gmail", run: () => Promise<T>): Promise<Outcome<T>> {
+  try {
+    return { ok: true, data: await run() };
+  } catch (e) {
+    if (e instanceof Error && e.message === "Only an admin can change settings") return { ok: false, message: e.message };
+    return { ok: false, message: integrationMessage(e, service) };
+  }
 }
 
 /**
@@ -128,57 +174,74 @@ export async function setShopStyles(
   return result;
 }
 
-/** Save a shop's Etsy app credentials (keystring + shared secret). Form action. */
-export async function saveEtsyCredentials(formData: FormData): Promise<void> {
-  const user = await requireAdmin();
-  const shopId = String(formData.get("shopId") ?? "");
-  const keystring = String(formData.get("keystring") ?? "").trim();
-  const sharedSecret = String(formData.get("sharedSecret") ?? "").trim();
-  if (!shopId || !keystring || !sharedSecret) throw new Error("Missing fields");
+/** Save a shop's Etsy app credentials (keystring + shared secret). */
+export async function saveEtsyCredentials(formData: FormData): Promise<SaveResult> {
+  try {
+    const user = await requireAdmin();
+    const shopId = String(formData.get("shopId") ?? "");
+    const keystring = String(formData.get("keystring") ?? "").trim();
+    const sharedSecret = String(formData.get("sharedSecret") ?? "").trim();
+    if (!shopId) return { ok: false, message: "Shop not found" };
+    if (!keystring || !sharedSecret) return { ok: false, message: "Enter both the keystring and the shared secret" };
 
-  await withUserContext(user, async (tx) => {
-    const creds = (await getShopCredentials(tx, shopId)) as EtsyCredentials;
-    await setShopCredentials(tx, shopId, { ...creds, keystring, sharedSecret });
-    const [s] = await tx.select({ cfg: shops.integrationConfig }).from(shops).where(eq(shops.id, shopId));
-    await tx
-      .update(shops)
-      .set({ integrationConfig: ensureBackfillCutoff((s?.cfg ?? {}) as EtsyIntegrationConfig) })
-      .where(eq(shops.id, shopId));
-  });
-  revalidatePath("/settings");
+    await withUserContext(user, async (tx) => {
+      const creds = (await getShopCredentials(tx, shopId)) as EtsyCredentials;
+      await setShopCredentials(tx, shopId, { ...creds, keystring, sharedSecret });
+      const [s] = await tx.select({ cfg: shops.integrationConfig }).from(shops).where(eq(shops.id, shopId));
+      await tx
+        .update(shops)
+        .set({ integrationConfig: ensureBackfillCutoff((s?.cfg ?? {}) as EtsyIntegrationConfig) })
+        .where(eq(shops.id, shopId));
+    });
+    revalidatePath("/settings");
+    return { ok: true, message: "Now press Connect to sign in to Etsy." };
+  } catch (e) {
+    return { ok: false, message: plainError(e) };
+  }
 }
 
-export async function saveShopBackfillCutoff(formData: FormData): Promise<void> {
-  const user = await requireAdmin();
-  const shopId = String(formData.get("shopId") ?? "");
-  const cutoff = cutoffFromDateInput(String(formData.get("backfillCutoffDate") ?? ""));
-  if (!shopId) throw new Error("Missing shop");
+export async function saveShopBackfillCutoff(formData: FormData): Promise<SaveResult> {
+  try {
+    const user = await requireAdmin();
+    const shopId = String(formData.get("shopId") ?? "");
+    const raw = String(formData.get("backfillCutoffDate") ?? "");
+    if (!shopId) return { ok: false, message: "Shop not found" };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw.trim())) return { ok: false, message: "Pick a date" };
+    const cutoff = cutoffFromDateInput(raw);
 
-  await withUserContext(user, async (tx) => {
-    const [s] = await tx.select({ cfg: shops.integrationConfig }).from(shops).where(eq(shops.id, shopId));
-    const cfg = (s?.cfg ?? {}) as Record<string, unknown>;
-    await tx
-      .update(shops)
-      .set({ integrationConfig: { ...cfg, backfillCutoffAt: cutoff } })
-      .where(eq(shops.id, shopId));
-  });
-  revalidatePath("/settings");
+    await withUserContext(user, async (tx) => {
+      const [s] = await tx.select({ cfg: shops.integrationConfig }).from(shops).where(eq(shops.id, shopId));
+      const cfg = (s?.cfg ?? {}) as Record<string, unknown>;
+      await tx
+        .update(shops)
+        .set({ integrationConfig: { ...cfg, backfillCutoffAt: cutoff } })
+        .where(eq(shops.id, shopId));
+    });
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: plainError(e) };
+  }
 }
 
-export async function triggerSync(shopId: string): Promise<SyncSummary> {
-  await requireAdmin();
-  const summary = await syncShopReceipts(shopId, { trigger: "manual" });
-  revalidatePath("/settings");
-  return summary;
+export async function triggerSync(shopId: string): Promise<Outcome<SyncSummary>> {
+  return outcome("Etsy", async () => {
+    await requireAdmin();
+    const summary = await syncShopReceipts(shopId, { trigger: "manual" });
+    revalidatePath("/settings");
+    return summary;
+  });
 }
 
 /** Backfill an Etsy shop's full history (re-scan from the widened window). */
-export async function backfillEtsyShop(shopId: string): Promise<SyncSummary> {
-  const user = await requireAdmin();
-  await resetCursor(user, shopId);
-  const summary = await syncShopReceipts(shopId, { mode: "backfill", trigger: "backfill" });
-  revalidatePath("/settings");
-  return summary;
+export async function backfillEtsyShop(shopId: string): Promise<Outcome<SyncSummary>> {
+  return outcome("Etsy", async () => {
+    const user = await requireAdmin();
+    await resetCursor(user, shopId);
+    const summary = await syncShopReceipts(shopId, { mode: "backfill", trigger: "backfill" });
+    revalidatePath("/settings");
+    return summary;
+  });
 }
 
 /* --- Shopify ------------------------------------------------------------ */
@@ -227,12 +290,25 @@ export async function testShopifyConnection(input: {
  * Secret fields left blank keep the stored value. Switching auth type clears the
  * other model's fields (and any cached token) so stale credentials never linger.
  */
-export async function saveShopifyCredentials(formData: FormData): Promise<void> {
+export type ShopifySaveResult =
+  | { ok: true; message: string; webhook: { ok: boolean; message: string } }
+  | { ok: false; message: string };
+
+export async function saveShopifyCredentials(formData: FormData): Promise<ShopifySaveResult> {
+  try {
+    return await saveShopifyCredentialsInner(formData);
+  } catch (e) {
+    return { ok: false, message: plainError(e) };
+  }
+}
+
+async function saveShopifyCredentialsInner(formData: FormData): Promise<ShopifySaveResult> {
   const user = await requireAdmin();
   const shopId = String(formData.get("shopId") ?? "");
   const authType = (String(formData.get("authType") ?? "client_credentials")) as ShopifyAuthType;
   const shopDomain = normalizeDomain(String(formData.get("shopDomain") ?? ""));
-  if (!shopId || !shopDomain) throw new Error("Missing fields");
+  if (!shopId) return { ok: false, message: "Shop not found" };
+  if (!shopDomain) return { ok: false, message: "Enter the store domain, e.g. yourshop.myshopify.com" };
   let savedCreds: ShopifyCredentials | null = null;
 
   await withUserContext(user, async (tx) => {
@@ -241,7 +317,7 @@ export async function saveShopifyCredentials(formData: FormData): Promise<void> 
     if (authType === "client_credentials") {
       const clientId = String(formData.get("clientId") ?? "").trim() || creds.clientId;
       const clientSecret = String(formData.get("clientSecret") ?? "").trim() || creds.clientSecret;
-      if (!clientId || !clientSecret) throw new Error("Client ID and secret are required");
+      if (!clientId || !clientSecret) throw new Error("Enter the Client ID and the Client secret");
       savedCreds = {
         ...creds,
         authType: "client_credentials",
@@ -258,7 +334,7 @@ export async function saveShopifyCredentials(formData: FormData): Promise<void> 
     } else {
       const accessToken = String(formData.get("accessToken") ?? "").trim() || creds.accessToken;
       const webhookSecret = String(formData.get("webhookSecret") ?? "").trim() || creds.webhookSecret;
-      if (!accessToken || !webhookSecret) throw new Error("Access token and webhook secret are required");
+      if (!accessToken || !webhookSecret) throw new Error("Enter the access token and the webhook secret");
       savedCreds = {
         ...creds,
         authType: "legacy",
@@ -285,41 +361,55 @@ export async function saveShopifyCredentials(formData: FormData): Promise<void> 
       .where(eq(shops.id, shopId));
   });
 
+  // Instant orders: Shopify tells AlphaOS about each new order the moment it
+  // is placed. Set it up now so the admin does not have to press a second
+  // button; a failure is reported, not hidden.
+  let webhook = { ok: false, message: "Instant orders are not set up yet." };
   if (savedCreds) {
-    await freshShopifyCredentials(savedCreds)
-      .then((liveCreds) => ensureShopifyOrdersCreateWebhook(shopId, liveCreds))
-      .catch((e) => {
-        console.log(
-          JSON.stringify({
-            ts: new Date().toISOString(),
-            level: "error",
-            component: "settings",
-            integration: "shopify",
-            shopId,
-            event: "webhook_auto_register_failed",
-            error: e instanceof Error ? e.message : String(e),
-          }),
-        );
-      });
+    try {
+      const liveCreds = await freshShopifyCredentials(savedCreds);
+      const status = await ensureShopifyOrdersCreateWebhook(shopId, liveCreds);
+      webhook = status.pointingCorrectly
+        ? { ok: true, message: "New orders arrive the moment they are placed." }
+        : { ok: false, message: "Shopify accepted the keys but instant orders could not be set up. Orders still come in every 15 minutes." };
+    } catch (e) {
+      console.log(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          level: "error",
+          component: "settings",
+          integration: "shopify",
+          shopId,
+          event: "webhook_auto_register_failed",
+          error: e instanceof Error ? e.message : String(e),
+        }),
+      );
+      webhook = { ok: false, message: "Saved, but Shopify did not accept these keys for instant orders. Check the domain and keys, then press Test." };
+    }
   }
   revalidatePath("/settings");
+  return { ok: true, message: "Shopify keys saved.", webhook };
 }
 
-export async function triggerShopifySync(shopId: string): Promise<ShopifySyncSummary> {
-  await requireAdmin();
-  const summary = await syncShopOrders(shopId, { trigger: "manual" });
-  revalidatePath("/settings");
-  return summary;
+export async function triggerShopifySync(shopId: string): Promise<Outcome<ShopifySyncSummary>> {
+  return outcome("Shopify", async () => {
+    await requireAdmin();
+    const summary = await syncShopOrders(shopId, { trigger: "manual" });
+    revalidatePath("/settings");
+    return summary;
+  });
 }
 
-export async function registerShopifyWebhooks(shopId: string): Promise<ShopifyWebhookRegistrationResult> {
-  const user = await requireAdmin();
-  const creds = (await withUserContext(user, (tx) =>
-    getShopCredentials(tx, shopId),
-  )) as ShopifyCredentials;
-  const result = await ensureShopifyOrdersCreateWebhook(shopId, await freshShopifyCredentials(creds));
-  revalidatePath("/settings");
-  return result;
+export async function registerShopifyWebhooks(shopId: string): Promise<Outcome<ShopifyWebhookRegistrationResult>> {
+  return outcome("Shopify", async () => {
+    const user = await requireAdmin();
+    const creds = (await withUserContext(user, (tx) =>
+      getShopCredentials(tx, shopId),
+    )) as ShopifyCredentials;
+    const result = await ensureShopifyOrdersCreateWebhook(shopId, await freshShopifyCredentials(creds));
+    revalidatePath("/settings");
+    return result;
+  });
 }
 
 /** Reset a shop's sync cursor and run a full window sync (idempotent). */
@@ -339,14 +429,16 @@ async function resetCursor(user: RequestUser, shopId: string): Promise<void> {
  * automated customer email suppressed (a historical import must never message a
  * customer). Imports are idempotent, so re-scanning is safe.
  */
-export async function backfillShopifyShop(shopId: string): Promise<ShopifySyncSummary> {
-  const user = await requireAdmin();
-  await resetCursor(user, shopId);
-  const summary = await syncShopOrders(shopId, { suppressCustomerEmail: true, mode: "backfill", trigger: "backfill" });
-  revalidatePath("/settings");
-  revalidatePath("/orders");
-  revalidatePath("/board");
-  return summary;
+export async function backfillShopifyShop(shopId: string): Promise<Outcome<ShopifySyncSummary>> {
+  return outcome("Shopify", async () => {
+    const user = await requireAdmin();
+    await resetCursor(user, shopId);
+    const summary = await syncShopOrders(shopId, { suppressCustomerEmail: true, mode: "backfill", trigger: "backfill" });
+    revalidatePath("/settings");
+    revalidatePath("/orders");
+    revalidatePath("/board");
+    return summary;
+  });
 }
 
 /* --- Figure/style resolution rules (per shop, Etsy or Shopify) ----------- */
@@ -440,35 +532,45 @@ export async function reresolveShopOrders(shopId: string): Promise<ReresolveSumm
  * existing refresh token and secret (secret field left blank = keep current), so
  * editing the address doesn't drop a live connection.
  */
-export async function saveGmailClient(formData: FormData): Promise<void> {
-  const user = await requireAdmin();
-  const businessId = String(formData.get("businessId") ?? "");
-  const clientId = String(formData.get("clientId") ?? "").trim();
-  const clientSecret = String(formData.get("clientSecret") ?? "").trim();
-  const address = String(formData.get("address") ?? "").trim().toLowerCase();
-  if (!businessId || !clientId || !address) throw new Error("Missing fields");
+export async function saveGmailClient(formData: FormData): Promise<SaveResult> {
+  try {
+    const user = await requireAdmin();
+    const businessId = String(formData.get("businessId") ?? "");
+    const clientId = String(formData.get("clientId") ?? "").trim();
+    const clientSecret = String(formData.get("clientSecret") ?? "").trim();
+    const address = String(formData.get("address") ?? "").trim().toLowerCase();
+    if (!businessId) return { ok: false, message: "Business not found" };
+    if (!address || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) return { ok: false, message: "Enter the mailbox address, e.g. orders@yourbusiness.com" };
 
-  await withUserContext(user, async (tx) => {
-    const creds = ((await getBusinessGmailCredentials(tx, businessId)) as GmailCredentials | null) ?? {};
-    const nextSecret = clientSecret || creds.clientSecret;
-    if (!nextSecret) throw new Error("Client secret is required");
-    await setBusinessGmailCredentials(tx, businessId, {
-      ...creds,
-      clientId,
-      clientSecret: nextSecret,
-      address,
+    await withUserContext(user, async (tx) => {
+      const creds = ((await getBusinessGmailCredentials(tx, businessId)) as GmailCredentials | null) ?? {};
+      const nextId = clientId || creds.clientId;
+      const nextSecret = clientSecret || creds.clientSecret;
+      if (!nextId) throw new Error("Enter the client ID from Google Cloud");
+      if (!nextSecret) throw new Error("Enter the client secret from Google Cloud");
+      await setBusinessGmailCredentials(tx, businessId, {
+        ...creds,
+        clientId: nextId,
+        clientSecret: nextSecret,
+        address,
+      });
+      await tx.update(businesses).set({ gmailAddress: address }).where(eq(businesses.id, businessId));
     });
-    await tx.update(businesses).set({ gmailAddress: address }).where(eq(businesses.id, businessId));
-  });
-  revalidatePath("/settings");
+    revalidatePath("/settings");
+    return { ok: true, message: "Now press Connect Gmail to sign in to the mailbox." };
+  } catch (e) {
+    return { ok: false, message: plainError(e) };
+  }
 }
 
 /** Manually run the inbound reply poller for one business (admin test hook). */
-export async function triggerGmailPoll(businessId: string): Promise<InboundSummary> {
-  await requireAdmin();
-  const summary = await pollMailbox(businessId);
-  revalidatePath("/settings");
-  return summary;
+export async function triggerGmailPoll(businessId: string): Promise<Outcome<InboundSummary>> {
+  return outcome("Gmail", async () => {
+    await requireAdmin();
+    const summary = await pollMailbox(businessId);
+    revalidatePath("/settings");
+    return summary;
+  });
 }
 
 /**
@@ -591,10 +693,10 @@ export async function sendGmailTest(businessId: string, toRaw: string): Promise<
     try {
       const tpl = await withUserContext(user, (tx) => resolveTemplate(tx, businessId, key));
       const rendered = renderTemplate(tpl, vars);
-      await client.send({ to, subject: `[TEST] ${rendered.subject}`, text: rendered.body });
+      await client.send({ to, subject: `Test: ${rendered.subject}`, text: rendered.body });
       results.push({ key, label: TEMPLATE_META[key].label, ok: true });
     } catch (e) {
-      results.push({ key, label: TEMPLATE_META[key].label, ok: false, error: e instanceof Error ? e.message : "Send failed" });
+      results.push({ key, label: TEMPLATE_META[key].label, ok: false, error: integrationMessage(e, "Gmail") });
     }
   }
   const okAll = results.every((r) => r.ok);
@@ -613,7 +715,7 @@ export async function runNotificationDryRun(): Promise<
     const report = await previewNotificationSweep(user);
     return { ok: true, report };
   } catch (e) {
-    return { ok: false, message: e instanceof Error ? e.message : "Dry-run failed" };
+    return { ok: false, message: plainError(e, "Could not run the test. Try again.") };
   }
 }
 
@@ -636,7 +738,7 @@ export async function saveDailyHealthEmailSettings(input: {
     : [];
   const validIds = validRecipients.map((recipient) => recipient.id);
   if (input.enabled && !validIds.length) {
-    return { ok: false, message: "Choose at least one active admin recipient before enabling the briefing." };
+    return { ok: false, message: "Tick at least one admin to send it to." };
   }
 
   await withUserContext(user, async (tx) => {
@@ -649,9 +751,16 @@ export async function saveDailyHealthEmailSettings(input: {
         dailyHealthEmailRecipientIds: validIds,
       })
       .where(eq(businesses.id, businessId));
+  }).catch((e) => {
+    throw new Error(plainError(e));
   });
   revalidatePath("/settings");
-  return { ok: true, message: input.enabled ? "Morning briefing delivery enabled." : "Morning briefing delivery disabled." };
+  return {
+    ok: true,
+    message: input.enabled
+      ? `It goes to ${validIds.length} admin${validIds.length === 1 ? "" : "s"} each morning.`
+      : "Nobody gets the morning briefing for now.",
+  };
 }
 
 /* --- Print fulfilment ---------------------------------------------------- */
@@ -666,7 +775,15 @@ function assertPrintMatchType(value: string): "sku_exact" | "title_variant_conta
   throw new Error("Unknown print mapping matcher");
 }
 
-export async function savePrintProductMapping(formData: FormData): Promise<void> {
+export async function savePrintProductMapping(formData: FormData): Promise<SaveResult> {
+  try {
+    return await savePrintProductMappingInner(formData);
+  } catch (e) {
+    return { ok: false, message: plainError(e) };
+  }
+}
+
+async function savePrintProductMappingInner(formData: FormData): Promise<SaveResult> {
   const user = await requireAdmin();
   const mappingId = String(formData.get("mappingId") ?? "").trim();
   const shopId = String(formData.get("shopId") ?? "").trim();
@@ -678,10 +795,11 @@ export async function savePrintProductMapping(formData: FormData): Promise<void>
   const label = String(formData.get("label") ?? "").trim();
   const providerProductId = String(formData.get("providerProductId") ?? "").trim();
   const providerConfigRaw = String(formData.get("providerConfig") ?? "").trim();
-  if (!shopId || !providerProductId) throw new Error("Shop and provider product id are required");
-  if (matchType === "sku_exact" && !sourceSku) throw new Error("Exact SKU mappings require a source SKU");
+  if (!shopId) return { ok: false, message: "Pick a shop" };
+  if (!providerProductId) return { ok: false, message: "Enter the print company's product code" };
+  if (matchType === "sku_exact" && !sourceSku) return { ok: false, message: "Enter your shop's product code (SKU) to match" };
   if (matchType === "title_variant_contains" && !titleContains && !variantContains) {
-    throw new Error("Contains mappings require a title or variant fragment");
+    return { ok: false, message: "Enter a word from the product title or the variant" };
   }
 
   let providerConfig: unknown = null;
@@ -689,7 +807,7 @@ export async function savePrintProductMapping(formData: FormData): Promise<void>
     try {
       providerConfig = JSON.parse(providerConfigRaw);
     } catch {
-      throw new Error("Provider config must be valid JSON");
+      return { ok: false, message: "The extra print options must be valid JSON, e.g. {\"size\":\"A3\"}" };
     }
   }
 
@@ -723,20 +841,26 @@ export async function savePrintProductMapping(formData: FormData): Promise<void>
   });
   revalidatePath("/settings");
   revalidatePath("/queue/print");
+  return { ok: true, message: "Matching orders can now be sent to print." };
 }
 
-export async function deactivatePrintProductMapping(formData: FormData): Promise<void> {
-  const user = await requireAdmin();
-  const mappingId = String(formData.get("mappingId") ?? "").trim();
-  if (!mappingId) throw new Error("Missing mapping");
-  await withUserContext(user, (tx) =>
-    tx
-      .update(printProductMappings)
-      .set({ active: false, updatedAt: new Date() })
-      .where(eq(printProductMappings.id, mappingId)),
-  );
-  revalidatePath("/settings");
-  revalidatePath("/queue/print");
+export async function deactivatePrintProductMapping(formData: FormData): Promise<SaveResult> {
+  try {
+    const user = await requireAdmin();
+    const mappingId = String(formData.get("mappingId") ?? "").trim();
+    if (!mappingId) return { ok: false, message: "Mapping not found" };
+    await withUserContext(user, (tx) =>
+      tx
+        .update(printProductMappings)
+        .set({ active: false, updatedAt: new Date() })
+        .where(eq(printProductMappings.id, mappingId)),
+    );
+    revalidatePath("/settings");
+    revalidatePath("/queue/print");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: plainError(e) };
+  }
 }
 
 /* --- Email templates (per business) ------------------------------------- */
@@ -747,16 +871,34 @@ function assertTemplateKey(key: string): TemplateKey {
 }
 
 /** Upsert a business's override for one template. */
-export async function saveEmailTemplate(formData: FormData): Promise<void> {
+export async function saveEmailTemplate(formData: FormData): Promise<SaveResult> {
+  try {
+    return await saveEmailTemplateInner(formData);
+  } catch (e) {
+    return { ok: false, message: plainError(e) };
+  }
+}
+
+async function saveEmailTemplateInner(formData: FormData): Promise<SaveResult> {
   const user = await requireAdmin();
   const businessId = String(formData.get("businessId") ?? "");
   const key = assertTemplateKey(String(formData.get("key") ?? ""));
   const subject = String(formData.get("subject") ?? "").trim();
   // Browsers submit textarea newlines as CRLF; store plain LF like the defaults.
   const body = String(formData.get("body") ?? "").replace(/\r\n?/g, "\n").trim();
-  if (!businessId || !subject || !body) throw new Error("Subject and body are required");
+  if (!businessId) return { ok: false, message: "Business not found" };
+  if (!subject) return { ok: false, message: "Enter a subject line" };
+  if (!body) return { ok: false, message: "Enter the email text" };
+  const unknown = unknownPlaceholders(key, `${subject}\n${body}`);
+  if (unknown.length) {
+    const allowed = TEMPLATE_META[key].variables.map((v) => `{{${v}}}`).join(", ");
+    return {
+      ok: false,
+      message: `${unknown.map((u) => `{{${u}}}`).join(", ")} would reach the customer blank. This email can use ${allowed}.`,
+    };
+  }
 
-  await withUserContext(user, async (tx) => {
+  const customized = await withUserContext(user, async (tx) => {
     // Saving the built-in text unchanged is not a customisation: keep it on
     // the default (so it still says Default, and follows future default edits).
     const [biz] = await tx
@@ -768,7 +910,7 @@ export async function saveEmailTemplate(formData: FormData): Promise<void> {
       await tx
         .delete(emailTemplates)
         .where(and(eq(emailTemplates.businessId, businessId), eq(emailTemplates.key, key)));
-      return;
+      return false;
     }
     await tx
       .insert(emailTemplates)
@@ -777,8 +919,15 @@ export async function saveEmailTemplate(formData: FormData): Promise<void> {
         target: [emailTemplates.businessId, emailTemplates.key],
         set: { subject, body, updatedBy: user.id, updatedAt: new Date() },
       });
+    return true;
   });
   revalidatePath("/settings");
+  return {
+    ok: true,
+    message: customized
+      ? `Customers get this ${TEMPLATE_META[key].label.toLowerCase()} email from now on.`
+      : "That is the built-in text, so it stays on Default.",
+  };
 }
 
 /**
@@ -810,12 +959,20 @@ export async function resetEmailTemplate(
 // client (lib/db/credentials.ts). Read by lib/print/reconcile.ts and the
 // Gelato webhook route; nothing here ever returns the plaintext to the client.
 
-export async function savePrintProviderCredentials(formData: FormData): Promise<void> {
+export async function savePrintProviderCredentials(formData: FormData): Promise<SaveResult> {
+  try {
+    return await savePrintProviderCredentialsInner(formData);
+  } catch (e) {
+    return { ok: false, message: plainError(e) };
+  }
+}
+
+async function savePrintProviderCredentialsInner(formData: FormData): Promise<SaveResult> {
   const user = await requireAdmin();
   const businessId = String(formData.get("businessId") ?? "");
   const provider = String(formData.get("provider") ?? "");
   if (!businessId || (provider !== "gelato" && provider !== "lumaprints")) {
-    throw new Error("Missing business or provider");
+    return { ok: false, message: "Print company not found" };
   }
 
   await withUserContext(user, async (tx) => {
@@ -824,7 +981,7 @@ export async function savePrintProviderCredentials(formData: FormData): Promise<
       const existing = (current.gelato ?? {}) as { apiKey?: string; webhookSecret?: string | null };
       const apiKey = String(formData.get("apiKey") ?? "").trim() || existing.apiKey;
       const webhookSecret = String(formData.get("webhookSecret") ?? "").trim() || existing.webhookSecret || null;
-      if (!apiKey) throw new Error("Gelato API key is required");
+      if (!apiKey) throw new Error("Paste the API key from the Gelato dashboard");
       await setBusinessPrintCredentials(tx, businessId, { ...current, gelato: { apiKey, webhookSecret } });
     } else {
       const existing = (current.lumaprints ?? {}) as { username?: string; password?: string; storeId?: string; sandbox?: boolean };
@@ -833,7 +990,7 @@ export async function savePrintProviderCredentials(formData: FormData): Promise<
       const storeId = String(formData.get("storeId") ?? "").trim() || existing.storeId;
       const sandbox = formData.get("sandbox") === "on";
       if (!username || !password || !storeId) {
-        throw new Error("Luma Prints username, password, and store id are all required");
+        throw new Error("Enter the Luma Prints username, password and store number");
       }
       await setBusinessPrintCredentials(tx, businessId, {
         ...current,
@@ -842,15 +999,21 @@ export async function savePrintProviderCredentials(formData: FormData): Promise<
     }
   });
   revalidatePath("/settings");
+  return { ok: true };
 }
 
-export async function clearPrintProviderCredentials(businessId: string, provider: "gelato" | "lumaprints"): Promise<void> {
-  const user = await requireAdmin();
-  await withUserContext(user, async (tx) => {
-    const current = ((await getBusinessPrintCredentials(tx, businessId)) as ShopCredentials | null) ?? {};
-    const next = { ...current };
-    delete next[provider];
-    await setBusinessPrintCredentials(tx, businessId, next);
-  });
-  revalidatePath("/settings");
+export async function clearPrintProviderCredentials(businessId: string, provider: "gelato" | "lumaprints"): Promise<SaveResult> {
+  try {
+    const user = await requireAdmin();
+    await withUserContext(user, async (tx) => {
+      const current = ((await getBusinessPrintCredentials(tx, businessId)) as ShopCredentials | null) ?? {};
+      const next = { ...current };
+      delete next[provider];
+      await setBusinessPrintCredentials(tx, businessId, next);
+    });
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, message: plainError(e) };
+  }
 }

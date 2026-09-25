@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { savePrintProviderCredentials, clearPrintProviderCredentials } from "@/app/(app)/settings/actions";
-import { Badge, Button, Input, DataPanel, useToast } from "@/components/ui";
+import { Badge, Button, Input, DataPanel, useToast, Checkbox } from "@/components/ui";
 import { Printer } from "@/components/ui/icons";
 
 export type PrintProviderCredentialsVM = {
@@ -33,20 +33,32 @@ function GelatoCard({ creds }: { creds: PrintProviderCredentialsVM }) {
   function onSave(formData: FormData) {
     start(async () => {
       try {
-        await savePrintProviderCredentials(formData);
-        toast({ variant: "success", title: "Gelato credentials saved" });
+        const res = await savePrintProviderCredentials(formData);
+        if (!res.ok) {
+          toast({ variant: "danger", title: "Not saved", description: res.message });
+          return;
+        }
+        toast({ variant: "success", title: "Gelato keys saved" });
         router.refresh();
-      } catch (error) {
-        toast({ variant: "danger", title: "Not saved", description: error instanceof Error ? error.message : "Try again." });
+      } catch {
+        toast({ variant: "danger", title: "Not saved", description: "Could not save. Try again." });
       }
     });
   }
 
   function onClear() {
     startClear(async () => {
-      await clearPrintProviderCredentials(creds.businessId, "gelato");
-      toast({ variant: "success", title: "Gelato credentials removed" });
-      router.refresh();
+      try {
+        const res = await clearPrintProviderCredentials(creds.businessId, "gelato");
+        if (!res.ok) {
+          toast({ variant: "danger", title: "Not removed", description: res.message });
+          return;
+        }
+        toast({ variant: "success", title: "Gelato keys removed" });
+        router.refresh();
+      } catch {
+        toast({ variant: "danger", title: "Not removed", description: "Could not remove. Try again." });
+      }
     });
   }
 
@@ -106,20 +118,32 @@ function LumaCard({ creds }: { creds: PrintProviderCredentialsVM }) {
   function onSave(formData: FormData) {
     start(async () => {
       try {
-        await savePrintProviderCredentials(formData);
-        toast({ variant: "success", title: "Luma Prints credentials saved" });
+        const res = await savePrintProviderCredentials(formData);
+        if (!res.ok) {
+          toast({ variant: "danger", title: "Not saved", description: res.message });
+          return;
+        }
+        toast({ variant: "success", title: "Luma Prints keys saved" });
         router.refresh();
-      } catch (error) {
-        toast({ variant: "danger", title: "Not saved", description: error instanceof Error ? error.message : "Try again." });
+      } catch {
+        toast({ variant: "danger", title: "Not saved", description: "Could not save. Try again." });
       }
     });
   }
 
   function onClear() {
     startClear(async () => {
-      await clearPrintProviderCredentials(creds.businessId, "lumaprints");
-      toast({ variant: "success", title: "Luma Prints credentials removed" });
-      router.refresh();
+      try {
+        const res = await clearPrintProviderCredentials(creds.businessId, "lumaprints");
+        if (!res.ok) {
+          toast({ variant: "danger", title: "Not removed", description: res.message });
+          return;
+        }
+        toast({ variant: "success", title: "Luma Prints keys removed" });
+        router.refresh();
+      } catch {
+        toast({ variant: "danger", title: "Not removed", description: "Could not remove. Try again." });
+      }
     });
   }
 
@@ -155,13 +179,11 @@ function LumaCard({ creds }: { creds: PrintProviderCredentialsVM }) {
           placeholder="e.g. 818"
           autoComplete="off"
         />
-        <label className="flex items-center gap-2 text-sm text-ink">
-          <input
-            type="checkbox"
+        <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-ink sm:min-h-0 sm:gap-2">
+          <Checkbox
             name="sandbox"
             checked={sandbox}
             onChange={(e) => setSandbox(e.currentTarget.checked)}
-            className="size-4 rounded border-line accent-pigment"
           />
           Use sandbox (us.api-sandbox.lumaprints.com)
         </label>

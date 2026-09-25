@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 import {
@@ -8,6 +9,7 @@ import {
   ConfirmDrawer,
   Input,
   Badge,
+  useToast,
 } from "@/components/ui";
 import { ChevronDown } from "@/components/ui/icons";
 import { saveEtsyCredentials, triggerSync, backfillEtsyShop } from "@/app/(app)/settings/actions";
@@ -45,6 +47,9 @@ function StatusBadge({ status }: { status: EtsyShopVM["status"] }) {
 }
 
 export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [saving, startSave] = useTransition();
   const [pending, startTransition] = useTransition();
   const [backfilling, startBackfill] = useTransition();
   const [summary, setSummary] = useState<SyncSummary | null>(null);
@@ -55,9 +60,27 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
     setSummary(null);
     startTransition(async () => {
       try {
-        setSummary(await triggerSync(shop.id));
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Sync failed");
+        const res = await triggerSync(shop.id);
+        if (res.ok) setSummary(res.data);
+        else setError(res.message);
+      } catch {
+        setError("Could not sync. Try again in a moment.");
+      }
+    });
+  }
+
+  function onSaveCredentials(formData: FormData) {
+    startSave(async () => {
+      try {
+        const res = await saveEtsyCredentials(formData);
+        if (!res.ok) {
+          toast({ variant: "danger", title: "Not saved", description: res.message });
+          return;
+        }
+        toast({ variant: "success", title: "Etsy keys saved", description: res.message });
+        router.refresh();
+      } catch {
+        toast({ variant: "danger", title: "Not saved", description: "Could not save. Try again." });
       }
     });
   }
@@ -68,9 +91,11 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
     setSummary(null);
     startBackfill(async () => {
       try {
-        setSummary(await backfillEtsyShop(shop.id));
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Backfill failed");
+        const res = await backfillEtsyShop(shop.id);
+        if (res.ok) setSummary(res.data);
+        else setError(res.message);
+      } catch {
+        setError("Could not re-import. Try again in a moment.");
       }
     });
   }
@@ -88,7 +113,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="truncate text-sm font-semibold text-ink">{shop.name}</span>
-            <span className="rounded bg-canvas px-1.5 py-0.5 text-xs font-medium uppercase text-slate">Etsy</span>
+            <span className="rounded bg-canvas px-1.5 py-0.5 text-xs font-medium text-slate">Etsy</span>
             <StatusBadge status={shop.status} />
             {health !== "ok" && (
               <Badge variant="warning" dot>
@@ -104,7 +129,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
       <div className="border-t border-line p-4">
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
           <div className="flex flex-col gap-4">
-            <form action={saveEtsyCredentials} className="grid gap-3 rounded-input bg-canvas/70 p-3">
+            <form action={onSaveCredentials} className="grid gap-3 rounded-input bg-canvas/70 p-3">
               <input type="hidden" name="shopId" value={shop.id} />
               <Input
                 label="Keystring"
@@ -122,7 +147,7 @@ export function EtsyShopCard({ shop }: { shop: EtsyShopVM }) {
                 required
               />
               <div className="flex flex-wrap items-center gap-2">
-                <Button type="submit" variant="secondary" size="sm">
+                <Button type="submit" variant="secondary" size="sm" loading={saving}>
                   Save credentials
                 </Button>
                 <a

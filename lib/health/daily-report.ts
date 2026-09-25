@@ -774,7 +774,16 @@ async function loadJobRunHealth(tx: Tx, scope: HealthScope, now: Date): Promise<
   return rows.sort((a, b) => Number(b.unhealthy) - Number(a.unhealthy) || a.label.localeCompare(b.label));
 }
 
-async function computeHealthMetricsInTx(tx: Tx, scope: HealthScope): Promise<HealthMetrics> {
+/** Opens one short transaction (with the caller's RLS context) per read. */
+type TxRunner = <T>(fn: (tx: Tx) => Promise<T>) => Promise<T>;
+
+/**
+ * Every read below is independent, so each gets its own short transaction and
+ * they all run together: one transaction ran ~25 queries back to back, which
+ * made System Health take 12 to 25 s on staging (docs/PERF.md: the order page
+ * and Settings start their reads together the same way).
+ */
+async function computeHealthMetrics(run: TxRunner, scope: HealthScope): Promise<HealthMetrics> {
   const now = new Date();
   const todayStart = startOfZonedDay(now);
   const yesterdayStart = addDays(todayStart, -1);
@@ -783,108 +792,147 @@ async function computeHealthMetricsInTx(tx: Tx, scope: HealthScope): Promise<Hea
   const oneHourAgo = new Date(now.getTime() - 3_600_000);
   const staleReplyCutoff = new Date(now.getTime() - 24 * 3_600_000);
 
-  const shopsRows = await tx
-    .select({
-      id: shops.id,
-      businessName: businesses.name,
-      name: shops.name,
-      platform: shops.platform,
-      lastSyncAt: sql<string | null>`${shops.integrationConfig}->>${"lastSyncAt"}`,
-    })
-    .from(shops)
-    .innerJoin(businesses, eq(businesses.id, shops.businessId))
-    .where(all(scope.kind === "business" ? eq(shops.businessId, scope.businessId) : undefined, eq(shops.active, true)))
-    .orderBy(asc(businesses.name), asc(shops.name));
-  const gmailMailboxRows = await tx
-    .select({
-      businessId: businesses.id,
-      businessName: businesses.name,
-      gmailAddress: businesses.gmailAddress,
-      historyId: businesses.gmailHistoryId,
-      lastPolledAt: businesses.gmailLastPolledAt,
-    })
-    .from(businesses)
-    .where(
-      all(
-        scopedWhere(scope, businesses.id),
-        isNotNull(businesses.gmailCredentials),
-        isNotNull(businesses.gmailHistoryId),
-      ),
-    )
-    .orderBy(asc(businesses.name));
-  const emailRows = await tx
-    .select({
-      queued: sql<number>`count(*) filter (where ${messages.status} = 'queued')::int`,
-      failed: sql<number>`count(*) filter (where ${messages.status} = 'failed')::int`,
-    })
-    .from(messages)
-    .where(
-      all(
-        scopedWhere(scope, messages.businessId),
-        eq(messages.direction, "outbound"),
-        isNull(messages.archivedAt),
-        inArray(messages.status, ["queued", "failed"]),
-      ),
-    );
-  const unmatchedRow = await tx
-    .select({ n: sql<number>`count(*)::int` })
-    .from(messages)
-    .where(
-      all(
-        scopedWhere(scope, messages.businessId),
-        eq(messages.direction, "inbound"),
-        isNull(messages.orderId),
-        isNull(messages.archivedAt),
-        isNull(messages.suppressedAt),
-        lt(messages.createdAt, staleReplyCutoff),
-      ),
-    );
-  const blockedRow = await tx
-    .select({ n: sql<number>`count(*)::int` })
-    .from(earnings)
-    .where(all(scopedWhere(scope, earnings.businessId), eq(earnings.status, "blocked")));
-  const overdueRow = await tx
-    .select({
-      count: sql<number>`count(*)::int`,
-      worstDueAt: sql<Date | string | null>`min(${orders.dueAt})`,
-    })
-    .from(orders)
-    .where(
-      all(
-        scopedWhere(scope, orders.businessId),
-        liveOrderWhere(),
-        notInArray(orders.status, [...CLOSED_STATUSES]),
-        lt(orders.dueAt, now),
-      ),
-    );
-  const yesterdayOrdersIn = await countOrdersIn(tx, scope, yesterdayStart, todayStart);
-  const trailingOrdersIn = await countOrdersIn(tx, scope, trailing7Start, todayStart);
-  const previousOrdersIn = await countOrdersIn(tx, scope, previous7Start, trailing7Start);
-  const deliveredRows = await loadDeliveredRows(tx, scope, previous7Start, todayStart);
-  const qcRows = await loadQcRows(tx, scope, previous7Start, todayStart);
-  const revisionRows = await loadRevisionRows(tx, scope, previous7Start, todayStart);
-  const failedQcRows = await tx
-    .select({
-      checklistSnapshot: qcChecks.checklistSnapshot,
-      itemResults: qcChecks.itemResults,
-    })
-    .from(qcChecks)
-    .innerJoin(orders, eq(orders.id, qcChecks.orderId))
-    .where(
-      all(
-        scopedWhere(scope, qcChecks.businessId),
-        liveOrderSql(),
-        eq(qcChecks.result, "fail"),
-        gte(qcChecks.createdAt, trailing7Start),
-        lt(qcChecks.createdAt, todayStart),
-      ),
-    )
-    .limit(500);
-  const staleIntake = await loadStaleIntake(tx, scope, now);
-  const proofNoResponse = await loadProofNoResponse(tx, scope, now);
-  const capacity = await loadDesignerCapacity(tx, scope);
-  const unassigned = await loadUnassigned(tx, scope);
-  const jobHealth = await loadJobRunHealth(tx, scope, now);
+  const [
+    shopsRows,
+    gmailMailboxRows,
+    emailRows,
+    unmatchedRow,
+    blockedRow,
+    overdueRow,
+    yesterdayOrdersIn,
+    trailingOrdersIn,
+    previousOrdersIn,
+    deliveredRows,
+    qcRows,
+    revisionRows,
+    failedQcRows,
+    staleIntake,
+    proofNoResponse,
+    capacity,
+    unassigned,
+    jobHealth,
+  ] = await Promise.all([
+    run((tx) =>
+      tx
+        .select({
+          id: shops.id,
+          businessName: businesses.name,
+          name: shops.name,
+          platform: shops.platform,
+          lastSyncAt: sql<string | null>`${shops.integrationConfig}->>${"lastSyncAt"}`,
+        })
+        .from(shops)
+        .innerJoin(businesses, eq(businesses.id, shops.businessId))
+        .where(all(scope.kind === "business" ? eq(shops.businessId, scope.businessId) : undefined, eq(shops.active, true)))
+        .orderBy(asc(businesses.name), asc(shops.name))),
+    run((tx) =>
+      tx
+        .select({
+          businessId: businesses.id,
+          businessName: businesses.name,
+          gmailAddress: businesses.gmailAddress,
+          historyId: businesses.gmailHistoryId,
+          lastPolledAt: businesses.gmailLastPolledAt,
+        })
+        .from(businesses)
+        .where(
+          all(
+            scopedWhere(scope, businesses.id),
+            isNotNull(businesses.gmailCredentials),
+            isNotNull(businesses.gmailHistoryId),
+          ),
+        )
+        .orderBy(asc(businesses.name))),
+    run((tx) =>
+      tx
+        .select({
+          queued: sql<number>`count(*) filter (where ${messages.status} = 'queued')::int`,
+          failed: sql<number>`count(*) filter (where ${messages.status} = 'failed')::int`,
+        })
+        .from(messages)
+        .where(
+          all(
+            scopedWhere(scope, messages.businessId),
+            eq(messages.direction, "outbound"),
+            isNull(messages.archivedAt),
+            inArray(messages.status, ["queued", "failed"]),
+          ),
+        )),
+    run((tx) =>
+      tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(messages)
+        .where(
+          all(
+            scopedWhere(scope, messages.businessId),
+            eq(messages.direction, "inbound"),
+            isNull(messages.orderId),
+            isNull(messages.archivedAt),
+            isNull(messages.suppressedAt),
+            lt(messages.createdAt, staleReplyCutoff),
+          ),
+        )),
+    run((tx) =>
+      tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(earnings)
+        .where(all(scopedWhere(scope, earnings.businessId), eq(earnings.status, "blocked")))),
+    run((tx) =>
+      tx
+        .select({
+          count: sql<number>`count(*)::int`,
+          worstDueAt: sql<Date | string | null>`min(${orders.dueAt})`,
+        })
+        .from(orders)
+        .where(
+          all(
+            scopedWhere(scope, orders.businessId),
+            liveOrderWhere(),
+            notInArray(orders.status, [...CLOSED_STATUSES]),
+            lt(orders.dueAt, now),
+          ),
+        )),
+    run((tx) =>
+      countOrdersIn(tx, scope, yesterdayStart, todayStart)),
+    run((tx) =>
+      countOrdersIn(tx, scope, trailing7Start, todayStart)),
+    run((tx) =>
+      countOrdersIn(tx, scope, previous7Start, trailing7Start)),
+    run((tx) =>
+      loadDeliveredRows(tx, scope, previous7Start, todayStart)),
+    run((tx) =>
+      loadQcRows(tx, scope, previous7Start, todayStart)),
+    run((tx) =>
+      loadRevisionRows(tx, scope, previous7Start, todayStart)),
+    run((tx) =>
+      tx
+        .select({
+          checklistSnapshot: qcChecks.checklistSnapshot,
+          itemResults: qcChecks.itemResults,
+        })
+        .from(qcChecks)
+        .innerJoin(orders, eq(orders.id, qcChecks.orderId))
+        .where(
+          all(
+            scopedWhere(scope, qcChecks.businessId),
+            liveOrderSql(),
+            eq(qcChecks.result, "fail"),
+            gte(qcChecks.createdAt, trailing7Start),
+            lt(qcChecks.createdAt, todayStart),
+          ),
+        )
+        .limit(500)),
+    run((tx) =>
+      loadStaleIntake(tx, scope, now)),
+    run((tx) =>
+      loadProofNoResponse(tx, scope, now)),
+    run((tx) =>
+      loadDesignerCapacity(tx, scope)),
+    run((tx) =>
+      loadUnassigned(tx, scope)),
+    run((tx) =>
+      loadJobRunHealth(tx, scope, now)),
+  ]);
 
   const shopHealth: ShopSyncHealth[] = shopsRows.map((shop) => {
     const parsed = shop.lastSyncAt ? new Date(shop.lastSyncAt) : null;
@@ -1187,19 +1235,29 @@ function overdueDetail(hours: number | null) {
 }
 
 export async function loadHealthMetrics(user: RequestUser, scope: HealthScope): Promise<HealthMetrics> {
-  const metrics = await withUserContext(user, (tx) => computeHealthMetricsInTx(tx, scope));
-  return withGmailStalls(metrics);
+  const [metrics, gmailStalls] = await Promise.all([
+    computeHealthMetrics((fn) => withUserContext(user, fn), scope),
+    gmailStallsFor(scope),
+  ]);
+  return withGmailStalls(metrics, gmailStalls);
 }
 
 export async function loadHealthMetricsForSystem(scope: HealthScope): Promise<HealthMetrics> {
-  const metrics = await withSystemContext((tx) => computeHealthMetricsInTx(tx, scope));
-  return withGmailStalls(metrics);
+  const [metrics, gmailStalls] = await Promise.all([
+    computeHealthMetrics((fn) => withSystemContext(fn), scope),
+    gmailStallsFor(scope),
+  ]);
+  return withGmailStalls(metrics, gmailStalls);
 }
 
-async function withGmailStalls(metrics: HealthMetrics): Promise<HealthMetrics> {
-  const gmailStalls = await detectGmailMailboxStalls({
-    businessId: metrics.scope.kind === "business" ? metrics.scope.businessId : undefined,
-  });
+function gmailStallsFor(scope: HealthScope) {
+  return detectGmailMailboxStalls({ businessId: scope.kind === "business" ? scope.businessId : undefined });
+}
+
+async function withGmailStalls(
+  metrics: HealthMetrics,
+  gmailStalls: Awaited<ReturnType<typeof detectGmailMailboxStalls>>,
+): Promise<HealthMetrics> {
   const links = buildLinks({
     queuedEmails: metrics.pipeline.queuedEmails,
     failedEmails: metrics.pipeline.failedEmails,

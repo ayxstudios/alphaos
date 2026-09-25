@@ -3,8 +3,9 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Badge, Button, Input, Select, useToast } from "@/components/ui";
+import { Badge, Button, Input, Select, useToast, Checkbox } from "@/components/ui";
 import { AlertTriangle, ChevronDown } from "@/components/ui/icons";
+import { styleLabel } from "@/lib/utils";
 import {
   assignProductToStyle,
   createStyleFromProduct,
@@ -82,16 +83,14 @@ export function UnrecognisedPanel({
       {defaulted.length > 0 && (
         <div className="mt-3">
           <div className="flex flex-wrap items-center gap-2 rounded-t-input bg-amber/5 px-3 py-2">
-            <label className="flex items-center gap-2 text-xs font-medium text-slate">
-              <input
-                type="checkbox"
+            <label className="flex min-h-11 cursor-pointer items-center gap-3 text-xs font-medium text-slate sm:min-h-0 sm:gap-2">
+              <Checkbox
                 checked={allDefaultedSelected}
                 onChange={(e) =>
                   setSelected(e.target.checked ? new Set(defaulted.map(keyOf)) : new Set())
                 }
-                className="size-4 rounded border-line text-pigment focus:ring-pigment"
               />
-              Went to {defaultStyleName ?? "the default style"} by default · {defaulted.length}
+              Went to {defaultStyleName ? styleLabel(defaultStyleName) : "the default style"} by default · {defaulted.length}
             </label>
             <Button
               type="button"
@@ -101,7 +100,7 @@ export function UnrecognisedPanel({
               disabled={!defaultStyleName || toConfirm.length === 0}
               onClick={() => run(() => confirmProductsAsDefault(toConfirm), "Confirmed")}
             >
-              Confirm {selected.size ? selected.size : defaulted.length} as {defaultStyleName ?? "default"}
+              Confirm {selected.size ? selected.size : defaulted.length} as {defaultStyleName ? styleLabel(defaultStyleName) : "default"}
             </Button>
           </div>
           <div className="flex flex-col divide-y divide-line/70 overflow-hidden rounded-b-input bg-canvas/40">
@@ -208,14 +207,12 @@ function ProductRow({
           on a phone instead of being cut short. */}
       <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
         {onToggle && (
-          // The label pads the 16px box to a 44px tap area on a phone.
-          <label className="-m-3.5 flex shrink-0 cursor-pointer p-3.5 sm:m-0 sm:p-0">
-            <input
-              type="checkbox"
+          // The checkbox itself is a 44px tap area on a phone.
+          <label className="flex shrink-0 pt-0.5 sm:pt-0">
+            <Checkbox
               checked={!!checked}
               onChange={onToggle}
               aria-label={`Select ${product.title ?? "product"}`}
-              className="mt-0.5 size-4 shrink-0 rounded border-line text-pigment focus:ring-pigment sm:mt-0"
             />
           </label>
         )}
@@ -224,7 +221,7 @@ function ProductRow({
           <p className="text-xs text-slate">
             {product.sku ? `${skuLabel(product.sku)} · ` : ""}
             {product.orders} order{product.orders === 1 ? "" : "s"}
-            {product.via === "default" && product.defaultStyle ? ` · went to ${product.defaultStyle} by default` : ""}
+            {product.via === "default" && product.defaultStyle ? ` · went to ${styleLabel(product.defaultStyle)} by default` : ""}
           </p>
         </div>
       </div>
@@ -237,7 +234,7 @@ function ProductRow({
         >
           <option value="">{correcting ? "Correct to…" : "Choose style…"}</option>
           {styles.map((s) => (
-            <option key={s.id} value={s.id}>{s.name}</option>
+            <option key={s.id} value={s.id}>{styleLabel(s.name)}</option>
           ))}
           <option value={NEW}>+ New style…</option>
         </Select>

@@ -90,8 +90,8 @@ export function TopBar({
   }
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 border-b border-line bg-surface/95 px-4 backdrop-blur-none sm:px-5">
-      <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-1 border-b border-line bg-surface/95 px-3 backdrop-blur-none sm:gap-3 sm:px-5">
+      <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-3">
         {mobileMenuButton}
         {/* min-w-0: on a narrow phone the workspace name truncates instead of
             pushing into the 44px tap targets on the right. */}
@@ -103,14 +103,14 @@ export function TopBar({
             align="start"
             ariaLabel="Switch workspace"
             triggerClassName={cn(
-              "inline-flex h-11 max-w-[min(13rem,100%)] sm:h-10 items-center gap-2 rounded-input border border-line bg-surface px-2.5 text-sm font-medium text-ink",
+              "inline-flex h-11 max-w-[min(13rem,100%)] sm:h-10 items-center gap-1 rounded-input border border-line bg-surface px-2 text-sm font-medium text-ink sm:gap-2 sm:px-2.5",
               "transition-colors duration-150 ease-standard motion-hover hover:bg-canvas",
               pending && "opacity-60",
             )}
             trigger={
               <>
                 <Building size={16} className="hidden shrink-0 text-pigment sm:block" />
-                <span className="min-w-[3.5rem] truncate">{selected.name}</span>
+                <span className="min-w-0 truncate sm:min-w-[3.5rem]">{selected.name}</span>
                 <ChevronDown size={15} className="shrink-0 text-slate" />
               </>
             }
@@ -168,7 +168,7 @@ export function TopBar({
         </form>
       </div>
 
-      <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
+      <div className="flex shrink-0 items-center sm:gap-2">
         {/* Phone: staff jump to the orders list and its search. A designer's
             phone board is one short list with nothing to search from here. */}
         {!designer && (

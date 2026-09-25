@@ -10,6 +10,8 @@ import { focusRing } from "@/components/ui/styles";
 import { Avatar, Badge, Button, DataPanel, Drawer, Input, SectionHeader, Select, useToast } from "@/components/ui";
 import { CredentialsOnce, makePassword } from "./credentials-once";
 import { SignInLinkDrawer } from "./sign-in-link-drawer";
+import { Popover } from "@/components/shell/popover";
+import { ChevronDown } from "@/components/ui/icons";
 
 type Filter = "staff" | "designers" | "inactive";
 
@@ -17,6 +19,9 @@ const ROLE_LABEL: Record<TeamMember["role"], string> = { admin: "Admin", va: "VA
 
 /** Phone tap targets are 44px; desktop keeps the standard 40px controls. */
 const TAP = "min-h-11 sm:min-h-0";
+
+const MENU_ITEM =
+  "flex min-h-11 w-full items-center rounded-input px-3 text-left text-sm text-ink transition-colors hover:bg-canvas";
 
 /**
  * Admin-only "Team and sign-ins" on the Designers page: everyone who can sign
@@ -117,13 +122,13 @@ export function TeamPanel({ members, currentUserId }: { members: TeamMember[]; c
                     <Avatar name={m.name} />
                     <div className="min-w-0">
                       <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium text-ink">
-                        <span className="truncate">{m.name}</span>
+                        <span className="[overflow-wrap:anywhere] sm:truncate">{m.name}</span>
                         <Badge>{ROLE_LABEL[m.role]}</Badge>
                         {isYou && <Badge variant="info">You</Badge>}
                         {!m.active && <Badge variant="warning">Deactivated</Badge>}
                         {m.active && m.link && <Badge variant="success">Link</Badge>}
                       </p>
-                      <p className="truncate text-sm text-slate">{m.email}</p>
+                      <p className="text-sm text-slate [overflow-wrap:anywhere] sm:truncate">{m.email}</p>
                       {m.role === "designer" && !m.active && m.openOrders > 0 && (
                         <p className="mt-0.5 text-xs text-amber">
                           {m.openOrders} open {m.openOrders === 1 ? "order is" : "orders are"} still with them.
@@ -131,8 +136,81 @@ export function TeamPanel({ members, currentUserId }: { members: TeamMember[]; c
                         </p>
                       )}
                     </div>
+                    {/* Phone: one Manage menu per person instead of three
+                        full-width buttons each (the list was a wall of buttons). */}
+                    <div className="ml-auto shrink-0 sm:hidden">
+                      <Popover
+                        ariaLabel={`Manage ${m.name}`}
+                        triggerClassName="inline-flex min-h-11 items-center gap-1 rounded-input border border-line bg-surface px-3 text-sm font-medium text-ink"
+                        trigger={
+                          <>
+                            Manage
+                            <ChevronDown size={15} className="text-slate" />
+                          </>
+                        }
+                      >
+                        {(close) => (
+                          <div className="flex flex-col">
+                            {m.active && (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className={cn(MENU_ITEM, focusRing)}
+                                onClick={() => {
+                                  close();
+                                  setDialog({ kind: "link", member: m });
+                                }}
+                              >
+                                Sign-in link
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className={cn(MENU_ITEM, focusRing)}
+                              onClick={() => {
+                                close();
+                                setDialog({ kind: "password", member: m });
+                              }}
+                            >
+                              Reset password
+                            </button>
+                            {m.active ? (
+                              isYou ? (
+                                <p className="px-3 py-2 text-xs text-slate">Signed in as you, so no Deactivate.</p>
+                              ) : (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className={cn(MENU_ITEM, "text-rose", focusRing)}
+                                  onClick={() => {
+                                    close();
+                                    setDialog({ kind: "deactivate", member: m });
+                                  }}
+                                >
+                                  Deactivate
+                                </button>
+                              )
+                            ) : (
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className={cn(MENU_ITEM, focusRing)}
+                                disabled={pendingId === m.id}
+                                onClick={() => {
+                                  close();
+                                  reactivate(m);
+                                }}
+                              >
+                                Reactivate
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </Popover>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
+                  <div className="hidden sm:flex sm:shrink-0 sm:gap-2">
                     {m.active && (
                       <Button
                         variant="secondary"

@@ -362,16 +362,12 @@ function ContactPanel({
           <option value="telegram">Telegram</option>
         </Select>
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-slate">Timezone</label>
-          <input
+          <Input
+            label="Timezone"
             list="designer-timezones"
             value={timezone}
             onChange={(e) => setTimezone(e.target.value)}
             placeholder="Asia/Jakarta"
-            className={cn(
-              "h-10 rounded-input border border-line bg-surface px-3 text-sm text-ink",
-              focusRing,
-            )}
           />
           <datalist id="designer-timezones">
             {TIMEZONE_OPTIONS.map((tz) => (
@@ -380,8 +376,8 @@ function ContactPanel({
           </datalist>
         </div>
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-medium text-slate">Max active orders</label>
-          <input
+          <Input
+            label="Max active orders"
             type="number"
             min={0}
             inputMode="numeric"
@@ -391,10 +387,7 @@ function ContactPanel({
             onKeyDown={(e) => {
               if (e.key === "Enter") e.currentTarget.blur();
             }}
-            className={cn(
-              "h-10 rounded-input border border-line bg-surface px-3 text-sm tabular-nums text-ink",
-              focusRing,
-            )}
+            className="tabular-nums"
           />
           <p className="text-xs text-slate">0 = no limit</p>
         </div>

@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { Badge, Button, Drawer, Input, useToast } from "@/components/ui";
+import { Badge, Button, Drawer, Input, useToast, Checkbox } from "@/components/ui";
 import { Brush, Plus, XCircle } from "@/components/ui/icons";
 import {
   createStyle,
@@ -196,40 +196,48 @@ function StyleCard({
 
   return (
     <div className="rounded-card border border-line bg-surface p-4 shadow-sm">
+      {/* Phone: name on its own line, then the rate, then the two buttons.
+          Laptop: one row. Widths sit on wrappers (the Input's own w-full wins
+          over a width class on it). */}
       <div className="flex flex-wrap items-center gap-2">
-        <Input
-          value={nameDraft}
-          onChange={(e) => setNameDraft(e.target.value)}
-          onBlur={saveName}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              (e.target as HTMLInputElement).blur();
-            }
-          }}
-          aria-label="Style name"
-          className="h-9 max-w-xs font-semibold"
-        />
-        {style.isDefault && <Badge variant="info" dot>Default</Badge>}
-        {!style.perFigureRate && <Badge variant="warning">Rate missing</Badge>}
-        <label className="flex items-center gap-2 text-xs font-medium text-slate">
-          Per figure
+        <div className="w-full sm:w-64">
           <Input
-            value={rateDraft}
-            onChange={(e) => setRateDraft(e.target.value)}
-            onBlur={saveRate}
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            onBlur={saveName}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
                 (e.target as HTMLInputElement).blur();
               }
             }}
-            inputMode="decimal"
-            aria-label={`${style.name} rate per figure`}
-            className="h-9 w-28"
+            aria-label="Style name"
+            className="h-9 font-semibold"
           />
+        </div>
+        <label className="flex items-center gap-2 text-xs font-medium text-slate">
+          Per figure
+          <span className="w-28">
+            <Input
+              value={rateDraft}
+              onChange={(e) => setRateDraft(e.target.value)}
+              onBlur={saveRate}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+              inputMode="decimal"
+              aria-label={`${style.name} rate per figure`}
+              className="h-9"
+            />
+          </span>
         </label>
-        <div className="ml-auto flex items-center gap-2">
+        {/* After the rate, so every card's name and rate line up. */}
+        {style.isDefault && <Badge variant="info" dot>Default</Badge>}
+        {!style.perFigureRate && <Badge variant="warning">Rate missing</Badge>}
+        <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
           <Button type="button" variant="secondary" size="sm" onClick={() => setAssignOpen(true)}>
             Designers · {style.designerIds.length}
           </Button>
@@ -277,13 +285,11 @@ function StyleCard({
 
       {/* Default toggle + assigned summary */}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line/70 pt-3">
-        <label className="inline-flex items-center gap-2 text-sm text-ink">
-          <input
-            type="checkbox"
+        <label className="inline-flex min-h-11 cursor-pointer items-center gap-3 text-sm text-ink sm:min-h-0 sm:gap-2">
+          <Checkbox
             checked={style.isDefault}
             disabled={pending}
             onChange={(e) => onRun(() => setStyleDefault(style.id, e.target.checked))}
-            className="size-4 rounded border-line text-pigment focus:ring-pigment"
           />
           Default style when no rule matches
         </label>
@@ -374,12 +380,10 @@ function AssignDesignersDrawer({
       ) : (
         <div className="mt-3 flex flex-col divide-y divide-line">
           {designers.map((d) => (
-            <label key={d.id} className="flex cursor-pointer items-center gap-3 py-2.5 text-sm text-ink">
-              <input
-                type="checkbox"
+            <label key={d.id} className="flex min-h-11 cursor-pointer items-center gap-3 py-2.5 text-sm text-ink">
+              <Checkbox
                 checked={selected.has(d.id)}
                 onChange={() => toggle(d.id)}
-                className="size-4 rounded border-line text-pigment focus:ring-pigment"
               />
               {d.name}
             </label>

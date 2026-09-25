@@ -4,6 +4,7 @@ import { cache } from "react";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { activityLog, earnings, orders, printJobs, shops } from "@/lib/db/schema";
 import { liveOrderWhere } from "@/lib/orders/archive";
+import { currentPeriod } from "@/lib/orders/earnings";
 import { getTodayQueue, type TodayItem, type TodayKind } from "@/lib/orders/today-queue";
 import { getEmailNeedsActionCounts } from "@/lib/email/outbox";
 import { getDesignerRoster } from "@/lib/designers/roster";
@@ -68,7 +69,9 @@ const load = cache(async (userId: string, role: RequestUser["role"], businessId:
   const since14 = sinceDays(14, now);
   const since30 = sinceDays(30, now);
   const todayKey = dayKey(now);
-  const monthStart = new Date(new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Melbourne", year: "numeric", month: "2-digit" }).format(now) + "-01T00:00:00+10:00");
+  // The same pay month Money shows (earnings.period), so the tile and the
+  // Money page never disagree about an earning made near midnight.
+  const payPeriod = currentPeriod(now);
 
   const [queue, mail, roster, db] = await Promise.all([
     getTodayQueue(user, businessId, now),
@@ -139,7 +142,7 @@ const load = cache(async (userId: string, role: RequestUser["role"], businessId:
         role === "admin"
           ? tx
               .select({
-                month: sql<string>`coalesce(sum(${earnings.amount}) filter (where ${earnings.status} in ('pending','paid') and ${earnings.createdAt} >= ${monthStart}), 0)`,
+                month: sql<string>`coalesce(sum(${earnings.amount}) filter (where ${earnings.status} in ('pending','paid') and ${earnings.period} = ${payPeriod}), 0)`,
                 owed: sql<string>`coalesce(sum(${earnings.amount}) filter (where ${earnings.status} = 'pending'), 0)`,
               })
               .from(earnings)

@@ -13,8 +13,9 @@ export function CutoffForm({ shopId, cutoffDate }: { shopId: string; cutoffDate:
   function save(formData: FormData) {
     start(async () => {
       try {
-        await saveShopBackfillCutoff(formData);
-        toast({ variant: "success", title: "Cutoff saved" });
+        const res = await saveShopBackfillCutoff(formData);
+        if (res.ok) toast({ variant: "success", title: "Cutoff saved" });
+        else toast({ variant: "danger", title: "Cutoff not saved", description: res.message });
       } catch {
         toast({ variant: "danger", title: "Cutoff not saved", description: "Check the date and try again." });
       }

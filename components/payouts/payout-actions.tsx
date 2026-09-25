@@ -18,7 +18,12 @@ function useRunAction() {
 
   function run(action: () => Promise<ActionResult>, okTitle = "Updated") {
     start(async () => {
-      const result = await action();
+      let result: ActionResult;
+      try {
+        result = await action();
+      } catch {
+        result = { ok: false, message: "Could not save. Try again in a moment." };
+      }
       toast({
         variant: result.ok ? "success" : "danger",
         title: result.ok ? okTitle : "Didn't update",

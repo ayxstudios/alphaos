@@ -35,7 +35,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         className={cn(
           controlBase,
           controlBorder(!!error),
-          "h-10 px-3",
+          // 44px tall on a phone (tap target), 40px from sm up.
+          "h-10 px-3 max-sm:h-11",
           focusRing,
           className,
         )}

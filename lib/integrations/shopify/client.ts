@@ -17,11 +17,21 @@ const REFRESH_BUFFER_MS = 120_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+type GraphqlError = { message: string; extensions?: { code?: string } };
 type GraphqlBody<T> = {
   data?: T;
-  errors?: { message: string; extensions?: { code?: string } }[];
+  /** Usually a list, but Shopify answers a bad key or domain with a plain string or an object. */
+  errors?: GraphqlError[] | string | Record<string, unknown>;
   extensions?: { cost?: { requestedQueryCost: number; actualQueryCost: number | null; throttleStatus: ThrottleStatus } };
 };
+
+/** Shopify's `errors` in any of its shapes, as a list (empty when there are none). */
+function errorList(errors: GraphqlBody<unknown>["errors"]): GraphqlError[] {
+  if (!errors) return [];
+  if (Array.isArray(errors)) return errors;
+  if (typeof errors === "string") return errors ? [{ message: errors }] : [];
+  return Object.entries(errors).map(([k, v]) => ({ message: `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}` }));
+}
 
 /**
  * Shopify Admin GraphQL client for one shop. Respects Shopify's cost-based
@@ -103,7 +113,8 @@ export class ShopifyClient {
         restoreRate: this.restoreRate,
       });
 
-      const throttled = body.errors?.some((e) => e.extensions?.code === "THROTTLED");
+      const errors = errorList(body.errors);
+      const throttled = errors.some((e) => e.extensions?.code === "THROTTLED");
       if (throttled) {
         if (attempt === MAX_ATTEMPTS) {
           throw new ShopifyApiError(429, "Shopify GraphQL throttled (exhausted retries)");
@@ -114,8 +125,8 @@ export class ShopifyClient {
         continue;
       }
 
-      if (body.errors?.length) {
-        throw new ShopifyApiError(res.status, `Shopify GraphQL: ${body.errors.map((e) => e.message).join("; ").slice(0, 300)}`);
+      if (errors.length) {
+        throw new ShopifyApiError(res.status, `Shopify GraphQL: ${errors.map((e) => e.message).join("; ").slice(0, 300)}`);
       }
       if (!body.data) throw new ShopifyApiError(res.status, "Shopify GraphQL: empty response");
       return body.data;
@@ -241,8 +252,12 @@ export async function verifyShopifyToken(
     if (res.status === 401 || res.status === 403) {
       return { ok: false, error: "Token rejected (401/403). Check the access token and scopes." };
     }
+    if (res.status === 404) {
+      return { ok: false, error: "Shopify has no store at that address. Check the store domain (yourshop.myshopify.com)." };
+    }
     const body = (await res.json().catch(() => ({}))) as GraphqlBody<{ shop: { name: string } }>;
-    if (body.errors?.length) return { ok: false, error: body.errors.map((e) => e.message).join("; ") };
+    const errors = errorList(body.errors);
+    if (errors.length) return { ok: false, error: errors.map((e) => e.message).join("; ") };
     const name = body.data?.shop?.name;
     if (!name) return { ok: false, error: "Unexpected response from Shopify." };
     return { ok: true, shopName: name };

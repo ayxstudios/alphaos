@@ -27,6 +27,7 @@ import {
   type MockMail,
 } from "./data";
 import { mocksAllowed } from "./guard";
+import { shopifyOrdersCreateWebhookUrl } from "../integrations/shopify/webhooks";
 
 type Handler = (req: Request, url: URL) => Promise<Response | null>;
 
@@ -56,6 +57,9 @@ async function bodyText(req: Request): Promise<string> {
 }
 
 /* --- Shopify ----------------------------------------------------------- */
+
+/** Webhook address registered per mock shop domain (this process only). */
+const registeredShopifyWebhooks = new Map<string, string>();
 
 const shopify: Handler = async (req, url) => {
   if (!url.hostname.endsWith(".myshopify.com")) return null;
@@ -87,6 +91,8 @@ const shopify: Handler = async (req, url) => {
   }
   if (/webhookSubscriptionCreate/.test(query)) {
     const sub = variables.webhookSubscription as { callbackUrl?: string; uri?: string } | undefined;
+    const uri = sub?.callbackUrl ?? sub?.uri;
+    if (uri) registeredShopifyWebhooks.set(shopDomain, uri);
     return reply({
       webhookSubscriptionCreate: {
         webhookSubscription: { id: "gid://shopify/WebhookSubscription/9001", topic: "ORDERS_CREATE", uri: sub?.callbackUrl ?? sub?.uri ?? null },
@@ -95,7 +101,10 @@ const shopify: Handler = async (req, url) => {
     });
   }
   if (/webhookSubscriptions/.test(query)) {
-    const expected = process.env.SHOPIFY_WEBHOOK_URL || `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/api/webhooks/shopify/orders-create`;
+    // What was registered on this shop, else the address the app itself
+    // expects (the same one Settings compares against), so a mock shop reads
+    // as set up instead of "Webhook missing".
+    const expected = registeredShopifyWebhooks.get(shopDomain) ?? shopifyOrdersCreateWebhookUrl();
     return reply({
       webhookSubscriptions: {
         nodes: [

@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 
 import { saveDailyHealthEmailSettings } from "@/app/(app)/settings/actions";
-import { Badge, Button, useToast } from "@/components/ui";
+import { Badge, Button, useToast, Checkbox } from "@/components/ui";
 import { ChevronDown } from "@/components/ui/icons";
 
 export type DailyHealthAdminVM = {
@@ -75,10 +75,8 @@ export function DailyHealthEmailSettingsPanel({
       </summary>
 
       <div className="border-t border-line p-4">
-        <label className="flex items-center gap-3 rounded-input bg-canvas/70 p-3">
-          <input
-            type="checkbox"
-            className="h-4 w-4 accent-pigment"
+        <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-input bg-canvas/70 p-3">
+          <Checkbox
             checked={enabled}
             onChange={(event) => setEnabled(event.currentTarget.checked)}
           />
@@ -94,16 +92,14 @@ export function DailyHealthEmailSettingsPanel({
           ) : (
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {admins.map((admin) => (
-                <label key={admin.id} className="flex items-start gap-3 rounded-input bg-canvas/70 p-3">
-                  <input
-                    type="checkbox"
-                    className="mt-1 h-4 w-4 accent-pigment"
+                <label key={admin.id} className="flex cursor-pointer items-start gap-3 rounded-input bg-canvas/70 p-3">
+                  <Checkbox
                     checked={selected.has(admin.id)}
                     onChange={(event) => toggleRecipient(admin.id, event.currentTarget.checked)}
                   />
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium text-ink">{admin.name ?? admin.email}</span>
-                    <span className="block truncate text-xs text-slate">{admin.email}</span>
+                    <span className="block break-all text-xs text-slate">{admin.email}</span>
                   </span>
                 </label>
               ))}
