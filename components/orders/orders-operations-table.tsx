@@ -848,7 +848,7 @@ export function OrdersOperationsTable({
               href={pageSizeHref(currentParams, size)}
               aria-current={pageSize === size ? "true" : undefined}
               className={cn(
-                "inline-flex h-8 min-w-8 items-center justify-center rounded-input px-1.5 text-xs font-medium tabular-nums transition-colors",
+                "inline-flex h-11 min-w-11 items-center justify-center rounded-input px-1.5 text-xs font-medium tabular-nums transition-colors sm:h-8 sm:min-w-8",
                 pageSize === size ? "bg-ink text-surface" : "text-slate hover:bg-canvas hover:text-ink",
               )}
             >
