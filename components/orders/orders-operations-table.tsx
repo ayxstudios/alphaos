@@ -10,7 +10,7 @@ import {
   type BulkActionResult,
 } from "@/app/(app)/orders/actions";
 import { Badge, Button, InfoBubble, useToast, type OrderStatus } from "@/components/ui";
-import { ArrowRight, Columns, X } from "@/components/ui/icons";
+import { ArrowRight, Check, Columns, X } from "@/components/ui/icons";
 import { formatStageRemaining, type StageTimer } from "@/lib/orders/stage-timers";
 import { cn, plural } from "@/lib/utils";
 import { formatAt } from "@/lib/time";
@@ -783,15 +783,21 @@ export function OrdersOperationsTable({
               className={cn("relative px-4 py-3", urgent && "bg-rose/[0.025]", selected.has(row.id) && "bg-pigment-soft/60")}
             >
               <div className="flex items-start gap-3">
-                {/* The label pads the 20px box to a 44px tap area; it sits above the card link. */}
+                {/* The checkbox itself is a 44px tap area (invisible) over the 20px box people see; it sits above the card link. */}
                 <label className="relative z-10 -m-3 flex shrink-0 cursor-pointer p-3 pt-3.5">
                   <input
                     type="checkbox"
                     checked={selected.has(row.id)}
                     onChange={() => toggleOne(row.id)}
                     aria-label={`Select order ${row.orderNumber}`}
-                    className="size-5 shrink-0 rounded border-line text-pigment focus:ring-pigment"
+                    className="peer absolute left-0 top-0.5 m-0 size-11 cursor-pointer opacity-0"
                   />
+                  <span
+                    aria-hidden="true"
+                    className="flex size-5 shrink-0 items-center justify-center rounded border border-slate/50 bg-surface text-transparent transition-colors peer-checked:border-pigment peer-checked:bg-pigment peer-checked:text-surface peer-focus-visible:ring-2 peer-focus-visible:ring-pigment peer-focus-visible:ring-offset-1"
+                  >
+                    <Check size={14} />
+                  </span>
                 </label>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
