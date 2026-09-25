@@ -12,7 +12,7 @@ import {
 import { Badge, Button, InfoBubble, useToast, type OrderStatus } from "@/components/ui";
 import { ArrowRight, Columns, X } from "@/components/ui/icons";
 import { formatStageRemaining, type StageTimer } from "@/lib/orders/stage-timers";
-import { cn } from "@/lib/utils";
+import { cn, plural } from "@/lib/utils";
 import { formatAt } from "@/lib/time";
 
 export type OrdersDashboardRow = {
@@ -266,10 +266,11 @@ function fmtDateTime(value: string | null) {
   return formatAt(value, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }, "Unknown");
 }
 
+/** Only the skipped orders need words: which ones and why. */
 function resultText(result: BulkActionResult) {
   if (!result.ok) return result.message;
-  const skipped = result.skipped.length ? `, ${result.skipped.length} skipped` : "";
-  return `${result.changed} updated${skipped}`;
+  if (!result.skipped.length) return undefined;
+  return result.skipped.map((s) => `${s.orderNumber}: ${s.reason}`).join(" ");
 }
 
 function sortHref(currentParams: string, sort: SortKey, activeSort: SortKey, dir: SortDir) {
@@ -544,14 +545,14 @@ export function OrdersOperationsTable({
     });
   }
 
-  function handleResult(result: BulkActionResult) {
+  function handleResult(result: BulkActionResult, done: (count: number) => string) {
     if (!result.ok) {
-      toast({ variant: "danger", title: "Bulk action failed", description: result.message });
+      toast({ variant: "danger", title: "Nothing changed", description: result.message });
       return;
     }
     toast({
       variant: result.skipped.length ? "warning" : "success",
-      title: "Bulk action complete",
+      title: result.changed ? done(result.changed) : "Nothing changed",
       description: resultText(result),
     });
     setSelected(new Set());
@@ -560,14 +561,16 @@ export function OrdersOperationsTable({
 
   function reassign() {
     start(async () => {
-      handleResult(await bulkReassignOrders(selectedIds, designerId));
+      const name = designers.find((designer) => designer.id === designerId)?.name ?? "the designer";
+      handleResult(await bulkReassignOrders(selectedIds, designerId), (n) => `${plural(n, "order")} assigned to ${name}`);
     });
   }
 
   function changeStatus() {
     if (!targetStatus) return;
     start(async () => {
-      handleResult(await bulkChangeOrderStatus(selectedIds, targetStatus));
+      const label = BULK_STATUSES.find((status) => status.value === targetStatus)?.label ?? "the new status";
+      handleResult(await bulkChangeOrderStatus(selectedIds, targetStatus), (n) => `${plural(n, "order")} moved to ${label}`);
     });
   }
 
