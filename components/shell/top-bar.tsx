@@ -336,7 +336,7 @@ export function TopBar({
           trigger={
             <>
               <Avatar name={user.name} size="sm" />
-              <span className="hidden max-w-28 truncate text-sm font-medium text-ink md:inline">
+              <span className="hidden max-w-40 truncate text-sm font-medium text-ink md:inline">
                 {user.name}
               </span>
               <ChevronDown size={15} className="hidden text-slate sm:block" />
