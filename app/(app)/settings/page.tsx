@@ -572,6 +572,7 @@ export default async function SettingsPage({
                 </div>
                 <TemplateEditor
                   businessId={gmailVM.businessId}
+                  businessName={gmailVM.name}
                   templates={templateVMs}
                 />
               </>
