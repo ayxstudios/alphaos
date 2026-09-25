@@ -151,3 +151,84 @@ nothing covers it; the tap sent the card for QC and closed it in 2.9 s. Not
 reproduced as a defect: a script that taps within ~7 s of choosing the file
 is tapping a button that does not exist yet (by design: it is offered only
 when there is a new version to review). Left as it is.
+
+More verified in round 2:
+- /orders/<id> as a designer, typed or from a notification: one 307 straight
+  to /board?open=<id> (0.6 s, local), 73453c5; the page's own redirect stays
+  as the second line for in-app navigations.
+- Alpha AI on staging (relay off), phone: every question answers in 5 to 7 s
+  with no spinner left and no error; an order that is not theirs (PC32170) and
+  a customer's email are never named back; no email address in any response.
+  The quick answer is the same board status whatever is asked, so bb29fc5
+  starts it with "Here is where your board stands:" (it read as a wrong
+  answer to "Who is the customer on PC32148?").
+
+### Fixes in round 2
+
+| Commit | Fix |
+|---|---|
+| 73453c5 | Middleware: a designer's /orders/<id> is one clean 307 to the card (shared file, customer+security lane) |
+| bb29fc5 | Alpha AI quick answer framed as "Here is where your board stands: ..." |
+
+## Tour notes for the TOUR lane (not changed here)
+
+- Try it myself, step 3 ("Your finished portrait goes on the order card. Add
+  it here when the design is done.") lights the whole Finished portrait
+  section. On a queued card that section holds a real Start button, so a
+  tap on the lit area can start the order for real during the tour.
+- On a slow machine "You are ready" can land over My Week's loading skeleton.
+- A run left unfinished resumes at its step on the next load of the same
+  sign-in (seen twice locally): a walk that reloads mid-tour meets "2 of 4,
+  Your turn" over the board instead of the page it asked for.
+
+## Left as it is (with reasons)
+
+- Laptop board: seven columns scroll sideways inside the board (Trello
+  pattern), so Awaiting QC is off screen at 1440 px; the toast names where
+  the card went ("PC32151 sent for QC"). Narrower columns would change the
+  card layout for staff boards too: a layout call for the owner, not a fix.
+- Phone: a designer cannot pull a card back from Awaiting QC or In Design on
+  the phone (a laptop can drag it back); the Quick guide says so truthfully
+  ("On a phone, ask your VA to move it back"). Adding a phone control is a
+  new feature, not a repair.
+- Sign-in fields are 40 px tall on a phone (app/(auth), customer+security
+  lane). 142bb29 already makes them 16 px text (no iOS zoom).
+- "Submit for QC right after an upload": not a defect (see above).
+- Previous run's items: the tour's fire-and-forget "complete" save and the
+  one-time phone hydration warning belong to the tour lane and to the board
+  hydration check below.
+
+## Shared files touched
+
+app/globals.css (16 px fields on touch screens), middleware.ts (designer
+order links), app/(app)/orders/[id]/page.tsx (designer redirect, first line),
+components/shell/{sidebar,app-shell,top-bar}.tsx (44 px, Quick guide in More,
+name width), components/charts/bars.tsx (11 px labels), components/alpha/
+alpha-chat.tsx (44 px), lib/alpha/client.ts (quick answer copy),
+lib/home/shared.ts (optional zone on dayKey/lastDays, defaults unchanged),
+lib/orders/card-detail.ts (no uploader email for designers).
+No migration. No lib/tour, components/tour or tour-check changes.
+
+## Staging state left behind
+
+PC32148 and PC32151 (staging-designer): QC failed twice by staging-va with
+notes, a new version added and resubmitted; PC32151 is in Awaiting QC, PC32148
+back in design after the second fail (its latest version is on the card).
+Comments "Round r1 phone/laptop ..." on both. staging-designer was signed out
+by the sign-out test (sessions revoked; sign in again).
+
+## Where I stopped (2026-09-25 23:35 AEST, usage limit)
+
+Round 2 phone checks done except these, which timed out on the machine (load
+100+, dev server killed twice) and are the exact next step: on the local dev
+server (port 3472, db alphaos_designer, `NEXT_DIST_DIR=.next-designer`, ws
+proxy on 5498), run the scratch `verify.mjs phone r2 <GD-R2P id> <ORD-1001
+id>` for: ?open= of an order not on the board (toast), the More sheet's Quick
+guide link, the Alpha AI box/Send size (44 px), then `verify.mjs laptop` with
+ORDER_NUM=GD-R2L for the drag rules and announcements (Start, back to My
+Queue, Awaiting QC onto In Design stays, back to My Queue) and the top bar
+name; then the phone board hydration warning (the round 2 phone board logged
+"attributes didn't match" once: capture the full message, lib.mjs now keeps
+4000 chars); then round 3 (both surfaces) and loop 4; then `bash
+scripts/ci-local.sh` with CI_DB=alphaos_ci_designer NEON_LOCAL_PROXY_PORT=4467.
+Scores for round 2 are not final until those run.
