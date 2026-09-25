@@ -550,16 +550,19 @@ export default async function OrderDetailPage({
                 orderId={order.id}
                 customerId={order.customerId}
                 label="Email customer"
+                phoneLabel="Email"
                 size="sm"
               />
             )}
             {editable && (
               <Link
                 href={`/orders/${order.id}/complete`}
-                className="inline-flex h-11 items-center gap-2 rounded-input bg-surface px-3 text-sm font-medium text-ink shadow-card transition-colors hover:bg-canvas sm:h-9"
+                title="Edit"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-input bg-surface px-3 text-sm font-medium text-ink shadow-card transition-colors hover:bg-canvas max-[399px]:w-11 max-[399px]:px-0 sm:h-9"
               >
                 <Pencil size={15} />
-                Edit
+                {/* A narrow phone keeps Edit on the heading row as an icon; the word stays for screen readers. */}
+                <span className="max-[399px]:sr-only">Edit</span>
               </Link>
             )}
           </div>

@@ -16,6 +16,8 @@ type ComposeButtonProps = {
   customerId?: string | null;
   replyToMessageId?: string | null;
   label?: string;
+  /** A narrow phone (under 400px) shows only this start of the label; the rest stays for screen readers. */
+  phoneLabel?: string;
   variant?: "primary" | "secondary" | "ghost";
   size?: "sm" | "md";
 };
@@ -29,6 +31,7 @@ export function ComposeButton({
   customerId = null,
   replyToMessageId = null,
   label = "Compose",
+  phoneLabel,
   variant = "secondary",
   size = "md",
 }: ComposeButtonProps) {
@@ -84,7 +87,14 @@ export function ComposeButton({
     <>
       <Button type="button" variant={variant} size={size} onClick={() => setOpen(true)}>
         <Mail size={15} />
-        {label}
+        {phoneLabel && label.startsWith(phoneLabel) ? (
+          <span>
+            {phoneLabel}
+            <span className="max-[399px]:sr-only">{label.slice(phoneLabel.length)}</span>
+          </span>
+        ) : (
+          label
+        )}
       </Button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/30 p-4">
