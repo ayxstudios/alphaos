@@ -768,19 +768,22 @@ export function OrdersOperationsTable({
         </div>
       </div>
 
-      {/* Phone: one card per order — the table's columns read as labelled rows
-          instead of squeezed into a horizontal scroll. */}
+      {/* Phone: a small card per order. Number and stage chip on top, the
+          customer and due date under them, then one quiet line with the shop,
+          designer and time on this step. The whole card opens the order; the
+          next action is a compact button on the right. */}
       <ul className="flex flex-col divide-y divide-line/60 md:hidden">
         {rows.map((row) => {
           const urgent = row.stageTimer.isOverdue || row.isOverdue;
+          const isTask = row.action.label !== "Open";
           return (
             <li
               key={row.id}
-              className={cn("p-4", urgent && "bg-rose/[0.025]", selected.has(row.id) && "bg-pigment-soft/60")}
+              className={cn("relative px-4 py-3", urgent && "bg-rose/[0.025]", selected.has(row.id) && "bg-pigment-soft/60")}
             >
               <div className="flex items-start gap-3">
-                {/* The label pads the 20px box to a 44px tap area. */}
-                <label className="-m-3 flex shrink-0 cursor-pointer p-3 pt-4">
+                {/* The label pads the 20px box to a 44px tap area; it sits above the card link. */}
+                <label className="relative z-10 -m-3 flex shrink-0 cursor-pointer p-3 pt-3.5">
                   <input
                     type="checkbox"
                     checked={selected.has(row.id)}
@@ -790,42 +793,47 @@ export function OrdersOperationsTable({
                   />
                 </label>
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <Link href={`/orders/${row.id}`} prefetch={false} className="-my-3 inline-block py-3 text-base font-semibold text-ink hover:text-pigment">
-                        {row.orderNumber}
-                      </Link>
-                      <p className="break-words text-sm text-slate">{row.customer}</p>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <Badge variant={statusTone(row)} dot className="whitespace-nowrap">{statusLabel(row)}</Badge>
-                    </div>
+                  <div className="flex items-center justify-between gap-2">
+                    {/* The link's ::after covers the whole card, so a tap anywhere opens the order. */}
+                    <Link
+                      href={`/orders/${row.id}`}
+                      prefetch={false}
+                      className="min-w-0 truncate text-base font-semibold text-ink after:absolute after:inset-0 hover:text-pigment"
+                    >
+                      {row.orderNumber}
+                    </Link>
+                    <Badge variant={statusTone(row)} dot className="shrink-0 whitespace-nowrap">{statusLabel(row)}</Badge>
                   </div>
-                  {row.reviewReason && <p className="mt-1.5 text-sm leading-snug text-amber">{row.reviewReason}</p>}
-                  <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-sm">
-                    <div>
-                      <dt className="text-xs text-slate">Source</dt>
-                      <dd className="text-ink">{row.source}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs text-slate">Designer</dt>
-                      <dd className="break-words text-ink">{row.assignee}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs text-slate">Due</dt>
-                      <dd className={row.isOverdue ? "font-medium text-rose" : "text-ink"}>
-                        {row.isOverdue ? `Late, ${fmtDate(row.dueAt)}` : fmtDate(row.dueAt)}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs text-slate">Time on this step</dt>
-                      <dd className={cn("font-medium", row.stageTimer.isOverdue ? "text-rose" : "text-ink")}>
-                        {formatStageRemaining(row.stageTimer)}
-                      </dd>
-                    </div>
-                  </dl>
-                  <div className="mt-3">
-                    <OrderActions row={row} full />
+                  <div className="mt-0.5 flex items-center justify-between gap-3 text-sm">
+                    <span className="min-w-0 truncate text-ink" data-tour="order:customer">{row.customer}</span>
+                    <span className={cn("shrink-0 whitespace-nowrap tabular-nums", row.isOverdue ? "font-medium text-rose" : "text-slate")}>
+                      {row.isOverdue ? `Late, ${fmtShortDate(row.dueAt)}` : row.dueAt ? `Due ${fmtShortDate(row.dueAt)}` : "No due date"}
+                    </span>
+                  </div>
+                  {row.reviewReason && <p className="mt-1 line-clamp-2 text-sm leading-snug text-amber">{row.reviewReason}</p>}
+                  <div className="mt-1.5 flex items-center justify-between gap-3">
+                    <p className="min-w-0 truncate text-xs text-slate">
+                      {row.source} · {row.assignee}
+                      {row.stageTimer.remainingMs != null && (
+                        <>
+                          {" · "}
+                          <span className={row.stageTimer.isOverdue ? "font-medium text-rose" : undefined}>
+                            Step {formatStageRemaining(row.stageTimer)}
+                          </span>
+                        </>
+                      )}
+                    </p>
+                    {isTask && (
+                      <Link
+                        href={row.action.href}
+                        prefetch={false}
+                        aria-label={`${row.action.label}, order ${row.orderNumber}`}
+                        className="relative z-10 -my-2 inline-flex h-9 max-w-[55%] shrink-0 items-center gap-1 rounded-input bg-pigment px-3 text-xs font-medium text-surface shadow-sm hover:opacity-90 before:absolute before:-inset-y-1 before:inset-x-0"
+                      >
+                        <span className="truncate">{row.action.label}</span>
+                        <ArrowRight size={13} className="shrink-0" />
+                      </Link>
+                    )}
                   </div>
                 </div>
               </div>

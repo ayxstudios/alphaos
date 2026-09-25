@@ -9,6 +9,7 @@ import { getDesignerHome } from "@/lib/home/designer";
 import { DEFAULT_TIMEZONE } from "@/lib/designers/quiet-hours";
 import { formatDeadline } from "@/lib/time";
 import { pctDelta } from "@/lib/home/shared";
+import { FoldSection } from "./fold-section";
 import { DayLine, HomeSection, RowLabel, StatTile } from "./primitives";
 
 /**
@@ -87,7 +88,23 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
             </Link>
           </div>
         </HomeSection>
-        <HomeSection title="My Board" description={`${active} order${active === 1 ? "" : "s"} in progress`} className="lg:col-span-2">
+        {/* Phone: charts fold behind one line (FoldSection). */}
+        <FoldSection
+          id="my-board"
+          title="My Board"
+          description={`${active} order${active === 1 ? "" : "s"} in progress`}
+          summary={
+            [
+              h.board.queue ? `${h.board.queue} queued` : null,
+              h.board.inDesign ? `${h.board.inDesign} in design` : null,
+              h.board.revisions ? `${h.board.revisions} in revision` : null,
+              h.board.awaitingQc ? `${h.board.awaitingQc} in QC` : null,
+            ]
+              .filter(Boolean)
+              .join(", ") || "Nothing on your board"
+          }
+          className="lg:col-span-2"
+        >
           <StackedBar
             segments={[
               { key: "queue", label: "Queue", value: h.board.queue, color: "c3" },
@@ -105,18 +122,25 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
           )}
           {h.limits.maxActive > 0 && <Meter label="Active orders" value={active} max={h.limits.maxActive} />}
           {h.limits.dailyCapacity > 0 && <Meter label="Assigned today" value={h.assignedToday} max={h.limits.dailyCapacity} />}
-        </HomeSection>
+        </FoldSection>
       </div>
 
       <RowLabel>The bigger picture</RowLabel>
-      <HomeSection quiet title="Figures delivered" description="Last 14 days" action={{ label: "My Week", href: "/me" }}>
+      <FoldSection
+        id="figures"
+        quiet
+        title="Figures delivered"
+        description="Last 14 days"
+        summary={`${fmtInt(h.figures.values.reduce((a, b) => a + b, 0))} figures in 14 days, ${h.week.ordersDoneThisWeek} order${h.week.ordersDoneThisWeek === 1 ? "" : "s"} done this week`}
+        action={{ label: "My Week", href: "/me" }}
+      >
         <Bars series={[{ name: "Figures", color: "c2", values: h.figures.values }]} labels={h.figures.labels} height={180} ariaLabel="Figures delivered per day" />
         <p className="text-sm text-slate">
           {h.week.ordersDoneThisWeek} order{h.week.ordersDoneThisWeek === 1 ? "" : "s"} done this week
           {h.week.onTimeRate !== null ? `, ${Math.round(h.week.onTimeRate * 100)}% on time` : ""}
           {h.week.revisionsThisWeek ? `, ${h.week.revisionsThisWeek} revision${h.week.revisionsThisWeek === 1 ? "" : "s"}` : ""}.
         </p>
-      </HomeSection>
+      </FoldSection>
     </div>
   );
 }

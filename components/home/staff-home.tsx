@@ -6,6 +6,7 @@ import type { RequestUser } from "@/lib/db";
 import { getStaffHome, type StaffHome } from "@/lib/home/staff";
 import { pctDelta } from "@/lib/home/shared";
 import { AttentionList } from "./attention-list";
+import { FoldSection } from "./fold-section";
 import { DayLine, HomeSection, RowLabel, StatTile } from "./primitives";
 
 /**
@@ -26,19 +27,34 @@ export async function StaffHome({ user, businessId, role }: { user: RequestUser;
         <HomeSection title="Do first" description={h.attention.counts.total ? doFirstLine(h.attention.counts) : undefined} action={h.attention.counts.total ? { label: "Full queue", href: "/today" } : undefined} className="lg:col-span-3">
           <AttentionList items={h.attention.top} total={h.attention.counts.total} />
         </HomeSection>
-        <HomeSection title="What is waiting" description="By kind, everything in the queue" className="lg:col-span-2">
+        {/* Phone: every chart folds behind one line (FoldSection); the mail
+            line needs a person, so it stays out even while folded. */}
+        <FoldSection
+          id="waiting"
+          title="What is waiting"
+          description="By kind, everything in the queue"
+          summary={waitingLine(h.attention.byKind)}
+          always={<MailLine unmatched={h.messages.unmatched} failed={h.messages.failed} />}
+          className="lg:col-span-2"
+        >
           {h.attention.byKind.length === 0 ? (
             <p className="text-sm text-slate">Nothing waiting.</p>
           ) : (
             <HBars rows={h.attention.byKind.map((k) => ({ key: k.kind, label: k.label, value: k.n }))} color="c3" />
           )}
-          <MailLine unmatched={h.messages.unmatched} failed={h.messages.failed} />
-        </HomeSection>
+        </FoldSection>
       </div>
 
       <RowLabel>The bigger picture</RowLabel>
       <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
-        <HomeSection quiet title="Orders in and shipped" description="Last 14 days" action={{ label: "Orders", href: "/orders" }}>
+        <FoldSection
+          id="orders-in"
+          quiet
+          title="Orders in and shipped"
+          description="Last 14 days"
+          summary={`${fmtInt(sum(h.ordersIn.values))} in, ${fmtInt(sum(h.shipped.values))} shipped, last 14 days`}
+          action={{ label: "Orders", href: "/orders" }}
+        >
           <Bars
             series={[
               { name: "Orders in", color: "c1", values: h.ordersIn.values },
@@ -48,10 +64,11 @@ export async function StaffHome({ user, businessId, role }: { user: RequestUser;
             height={190}
             ariaLabel="Orders placed and shipped per day, last 14 days"
           />
-        </HomeSection>
+        </FoldSection>
         {/* Open orders only: finished ones used to share the bar (19 open
             beside "Done 77"), so the bar did not add up to the number above it. */}
-        <HomeSection
+        <FoldSection
+          id="stages"
           quiet
           title="Where every open order is"
           description={`${fmtInt(h.openOrders)} open orders by stage${doneCount ? `, ${fmtInt(doneCount)} done` : ""}`}
@@ -59,11 +76,18 @@ export async function StaffHome({ user, businessId, role }: { user: RequestUser;
         >
           <StackedBar segments={h.stages.filter((s) => s.key !== "done").map((s) => ({ key: s.key, label: s.label, value: s.n, color: s.color }))} height={22} ariaLabel="Open orders by stage" />
           <ShopRows shops={h.shops} />
-        </HomeSection>
+        </FoldSection>
       </div>
 
       <div className="grid gap-4 sm:gap-5 lg:grid-cols-2">
-        <HomeSection quiet title="Designer load" description="Work in progress against each daily limit" action={{ label: "Boards", href: "/board" }}>
+        <FoldSection
+          id="designer-load"
+          quiet
+          title="Designer load"
+          description="Work in progress against each daily limit"
+          summary={designerLine(h.designers)}
+          action={{ label: "Boards", href: "/board" }}
+        >
           {h.designers.length === 0 ? (
             <p className="text-sm text-slate">No designers on the roster yet.</p>
           ) : (
@@ -79,14 +103,21 @@ export async function StaffHome({ user, businessId, role }: { user: RequestUser;
               ))}
             </div>
           )}
-        </HomeSection>
-        <HomeSection quiet title="Print" description="Print jobs, last 30 days" action={{ label: "Print queue", href: "/queue/print" }}>
+        </FoldSection>
+        <FoldSection
+          id="print"
+          quiet
+          title="Print"
+          description="Print jobs, last 30 days"
+          summary={`${fmtInt(sum(h.print.map((p) => p.n)))} print jobs in 30 days, ${h.shipped7d} shipped this week`}
+          action={{ label: "Print queue", href: "/queue/print" }}
+        >
           <StackedBar segments={h.print.map((p) => ({ key: p.label, label: p.label, value: p.n, color: p.color }))} height={22} emptyLabel="No print jobs yet" ariaLabel="Print jobs by state" />
           <div className="flex items-center gap-2 text-sm text-slate">
             <Truck size={16} />
             {h.shipped7d} shipped this week
           </div>
-        </HomeSection>
+        </FoldSection>
       </div>
     </div>
   );
@@ -193,6 +224,28 @@ function ShopRows({ shops }: { shops: StaffHome["shops"] }) {
       ))}
     </ul>
   );
+}
+
+function sum(values: number[]): number {
+  return values.reduce((a, b) => a + b, 0);
+}
+
+/** The folded line for "What is waiting": the biggest kinds first. */
+function waitingLine(byKind: StaffHome["attention"]["byKind"]): string {
+  if (byKind.length === 0) return "Nothing waiting";
+  const top = [...byKind].sort((a, b) => b.n - a.n).slice(0, 3);
+  return top.map((k) => `${k.label} ${fmtInt(k.n)}`).join(" · ");
+}
+
+/** The folded line for "Designer load": who is at or over their limit. */
+function designerLine(designers: StaffHome["designers"]): string {
+  if (designers.length === 0) return "No designers on the roster yet";
+  const full = designers.filter((d) => {
+    const max = d.maxActive || Math.max(d.wip, d.dailyCapacity, 1);
+    return d.wip >= max;
+  }).length;
+  const wip = sum(designers.map((d) => d.wip));
+  return `${fmtInt(wip)} in progress across ${designers.length} designer${designers.length === 1 ? "" : "s"}${full ? `, ${full} at the limit` : ""}`;
 }
 
 /** "16 need you now, 30 today" with no "0 soon" parts. */

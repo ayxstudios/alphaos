@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { mailPreview } from "@/lib/email/preview";
+import { noiseReason } from "@/lib/email/noise";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { customers, emailSenderIgnores, messages, orders } from "@/lib/db/schema";
 import { TEMPLATE_META } from "./templates";
@@ -171,6 +172,8 @@ export type UnmatchedReply = {
   ageMs: number;
   suppressed: boolean;
   suppressedReason: string | null;
+  /** Set when this is a notification or marketing email, not a person (lib/email/noise.ts). */
+  noise: string | null;
   /** A likely order, when the sender's email matches a known customer. */
   suggestion: { orderId: string; orderNumber: string; customerName: string; reason: "sender" | "subject" } | null;
 };
@@ -200,6 +203,8 @@ export async function getUnmatchedReplies(
         createdAt: messages.createdAt,
         suppressedAt: messages.suppressedAt,
         suppressedReason: messages.suppressedReason,
+        channel: messages.channel,
+        kind: sql<string | null>`${messages.metadata}->>'kind'`,
       })
       .from(messages)
       .where(
@@ -319,6 +324,7 @@ export async function getUnmatchedReplies(
         ageMs: now - r.createdAt.getTime(),
         suppressed: !!r.suppressedAt,
         suppressedReason: r.suppressedReason,
+        noise: noiseReason(r),
         suggestion: subjectSuggestion ?? (email ? suggestionByEmail.get(email) ?? null : null),
       };
     });
@@ -334,7 +340,7 @@ export async function getUnmatchedCount(
     const bizFilter =
       opts.businessId && opts.businessId !== "all" ? eq(messages.businessId, opts.businessId) : undefined;
     const rows = await tx
-      .select({ id: messages.id })
+      .select(unmatchedNoiseFields)
       .from(messages)
       .where(
         and(
@@ -345,14 +351,26 @@ export async function getUnmatchedCount(
           ...(bizFilter ? [bizFilter] : []),
         ),
       );
-    return rows.length;
+    // Notifications and marketing mail never count as "needs you".
+    return rows.filter((r) => !noiseReason(r)).length;
   });
 }
 
 export type EmailNeedsActionCounts = {
+  /** Unmatched mail from people. Notifications and marketing are left out. */
   unmatched: number;
   failed: number;
   suppressed: number;
+  /** Unmatched notifications and marketing mail: kept, never counted as needing a person. */
+  notices: number;
+};
+
+/** The fields lib/email/noise.ts reads, selected alongside a message. */
+const unmatchedNoiseFields = {
+  address: messages.address,
+  subject: messages.subject,
+  channel: messages.channel,
+  kind: sql<string | null>`${messages.metadata}->>'kind'`,
 };
 
 export async function getEmailNeedsActionCounts(
@@ -362,18 +380,35 @@ export async function getEmailNeedsActionCounts(
   return withUserContext(user, async (tx) => {
     const bizFilter =
       opts.businessId && opts.businessId !== "all" ? eq(messages.businessId, opts.businessId) : undefined;
-    const [row] = await tx
-      .select({
-        unmatched: sql<number>`count(*) filter (where ${messages.direction} = 'inbound' and ${messages.orderId} is null and ${messages.suppressedAt} is null)::int`,
-        failed: sql<number>`count(*) filter (where ${messages.direction} = 'outbound' and ${messages.status} = 'failed')::int`,
-        suppressed: sql<number>`count(*) filter (where ${messages.direction} = 'inbound' and ${messages.suppressedAt} is not null)::int`,
-      })
-      .from(messages)
-      .where(and(isNull(messages.archivedAt), ...(bizFilter ? [bizFilter] : [])));
+    const [[row], unmatchedRows] = await Promise.all([
+      tx
+        .select({
+          failed: sql<number>`count(*) filter (where ${messages.direction} = 'outbound' and ${messages.status} = 'failed')::int`,
+          suppressed: sql<number>`count(*) filter (where ${messages.direction} = 'inbound' and ${messages.suppressedAt} is not null)::int`,
+        })
+        .from(messages)
+        .where(and(isNull(messages.archivedAt), ...(bizFilter ? [bizFilter] : []))),
+      // Unmatched mail is read row by row (four short fields) so notifications
+      // and marketing can be told apart from people (lib/email/noise.ts).
+      tx
+        .select(unmatchedNoiseFields)
+        .from(messages)
+        .where(
+          and(
+            eq(messages.direction, "inbound"),
+            isNull(messages.orderId),
+            isNull(messages.archivedAt),
+            isNull(messages.suppressedAt),
+            ...(bizFilter ? [bizFilter] : []),
+          ),
+        ),
+    ]);
+    const notices = unmatchedRows.filter((r) => noiseReason(r)).length;
     return {
-      unmatched: row?.unmatched ?? 0,
+      unmatched: unmatchedRows.length - notices,
       failed: row?.failed ?? 0,
       suppressed: row?.suppressed ?? 0,
+      notices,
     };
   });
 }

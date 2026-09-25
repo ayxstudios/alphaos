@@ -54,6 +54,10 @@ export function EmailWorkspace({
 }) {
   const failed = outbox.filter((m) => m.status === "failed");
   const pendingOutbox = outbox.filter((m) => m.status !== "failed");
+  // Notifications and marketing mail (lib/email/noise.ts) never count as
+  // "Needs you": they wait, folded, in their own section below.
+  const people = unmatched.filter((r) => !r.noise);
+  const notices = unmatched.filter((r) => r.noise);
 
   return (
     <div className="flex flex-col gap-4">
@@ -69,19 +73,30 @@ export function EmailWorkspace({
       <section className="rounded-card bg-surface shadow-card">
         <div className="flex items-center gap-2 px-4 py-3" data-tour="page:messages">
           <h2 className="text-base font-semibold text-ink">Needs you</h2>
-          {unmatched.length + failed.length > 0 && <Badge variant="warning">{unmatched.length + failed.length}</Badge>}
+          {people.length + failed.length > 0 && <Badge variant="warning">{people.length + failed.length}</Badge>}
         </div>
         <div className="divide-y divide-line/70 border-t border-line/70">
-          {unmatched.length === 0 && failed.length === 0 ? (
+          {people.length === 0 && failed.length === 0 ? (
             <p className="px-4 py-6 text-center text-sm text-slate">All caught up. Nothing needs a reply.</p>
           ) : (
             <>
-              {unmatched.map((reply) => <ReplyCard key={reply.messageId} reply={reply} businessId={businessId} />)}
+              {people.map((reply) => <ReplyCard key={reply.messageId} reply={reply} businessId={businessId} />)}
               {failed.map((item) => <DraftCard key={item.messageId} item={item} sendingEnabled={sendingEnabled} />)}
             </>
           )}
         </div>
       </section>
+
+      {notices.length > 0 && (
+        <Disclosure
+          summary={<span className="flex items-center gap-2"><Mail size={15} className="text-slate" /> Notifications</span>}
+          hint={`${notices.length} not counted`}
+        >
+          <div className="-mx-4 divide-y divide-line/70">
+            {notices.map((reply) => <ReplyCard key={reply.messageId} reply={reply} businessId={businessId} />)}
+          </div>
+        </Disclosure>
+      )}
 
       <Disclosure
         summary={<span className="flex items-center gap-2"><Mail size={15} className="text-slate" /> Not sent yet</span>}
@@ -211,7 +226,8 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
   const [results, setResults] = useState<{ orderId: string; orderNumber: string; customerName: string | null }[]>([]);
   const [searching, startSearch] = useTransition();
   const [reason, setReason] = useState("");
-  const stale = reply.ageMs > DAY_MS;
+  // Nobody waits on a notification, so it never gets the "waiting" dot.
+  const stale = !reply.noise && reply.ageMs > DAY_MS;
 
   function search(term: string) {
     setQ(term);
@@ -226,7 +242,10 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
       <button type="button" onClick={() => setOpen((o) => !o)} className="-my-3 flex w-full items-center gap-3 py-3 text-left" aria-expanded={open}>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-ink">{reply.subject || "(no subject)"}</span>
-          <span className="block truncate text-xs text-slate">{reply.fromAddress ?? "unknown sender"}</span>
+          <span className="block truncate text-xs text-slate">
+            {reply.fromAddress ?? "unknown sender"}
+            {reply.noise ? ` · ${reply.noise}` : ""}
+          </span>
         </span>
         <span className="shrink-0 text-xs tabular-nums text-slate">{formatAge(reply.ageMs)}</span>
         <ChevronRight size={16} className={cn("shrink-0 text-slate transition-transform", open && "rotate-90")} />
@@ -246,7 +265,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
           )}
           <div className="mt-3">
             <p className="mb-1.5 text-xs font-medium text-ink">Which order is this about?</p>
-            <Input value={q} onChange={(e) => search(e.target.value)} placeholder="Type the order number" aria-label="Order number to link this message to" className="h-9 max-w-xs" />
+            <Input value={q} onChange={(e) => search(e.target.value)} placeholder="Type the order number" aria-label="Order number to link this message to" className="h-11 max-w-xs sm:h-9" />
             {searching && <p className="mt-1 text-xs text-slate">Searching…</p>}
             {results.length > 0 && (
               <div className="mt-2 flex flex-col divide-y divide-line rounded-input border border-line">
@@ -261,7 +280,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
             )}
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason, e.g. not a customer" aria-label="Why archive it" className="h-8 w-56" />
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason, e.g. not a customer" aria-label="Why archive it" className="h-11 w-full sm:h-8 sm:w-56" />
             <Button type="button" size="sm" variant="ghost" disabled={!reason.trim()} onClick={() => run(() => archiveReply(reply.messageId, reason))}>Archive</Button>
             <Button type="button" size="sm" variant="ghost" onClick={() => run(() => ignoreSenderFromMessage(reply.messageId))}>Ignore sender</Button>
           </div>
