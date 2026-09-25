@@ -44,6 +44,9 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_BUILD_ID: BUILD_ID,
   },
   experimental: {
+    // 2026-09-25 iMac RAM diet: `next dev` held 2-3 GB per worktree; this official
+    // flag trims the webpack dev memory footprint. Production builds are unaffected.
+    webpackMemoryOptimizations: true,
     // Client router cache (docs/PERF.md). A page visited or prefetched in the
     // last 3 minutes paints at once from memory with no network (back,
     // forward, a second click, or a sidebar click after the shell has been
