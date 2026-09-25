@@ -82,7 +82,7 @@ export function AppShell({
             aria-label="Close navigation"
             onClick={() => setMobileOpen(false)}
             className={cn(
-              "absolute right-3 top-3 flex size-10 items-center justify-center rounded-input bg-surface text-slate shadow-md",
+              "absolute right-3 top-3 flex size-11 items-center justify-center rounded-input bg-surface text-slate shadow-md",
               focusRing,
             )}
           >
