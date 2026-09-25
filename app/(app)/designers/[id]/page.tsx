@@ -26,7 +26,7 @@ export default async function DesignerWeekPage({ params }: { params: Promise<{ i
         title={week.designerName}
         description="Same week view the designer sees on their phone."
         eyebrow={
-          <Link href="/designers" className="text-pigment hover:underline">
+          <Link href="/designers" className="inline-flex min-h-11 items-center text-pigment hover:underline sm:min-h-0">
             Designers
           </Link>
         }
