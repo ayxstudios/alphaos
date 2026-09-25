@@ -100,7 +100,6 @@ export function FoldSection({
         {action && <ActionLink action={action} />}
       </div>
 
-
       <div id={bodyId} className={cn("min-w-0 flex-col gap-4 md:flex", open ? "flex" : "hidden")}>
         {children}
         {action && (
