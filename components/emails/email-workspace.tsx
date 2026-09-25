@@ -139,7 +139,7 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
 
   return (
     <div className="px-4 py-3">
-      <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full flex-wrap items-center gap-2 text-left">
+      <button type="button" onClick={() => setOpen((o) => !o)} className="-my-3 flex w-full flex-wrap items-center gap-2 py-3 text-left">
         {item.templateLabel && <Badge variant="info">{item.templateLabel}</Badge>}
         {queued && <Badge variant="warning" dot>System queued</Badge>}
         {item.status === "failed" && <Badge variant="danger" dot>Failed</Badge>}
@@ -181,7 +181,7 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
                 {item.status === "failed" ? "Retry send" : "Approve & send"}
               </Button>
             )}
-            {item.orderId && <Link href={`/orders/${item.orderId}`} className="text-sm font-medium text-pigment hover:text-ink">Open order</Link>}
+            {item.orderId && <Link href={`/orders/${item.orderId}`} className="inline-flex min-h-11 items-center text-sm font-medium text-pigment hover:text-ink sm:min-h-0">Open order</Link>}
             {!queued && !manualSent && <Button type="button" size="sm" variant="ghost" onClick={() => setManualSent(true)}>Mark sent manually</Button>}
             {!discarding ? (
               <Button type="button" size="sm" variant="ghost" className="ml-auto" onClick={() => setDiscarding(true)}>Discard</Button>
@@ -223,7 +223,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
     <div className="relative px-4 py-3">
       {/* The "waiting over a day" dot sits in the gutter, so every row's text lines up with the header. */}
       {stale && <span className="absolute left-1.5 top-[1.35rem] size-1.5 rounded-full bg-rose" aria-hidden="true" title="Waiting over 24h" />}
-      <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-3 text-left" aria-expanded={open}>
+      <button type="button" onClick={() => setOpen((o) => !o)} className="-my-3 flex w-full items-center gap-3 py-3 text-left" aria-expanded={open}>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-ink">{reply.subject || "(no subject)"}</span>
           <span className="block truncate text-xs text-slate">{reply.fromAddress ?? "unknown sender"}</span>
