@@ -9,6 +9,7 @@ import { focusRing } from "@/components/ui/styles";
 import { Tooltip } from "@/components/ui";
 import type { Role } from "@/lib/auth/config";
 import {
+  BookOpen,
   Grid,
   Package,
   Columns,
@@ -77,7 +78,7 @@ const DESIGNER_NAV: NavItem[] = [
   { label: "My Board", href: "/board", icon: Columns },
   { label: "My Week", href: "/me", icon: Calendar },
 ];
-const DESIGNER_MORE: NavItem[] = [];
+const DESIGNER_MORE: NavItem[] = [{ label: "Quick guide", href: "/help", icon: BookOpen }];
 
 type SidebarProps = {
   role: Role;
