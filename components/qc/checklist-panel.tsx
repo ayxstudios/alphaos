@@ -34,7 +34,7 @@ export function ChecklistPanel({
           Checklist
           <span className="ml-2 text-xs font-normal tabular-nums text-slate">
             {doneCount}/{items.length}
-            {failedCount > 0 ? ` · ${failedCount} X` : ""}
+            {failedCount > 0 ? ` · ${failedCount} failed` : ""}
           </span>
         </h2>
         <button
@@ -42,7 +42,7 @@ export function ChecklistPanel({
           onClick={onTickAll}
           disabled={disabled || allDone}
           className={cn(
-            "rounded-input px-2 py-1 text-xs font-medium text-pigment transition-colors motion-hover",
+            "inline-flex min-h-11 items-center rounded-input px-2 py-1 text-xs font-medium text-pigment transition-colors motion-hover sm:min-h-0",
             "hover:bg-pigment-soft disabled:pointer-events-none disabled:opacity-40",
           )}
         >
@@ -73,7 +73,8 @@ export function ChecklistPanel({
                   disabled={disabled}
                   aria-label={`Toggle ${it.label}`}
                   className={cn(
-                    "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border",
+                    // The box is 20px; its invisible ring makes a 44px tap area.
+                    "relative mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border after:absolute after:-inset-3 after:content-['']",
                     isChecked
                       ? "border-sage bg-sage text-surface"
                       : isFailed
@@ -90,8 +91,9 @@ export function ChecklistPanel({
                     onClick={() => onMark(it.key, true)}
                     disabled={disabled}
                     aria-pressed={isChecked}
+                    aria-label={`Pass ${it.label}`}
                     className={cn(
-                      "inline-flex size-7 items-center justify-center rounded border text-xs transition-colors",
+                      "inline-flex size-11 items-center justify-center rounded border text-xs transition-colors sm:size-7",
                       isChecked
                         ? "border-sage bg-sage text-surface"
                         : "border-line bg-surface text-slate hover:bg-sage/10 hover:text-sage",
@@ -104,8 +106,9 @@ export function ChecklistPanel({
                     onClick={() => onMark(it.key, false)}
                     disabled={disabled}
                     aria-pressed={isFailed}
+                    aria-label={`Fail ${it.label}`}
                     className={cn(
-                      "inline-flex size-7 items-center justify-center rounded border text-xs transition-colors",
+                      "inline-flex size-11 items-center justify-center rounded border text-xs transition-colors sm:size-7",
                       isFailed
                         ? "border-rose bg-rose text-surface"
                         : "border-line bg-surface text-slate hover:bg-rose/10 hover:text-rose",

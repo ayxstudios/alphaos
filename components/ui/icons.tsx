@@ -137,6 +137,11 @@ export const Plus = (p: IconProps) => (
     <line x1="5" y1="12" x2="19" y2="12" />
   </Icon>
 );
+export const Minus = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M5 12h14" />
+  </Icon>
+);
 export const Undo = (p: IconProps) => (
   <Icon {...p}>
     <polyline points="9 14 4 9 9 4" />

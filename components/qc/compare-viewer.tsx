@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui";
-import { Plus, Search } from "@/components/ui/icons";
+import { Minus, Plus, Search } from "@/components/ui/icons";
 import type { QcImage } from "@/lib/qc/data";
 
 type Transform = { scale: number; x: number; y: number };
@@ -101,14 +101,16 @@ export function CompareViewer({
             variant="secondary"
             onClick={() => zoomAt(0, 0, 1 / 1.4)}
             aria-label="Zoom out"
+            className="min-w-11 sm:min-w-0"
           >
-            −
+            <Minus size={14} />
           </Button>
           <Button
             size="sm"
             variant="secondary"
             onClick={() => zoomAt(0, 0, 1.4)}
             aria-label="Zoom in"
+            className="min-w-11 sm:min-w-0"
           >
             <Plus size={14} />
           </Button>
