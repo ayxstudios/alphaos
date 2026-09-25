@@ -472,7 +472,7 @@ function EmailPreviewDialog({
               <img
                 src={preview.attachment.url}
                 alt=""
-                className="max-h-[34rem] w-full rounded-input bg-surface object-contain"
+                className="max-h-64 w-full rounded-input bg-surface object-contain xl:max-h-[34rem]"
               />
             ) : (
               <div className="flex h-64 items-center justify-center rounded-input bg-surface text-sm text-slate">

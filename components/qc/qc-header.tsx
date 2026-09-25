@@ -65,7 +65,7 @@ export function QcHeader({
           {ctx.status === "awaiting_qc" && <TimeInQc since={ctx.enteredQcAt} />}
         </div>
         <Fact label="Customer">{ctx.customerName}</Fact>
-        <Fact label="Figures">
+        <Fact label="People and pets">
           {ctx.figuresResolved ? (
             ctx.figureCount
           ) : (
