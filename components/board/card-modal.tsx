@@ -630,10 +630,10 @@ function CardUploadPanel({
       )}
       {progress.length > 0 && (
         <div className="mt-3 space-y-2">
-          {progress.map((row) => {
+          {progress.map((row, i) => {
             const pct = row.total > 0 ? Math.round((row.loaded / row.total) * 100) : 0;
             return (
-              <div key={row.name} className="space-y-1">
+              <div key={`${i}-${row.name}`} className="space-y-1">
                 <div className="flex items-center justify-between gap-2 text-xs">
                   <span className="truncate text-ink">{row.name}</span>
                   <span className={row.status === "failed" ? "text-rose" : "text-slate"}>
