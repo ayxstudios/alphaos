@@ -13,6 +13,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import { liveOrderWhere } from "@/lib/orders/archive";
+import { isNoiseMail } from "@/lib/email/noise";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
 import type { OrderStatus } from "./transitions";
 
@@ -161,6 +162,10 @@ export async function getTodayQueue(user: RequestUser, businessId: string, now =
         .select({
           orderId: messages.orderId,
           direction: messages.direction,
+          address: messages.address,
+          subject: messages.subject,
+          channel: messages.channel,
+          kind: sql<string | null>`${messages.metadata}->>'kind'`,
           at: sql<Date>`coalesce(${messages.sentAt}, ${messages.createdAt})`,
         })
         .from(messages)
@@ -175,7 +180,13 @@ export async function getTodayQueue(user: RequestUser, businessId: string, now =
     const latestProof = new Map<string, (typeof proofRows)[number]>();
     for (const p of proofRows) if (!latestProof.has(p.orderId)) latestProof.set(p.orderId, p);
     const latestMsg = new Map<string, (typeof msgRows)[number]>();
-    for (const m of msgRows) if (m.orderId && !latestMsg.has(m.orderId)) latestMsg.set(m.orderId, m);
+    // Notifications and marketing mail (Etsy sale notices, no-reply senders,
+    // auto-replies) are nobody waiting on us: they never make a reply item.
+    for (const m of msgRows) {
+      if (!m.orderId || latestMsg.has(m.orderId)) continue;
+      if (m.direction === "inbound" && isNoiseMail(m)) continue;
+      latestMsg.set(m.orderId, m);
+    }
 
     const out: TodayItem[] = [];
     const t = now.getTime();

@@ -76,10 +76,18 @@ async function MailStrip({ user, businessId }: { user: U; businessId: string }) 
         <Mail size={18} />
       </span>
       <span className="min-w-0 flex-1">
+        {/* Notifications and marketing mail are not counted (lib/email/noise.ts). */}
         <span className="block text-base font-medium text-ink">
-          {n} message{n === 1 ? "" : "s"} not matched to an order
+          {[
+            counts.unmatched ? `${counts.unmatched} message${counts.unmatched === 1 ? "" : "s"} not matched to an order` : null,
+            counts.failed ? `${counts.failed} email${counts.failed === 1 ? "" : "s"} not sent` : null,
+          ]
+            .filter(Boolean)
+            .join(", ")}
         </span>
-        <span className="block text-sm text-slate">Open Messages to link {n === 1 ? "it" : "them"} to the right order.</span>
+        <span className="block text-sm text-slate">
+          {counts.unmatched ? `Open Messages to link ${counts.unmatched === 1 ? "it" : "them"} to the right order.` : "Open Messages to try again."}
+        </span>
       </span>
       <ArrowRight size={18} className="shrink-0 text-slate" />
     </Link>
