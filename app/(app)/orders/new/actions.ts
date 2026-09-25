@@ -13,6 +13,7 @@ import { parseFigureCount } from "@/lib/orders/manual-input";
 import { runTransition } from "@/lib/orders/transitions";
 import { normalizeOrderNumber } from "@/lib/orders/reconcile";
 import { shopStyleChoices } from "@/lib/designers/styles";
+import { referenceUploadProblem } from "@/lib/uploads/verify";
 import {
   assetKey,
   extFor,
@@ -149,6 +150,8 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
         return { ok: false as const, message: "Choose one of this shop's configured portrait styles." };
       }
       const businessId = shop.businessId;
+      const photoProblem = await referenceUploadProblem(r2Keys, `${businessId}/${orderId}/reference/`, photoUrls);
+      if (photoProblem) return { ok: false as const, message: photoProblem };
 
       // Duplicate-number guard (manual OR already-imported) within the shop.
       if (orderNumber) {
@@ -326,6 +329,8 @@ export async function completeOrderDetails(input: {
         .for("update");
       if (!order) return { ok: false as const, message: "Order not found" };
       const businessId = order.businessId;
+      const photoProblem = await referenceUploadProblem(r2Keys, `${businessId}/${order.id}/reference/`, photoUrls);
+      if (photoProblem) return { ok: false as const, message: photoProblem };
 
       const [shop] = await tx
         .select({ styles: shops.styles })
