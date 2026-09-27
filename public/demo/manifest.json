@@ -1,0 +1,36 @@
+{
+  "base": "https://alphaos-demo.vercel.app",
+  "photos": [
+    "/demo/photos/people-01.png",
+    "/demo/photos/people-02.png",
+    "/demo/photos/people-03.png",
+    "/demo/photos/people-04.png",
+    "/demo/photos/people-05.png",
+    "/demo/photos/people-06.png",
+    "/demo/photos/pet-01.png",
+    "/demo/photos/pet-02.png",
+    "/demo/photos/pet-03.png",
+    "/demo/photos/pet-04.png",
+    "/demo/photos/pet-05.png",
+    "/demo/photos/pet-06.png"
+  ],
+  "art": {
+    "cartoon": [
+      "/demo/art/cartoon-01.png",
+      "/demo/art/cartoon-02.png",
+      "/demo/art/cartoon-03.png"
+    ],
+    "watercolor": [
+      "/demo/art/watercolor-01.png",
+      "/demo/art/watercolor-02.png",
+      "/demo/art/watercolor-03.png"
+    ],
+    "renaissance": [
+      "/demo/art/renaissance-01.png",
+      "/demo/art/renaissance-02.png"
+    ],
+    "lineart": [
+      "/demo/art/lineart-01.png"
+    ]
+  }
+}
