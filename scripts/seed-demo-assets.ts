@@ -227,14 +227,22 @@ async function main() {
     { first: "Marcus", last: "Ellery", title: "Custom Watercolor Pet Portrait from Photo", style: "watercolor", kind: "pet" as const },
     { first: "Priya", last: "Venn", title: "Custom Renaissance Portrait from Photo", style: "renaissance", kind: "people" as const },
   ];
+  // Designers can only upload on in_design orders, so keep two per business (assigned to Dana) for the upload path.
+  const IN_DESIGN = [
+    { first: "Owen", last: "Hartley", title: "Custom Hand-Drawn Cartoon Pet Portrait", style: "cartoon", kind: "pet" as const },
+    { first: "Leila", last: "Marsh", title: "Custom Line Art Portrait, Personalised Gift", style: "lineart", kind: "people" as const },
+  ];
+  const [dana] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.name, "Dana Designer")).limit(1);
+  const [vaUser] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.role, "va")).limit(1);
   const biz = await db.select({ id: schema.businesses.id, slug: schema.businesses.slug }).from(schema.businesses);
   const shopRows = await db.select({ id: schema.shops.id, businessId: schema.shops.businessId, platform: schema.shops.platform }).from(schema.shops);
   let readyNew = 0;
   for (const b of biz) {
     const shop = shopRows.find((x) => x.businessId === b.id && x.platform === "etsy") ?? shopRows.find((x) => x.businessId === b.id);
     if (!shop) continue;
-    for (const [i, r] of READY.entries()) {
-      const key = `demo-ready-${b.slug}-${i}`;
+    for (const [i, r] of [...READY, ...IN_DESIGN].entries()) {
+      const inDesign = i >= READY.length;
+      const key = inDesign ? `demo-indesign-${b.slug}-${i}` : `demo-ready-${b.slug}-${i}`;
       const customerId = detId(`${key}-cust`);
       const orderId = detId(`${key}-order`);
       const itemId = detId(`${key}-item`);
@@ -251,8 +259,8 @@ async function main() {
           businessId: b.id,
           shopId: shop.id,
           customerId,
-          platformOrderId: `ORD-R${b.slug.slice(0, 2).toUpperCase()}${i + 1}`,
-          status: "ready_to_assign",
+          platformOrderId: `ORD-${inDesign ? "D" : "R"}${b.slug.slice(0, 2).toUpperCase()}${i + 1}`,
+          status: inDesign ? "in_design" : "ready_to_assign",
           source: shop.platform,
           dueAt: new Date(Date.now() + (48 + i * 24) * HOUR),
           placedAt: placed,
@@ -277,6 +285,21 @@ async function main() {
           productType: shop.platform === "shopify" ? "physical" : "digital",
         })
         .onConflictDoNothing();
+      if (inDesign && dana) {
+        await db
+          .insert(schema.assignments)
+          .values({
+            id: `demo-asn-${orderId}`,
+            businessId: b.id,
+            orderId,
+            designerId: dana.id,
+            assignedBy: vaUser?.id ?? null,
+            assignedAt: new Date(placed.getTime() + HOUR),
+            dueAt: new Date(Date.now() + (30 + i * 6) * HOUR),
+            active: true,
+          })
+          .onConflictDoNothing();
+      }
       const pool = demoPhotoPool(r.kind);
       const refs = [pool[(hash(key) + 0) % pool.length], pool[(hash(key) + 1) % pool.length]].filter((u, k, a) => u && a.indexOf(u) === k);
       refs.forEach((u, k) =>
@@ -301,7 +324,7 @@ async function main() {
     const res = await db.insert(schema.assets).values(rows.slice(i, i + 200)).onConflictDoNothing().returning({ id: schema.assets.id });
     inserted += res.length;
   }
-  console.log(`seed-demo-assets: ${orders.length} orders, ${rows.length} candidate assets, ${inserted} inserted, ${repaired} orders re-paired to their artwork's source photo, ${readyNew} ready_to_assign orders added`);
+  console.log(`seed-demo-assets: ${orders.length} orders, ${rows.length} candidate assets, ${inserted} inserted, ${repaired} orders re-paired to their artwork's source photo, ${readyNew} ready_to_assign / in_design orders added`);
   await pool.end();
 }
 

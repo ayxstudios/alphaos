@@ -50,6 +50,7 @@ async function main() {
     left join lateral (select url from assets where order_id = s.order_id and type = 'reference' and deleted_at is null order by created_at, id limit 1) r on true
     left join (values ('cartoon-01','pet-01'),('cartoon-02','pet-02'),('cartoon-03','people-01'),('watercolor-01','pet-03'),('watercolor-02','pet-04'),('watercolor-03','people-02'),('renaissance-01','pet-05'),('renaissance-02','pet-05'),('renaissance-03','people-05'),('lineart-01','pet-06'),('lineart-02','people-03'),('lineart-03','people-04')) v(a,ph) on s.url like '%/' || v.a || '.%'
     left join lateral (select regexp_replace(r.url, '/photos/[^/]+$', '/photos/' || v.ph || '.jpg') url) p on true`);
+  const inDesign = await pool.query("select count(*)::int n from orders o where o.status = 'in_design' and exists (select 1 from assignments a where a.order_id = o.id and a.active)");
   const pixart = await pool.query("select count(*)::int n from businesses where name ilike '%pixart%'");
 
   console.log("\nbusinesses:");
@@ -60,6 +61,7 @@ async function main() {
   for (const r of orders.rows) console.log(`  ${r.status}: ${r.n}`);
   console.log(`\nawaiting_qc orders: ${qcTotal.rows[0].n} total, ${qc.rows[0].n} with a submission asset`);
   console.log(`ready_to_assign (unassigned, with reference photos): ${readyTotal} (${ready.rows.map((r) => `${r.slug} ${r.n}`).join(", ")})`);
+  console.log(`in_design orders with an active assignee (designer upload path): ${inDesign.rows[0].n}`);
   console.log(`orders whose first reference photo is the photo their submission was drawn from: ${pairChk.rows[0].ok} of ${pairChk.rows[0].total}`);
   console.log(`assets: ${assetSplit.rows[0].total} total, ${assetSplit.rows[0].demo_urls} /demo/ url(s), ${assetSplit.rows[0].picsum_urls} picsum url(s)`);
 
@@ -77,6 +79,10 @@ async function main() {
   }
   if (ready.rows.length < 2 || ready.rows.some((r) => r.n < 3) || readyTotal < 6) {
     console.error("\nFAIL: ready_to_assign >= 6 (3 per business) not met");
+    process.exit(1);
+  }
+  if (inDesign.rows[0].n < 2) {
+    console.error("\nFAIL: fewer than 2 assigned in_design orders (designers cannot upload)");
     process.exit(1);
   }
   if (qc.rows[0].n < 1) {
