@@ -26,6 +26,16 @@ async function main() {
       count(*) filter (where url like '%picsum.photos%')::int picsum_urls
     from assets where url is not null
   `);
+  const kinds = await pool.query("select type, count(*)::int n from assets where deleted_at is null group by type order by type");
+  const refCov = await pool.query(`
+    select count(*)::int total,
+      count(*) filter (where exists (select 1 from assets a where a.order_id = o.id and a.type = 'reference' and a.deleted_at is null))::int with_ref
+    from orders o where o.status <> 'cancelled'`);
+  const subCov = await pool.query(`
+    select count(*)::int total,
+      count(*) filter (where exists (select 1 from assets a where a.order_id = o.id and a.type in ('submission','final') and a.deleted_at is null))::int with_sub
+    from orders o where o.status in ('awaiting_qc','awaiting_approval','approved','printing','shipped','delivered','complete')`);
+  const badUrls = await pool.query("select count(*)::int n from assets where url is not null and url not like 'https://alphaos-demo.vercel.app/demo/%'");
   const pixart = await pool.query("select count(*)::int n from businesses where name ilike '%pixart%'");
 
   console.log("\nbusinesses:");
@@ -37,8 +47,18 @@ async function main() {
   console.log(`\nawaiting_qc orders: ${qcTotal.rows[0].n} total, ${qc.rows[0].n} with a submission asset`);
   console.log(`assets: ${assetSplit.rows[0].total} total, ${assetSplit.rows[0].demo_urls} /demo/ url(s), ${assetSplit.rows[0].picsum_urls} picsum url(s)`);
 
+  console.log("\nassets by kind:");
+  for (const r of kinds.rows) console.log(`  ${r.type}: ${r.n}`);
+  console.log(`orders with >=1 reference photo: ${refCov.rows[0].with_ref} of ${refCov.rows[0].total} (non-cancelled)`);
+  console.log(`orders at/past awaiting_qc with a submission/final: ${subCov.rows[0].with_sub} of ${subCov.rows[0].total}`);
+  console.log(`assets with a url outside https://alphaos-demo.vercel.app/demo/: ${badUrls.rows[0].n}${badUrls.rows[0].n ? "  <-- FLAGGED" : ""}`);
+
   await pool.end();
 
+  if (refCov.rows[0].with_ref < refCov.rows[0].total || subCov.rows[0].with_sub < subCov.rows[0].total) {
+    console.error("\nFAIL: image coverage incomplete");
+    process.exit(1);
+  }
   if (qc.rows[0].n < 1) {
     console.error("\nFAIL: no awaiting_qc order has a submission asset");
     process.exit(1);

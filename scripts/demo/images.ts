@@ -105,3 +105,13 @@ export function demoArtUrl(orderId: string, style?: string | null): string | nul
 export function isManifestActive(): boolean {
   return loadManifest() !== null;
 }
+
+/** Absolute photo URLs for a subject kind ("pet" | "people"), or all photos for "any". */
+export function demoPhotoPool(kind: "pet" | "people" | "any"): string[] {
+  const manifest = loadManifest();
+  if (!manifest) return [];
+  const all = manifest.photos.map((p) => absolute(manifest, p));
+  if (kind === "any") return all;
+  const sub = all.filter((u) => u.includes(`/${kind}-`));
+  return sub.length ? sub : all;
+}

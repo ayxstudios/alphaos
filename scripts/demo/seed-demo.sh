@@ -92,6 +92,8 @@ echo "== seed-history.ts =="
 npx tsx scripts/seed-history.ts
 echo "== seed-qc.ts =="
 npx tsx scripts/seed-qc.ts
+echo "== seed-demo-assets.ts =="
+npx tsx scripts/seed-demo-assets.ts
 
 # ---- verification -----------------------------------------------------------
 echo "== verification =="
