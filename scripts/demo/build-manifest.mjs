@@ -4,8 +4,8 @@
  * writes public/demo/manifest.json (docs/DEMO.md). Safe to re-run any time;
  * it only reads the filesystem and overwrites the manifest file.
  *
- * Photos: public/demo/photos/*.png -> manifest.photos (any subject, any name).
- * Art: public/demo/art/<style>-NN.png -> manifest.art[<style>], where <style>
+ * Photos: public/demo/photos/*.{png,jpg} -> manifest.photos (any subject, any name).
+ * Art: public/demo/art/<style>-NN.{png,jpg} -> manifest.art[<style>], where <style>
  * is one of cartoon, watercolor, renaissance, lineart (matches the seeded
  * portrait styles in scripts/seed.ts, with "line-art" mapped to "lineart").
  *
@@ -27,7 +27,7 @@ const ART_STYLES = ["cartoon", "watercolor", "renaissance", "lineart"];
 function listPngs(dir) {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
-    .filter((f) => f.toLowerCase().endsWith(".png"))
+    .filter((f) => f.toLowerCase().match(/\.(png|jpe?g)$/))
     .sort();
 }
 
