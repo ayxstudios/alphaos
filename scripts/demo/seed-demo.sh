@@ -32,9 +32,18 @@ set -a; . "$ENV_FILE"; set +a
 : "${DEMO_DESIGNER_EMAIL:?DEMO_DESIGNER_EMAIL not set in $ENV_FILE}"
 
 # ---- safety rail: this must be the demo project, never prod or staging -----
-DEMO_HOST=$(node -e 'console.log(new URL(process.env.DEMO_DIRECT_URL).hostname)')
-if [[ "$DEMO_HOST" != *"$DEMO_NEON_PROJECT_ID"* ]]; then
-  echo "refusing: DEMO_DIRECT_URL host ($DEMO_HOST) does not contain DEMO_NEON_PROJECT_ID ($DEMO_NEON_PROJECT_ID)" >&2
+# Neon endpoint hostnames (ep-<random>-<id>...) do not literally contain the
+# project id (a separate "adjective-noun-digits" id, e.g. falling-snow-...),
+# so a plain substring check on the host can never pass and would make this
+# script refuse to run every time. Instead ask the Neon API which project
+# actually owns this endpoint host and compare that to DEMO_NEON_PROJECT_ID.
+export DEMO_HOST=$(node -e 'console.log(new URL(process.env.DEMO_DIRECT_URL).hostname)')
+: "${NEON_API_KEY:?set NEON_API_KEY (used only to verify DEMO_DIRECT_URL belongs to DEMO_NEON_PROJECT_ID)}"
+OWNER_PROJECT=$(curl -sf -H "Authorization: Bearer $NEON_API_KEY" \
+  "https://console.neon.tech/api/v2/projects/$DEMO_NEON_PROJECT_ID/endpoints" \
+  | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);const host=process.env.DEMO_HOST;const e=(j.endpoints||[]).find(e=>e.host===host);console.log(e?e.project_id:"")})')
+if [ "$OWNER_PROJECT" != "$DEMO_NEON_PROJECT_ID" ]; then
+  echo "refusing: DEMO_DIRECT_URL host ($DEMO_HOST) is not an endpoint of DEMO_NEON_PROJECT_ID ($DEMO_NEON_PROJECT_ID) per the Neon API" >&2
   exit 1
 fi
 DEMO_USER=$(node -e 'console.log(new URL(process.env.DEMO_DIRECT_URL).username)')
@@ -52,18 +61,7 @@ DIRECT_URL="$DEMO_DIRECT_URL" npx drizzle-kit migrate
 # ---- app_user login (same action scripts/staging/prepare.ts takes; the
 #      GRANTs themselves live in the migrations just applied, not here) ------
 echo "== setting app_user password =="
-node -e '
-const { Pool } = require("@neondatabase/serverless");
-const ws = require("ws");
-const { neonConfig } = require("@neondatabase/serverless");
-neonConfig.webSocketConstructor = ws;
-const pool = new Pool({ connectionString: process.env.DEMO_DIRECT_URL, max: 1 });
-const pw = process.env.DEMO_APP_USER_PASSWORD.replace(/'"'"'/g, "'"'"''"'"'"'"'"'");
-pool.query(`do $$ begin execute format('"'"'alter role app_user with login password %L'"'"', '"'"'${pw}'"'"'); end $$`)
-  .then(() => pool.end())
-  .then(() => console.log("app_user password set"))
-  .catch((err) => { console.error(err); process.exit(1); });
-'
+node scripts/demo/set-app-user-password.cjs
 
 # ---- fictional identity for this demo run ----------------------------------
 export SEED_BUSINESS_A_NAME="${SEED_BUSINESS_A_NAME:-Northlight Portraits}"
@@ -97,52 +95,4 @@ npx tsx scripts/seed-qc.ts
 
 # ---- verification -----------------------------------------------------------
 echo "== verification =="
-node -e '
-const { Pool } = require("@neondatabase/serverless");
-const ws = require("ws");
-const { neonConfig } = require("@neondatabase/serverless");
-neonConfig.webSocketConstructor = ws;
-const pool = new Pool({ connectionString: process.env.DIRECT_URL, max: 1 });
-
-async function main() {
-  const businesses = await pool.query("select name, slug from businesses order by name");
-  const users = await pool.query("select role, count(*)::int n from \"user\" group by role order by role");
-  const orders = await pool.query("select status, count(*)::int n from orders group by status order by status");
-  const qc = await pool.query(`
-    select count(*)::int n from orders o
-    where o.status = '"'"'awaiting_qc'"'"' and o.archived_at is null
-      and exists (select 1 from assets a where a.order_id = o.id and a.type in ('"'"'submission'"'"','"'"'final'"'"') and a.deleted_at is null)
-  `);
-  const qcTotal = await pool.query("select count(*)::int n from orders where status = '"'"'awaiting_qc'"'"' and archived_at is null");
-  const assetSplit = await pool.query(`
-    select
-      count(*)::int total,
-      count(*) filter (where url like '"'"'/demo/%'"'"' or url like '"'"'%/demo/%'"'"')::int demo_urls,
-      count(*) filter (where url like '"'"'%picsum.photos%'"'"')::int picsum_urls
-    from assets where url is not null
-  `);
-  const pixart = await pool.query("select count(*)::int n from businesses where name ilike '"'"'%pixart%'"'"'");
-
-  console.log("\nbusinesses:");
-  for (const r of businesses.rows) console.log(`  ${r.name} (${r.slug})`);
-  console.log("\nusers by role:");
-  for (const r of users.rows) console.log(`  ${r.role}: ${r.n}`);
-  console.log("\norders per status:");
-  for (const r of orders.rows) console.log(`  ${r.status}: ${r.n}`);
-  console.log(`\nawaiting_qc orders: ${qcTotal.rows[0].n} total, ${qc.rows[0].n} with a submission asset`);
-  console.log(`assets: ${assetSplit.rows[0].total} total, ${assetSplit.rows[0].demo_urls} /demo/ url(s), ${assetSplit.rows[0].picsum_urls} picsum url(s)`);
-
-  await pool.end();
-
-  if (qc.rows[0].n < 1) {
-    console.error("\nFAIL: no awaiting_qc order has a submission asset");
-    process.exit(1);
-  }
-  if (pixart.rows[0].n > 0) {
-    console.error("\nFAIL: a business name contains \"PixArt\"");
-    process.exit(1);
-  }
-  console.log("\nOK: demo database verified");
-}
-main().catch((err) => { console.error(err); process.exit(1); });
-'
+node scripts/demo/verify-demo.cjs
