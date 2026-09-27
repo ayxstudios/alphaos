@@ -4,6 +4,11 @@
  *
  *  - every non-cancelled order: 1-3 customer reference photos (pet products
  *    get pet photos, people/family products get people photos, else any)
+ *  - an order that has (or gets) a submission uses the photo that artwork was
+ *    drawn from (manifest.pairs) as its FIRST reference photo, so QC compares a
+ *    coherent pair; extra reference photos may be anything
+ *  - 3 fresh ready_to_assign orders per business (reference photos, no
+ *    assignee) so the assign list always has work
  *  - every order at/past awaiting_qc: a designer submission artwork matching
  *    the product style (same picker as seed-qc), unless it already has one
  *  - every order at/past awaiting_approval: a "final" asset (same artwork) so
@@ -22,7 +27,9 @@ import { drizzle } from "drizzle-orm/neon-serverless";
 import ws from "ws";
 
 import * as schema from "../lib/db/schema";
-import { demoArtUrl, demoPhotoPool } from "./demo/images";
+import { createHash } from "node:crypto";
+
+import { demoArtUrl, demoPairedPhoto, demoPhotoPool } from "./demo/images";
 
 neonConfig.webSocketConstructor = ws;
 const pool = new Pool({ connectionString: process.env.DIRECT_URL! });
@@ -66,6 +73,13 @@ async function main() {
   const firstItem = new Map<string, (typeof items)[number]>();
   for (const it of items) if (!firstItem.has(it.orderId)) firstItem.set(it.orderId, it);
 
+  const subUrls = await db
+    .select({ orderId: schema.assets.orderId, type: schema.assets.type, url: schema.assets.url })
+    .from(schema.assets)
+    .where(and(inArray(schema.assets.type, ["submission", "final"]), isNull(schema.assets.deletedAt)));
+  const artOf = new Map<string, string>();
+  for (const a of subUrls) if (a.url && !artOf.has(a.orderId)) artOf.set(a.orderId, a.url);
+
   const existing = await db
     .select({ orderId: schema.assets.orderId, type: schema.assets.type })
     .from(schema.assets)
@@ -83,6 +97,7 @@ async function main() {
   const admins = await db.select({ id: schema.users.id }).from(schema.users).where(inArray(schema.users.role, ["va", "admin"]));
 
   const rows: (typeof schema.assets.$inferInsert)[] = [];
+  const fixups: { orderId: string; paired: string }[] = [];
   for (const o of orders) {
     const it = firstItem.get(o.id);
     const style = it?.style ?? null;
@@ -91,12 +106,34 @@ async function main() {
     const staffId = admins.length ? admins[hash(o.id) % admins.length].id : null;
     const base = o.createdAt.getTime();
 
-    if (!has.has(`${o.id}:reference`)) {
+    // Artwork this order will show in QC: the seeded one, or the one we are about to add.
+    const hasSub = PAST_QC.includes(o.status);
+    const plannedArt = artOf.get(o.id) ?? (hasSub ? demoArtUrl(o.id, style) : null);
+    const paired = plannedArt ? demoPairedPhoto(plannedArt) : null;
+    if (plannedArt && !artOf.has(o.id)) artOf.set(o.id, plannedArt);
+
+    if (has.has(`${o.id}:reference`)) {
+      if (paired) fixups.push({ orderId: o.id, paired });
+    } else {
       const kind = photoKind(it?.title ?? null, style);
       const photos = demoPhotoPool(kind);
       const n = 1 + (hash(o.id + "n") % 3);
-      const seen = new Set<string>();
-      for (let i = 0; i < n && photos.length; i++) {
+      const seen = new Set<string>(paired ? [paired] : []);
+      if (paired) {
+        rows.push({
+          id: `demo-ref-${o.id}-0`,
+          businessId: o.businessId,
+          orderId: o.id,
+          orderItemId: it?.id ?? null,
+          type: "reference",
+          storage: "cdn",
+          url: paired,
+          r2Key: null,
+          uploadedBy: null,
+          createdAt: new Date(base + 60_000),
+        });
+      }
+      for (let i = paired ? 1 : 0; i < n && photos.length; i++) {
         const u = photos[(hash(o.id) + i) % photos.length];
         if (seen.has(u)) continue;
         seen.add(u);
@@ -116,7 +153,7 @@ async function main() {
     }
 
     if (PAST_QC.includes(o.status) && !has.has(`${o.id}:submission`) && !has.has(`${o.id}:final`)) {
-      const art = demoArtUrl(o.id, style) ?? `https://picsum.photos/seed/qc-${hash(o.id)}/900/900`;
+      const art = plannedArt ?? `https://picsum.photos/seed/qc-${hash(o.id)}/900/900`;
       const subAt = new Date(Math.min(o.updatedAt.getTime(), base + 30 * HOUR));
       rows.push({
         id: `demo-sub-${o.id}`,
@@ -164,12 +201,107 @@ async function main() {
     }
   }
 
+  // Orders whose reference photos already existed (QC-seeded): make the earliest
+  // reference the photo the submission was drawn from, and drop any duplicate of it.
+  let repaired = 0;
+  for (const f of fixups) {
+    const refs = await db
+      .select({ id: schema.assets.id, url: schema.assets.url })
+      .from(schema.assets)
+      .where(and(eq(schema.assets.orderId, f.orderId), eq(schema.assets.type, "reference"), isNull(schema.assets.deletedAt)))
+      .orderBy(schema.assets.createdAt, schema.assets.id);
+    if (refs.length === 0 || refs[0].url === f.paired) continue;
+    const dupes = refs.slice(1).filter((r) => r.url === f.paired).map((r) => r.id);
+    if (dupes.length) await db.update(schema.assets).set({ deletedAt: new Date() }).where(inArray(schema.assets.id, dupes));
+    await db.update(schema.assets).set({ url: f.paired }).where(eq(schema.assets.id, refs[0].id));
+    repaired += 1;
+  }
+
+  // ---- 3 fresh ready_to_assign orders per business ------------------------
+  const detId = (k: string) => {
+    const h = createHash("sha1").update(k).digest("hex");
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
+  };
+  const READY = [
+    { first: "Ruth", last: "Calloway", title: "Custom Hand-Drawn Cartoon Pet Portrait", style: "cartoon", kind: "pet" as const },
+    { first: "Marcus", last: "Ellery", title: "Custom Watercolor Pet Portrait from Photo", style: "watercolor", kind: "pet" as const },
+    { first: "Priya", last: "Venn", title: "Custom Renaissance Portrait from Photo", style: "renaissance", kind: "people" as const },
+  ];
+  const biz = await db.select({ id: schema.businesses.id, slug: schema.businesses.slug }).from(schema.businesses);
+  const shopRows = await db.select({ id: schema.shops.id, businessId: schema.shops.businessId, platform: schema.shops.platform }).from(schema.shops);
+  let readyNew = 0;
+  for (const b of biz) {
+    const shop = shopRows.find((x) => x.businessId === b.id && x.platform === "etsy") ?? shopRows.find((x) => x.businessId === b.id);
+    if (!shop) continue;
+    for (const [i, r] of READY.entries()) {
+      const key = `demo-ready-${b.slug}-${i}`;
+      const customerId = detId(`${key}-cust`);
+      const orderId = detId(`${key}-order`);
+      const itemId = detId(`${key}-item`);
+      const placed = new Date(Date.now() - (6 + i * 5) * HOUR);
+      const cust = await db
+        .insert(schema.customers)
+        .values({ id: customerId, businessId: b.id, email: `${r.first.toLowerCase()}.${b.slug}@example.com`, firstName: r.first, lastName: r.last })
+        .onConflictDoNothing()
+        .returning({ id: schema.customers.id });
+      const ord = await db
+        .insert(schema.orders)
+        .values({
+          id: orderId,
+          businessId: b.id,
+          shopId: shop.id,
+          customerId,
+          platformOrderId: `ORD-R${b.slug.slice(0, 2).toUpperCase()}${i + 1}`,
+          status: "ready_to_assign",
+          source: shop.platform,
+          dueAt: new Date(Date.now() + (48 + i * 24) * HOUR),
+          placedAt: placed,
+          uploadToken: detId(`${key}-token`),
+        })
+        .onConflictDoNothing()
+        .returning({ id: schema.orders.id });
+      void cust;
+      if (!ord.length) continue;
+      readyNew += 1;
+      await db
+        .insert(schema.orderItems)
+        .values({
+          id: itemId,
+          businessId: b.id,
+          orderId,
+          sku: `READY-${i + 1}`,
+          title: r.title,
+          variation: "1 figure",
+          figureCount: 1,
+          style: r.style,
+          productType: shop.platform === "shopify" ? "physical" : "digital",
+        })
+        .onConflictDoNothing();
+      const pool = demoPhotoPool(r.kind);
+      const refs = [pool[(hash(key) + 0) % pool.length], pool[(hash(key) + 1) % pool.length]].filter((u, k, a) => u && a.indexOf(u) === k);
+      refs.forEach((u, k) =>
+        rows.push({
+          id: `demo-ref-${orderId}-${k}`,
+          businessId: b.id,
+          orderId,
+          orderItemId: itemId,
+          type: "reference",
+          storage: "cdn",
+          url: u,
+          r2Key: null,
+          uploadedBy: null,
+          createdAt: new Date(placed.getTime() + (k + 1) * 60_000),
+        }),
+      );
+    }
+  }
+
   let inserted = 0;
   for (let i = 0; i < rows.length; i += 200) {
     const res = await db.insert(schema.assets).values(rows.slice(i, i + 200)).onConflictDoNothing().returning({ id: schema.assets.id });
     inserted += res.length;
   }
-  console.log(`seed-demo-assets: ${orders.length} orders, ${rows.length} candidate assets, ${inserted} inserted`);
+  console.log(`seed-demo-assets: ${orders.length} orders, ${rows.length} candidate assets, ${inserted} inserted, ${repaired} orders re-paired to their artwork's source photo, ${readyNew} ready_to_assign orders added`);
   await pool.end();
 }
 

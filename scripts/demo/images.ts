@@ -19,6 +19,8 @@ export type DemoManifest = {
   base: string;
   photos: string[];
   art: Record<string, string[]>;
+  /** art path -> the photo path it was drawn from */
+  pairs?: Record<string, string>;
 };
 
 // Maps the style names used in scripts/seed.ts / order_items.style to the
@@ -114,4 +116,13 @@ export function demoPhotoPool(kind: "pet" | "people" | "any"): string[] {
   if (kind === "any") return all;
   const sub = all.filter((u) => u.includes(`/${kind}-`));
   return sub.length ? sub : all;
+}
+
+/** The photo an art image was drawn from (absolute URLs in, absolute URL out), or null when unpaired. */
+export function demoPairedPhoto(artUrl: string): string | null {
+  const manifest = loadManifest();
+  if (!manifest?.pairs) return null;
+  const path = artUrl.replace(/^https?:\/\/[^/]+/, "");
+  const photo = manifest.pairs[path];
+  return photo ? absolute(manifest, photo) : null;
 }

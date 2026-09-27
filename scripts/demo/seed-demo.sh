@@ -64,6 +64,7 @@ echo "== setting app_user password =="
 node scripts/demo/set-app-user-password.cjs
 
 # ---- fictional identity for this demo run ----------------------------------
+export SUPPORT_EMAIL="${SUPPORT_EMAIL:-support@alphaos-demo.test}"
 export SEED_BUSINESS_A_NAME="${SEED_BUSINESS_A_NAME:-Northlight Portraits}"
 export SEED_BUSINESS_A_SLUG="${SEED_BUSINESS_A_SLUG:-northlight}"
 export SEED_BUSINESS_B_NAME="${SEED_BUSINESS_B_NAME:-Paws and Pencils}"

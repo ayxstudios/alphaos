@@ -22,10 +22,17 @@ function extFromContentType(contentType: string): string {
   return "jpg";
 }
 
+/** "Northlight Portraits" -> "Northlight-Portraits"; "PixArt" stays "PixArt". */
+function attachmentPrefix(businessName?: string | null): string {
+  const slug = (businessName ?? "").normalize("NFKD").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return slug || "AlphaOS";
+}
+
 export async function describeAssetAttachment(
   tx: Tx,
   assetId: string,
   orderNumber: string,
+  businessName?: string | null,
 ): Promise<EmailAttachmentDescriptor | null> {
   const [asset] = await tx
     .select({
@@ -44,7 +51,7 @@ export async function describeAssetAttachment(
     const contentType = head.contentType ?? "image/jpeg";
     return {
       assetId: asset.id,
-      filename: `PixArt-${orderNumber}.${extFromContentType(contentType)}`,
+      filename: `${attachmentPrefix(businessName)}-${orderNumber}.${extFromContentType(contentType)}`,
       contentType,
       sizeBytes: head.contentLength,
       fingerprint: head.eTag,
@@ -58,7 +65,7 @@ export async function describeAssetAttachment(
     const len = res?.headers.get("content-length");
     return {
       assetId: asset.id,
-      filename: `PixArt-${orderNumber}.${extFromContentType(contentType)}`,
+      filename: `${attachmentPrefix(businessName)}-${orderNumber}.${extFromContentType(contentType)}`,
       contentType,
       sizeBytes: len ? Number(len) : null,
       fingerprint: res?.headers.get("etag") ?? null,

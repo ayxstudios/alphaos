@@ -40,11 +40,37 @@ for (const style of ART_STYLES) {
   art[style] = artFiles.filter((f) => f.startsWith(prefix)).map((f) => `/demo/art/${f}`);
 }
 
+// Which photo each art file was drawn from, so QC shows a coherent pair.
+// Keys are art file stems, values are photo file stems (extension-agnostic).
+const PAIRS = {
+  "cartoon-01": "pet-01",
+  "cartoon-02": "pet-02",
+  "cartoon-03": "people-01",
+  "watercolor-01": "pet-03",
+  "watercolor-02": "pet-04",
+  "watercolor-03": "people-02",
+  "renaissance-01": "pet-05",
+  "renaissance-02": "pet-05",
+  "renaissance-03": "people-05",
+  "lineart-01": "pet-06",
+  "lineart-02": "people-03",
+  "lineart-03": "people-04",
+};
+const findFile = (list, stem) => list.find((u) => u.replace(/\.[a-z]+$/i, "").endsWith(`/${stem}`));
+const allArt = Object.values(art).flat();
+const pairs = {};
+for (const [artStem, photoStem] of Object.entries(PAIRS)) {
+  const a = findFile(allArt, artStem);
+  const p = findFile(photos, photoStem);
+  if (a && p) pairs[a] = p;
+}
+
 const base = (process.env.DEMO_ALIAS ?? "alphaos-demo.vercel.app").replace(/^https?:\/\//, "");
 const manifest = {
   base: `https://${base}`,
   photos,
   art,
+  pairs,
 };
 
 writeFileSync(join(demoDir, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");

@@ -56,6 +56,7 @@ OUT=$(vercel deploy --yes --token "$VERCEL_TOKEN" --scope "$SCOPE" \
   -e MOCK_INTEGRATIONS=1 \
   -e PRINT_PROVIDER_MOCK=1 \
   -e STAGING=1 \
+  -e SUPPORT_EMAIL="${SUPPORT_EMAIL:-support@alphaos-demo.test}" \
   -e DEMO=1)
 # MOCK_INTEGRATIONS=1: instrumentation.ts installs lib/mock/transport.ts at
 # server start, so calls made with the mock credentials scripts/seed.ts

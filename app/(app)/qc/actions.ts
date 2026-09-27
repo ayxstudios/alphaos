@@ -136,7 +136,7 @@ export async function prepareQcEmailPreview(input: {
       business_name: ctx.business.name,
       proof_link: proofUrl(proof.token),
     });
-    const attachment = await describeAssetAttachment(tx, ctx.asset.id, ctx.order.orderNumber);
+    const attachment = await describeAssetAttachment(tx, ctx.asset.id, ctx.order.orderNumber, ctx.business.name);
     if (!attachment) {
       return { ok: false as const, code: "attachment", message: "The portrait file could not be opened. Ask the designer to add it again." };
     }
@@ -219,7 +219,7 @@ export async function confirmQcPassAndSend(input: {
     if (proof.id !== input.proofId) {
       return { ok: false as const, code: "stale_proof", message: "The proof link changed. Refresh and preview again." };
     }
-    const attachment = await describeAssetAttachment(tx, ctx.asset.id, ctx.order.orderNumber);
+    const attachment = await describeAssetAttachment(tx, ctx.asset.id, ctx.order.orderNumber, ctx.business.name);
     if (!attachment) return { ok: false as const, code: "attachment", message: "The portrait file could not be opened. Ask the designer to add it again." };
     if (attachment.fingerprint && input.attachmentFingerprint && attachment.fingerprint !== input.attachmentFingerprint) {
       return {
