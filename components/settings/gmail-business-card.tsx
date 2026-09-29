@@ -10,6 +10,8 @@ import {
   triggerGmailPoll,
   setEmailSendingEnabled,
   setStageEmailAutoSend,
+  setAgentIntakeEnabled,
+  setAgentAssignEnabled,
   sendGmailTest,
   type GmailTestResult,
 } from "@/app/(app)/settings/actions";
@@ -27,6 +29,9 @@ export type GmailBusinessVM = {
   sendingEnabled: boolean;
   /** businesses.stage_email_auto_send: order updates send by themselves instead of waiting in Messages. */
   stageAutoSend: boolean;
+  /** businesses.agent_intake_enabled / agent_assign_enabled (docs/AGENT_FIRST.md). */
+  agentIntake: boolean;
+  agentAssign: boolean;
 };
 
 const STATUS: Record<GmailBusinessVM["status"], { label: string; variant: "success" | "warning" | "neutral" }> = {
@@ -49,6 +54,8 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
   const [pollError, setPollError] = useState<string | null>(null);
   const [togglePending, startToggle] = useTransition();
   const [stagePending, startStage] = useTransition();
+  const [intakePending, startIntake] = useTransition();
+  const [assignPending, startAssign] = useTransition();
   const [confirmOn, setConfirmOn] = useState(false);
   const [testTo, setTestTo] = useState("");
   const [testPending, startTest] = useTransition();
@@ -116,6 +123,22 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
         router.refresh();
       } catch {
         toast({ variant: "danger", title: "Could not change order updates", description: "Try again in a moment." });
+      }
+    });
+  }
+
+  function onToggleAgent(kind: "intake" | "assign") {
+    const current = kind === "intake" ? gmail.agentIntake : gmail.agentAssign;
+    const run = kind === "intake" ? startIntake : startAssign;
+    const noun = kind === "intake" ? "Agent intake" : "Agent assignment";
+    run(async () => {
+      try {
+        if (kind === "intake") await setAgentIntakeEnabled(gmail.businessId, !current);
+        else await setAgentAssignEnabled(gmail.businessId, !current);
+        toast({ variant: "success", title: `${noun} ${current ? "off" : "on"}` });
+        router.refresh();
+      } catch {
+        toast({ variant: "danger", title: `Could not change ${noun.toLowerCase()}`, description: "Try again in a moment." });
       }
     });
   }
@@ -250,6 +273,41 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
             {!gmail.sendingEnabled && " Nothing sends while customer email sending is off."}
           </p>
         </div>
+
+        {([
+          {
+            kind: "intake" as const,
+            label: "Agent handles intake",
+            on: gmail.agentIntake,
+            pending: intakePending,
+            help: "Completes Etsy order details, checks photo counts, drafts the photo request for VA approval, raises exceptions.",
+          },
+          {
+            kind: "assign" as const,
+            label: "Agent assigns designers",
+            on: gmail.agentAssign,
+            pending: assignPending,
+            help: "Assigns ready orders to the best free designer by capacity and style; a human reassignment always wins.",
+          },
+        ]).map((t) => (
+          <div key={t.kind} className="mb-4 flex flex-wrap items-center gap-2 rounded-input border border-line bg-canvas/70 px-3 py-2.5">
+            <span className="text-sm font-medium text-ink">{t.label}</span>
+            <Badge variant={t.on ? "success" : "neutral"} dot>
+              {t.on ? "On" : "Off"}
+            </Badge>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="ml-auto"
+              loading={t.pending}
+              onClick={() => onToggleAgent(t.kind)}
+            >
+              {t.on ? "Turn off" : "Turn on"}
+            </Button>
+            <p className="w-full text-xs text-slate">{t.help}</p>
+          </div>
+        ))}
 
         <div className="grid gap-4 xl:grid-cols-2">
           <form action={onSaveClient} className="flex min-w-0 flex-col gap-3">

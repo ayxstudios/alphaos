@@ -240,6 +240,8 @@ export default async function SettingsPage({
         address: businesses.gmailAddress,
         sendingEnabled: businesses.emailSendingEnabled,
         stageAutoSend: businesses.stageEmailAutoSend,
+        agentIntake: businesses.agentIntakeEnabled,
+        agentAssign: businesses.agentAssignEnabled,
         name: businesses.name,
         logoUrl: businesses.logoUrl,
       })
@@ -261,6 +263,8 @@ export default async function SettingsPage({
       redirectUri: appUrl("/api/gmail/callback"),
       sendingEnabled: !!biz?.sendingEnabled,
       stageAutoSend: !!biz?.stageAutoSend,
+      agentIntake: !!biz?.agentIntake,
+      agentAssign: !!biz?.agentAssign,
     };
   })();
 

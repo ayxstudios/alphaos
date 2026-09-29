@@ -609,6 +609,24 @@ export async function setStageEmailAutoSend(businessId: string, enabled: boolean
   revalidatePath("/settings");
 }
 
+/** Agent switch: the agent completes Etsy order details, checks photo counts and drafts the photo request (default OFF). */
+export async function setAgentIntakeEnabled(businessId: string, enabled: boolean): Promise<void> {
+  const user = await requireAdmin();
+  await withUserContext(user, (tx) =>
+    tx.update(businesses).set({ agentIntakeEnabled: enabled }).where(eq(businesses.id, businessId)),
+  );
+  revalidatePath("/settings");
+}
+
+/** Agent switch: the agent assigns ready orders to the best free designer (default OFF). A human reassignment always wins. */
+export async function setAgentAssignEnabled(businessId: string, enabled: boolean): Promise<void> {
+  const user = await requireAdmin();
+  await withUserContext(user, (tx) =>
+    tx.update(businesses).set({ agentAssignEnabled: enabled }).where(eq(businesses.id, businessId)),
+  );
+  revalidatePath("/settings");
+}
+
 /**
  * The business's own name and logo, shown to customers on the photo upload and
  * proof pages and used as {{business_name}} in emails. The logo is a public

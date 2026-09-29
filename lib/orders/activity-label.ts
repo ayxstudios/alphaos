@@ -7,6 +7,10 @@
 const LABELS: Record<string, string> = {
   comment: "Note",
   "order.assigned": "Assigned",
+  "agent.assigned": "Assigned by the agent",
+  "agent.photo_shortfall_drafted": "Agent drafted a photo request",
+  "agent.exception_opened": "Agent raised an exception",
+  "agent.etsy_details_completed": "Agent completed the order details",
   "order.reassigned": "Reassigned",
   "order.imported": "Imported",
   "order.created_manual": "Created by hand",

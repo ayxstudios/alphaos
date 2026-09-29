@@ -43,6 +43,7 @@ const ADMIN_NAV: NavItem[] = [
   { label: "Orders", href: "/orders", icon: Package },
   { label: "QC", href: "/qc", icon: Eye },
   { label: "Messages", href: "/emails", icon: Mail },
+  { label: "Exceptions", href: "/exceptions", icon: AlertTriangle },
   { label: "Boards", href: "/board", icon: Columns },
   { label: "Print", href: "/queue/print", icon: Truck },
   { label: "Money", href: "/payouts", icon: Wallet },
@@ -62,6 +63,7 @@ const VA_NAV: NavItem[] = [
   { label: "Orders", href: "/orders", icon: Package },
   { label: "QC", href: "/qc", icon: Eye },
   { label: "Messages", href: "/emails", icon: Mail },
+  { label: "Exceptions", href: "/exceptions", icon: AlertTriangle },
   { label: "Boards", href: "/board", icon: Columns },
   { label: "Print", href: "/queue/print", icon: Truck },
 ];
