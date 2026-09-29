@@ -16,6 +16,9 @@ const KIND_LABELS: Record<string, string> = {
   photo_count_mismatch: "Photo count",
   intake_unparsed: "Intake needs a human",
   no_eligible_designer: "No designer free",
+  reply_unclear: "Buyer reply unclear",
+  buyer_question: "Buyer question",
+  unmatched_reply: "Reply with no order",
 };
 
 function kindLabel(kind: string): string {

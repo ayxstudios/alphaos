@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser } from "@/lib/db";
@@ -623,6 +623,30 @@ export async function setAgentAssignEnabled(businessId: string, enabled: boolean
   const user = await requireAdmin();
   await withUserContext(user, (tx) =>
     tx.update(businesses).set({ agentAssignEnabled: enabled }).where(eq(businesses.id, businessId)),
+  );
+  revalidatePath("/settings");
+}
+
+/**
+ * Agent switch: the agent applies clear buyer approvals and revision requests,
+ * drafts answers to questions for VA approval and escalates anything unclear
+ * (default OFF). Turning it on stamps agent_config.inboxEnabledAt so the agent
+ * only handles replies that arrive from now on.
+ */
+export async function setAgentInboxEnabled(businessId: string, enabled: boolean): Promise<void> {
+  const user = await requireAdmin();
+  await withUserContext(user, (tx) =>
+    tx
+      .update(businesses)
+      .set(
+        enabled
+          ? {
+              agentInboxEnabled: true,
+              agentConfig: sql`${businesses.agentConfig} || jsonb_build_object('inboxEnabledAt', ${new Date().toISOString()}::text)`,
+            }
+          : { agentInboxEnabled: false },
+      )
+      .where(eq(businesses.id, businessId)),
   );
   revalidatePath("/settings");
 }

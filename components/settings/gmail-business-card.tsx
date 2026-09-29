@@ -12,6 +12,7 @@ import {
   setStageEmailAutoSend,
   setAgentIntakeEnabled,
   setAgentAssignEnabled,
+  setAgentInboxEnabled,
   sendGmailTest,
   type GmailTestResult,
 } from "@/app/(app)/settings/actions";
@@ -32,6 +33,7 @@ export type GmailBusinessVM = {
   /** businesses.agent_intake_enabled / agent_assign_enabled (docs/AGENT_FIRST.md). */
   agentIntake: boolean;
   agentAssign: boolean;
+  agentInbox: boolean;
 };
 
 const STATUS: Record<GmailBusinessVM["status"], { label: string; variant: "success" | "warning" | "neutral" }> = {
@@ -56,6 +58,7 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
   const [stagePending, startStage] = useTransition();
   const [intakePending, startIntake] = useTransition();
   const [assignPending, startAssign] = useTransition();
+  const [inboxPending, startInbox] = useTransition();
   const [confirmOn, setConfirmOn] = useState(false);
   const [testTo, setTestTo] = useState("");
   const [testPending, startTest] = useTransition();
@@ -127,14 +130,15 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
     });
   }
 
-  function onToggleAgent(kind: "intake" | "assign") {
-    const current = kind === "intake" ? gmail.agentIntake : gmail.agentAssign;
-    const run = kind === "intake" ? startIntake : startAssign;
-    const noun = kind === "intake" ? "Agent intake" : "Agent assignment";
+  function onToggleAgent(kind: "intake" | "assign" | "inbox") {
+    const current = kind === "intake" ? gmail.agentIntake : kind === "assign" ? gmail.agentAssign : gmail.agentInbox;
+    const run = kind === "intake" ? startIntake : kind === "assign" ? startAssign : startInbox;
+    const noun = kind === "intake" ? "Agent intake" : kind === "assign" ? "Agent assignment" : "Agent inbox";
     run(async () => {
       try {
         if (kind === "intake") await setAgentIntakeEnabled(gmail.businessId, !current);
-        else await setAgentAssignEnabled(gmail.businessId, !current);
+        else if (kind === "assign") await setAgentAssignEnabled(gmail.businessId, !current);
+        else await setAgentInboxEnabled(gmail.businessId, !current);
         toast({ variant: "success", title: `${noun} ${current ? "off" : "on"}` });
         router.refresh();
       } catch {
@@ -288,6 +292,13 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
             on: gmail.agentAssign,
             pending: assignPending,
             help: "Assigns ready orders to the best free designer by capacity and style; a human reassignment always wins.",
+          },
+          {
+            kind: "inbox" as const,
+            label: "Agent handles buyer replies",
+            on: gmail.agentInbox,
+            pending: inboxPending,
+            help: "Applies clear approvals and revision requests, drafts answers to questions for VA approval, escalates anything unclear.",
           },
         ]).map((t) => (
           <div key={t.kind} className="mb-4 flex flex-wrap items-center gap-2 rounded-input border border-line bg-canvas/70 px-3 py-2.5">

@@ -3,7 +3,9 @@
 //   intake  (agentIntakeEnabled): complete Etsy awaiting_details orders whose
 //           details resolve from rules, and check photo count vs figures;
 //   assign  (agentAssignEnabled): auto-assign ready_to_assign orders that have
-//           no active assignment.
+//           no active assignment;
+//   inbox   (agentInboxEnabled, phase 2): act on buyer replies and chase
+//           silent proofs (./inbox.ts).
 // Anything the agent cannot decide becomes an exception for a human. Every
 // order runs in its own transaction, so one bad order never stops the tick;
 // a dry run does the same work and rolls each transaction back. Idempotent: a
@@ -36,6 +38,7 @@ import { completeOrderDetailsCore } from "@/lib/orders/complete-details";
 
 import { computeCompleteness } from "./completeness";
 import { openExceptionTx, type ExceptionKind } from "./exceptions";
+import { emptyInboxReport, runInboxPass, type InboxReport } from "./inbox";
 import { parseIntake } from "./intake";
 
 /** How long a customer has to answer the shortfall email before a human is asked. */
@@ -56,6 +59,10 @@ const REOPEN_AFTER_HOURS: Record<ExceptionKind, number | null> = {
   intake_unparsed: null,
   photo_count_mismatch: null,
   no_eligible_designer: 24,
+  // Raised by the inbox pass (./inbox.ts), which asks again for every new reply.
+  reply_unclear: 0,
+  buyer_question: 0,
+  unmatched_reply: 0,
 };
 
 export type AgentOrderError = { orderId: string; message: string };
@@ -65,6 +72,7 @@ export type AgentBusinessReport = {
   businessName: string;
   intakeEnabled: boolean;
   assignEnabled: boolean;
+  inboxEnabled: boolean;
   /** Etsy awaiting_details orders parsed. */
   intakeChecked: number;
   etsyDetailsCompleted: number;
@@ -80,6 +88,8 @@ export type AgentBusinessReport = {
   noEligibleDesigner: number;
   /** Left to a human: the importer flagged them (missing email, conflicts). */
   skippedNeedsReview: number;
+  /** Inbox pass counts (all zero when the inbox switch is off). */
+  inbox: Omit<InboxReport, "exceptionsOpened" | "exceptionKinds" | "errors">;
   errors: AgentOrderError[];
 };
 
@@ -143,11 +153,17 @@ export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTi
         name: businesses.name,
         intake: businesses.agentIntakeEnabled,
         assign: businesses.agentAssignEnabled,
+        inbox: businesses.agentInboxEnabled,
+        agentConfig: businesses.agentConfig,
       })
       .from(businesses)
       .where(
         and(
-          or(eq(businesses.agentIntakeEnabled, true), eq(businesses.agentAssignEnabled, true)),
+          or(
+            eq(businesses.agentIntakeEnabled, true),
+            eq(businesses.agentAssignEnabled, true),
+            eq(businesses.agentInboxEnabled, true),
+          ),
           opts.businessId ? eq(businesses.id, opts.businessId) : undefined,
         ),
       )
@@ -161,6 +177,7 @@ export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTi
       businessName: biz.name,
       intakeEnabled: biz.intake,
       assignEnabled: biz.assign,
+      inboxEnabled: biz.inbox,
       intakeChecked: 0,
       etsyDetailsCompleted: 0,
       photoRequestsQueued: 0,
@@ -172,6 +189,7 @@ export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTi
       assigned: 0,
       noEligibleDesigner: 0,
       skippedNeedsReview: 0,
+      inbox: inboxCounts(emptyInboxReport()),
       errors: [],
     };
     reports.push(report);
@@ -180,6 +198,15 @@ export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTi
     if (biz.intake && !outOfTime()) await intakeStep(ctx, biz.id, outOfTime);
     if (biz.intake && !outOfTime()) await completenessStep(ctx, biz.id, outOfTime);
     if (biz.assign && !outOfTime()) await assignStep(ctx, biz.id, outOfTime);
+    if (biz.inbox && !outOfTime()) {
+      const inbox = await runInboxPass(biz, { dryRun, now, outOfTime });
+      report.inbox = inboxCounts(inbox);
+      report.exceptionsOpened += inbox.exceptionsOpened;
+      for (const k of inbox.exceptionKinds) if (!report.exceptionKinds.includes(k)) report.exceptionKinds.push(k);
+      for (const e of inbox.errors) {
+        report.errors.push({ orderId: e.orderId ?? "", message: e.messageId ? `message ${e.messageId}: ${e.message}` : e.message });
+      }
+    }
   }
 
   return {
@@ -189,6 +216,14 @@ export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTi
     truncated,
     businesses: reports,
   };
+}
+
+function inboxCounts(r: InboxReport): AgentBusinessReport["inbox"] {
+  const counts: Partial<InboxReport> = { ...r };
+  delete counts.exceptionsOpened;
+  delete counts.exceptionKinds;
+  delete counts.errors;
+  return counts as AgentBusinessReport["inbox"];
 }
 
 type TickCtx = { dryRun: boolean; now: Date; report: AgentBusinessReport };

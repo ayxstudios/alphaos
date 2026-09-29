@@ -3,7 +3,13 @@ import { and, eq, sql } from "drizzle-orm";
 import { withSystemContext, type Tx } from "@/lib/db";
 import { exceptions } from "@/lib/db/schema";
 
-export type ExceptionKind = "photo_count_mismatch" | "intake_unparsed" | "no_eligible_designer";
+export type ExceptionKind =
+  | "photo_count_mismatch"
+  | "intake_unparsed"
+  | "no_eligible_designer"
+  | "reply_unclear"
+  | "buyer_question"
+  | "unmatched_reply";
 
 export type OpenExceptionInput = {
   businessId: string;

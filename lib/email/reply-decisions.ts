@@ -1,18 +1,33 @@
 import { eq } from "drizzle-orm";
 
-import type { RequestUser, Tx } from "@/lib/db";
+import { SYSTEM_ACTOR_ID, type RequestUser, type Tx } from "@/lib/db";
 import { activityLog, messages, orders } from "@/lib/db/schema";
 import { runTransition } from "@/lib/orders/transitions";
 
 export type ReplyDecision = "approved" | "revision" | "dismissed";
+/** The agent (lib/agent/inbox.ts) acting on a reply by itself. */
+export type SystemReplyActor = { id: typeof SYSTEM_ACTOR_ID; role: "system" };
+export type ReplyDecisionActor = RequestUser | SystemReplyActor;
+export type ReplyDecisionOptions = {
+  /** Replaces the default revision reason (the raw reply body). */
+  revisionReason?: string;
+  /** Transition metadata `via`; defaults to "reply_classification". */
+  via?: string;
+};
 export type ReplyDecisionResult = { ok: true; message: string; orderId: string } | { ok: false; message: string; orderId?: string };
 
 export async function applyReplyClassificationDecision(
   tx: Tx,
-  user: RequestUser,
+  user: ReplyDecisionActor,
   messageId: string,
   decision: ReplyDecision,
+  opts: ReplyDecisionOptions = {},
 ): Promise<ReplyDecisionResult> {
+  // A human keeps exactly the old behaviour. The system actor has no users row,
+  // so actor/decidedBy columns get null and the decision is flagged as the agent's.
+  const isSystem = user.role === "system";
+  const actorId = isSystem ? null : user.id;
+  const via = opts.via ?? "reply_classification";
   const [message] = await tx
     .select({
       id: messages.id,
@@ -47,7 +62,8 @@ export async function applyReplyClassificationDecision(
 
   const vaDecision = {
     decision,
-    decidedBy: user.id,
+    decidedBy: actorId,
+    ...(isSystem ? { decidedByAgent: true } : {}),
     decidedAt: new Date().toISOString(),
     agreedWithModel:
       decision === "approved"
@@ -71,7 +87,7 @@ export async function applyReplyClassificationDecision(
       orderId: message.orderId,
       to: "approved",
       expectedFrom: "awaiting_approval",
-      metadata: { via: "reply_classification", messageId },
+      metadata: { via, messageId },
     });
   } else if (decision === "revision") {
     await runTransition(tx, user, {
@@ -79,9 +95,9 @@ export async function applyReplyClassificationDecision(
       to: "in_design",
       expectedFrom: "awaiting_approval",
       metadata: {
-        via: "reply_classification",
+        via,
         messageId,
-        revisionReason: message.body?.trim() || "Customer requested a revision by email.",
+        revisionReason: opts.revisionReason?.trim() || message.body?.trim() || "Customer requested a revision by email.",
       },
     });
   }
@@ -89,7 +105,7 @@ export async function applyReplyClassificationDecision(
   await tx.insert(activityLog).values({
     businessId: message.businessId,
     orderId: message.orderId,
-    actorId: user.id,
+    actorId,
     action: "message.reply_classification_decided",
     metadata: {
       messageId,
@@ -97,6 +113,7 @@ export async function applyReplyClassificationDecision(
       modelConfidence: classification.confidence,
       decision,
       agreedWithModel: vaDecision.agreedWithModel,
+      ...(isSystem ? { decidedByAgent: true } : {}),
     },
   });
   return {

@@ -278,6 +278,45 @@ export async function queueStageEmail(
   });
 }
 
+/**
+ * Draft a free-text reply to an inbound customer message (the agent's answer to
+ * a buyer question). Always a `draft`: it waits in the VA outbox like any other
+ * staff-composed email, never auto-sends. Threads onto the inbound message's
+ * Gmail thread. Returns the new message id, or null when there is no address.
+ */
+export async function draftFreeformReply(
+  tx: Tx,
+  input: {
+    order: { id: string; businessId: string; customerId: string | null };
+    inReplyTo: { id: string; address: string | null; gmailThreadId: string | null };
+    subject: string;
+    body: string;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<string | null> {
+  const { order, inReplyTo } = input;
+  const ctx = await readEmailContext(tx, order.businessId, order.customerId);
+  const address = ctx?.email ?? inReplyTo.address?.trim() ?? null;
+  if (!address) return null;
+  const [row] = await tx
+    .insert(messages)
+    .values({
+      businessId: order.businessId,
+      orderId: order.id,
+      customerId: order.customerId,
+      direction: "outbound",
+      channel: "email",
+      status: "draft",
+      subject: input.subject,
+      address,
+      body: input.body,
+      gmailThreadId: inReplyTo.gmailThreadId,
+      metadata: { ...(input.metadata ?? {}), replyToMessageId: inReplyTo.id },
+    })
+    .returning({ id: messages.id });
+  return row!.id;
+}
+
 export type SendResult = { ok: true } | { ok: false; error: string; retryable: boolean };
 
 /**

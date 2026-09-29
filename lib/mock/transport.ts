@@ -336,6 +336,9 @@ const anthropic: Handler = async (req, url) => {
   if (/Classify this customer reply/i.test(prompt)) {
     const reply = prompt.split(/Reply:\s*/i)[1] ?? prompt;
     text = mockClassifierAnswer(reply);
+  } else if (/Draft a reply to this customer question/i.test(prompt)) {
+    const name = /Customer first name:\s*(.+)/i.exec(prompt)?.[1]?.trim() || "there";
+    text = `Hi ${name},\n\nThanks for asking. We have noted your question and the team will check the options for your order and confirm the details with you shortly.\n\nWarm regards`;
   } else if (/daily operations health briefing/i.test(prompt)) {
     text = mockNarrative(prompt);
   } else {

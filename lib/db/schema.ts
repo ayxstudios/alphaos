@@ -17,6 +17,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import type { OnboardingState } from "../tour/state";
+import type { AgentConfigInput } from "../agent/config-types";
 
 /**
  * Database schema (Drizzle ORM, PostgreSQL / Neon).
@@ -306,6 +307,12 @@ export const businesses = pgTable("businesses", {
   // turns them on per business; nothing migrates a row to true.
   agentIntakeEnabled: boolean("agent_intake_enabled").notNull().default(false),
   agentAssignEnabled: boolean("agent_assign_enabled").notNull().default(false),
+  // Agent-first phase 2 (migration 0043): the agent runs the inbox (applies clear
+  // replies, drafts answers, escalates, chases silence). Off by default.
+  agentInboxEnabled: boolean("agent_inbox_enabled").notNull().default(false),
+  // Agent tunables; read through getAgentConfig (lib/agent/config.ts), which
+  // fills in the defaults for any key left out.
+  agentConfig: jsonb("agent_config").$type<AgentConfigInput>().notNull().default(sql`'{}'::jsonb`),
   createdAt: createdAt(),
 });
 

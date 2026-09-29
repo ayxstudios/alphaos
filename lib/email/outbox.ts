@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { mailPreview } from "@/lib/email/preview";
 import { noiseReason } from "@/lib/email/noise";
@@ -186,7 +186,7 @@ export type UnmatchedReply = {
  */
 export async function getUnmatchedReplies(
   user: RequestUser,
-  opts: { businessId: string | null; includeSuppressed?: boolean },
+  opts: { businessId: string | null; includeSuppressed?: boolean; since?: Date },
 ): Promise<UnmatchedReply[]> {
   return withUserContext(user, async (tx) => {
     const bizFilter =
@@ -214,6 +214,7 @@ export async function getUnmatchedReplies(
           isNull(messages.archivedAt),
           ...(bizFilter ? [bizFilter] : []),
           ...(suppressionFilter ? [suppressionFilter] : []),
+          ...(opts.since ? [gte(messages.createdAt, opts.since)] : []),
         ),
       )
       .orderBy(asc(messages.createdAt)) // oldest first — the longest wait is most urgent

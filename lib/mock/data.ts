@@ -417,6 +417,12 @@ export function mockClassifierAnswer(replyText: string): string {
     intent = "approval";
     confidence = 0.94;
     rationale = "Customer clearly approves the proof and wants it to proceed.";
+  } else if (/^\s*(can i|could i|is it|is there|do you|does|how|what|when|where|will|would it)\b[^\n]*\?\s*$/.test(t)) {
+    // A plain question ("Can I change the size to 16x20?") asks, it does not
+    // request a change to the portrait.
+    intent = "question";
+    confidence = 0.88;
+    rationale = "Customer asks a question about the order without approving or requesting changes.";
   } else if (/change|fix|wrong|instead|could you|can you make|please make|lighter|darker|bigger|smaller|remove|add /.test(t)) {
     intent = "revision_request";
     confidence = 0.9;

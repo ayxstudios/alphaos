@@ -46,6 +46,7 @@
     "test:due-date": "tsx scripts/test-due-date.ts",
     "test:agent-completeness": "tsx scripts/test-agent-completeness.ts",
     "test:agent-autopilot": "tsx scripts/test-agent-autopilot.ts",
+    "test:agent-inbox": "tsx scripts/test-agent-inbox.ts",
     "test:email-noise": "tsx scripts/test-email-noise.ts"
   },
   "dependencies": {

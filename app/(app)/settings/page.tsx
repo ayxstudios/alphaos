@@ -242,6 +242,7 @@ export default async function SettingsPage({
         stageAutoSend: businesses.stageEmailAutoSend,
         agentIntake: businesses.agentIntakeEnabled,
         agentAssign: businesses.agentAssignEnabled,
+        agentInbox: businesses.agentInboxEnabled,
         name: businesses.name,
         logoUrl: businesses.logoUrl,
       })
@@ -265,6 +266,7 @@ export default async function SettingsPage({
       stageAutoSend: !!biz?.stageAutoSend,
       agentIntake: !!biz?.agentIntake,
       agentAssign: !!biz?.agentAssign,
+      agentInbox: !!biz?.agentInbox,
     };
   })();
 
