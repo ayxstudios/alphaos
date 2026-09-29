@@ -66,6 +66,8 @@ export type OverviewRow = {
   stage: string;
   /** Revision rounds so far; 0 for a first pass. */
   revisionCount: number;
+  /** orders.ai_state, set while the AI designer holds or made the order. */
+  aiState: string | null;
   stageStartedAt: string;
   timeInStageMs: number;
   /** Target for this stage in ms, or null when the stage has no timer. */
@@ -131,6 +133,7 @@ export async function getOverview(scope: RequestUser, nowInput: Date = new Date(
         businessId: orders.businessId,
         status: orders.status,
         revisionCount: orders.revisionCount,
+        aiState: orders.aiState,
         updatedAt: orders.updatedAt,
         createdAt: orders.createdAt,
         designer: users.name,
@@ -180,6 +183,7 @@ export async function getOverview(scope: RequestUser, nowInput: Date = new Date(
         status: o.status,
         stage: isRevisionStage(o.status, o.revisionCount) ? stageWithRound(o.status, o.revisionCount) : stageLabel(o.status),
         revisionCount: o.revisionCount ?? 0,
+        aiState: o.aiState ?? null,
         stageStartedAt: started.toISOString(),
         timeInStageMs,
         targetMs,

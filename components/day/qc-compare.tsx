@@ -8,7 +8,7 @@ import { Button, Textarea, useToast } from "@/components/ui";
 import { Check, X } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import { tourIsRunning } from "@/lib/tour/live";
-import { approveQcAction, bounceQcAction } from "@/app/(app)/day/actions";
+import { approveOwnerReviewAction, approveQcAction, bounceQcAction, ownerNeedsFixAction } from "@/app/(app)/day/actions";
 import type { ChecklistItem } from "@/lib/qc/checklist";
 
 type Img = { id: string; url: string | null };
@@ -88,6 +88,7 @@ export function QcCompare({
   portrait,
   checklist,
   kind,
+  owner = false,
 }: {
   orderId: string;
   orderNumber: string;
@@ -95,6 +96,8 @@ export function QcCompare({
   portrait: Img | null;
   checklist: ChecklistItem[];
   kind: "portrait" | "revision";
+  /** Owner review of an AI portrait: Looks good sends the held proof, Needs a fix goes to the AI. */
+  owner?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -123,7 +126,7 @@ export function QcCompare({
   }, [open]);
 
   const have = new Set(checklist.map((c) => c.key));
-  const chips = REASONS.filter((r) => have.has(r.key));
+  const chips = owner ? REASONS : REASONS.filter((r) => have.has(r.key));
   const photo = buyerPhotos[photoIx] ?? null;
 
   function done(res: { ok: boolean; message: string }) {
@@ -137,16 +140,16 @@ export function QcCompare({
     setError(null);
     if (tourIsRunning()) return toast({ variant: "success", title: "That approves it. Nothing was sent in the tour." });
     setWhich("ok");
-    start(async () => done(await approveQcAction(orderId)));
+    start(async () => done(owner ? await approveOwnerReviewAction(orderId) : await approveQcAction(orderId)));
   }
 
   function needsFix() {
     setError(null);
     if (tourIsRunning()) return toast({ variant: "success", title: "That sends it back. Nothing was sent in the tour." });
-    if (picked.length === 0) return setError("Tap what is wrong.");
+    if (picked.length === 0 && !(owner && note.trim())) return setError(owner ? "Tap what is wrong or write a note." : "Tap what is wrong.");
     const text = [...chips.filter((c) => picked.includes(c.key)).map((c) => c.label), note.trim()].filter(Boolean).join(". ");
     setWhich("fix");
-    start(async () => done(await bounceQcAction(orderId, text, picked)));
+    start(async () => done(owner ? await ownerNeedsFixAction(orderId, text) : await bounceQcAction(orderId, text, picked)));
   }
 
   const buyerPane = (
@@ -210,7 +213,7 @@ export function QcCompare({
                 );
               })}
             </div>
-            <Textarea label="More detail (optional)" value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={800} placeholder="Tell the designer what to change" />
+            <Textarea label="More detail (optional)" value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={800} placeholder={owner ? "Tell the AI what to change" : "Tell the designer what to change"} />
           </div>
         )}
         {error && (
@@ -222,7 +225,7 @@ export function QcCompare({
           {fixing ? (
             <>
               <Button type="button" variant="danger" size="lg" className="min-h-14 w-full text-base sm:flex-1" loading={pending && which === "fix"} disabled={pending} onClick={needsFix}>
-                Send back to designer
+                {owner ? "Send back to the AI" : "Send back to designer"}
               </Button>
               <Button type="button" variant="secondary" size="lg" className="min-h-14 w-full sm:w-auto" disabled={pending} onClick={() => setFixing(false)}>
                 Back

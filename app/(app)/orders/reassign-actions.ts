@@ -4,11 +4,12 @@ import { and, asc, eq, notInArray, sql } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
-import { assignments, designerBusinesses, orders, users } from "@/lib/db/schema";
+import { assignments, designerBusinesses, designerProfiles, orders, users } from "@/lib/db/schema";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { bulkReassignOrders } from "@/app/(app)/orders/actions";
+import { aiDesignerChoosable } from "@/lib/agent/ai-designer-choice";
 
-export type ReassignOption = { id: string; name: string; openOrders: number; current: boolean };
+export type ReassignOption = { id: string; name: string; openOrders: number; current: boolean; ai?: boolean };
 export type ReassignOptions =
   | { ok: true; orderNumber: string; options: ReassignOption[] }
   | { ok: false; message: string };
@@ -31,11 +32,15 @@ export async function loadReassignOptions(orderId: string): Promise<ReassignOpti
     if (!order) return { ok: false as const, message: "Order not found." };
 
     const designers = await tx
-      .select({ id: users.id, name: users.name, email: users.email })
+      .select({ id: users.id, name: users.name, email: users.email, isAgent: designerProfiles.isAgent })
       .from(users)
       .innerJoin(designerBusinesses, eq(designerBusinesses.userId, users.id))
+      .leftJoin(designerProfiles, eq(designerProfiles.userId, users.id))
       .where(and(eq(users.role, "designer"), eq(users.active, true), eq(designerBusinesses.businessId, order.businessId)))
       .orderBy(asc(users.name), asc(users.email));
+
+    const aiOk = await aiDesignerChoosable(tx, orderId);
+    const choosable = designers.filter((d) => !d.isAgent || aiOk);
 
     const loads = await tx
       .select({ designerId: assignments.designerId, n: sql<number>`count(*)::int` })
@@ -54,9 +59,10 @@ export async function loadReassignOptions(orderId: string): Promise<ReassignOpti
     return {
       ok: true as const,
       orderNumber: order.number ?? order.fallback ?? "Order",
-      options: designers.map((d) => ({
+      options: choosable.map((d) => ({
         id: d.id,
-        name: d.name ?? d.email,
+        name: d.isAgent ? `${d.name ?? d.email} (AI designer)` : (d.name ?? d.email),
+        ai: !!d.isAgent,
         openOrders: load.get(d.id) ?? 0,
         current: d.id === current?.designerId,
       })),
@@ -64,7 +70,7 @@ export async function loadReassignOptions(orderId: string): Promise<ReassignOpti
   });
 }
 
-/** One tap: the existing assign path (deactivates the old assignment, writes order.reassigned to the activity log). */
+/** One tap: the one reassignment path (deactivates the old assignment, writes order.reassigned, keeps the AI queue in step). */
 export async function quickReassignOrder(orderId: string, designerId: string): Promise<{ ok: boolean; message: string }> {
   const res = await bulkReassignOrders([orderId], designerId);
   if (!res.ok) return { ok: false, message: res.message };

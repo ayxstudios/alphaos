@@ -9,6 +9,8 @@ import { activityLog, orders, users } from "@/lib/db/schema";
 import { getQcContext } from "@/lib/qc/data";
 import { submitPrintOrder } from "@/lib/print/submit";
 import { OrderTransitionError, transition } from "@/lib/orders/transitions";
+import { approveOwnerReview } from "@/lib/agent/ai-designer";
+import { sendOwnerReviewBackToAi } from "@/lib/agent/owner-review";
 import { confirmQcPassAndSend, prepareQcEmailPreview, submitQcFail } from "@/app/(app)/qc/actions";
 
 export type DayResult = { ok: true; message: string } | { ok: false; message: string };
@@ -146,4 +148,29 @@ export async function bouncePrintAction(orderId: string, note: string): Promise<
   }
   refresh(orderId);
   return { ok: true, message: "Sent back to the designer." };
+}
+
+/** Owner approves an AI portrait: the held proof email goes out and the normal flow carries on. */
+export async function approveOwnerReviewAction(orderId: string): Promise<DayResult> {
+  const user = await requireStaff();
+  if (!user || user.role !== "admin") return { ok: false, message: "Only an owner can approve an AI portrait." };
+  const res = await approveOwnerReview(orderId, user.id);
+  refresh(orderId);
+  return res.ok ? { ok: true, message: "Approved. Proof sent to the buyer." } : { ok: false, message: res.message };
+}
+
+/** Owner says the AI portrait needs a fix: back to the AI revision queue with the reason. */
+export async function ownerNeedsFixAction(orderId: string, reason: string): Promise<DayResult> {
+  const user = await requireStaff();
+  if (!user || user.role !== "admin") return { ok: false, message: "Only an owner can send an AI portrait back." };
+  const text = reason.trim().slice(0, 1000);
+  if (!text) return { ok: false, message: "Say what needs fixing first." };
+  try {
+    const res = await sendOwnerReviewBackToAi(user, orderId, text);
+    refresh(orderId);
+    return res.ok ? { ok: true, message: "Sent back to the AI to redraw." } : { ok: false, message: res.message };
+  } catch (err) {
+    if (err instanceof OrderTransitionError) return { ok: false, message: err.message };
+    throw err;
+  }
 }

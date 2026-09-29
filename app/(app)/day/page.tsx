@@ -7,6 +7,8 @@ import { getDayQueue, type DayImage, type DayPrintCard, type DayQcCard, type Day
 import { Badge, DataPanel, EmptyState, Page, PageHeader } from "@/components/ui";
 import { CheckCircle } from "@/components/ui/icons";
 import { DayCardActions } from "@/components/day/card-actions";
+import { OwnerReviewActions } from "@/components/day/owner-review-actions";
+import { getOwnerReviewCards, type OwnerReviewCard } from "@/lib/agent/owner-review";
 import { QcCompare } from "@/components/day/qc-compare";
 import { QuickReassign } from "@/components/orders/quick-reassign";
 import { formatAt } from "@/lib/time";
@@ -139,6 +141,33 @@ function QcCardView({ card, kind }: { card: DayQcCard | DayRevisionCard; kind: "
   );
 }
 
+function OwnerReviewCardView({ card }: { card: OwnerReviewCard }) {
+  return (
+    <DataPanel className="flex h-full flex-col gap-3 p-4">
+      <DoLine>AI portrait ready. Look and approve to send.</DoLine>
+      <CardHead card={card} label="AI portrait" />
+      <p className="text-sm text-ink break-words">{card.productLine}</p>
+      {card.selfCheck && <p className="rounded-md bg-canvas p-2 text-sm text-slate break-words">AI self-check: {card.selfCheck}</p>}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="min-w-0">
+          <Kicker>Buyer photo</Kicker>
+          {card.buyerPhotos[0] ? <Thumb image={card.buyerPhotos[0]} alt="Buyer photo" className="aspect-square w-full" /> : <p className="text-sm text-slate">No buyer photos.</p>}
+        </div>
+        <div className="min-w-0">
+          <Kicker>AI portrait</Kicker>
+          {card.portrait ? <Thumb image={card.portrait} alt="AI portrait" className="aspect-square w-full" /> : <p className="text-sm text-slate">No portrait.</p>}
+        </div>
+      </div>
+      <div className="mt-auto flex flex-col gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <QcCompare orderId={card.orderId} orderNumber={card.orderNumber} buyerPhotos={card.buyerPhotos} portrait={card.portrait} checklist={[]} kind="portrait" owner />
+        </div>
+        <OwnerReviewActions orderId={card.orderId} />
+      </div>
+    </DataPanel>
+  );
+}
+
 function PrintCardView({ card }: { card: DayPrintCard }) {
   const blocked = card.blockers.filter((b) => b.code !== "not_approved");
   return (
@@ -208,14 +237,15 @@ export default async function DayPage() {
 
   const { selected } = await loadShellData(user);
   const q = await getDayQueue(user, selected.id);
-  const waitingTotal = q.portrait.length + q.revision.length + q.print.length;
+  const owner = await getOwnerReviewCards(user, selected.id);
+  const waitingTotal = owner.length + q.portrait.length + q.revision.length + q.print.length;
 
   return (
     <Page className="max-w-[1280px]">
       <PageHeader
         eyebrow={selected.name}
         title="Day"
-        description={`Waiting: portrait QC ${q.portrait.length}, revision QC ${q.revision.length}, print and ship ${q.print.length}. Done today by you: ${q.doneToday}.`}
+        description={`Waiting: ${owner.length ? `AI portraits to approve ${owner.length}, ` : ""}portrait QC ${q.portrait.length}, revision QC ${q.revision.length}, print and ship ${q.print.length}. Done today by you: ${q.doneToday}.`}
       />
       {waitingTotal === 0 ? (
         <DataPanel>
@@ -232,6 +262,13 @@ export default async function DayPage() {
         </DataPanel>
       ) : (
         <>
+          <Group title="AI portraits to approve" tour="owner" count={owner.length}>
+            {owner.map((c) => (
+              <li key={c.orderId}>
+                <OwnerReviewCardView card={c} />
+              </li>
+            ))}
+          </Group>
           <Group title="Portrait QC" tour="portrait" count={q.portrait.length}>
             {q.portrait.map((c) => (
               <li key={c.orderId}>

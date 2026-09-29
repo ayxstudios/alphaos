@@ -2,6 +2,9 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { and, asc, desc, eq } from "drizzle-orm";
 
+import { aiStateLabel } from "@/lib/agent/ai-frameworks";
+import { aiDesignerChoosable } from "@/lib/agent/ai-designer-choice";
+
 import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
@@ -9,6 +12,7 @@ import {
   assignments,
   customers,
   designerBusinesses,
+  designerProfiles,
   messages,
   orderItems,
   orders,
@@ -276,6 +280,7 @@ export default async function OrderDetailPage({
         source: orders.source,
         status: orders.status,
         revisionCount: orders.revisionCount,
+        aiState: orders.aiState,
         dueAt: orders.dueAt,
         placedAt: orders.placedAt,
         createdAt: orders.createdAt,
@@ -404,15 +409,21 @@ export default async function OrderDetailPage({
   // whole page waits once for the slowest read instead of for a chain of them.
   const designersP = withUserContext(user, (tx) =>
     tx
-      .select({ id: users.id, name: users.name, email: users.email })
+      .select({ id: users.id, name: users.name, email: users.email, isAgent: designerProfiles.isAgent })
       .from(users)
       .innerJoin(designerBusinesses, eq(designerBusinesses.userId, users.id))
+      .leftJoin(designerProfiles, eq(designerProfiles.userId, users.id))
       .where(and(
         eq(users.role, "designer"),
         eq(users.active, true),
         eq(designerBusinesses.businessId, order.businessId),
       ))
-      .orderBy(asc(users.name), asc(users.email)),
+      .orderBy(asc(users.name), asc(users.email))
+      .then(async (all) => {
+        // The AI Studio designer is offered only when this product's style has the AI designer on.
+        const aiOk = all.some((d) => d.isAgent) ? await aiDesignerChoosable(tx, order.id) : false;
+        return all.filter((d) => !d.isAgent || aiOk);
+      }),
   );
   const shopifyMediaP: Promise<ShopifyProductMedia[]> =
     order.source === "shopify"
@@ -556,6 +567,11 @@ export default async function OrderDetailPage({
             {isRevisionStage(order.status, order.revisionCount) && (
               <Badge variant="warning" dot>
                 {stageWithRound(order.status, order.revisionCount)}
+              </Badge>
+            )}
+            {order.aiState && (
+              <Badge variant="info" dot data-testid="ai-made-badge">
+                AI made this: {aiStateLabel(order.aiState)}
               </Badge>
             )}
             {editable && !["complete", "cancelled", "delivered", "shipped"].includes(order.status) && (

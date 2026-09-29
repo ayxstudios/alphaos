@@ -79,7 +79,7 @@ export type DayQueue = {
 const CUSTOMER_SEND_BACK_FROM = ["awaiting_approval", "approved", "printing", "shipped", "delivered", "complete"] as const;
 const PRINT_QUEUE_LIMIT = 50;
 
-async function resolveUrl(a: { url: string | null; storage: string; r2Key: string | null }): Promise<string | null> {
+export async function resolveUrl(a: { url: string | null; storage: string; r2Key: string | null }): Promise<string | null> {
   if (a.url) return a.url;
   if (a.storage === "r2" && a.r2Key && isR2Configured()) {
     try {

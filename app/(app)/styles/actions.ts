@@ -7,6 +7,8 @@ import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
 import { loadShellData } from "@/lib/shell/context";
 import { styles, designerProfiles, designerBusinesses, users, ignoredProducts } from "@/lib/db/schema";
+import { setStyleAiDesigner } from "@/lib/agent/ai-designer";
+import { AI_FRAMEWORKS } from "@/lib/agent/ai-frameworks";
 import {
   learnProductStyle,
   logStyleLearning,
@@ -344,5 +346,25 @@ export async function confirmProductsAsDefault(products: Product[]): Promise<Act
   }
   revalidatePath("/styles");
   revalidatePath("/board");
+  return { ok: true };
+}
+
+/** Admin only: turn the AI designer on or off for one style, and pick its drawing recipe. */
+export async function setStyleAiDesignerAction(id: string, enabled: boolean, framework: string | null): Promise<ActionResult> {
+  const user = await requireStaff();
+  if (!user || user.role !== "admin") return NOT_PERMITTED;
+  if (enabled && !AI_FRAMEWORKS.some((f) => f.key === framework)) return { ok: false, message: "Pick a drawing recipe first" };
+  const businessId = await currentBusinessId(user);
+  const found = await withUserContext(user, async (tx) => {
+    const [row] = await tx
+      .select({ name: styles.name })
+      .from(styles)
+      .where(and(eq(styles.id, id), eq(styles.businessId, businessId)));
+    if (!row) return false;
+    return setStyleAiDesigner(tx, { businessId, styleName: row.name, enabled, framework });
+  });
+  if (!found) return { ok: false, message: "Style not found" };
+  revalidatePath("/styles");
+  revalidatePath("/orders", "layout");
   return { ok: true };
 }

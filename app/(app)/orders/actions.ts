@@ -7,8 +7,8 @@ import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
 import {
   activityLog,
-  assignments,
   designerBusinesses,
+  designerProfiles,
   orderItems,
   orders,
   printJobs,
@@ -29,6 +29,8 @@ import {
   OrderTransitionError,
   type OrderStatus,
 } from "@/lib/orders/transitions";
+import { reassignOrder } from "@/lib/agent/ai-designer";
+import { aiDesignerChoosable } from "@/lib/agent/ai-designer-choice";
 import { addComment } from "@/lib/orders/card-detail";
 import {
   freshShopifyCredentials,
@@ -249,10 +251,11 @@ export async function bulkReassignOrders(
   if (!ids.length) return { ok: false, message: "Select at least one order." };
   if (!designerId) return { ok: false, message: "Choose a designer." };
 
-  const result = await withUserContext(user, async (tx) => {
+  const picked = await withUserContext(user, async (tx) => {
     const [designer] = await tx
-      .select({ id: users.id, name: users.name, email: users.email })
+      .select({ id: users.id, name: users.name, email: users.email, isAgent: designerProfiles.isAgent })
       .from(users)
+      .leftJoin(designerProfiles, eq(designerProfiles.userId, users.id))
       .where(and(eq(users.id, designerId), eq(users.role, "designer"), eq(users.active, true)))
       .limit(1);
     if (!designer) return { ok: false as const, message: "Designer not found or inactive." };
@@ -275,7 +278,7 @@ export async function bulkReassignOrders(
     const designerBusinessesSet = new Set(memberships.map((row) => row.businessId));
     const visible = new Map(visibleOrders.map((order) => [order.id, order]));
     const skipped: BulkSkipped[] = [];
-    let changed = 0;
+    const eligible: { id: string; number: string }[] = [];
 
     for (const id of ids) {
       const order = visible.get(id);
@@ -293,32 +296,30 @@ export async function bulkReassignOrders(
         continue;
       }
 
-      const previous = await tx
-        .update(assignments)
-        .set({ active: false })
-        .where(and(eq(assignments.orderId, order.id), eq(assignments.active, true)))
-        .returning({ id: assignments.id });
-      await tx.insert(assignments).values({
-        businessId: order.businessId,
-        orderId: order.id,
-        designerId,
-        assignedBy: user.id,
-        dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        active: true,
-      });
-      await tx.insert(activityLog).values({
-        businessId: order.businessId,
-        orderId: order.id,
-        actorId: user.id,
-        // The first designer on an order is an assignment, not a reassignment.
-        action: previous.length ? "order.reassigned" : "order.assigned",
-        metadata: { designerId, via: "bulk_orders_dashboard" },
-      });
-      changed += 1;
+      if (designer.isAgent && !(await aiDesignerChoosable(tx, order.id))) {
+        skipped.push({ orderId: id, orderNumber: number, reason: "The AI designer is not switched on for this product." });
+        continue;
+      }
+      eligible.push({ id: order.id, number });
     }
 
+    return { ok: true as const, eligible, skipped };
+  });
+  if (!picked.ok) return picked;
+
+  const skipped = picked.skipped;
+  let changed = 0;
+  const result = await (async () => {
+    for (const o of picked.eligible) {
+      const res = await reassignOrder(o.id, designerId, user.id);
+      if (!res.ok) {
+        skipped.push({ orderId: o.id, orderNumber: o.number, reason: res.message });
+        continue;
+      }
+      if (res.changed) changed += 1;
+    }
     return { ok: true as const, changed, skipped };
-  }).catch((error: unknown) => {
+  })().catch((error: unknown) => {
     // Two people assigning the same order at the same moment: the second
     // insert meets the one-active-assignment rule. Nothing was saved for this
     // person, so say what happened instead of failing the page.

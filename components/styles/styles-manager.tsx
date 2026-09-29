@@ -13,8 +13,10 @@ import {
   setStyleDefault,
   deleteStyle,
   setStyleDesigners,
+  setStyleAiDesignerAction,
   type ActionResult,
 } from "@/app/(app)/styles/actions";
+import { AI_FRAMEWORKS, DEFAULT_AI_FRAMEWORK } from "@/lib/agent/ai-frameworks";
 
 export type StyleVM = {
   id: string;
@@ -22,6 +24,8 @@ export type StyleVM = {
   perFigureRate: string | null;
   titleMatches: string[];
   isDefault: boolean;
+  aiDesignerEnabled: boolean;
+  aiFramework: string | null;
   designerIds: string[];
   /** Unfinished orders tagged with this style (deleting it blocks their pay). */
   openOrders: number;
@@ -32,9 +36,11 @@ export type DesignerOption = { id: string; name: string; styles: string[] };
 export function StylesManager({
   styles,
   designers,
+  isAdmin,
 }: {
   styles: StyleVM[];
   designers: { id: string; name: string; styles: string[] }[];
+  isAdmin: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -117,7 +123,7 @@ export function StylesManager({
       ) : (
         <div className="flex flex-col gap-3">
           {styles.map((style) => (
-            <StyleCard key={style.id} style={style} designers={designers} onRun={run} pending={pending} />
+            <StyleCard key={style.id} style={style} designers={designers} onRun={run} pending={pending} isAdmin={isAdmin} />
           ))}
         </div>
       )}
@@ -130,7 +136,9 @@ function StyleCard({
   designers,
   onRun,
   pending,
+  isAdmin,
 }: {
+  isAdmin: boolean;
   style: StyleVM;
   designers: { id: string; name: string; styles: string[] }[];
   onRun: (action: () => Promise<ActionResult>, ok?: string) => void;
@@ -282,6 +290,46 @@ function StyleCard({
           </Button>
         </div>
       </div>
+
+      {isAdmin && (
+        <div className="mt-4 border-t border-line/70 pt-3" data-testid="ai-designer-section">
+          <p className="text-xs font-medium text-ink">AI designer</p>
+          <label className="mt-1 inline-flex min-h-11 cursor-pointer items-center gap-3 text-sm text-ink sm:min-h-0 sm:gap-2">
+            <Checkbox
+              checked={style.aiDesignerEnabled}
+              disabled={pending}
+              onChange={(e) =>
+                onRun(
+                  () => setStyleAiDesignerAction(style.id, e.target.checked, style.aiFramework ?? DEFAULT_AI_FRAMEWORK),
+                  e.target.checked ? "AI designer on" : "AI designer off",
+                )
+              }
+            />
+            Let the AI designer draw this style
+          </label>
+          {style.aiDesignerEnabled && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-xs font-medium text-slate">
+                Drawing recipe
+                <select
+                  value={style.aiFramework ?? DEFAULT_AI_FRAMEWORK}
+                  disabled={pending}
+                  onChange={(e) => onRun(() => setStyleAiDesignerAction(style.id, true, e.target.value), "Recipe saved")}
+                  aria-label={`${style.name} AI drawing recipe`}
+                  className="h-9 min-h-11 rounded-input border border-line bg-surface px-2 text-sm text-ink sm:min-h-9"
+                >
+                  {AI_FRAMEWORKS.map((f) => (
+                    <option key={f.key} value={f.key}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+          <p className="mt-1 text-xs text-slate">When on, I draw these orders myself. VAs still check every one.</p>
+        </div>
+      )}
 
       {/* Default toggle + assigned summary */}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line/70 pt-3">

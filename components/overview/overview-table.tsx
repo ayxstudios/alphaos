@@ -7,6 +7,7 @@ import { Badge, DataPanel, EmptyState, Select } from "@/components/ui";
 import { Package } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import { QuickReassign } from "@/components/orders/quick-reassign";
+import { aiStateLabel } from "@/lib/agent/ai-frameworks";
 import type { OverviewRow } from "@/lib/agent/overview";
 
 function duration(ms: number): string {
@@ -17,6 +18,14 @@ function duration(ms: number): string {
   if (days > 0) return `${days}d ${hours}h`;
   if (hours > 0) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   return `${mins}m`;
+}
+
+function AiBadge({ state }: { state: string }) {
+  return (
+    <Badge variant="info" className="ml-2" data-testid="ai-made-badge">
+      AI made this: {aiStateLabel(state)}
+    </Badge>
+  );
 }
 
 function TimeCell({ row }: { row: OverviewRow }) {
@@ -118,6 +127,7 @@ export function OverviewTable({
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-sm">
                     <span className={cn("font-medium", r.revisionCount > 0 ? "text-amber" : "text-ink")}>{r.stage}</span>
+                    {r.aiState && <AiBadge state={r.aiState} />}
                     <TimeCell row={r} />
                   </div>
                   <dl className="grid grid-cols-2 gap-2 text-sm">
@@ -147,7 +157,10 @@ export function OverviewTable({
                         <Link href={`/orders/${r.id}`} className="font-medium text-pigment hover:underline">{r.orderNumber}</Link>
                       </td>
                       <td className="px-4 py-2.5 text-slate">{r.businessName}</td>
-                      <td className={cn("px-4 py-2.5", r.revisionCount > 0 ? "font-medium text-amber" : "text-ink")}>{r.stage}</td>
+                      <td className={cn("px-4 py-2.5", r.revisionCount > 0 ? "font-medium text-amber" : "text-ink")}>
+                        <span>{r.stage}</span>
+                        {r.aiState && <AiBadge state={r.aiState} />}
+                      </td>
                       <td className="px-4 py-2.5"><TimeCell row={r} /></td>
                       <td className="px-4 py-2.5 text-ink">{r.designer ?? "Unassigned"}</td>
                       <td className="px-4 py-2.5 text-ink">{r.nextActor}</td>

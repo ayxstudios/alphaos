@@ -32,6 +32,8 @@ export default async function StylesPage() {
         perFigureRate: styles.perFigureRate,
         titleMatches: styles.titleMatches,
         isDefault: styles.isDefault,
+        aiDesignerEnabled: styles.aiDesignerEnabled,
+        aiFramework: styles.aiFramework,
       })
       .from(styles)
       .where(eq(styles.businessId, selected.id))
@@ -123,6 +125,8 @@ export default async function StylesPage() {
     perFigureRate: s.perFigureRate,
     titleMatches: s.titleMatches ?? [],
     isDefault: s.isDefault,
+    aiDesignerEnabled: s.aiDesignerEnabled,
+    aiFramework: s.aiFramework,
     designerIds: designers.filter((d) => d.styles.includes(s.name.toLowerCase())).map((d) => d.id),
     openOrders: openOrdersByStyle.get(s.name.toLowerCase()) ?? 0,
   }));
@@ -142,6 +146,7 @@ export default async function StylesPage() {
       <StylesManager
         styles={styleList}
         designers={designers.map((d) => ({ id: d.id, name: d.name, styles: d.styles }))}
+        isAdmin={user.role === "admin"}
       />
     </Page>
   );
