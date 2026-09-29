@@ -10,10 +10,10 @@ import { withUserContext, type RequestUser } from "@/lib/db";
 import { shops, orders, orderItems, customers, assets, activityLog, users } from "@/lib/db/schema";
 import { runAutoAssign } from "@/lib/orders/assign";
 import { parseFigureCount } from "@/lib/orders/manual-input";
-import { runTransition } from "@/lib/orders/transitions";
 import { normalizeOrderNumber } from "@/lib/orders/reconcile";
 import { shopStyleChoices } from "@/lib/designers/styles";
 import { referenceUploadProblem } from "@/lib/uploads/verify";
+import { completeOrderDetailsCore, emailProblem, splitName, styleAllowed } from "@/lib/orders/complete-details";
 import {
   assetKey,
   extFor,
@@ -97,26 +97,6 @@ export async function presignReferenceUploads(input: {
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Could not prepare upload" };
   }
-}
-
-/** A typed email that is clearly not one ("not-an-email", "sara@") is refused, not stored. */
-function emailProblem(value: string | undefined): string | null {
-  const email = value?.trim();
-  if (!email) return null;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? null : "That email does not look right. Check it, or leave it empty.";
-}
-
-function splitName(name: string | undefined): [string | null, string | null] {
-  const n = name?.trim();
-  if (!n) return [null, null];
-  const parts = n.split(/\s+/);
-  return parts.length === 1 ? [parts[0], null] : [parts[0], parts.slice(1).join(" ")];
-}
-
-function styleAllowed(inputStyle: string | null | undefined, styles: string[] | null): boolean {
-  const style = inputStyle?.trim();
-  if (!style) return true;
-  return (styles ?? []).some((option) => option.trim().toLowerCase() === style.toLowerCase());
 }
 
 /**
@@ -319,153 +299,29 @@ export async function completeOrderDetails(input: {
   const authed = await requireVa();
   if ("error" in authed) return { ok: false, message: authed.error };
   const user = authed;
-  if (input.productType !== "digital" && input.productType !== "physical") {
-    return { ok: false, message: "Choose a product type" };
-  }
-  const badEmail = emailProblem(input.customerEmail);
-  if (badEmail) return { ok: false, message: badEmail };
-  const figures = parseFigureCount(input.figureCount);
-  if (!figures.ok) return { ok: false, message: figures.message };
-  const figureCount = figures.value;
-  const r2Keys = (input.r2Keys ?? []).filter(Boolean);
-  const photoUrls = (input.photoUrls ?? []).map((u) => u.trim()).filter(Boolean);
 
   try {
-    return await withUserContext(user, async (tx) => {
-      const [order] = await tx
-        .select({
-          id: orders.id,
-          businessId: orders.businessId,
-          shopId: orders.shopId,
-          status: orders.status,
-          customerId: orders.customerId,
-          platformOrderName: orders.platformOrderName,
-        })
-        .from(orders)
-        .where(eq(orders.id, input.orderId))
-        .for("update");
-      if (!order) return { ok: false as const, message: "Order not found" };
-      const businessId = order.businessId;
-      const photoProblem = await referenceUploadProblem(r2Keys, `${businessId}/${order.id}/reference/`, photoUrls);
-      if (photoProblem) return { ok: false as const, message: photoProblem };
-
-      const [shop] = await tx
-        .select({ styles: shops.styles })
-        .from(shops)
-        .where(eq(shops.id, order.shopId));
-      if (!styleAllowed(input.style, await shopStyleChoices(tx, businessId, shop?.styles))) {
-        return { ok: false as const, message: "Choose one of this shop's configured portrait styles." };
-      }
-
-      // Link or relink the customer whenever the VA supplies an email. Customer
-      // uniqueness is per business, so this never merges across tenants.
-      let customerId = order.customerId;
-      const email = input.customerEmail?.trim().toLowerCase() || null;
-      if (email) {
-        const [firstName, lastName] = splitName(input.customerName);
-        await tx
-          .insert(customers)
-          .values({ businessId, email, firstName, lastName })
-          .onConflictDoNothing({ target: [customers.businessId, customers.email] });
-        const [c] = await tx
-          .select({ id: customers.id })
-          .from(customers)
-          .where(and(eq(customers.businessId, businessId), eq(customers.email, email)));
-        customerId = c?.id ?? null;
-      }
-
-      const [existingItem] = await tx
-        .select({ id: orderItems.id })
-        .from(orderItems)
-        .where(eq(orderItems.orderId, order.id))
-        .for("update")
-        .limit(1);
-      const itemValues = {
-        businessId,
-        orderId: order.id,
-        title: input.productTitle?.trim() || null,
-        figureCount,
-        figureCountSource: figureCount != null ? ("manual" as const) : null,
-        style: input.style?.trim() || null,
-        // A style the VA picked by hand is a hand-set: the order page shows it
-        // as chosen (not "Defaulted ... please confirm") and a re-resolve keeps it.
-        styleLocked: !!input.style?.trim(),
-        productType: input.productType,
-      };
-      if (existingItem) {
-        await tx.update(orderItems).set(itemValues).where(eq(orderItems.id, existingItem.id));
-      } else {
-        await tx.insert(orderItems).values(itemValues);
-      }
-
-      const assetRows = [
-        ...r2Keys.map((r2Key) => ({
-          businessId,
-          orderId: order.id,
-          type: "reference" as const,
-          storage: "r2" as const,
-          r2Key,
-          uploadedBy: user.id,
-        })),
-        ...photoUrls.map((url) => ({
-          businessId,
-          orderId: order.id,
-          type: "reference" as const,
-          storage: "cdn" as const,
-          url,
-          uploadedBy: user.id,
-        })),
-      ];
-      if (assetRows.length) await tx.insert(assets).values(assetRows);
-
-      const [assetCount] = await tx
-        .select({ count: sql<number>`count(*)::int` })
-        .from(assets)
-        .where(eq(assets.orderId, order.id));
-
-      await tx
-        .update(orders)
-        .set({
-          customerId,
-          notes: input.notes?.trim() || null,
-          ...(input.dueAt ? { dueAt: parseDueDate(input.dueAt) } : {}),
-        })
-        .where(eq(orders.id, order.id));
-
-      // Enter or resume the pipeline via existing legal state-machine edges.
-      const hasPhotos = Number(assetCount?.count ?? 0) > 0;
-      if (order.status === "awaiting_details") {
-        const to = hasPhotos ? "ready_to_assign" : "awaiting_photos";
-        await runTransition(tx, { id: user.id, role: user.role }, {
-          orderId: order.id,
-          to,
-          expectedFrom: "awaiting_details",
-          metadata: { via: "manual_complete" },
-        });
-      } else if (order.status === "awaiting_photos" && hasPhotos) {
-        await runTransition(tx, { id: user.id, role: user.role }, {
-          orderId: order.id,
-          to: "ready_to_assign",
-          expectedFrom: "awaiting_photos",
-          metadata: { via: "manual_photo_upload" },
-        });
-      } else {
-        await tx.insert(activityLog).values({
-          businessId,
-          orderId: order.id,
-          actorId: user.id,
-          action: "order.details_updated",
-          fromState: order.status,
-          toState: order.status,
-          metadata: { photoCount: Number(assetCount?.count ?? 0), style: input.style ?? null },
-        });
-      }
-
-      revalidatePath("/orders");
-      revalidatePath("/board");
-      revalidatePath(`/orders/${order.id}`);
-      return { ok: true as const, orderNumber: order.platformOrderName ?? "(no number)", orderId: order.id };
-    });
+    // Only the form's own fields: the agent-only knobs (figureCountSource,
+    // styleLocked) are never taken from a browser.
+    const fields = {
+      orderId: input.orderId,
+      figureCount: input.figureCount,
+      style: input.style,
+      productTitle: input.productTitle,
+      productType: input.productType,
+      notes: input.notes,
+      dueAt: input.dueAt,
+      customerName: input.customerName,
+      customerEmail: input.customerEmail,
+      r2Keys: input.r2Keys,
+      photoUrls: input.photoUrls,
+    };
+    const res = await completeOrderDetailsCore(user, fields, (fn) => withUserContext(user, fn));
+    if (!res.ok) return res;
+    revalidatePath("/orders");
+    revalidatePath("/board");
+    revalidatePath(`/orders/${res.orderId}`);
+    return { ok: true, orderNumber: res.orderNumber, orderId: res.orderId };
   } catch (e) {
     console.error("[orders/new] completeOrderDetails failed", e);
     return { ok: false, message: "Could not save the order details. Check them and try again." };
