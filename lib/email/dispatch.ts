@@ -269,6 +269,8 @@ export async function queueStageEmail(
   order: { id: string; businessId: string; customerId: string | null; platformOrderId: string; platformOrderName: string | null },
   key: StageEmailKey,
   vars: Omit<TemplateVars, "first_name" | "business_name" | "order_number"> = {},
+  /** The nth deliberate repeat of the same moment (a second reminder for one proof); 1 = the first. */
+  opts: { repeat?: number } = {},
 ): Promise<string | null> {
   const ctx = await readEmailContext(tx, order.businessId, order.customerId);
   if (!ctx) return null;
@@ -283,7 +285,7 @@ export async function queueStageEmail(
   // a new proof (reminder) or a new tracking number (shipped) is a new moment.
   const moment = key === "proof_reminder" ? vars.proof_link : key === "shipped" ? vars.tracking_number : undefined;
   return insertRendered(tx, {
-    dedupeKey: `stage:${order.id}:${key}${moment ? `:${moment}` : ""}`,
+    dedupeKey: `stage:${order.id}:${key}${moment ? `:${moment}` : ""}${opts.repeat && opts.repeat > 1 ? `:r${opts.repeat}` : ""}`,
     businessId: order.businessId,
     orderId: order.id,
     customerId: order.customerId,
@@ -334,7 +336,8 @@ export async function draftFreeformReply(
   return row!.id;
 }
 
-export type SendResult = { ok: true } | { ok: false; error: string; retryable: boolean };
+/** `busy`: another pass holds this send right now; nothing was attempted, so it is no failure. */
+export type SendResult = { ok: true } | { ok: false; error: string; retryable: boolean; busy?: boolean };
 
 /**
  * Send one message via the business's Gmail mailbox and stamp the result on the
@@ -407,7 +410,7 @@ export async function sendMessage(
       )
       .returning({ id: messages.id }),
   );
-  if (!claimed.length) return { ok: false, error: "Another send of this email is in progress", retryable: true };
+  if (!claimed.length) return { ok: false, error: "Another send of this email is in progress", retryable: true, busy: true };
   const release = () =>
     withSystemContext((tx) => tx.update(messages).set({ sendClaimedAt: null }).where(eq(messages.id, messageId)));
 

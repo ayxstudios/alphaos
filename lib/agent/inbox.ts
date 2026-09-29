@@ -719,8 +719,16 @@ async function reminderStep(
           ),
         );
       if (n >= MAX_REMINDERS_PER_PROOF) return;
+      // Every reminder this proof already got (the sweep's or ours): the next one is a
+      // new moment with its own dedupe key, so a second reminder is not dropped as a repeat.
+      const link = proofUrl(p.token);
+      const [{ sent }] = await tx
+        .select({ sent: sql<number>`count(*)::int` })
+        .from(messages)
+        .where(and(eq(messages.orderId, order.id), sql`starts_with(${messages.dedupeKey}, ${`stage:${order.id}:proof_reminder:${link}`})`));
+      if (sent >= MAX_REMINDERS_PER_PROOF) return;
 
-      const messageId = await queueStageEmail(tx, order, "proof_reminder", { proof_link: proofUrl(p.token) });
+      const messageId = await queueStageEmail(tx, order, "proof_reminder", { proof_link: link }, { repeat: sent + 1 });
       if (!messageId) return; // no customer email: nothing to draft
       // Claim the reminder sweep's slot for this proof so it does not draft a second one.
       await tx

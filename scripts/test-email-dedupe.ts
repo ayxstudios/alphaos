@@ -133,6 +133,10 @@ async function main() {
     const r1b = await q((tx) => queueStageEmail(tx, order, "proof_reminder", { proof_link: "https://x.test/p/a" }));
     const r2 = await q((tx) => queueStageEmail(tx, order, "proof_reminder", { proof_link: "https://x.test/p/b" }));
     check("proof reminder: new proof mails, same proof does not", !!r1 && r1b === null && !!r2);
+    // The second deliberate reminder for one proof is its own moment (agent max 2 per proof).
+    const r1r2 = await q((tx) => queueStageEmail(tx, order, "proof_reminder", { proof_link: "https://x.test/p/a" }, { repeat: 2 }));
+    const r1r2b = await q((tx) => queueStageEmail(tx, order, "proof_reminder", { proof_link: "https://x.test/p/a" }, { repeat: 2 }));
+    check("proof reminder: second reminder for one proof mails once", !!r1r2 && r1r2b === null);
   } finally {
     await q(async (tx) => {
       if (created.length) {

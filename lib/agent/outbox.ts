@@ -165,16 +165,19 @@ async function promoteStep(businessId: string, dryRun: boolean, report: OutboxRe
   report.promoted += go.length;
   if (dryRun) return;
   await withSystemContext(async (tx) => {
-    await tx
+    // Only the rows this pass flipped: a second tick racing this one logs nothing twice.
+    const moved = await tx
       .update(messages)
       .set({ status: "queued", metadata: sql`coalesce(${messages.metadata}, '{}'::jsonb) || '{"autoSent": true}'::jsonb` })
-      .where(and(inArray(messages.id, go), eq(messages.status, "draft")));
+      .where(and(inArray(messages.id, go), eq(messages.status, "draft")))
+      .returning({ id: messages.id });
+    if (!moved.length) return;
     await tx.insert(activityLog).values({
       businessId,
       orderId: null,
       actorId: null,
       action: "agent.emails_auto_queued",
-      metadata: { count: go.length, messageIds: go },
+      metadata: { count: moved.length, messageIds: moved.map((m) => m.id) },
     });
   });
 }
@@ -291,7 +294,8 @@ async function retryStep(
         continue;
       }
       // Sending switched off is a setting, not a fault: keep the email failed, burn no retry.
-      if (/turned off/i.test(res.error)) {
+      // Another pass holding this send is not a failure either (it may be sending it right now).
+      if (res.busy || /turned off/i.test(res.error)) {
         report.retried -= 1;
         report.deferred += 1;
         continue;
@@ -341,6 +345,16 @@ async function raiseFailed(
       .update(messages)
       .set({ metadata: sql`coalesce(${messages.metadata}, '{}'::jsonb) || ${JSON.stringify({ sendRetry: { ...retry, exceptionId: opened.id } })}::jsonb` })
       .where(eq(messages.id, m.id));
+    if (!opened.created) {
+      // One open card per order: a second stuck email on the same order joins it,
+      // so the card only closes once every email on it went out.
+      await tx
+        .update(exceptions)
+        .set({
+          detail: sql`jsonb_set(${exceptions.detail}, '{messageIds}', coalesce(${exceptions.detail}->'messageIds', '[]'::jsonb) || to_jsonb(${m.id}::text))`,
+        })
+        .where(and(eq(exceptions.id, opened.id), sql`not (coalesce(${exceptions.detail}->'messageIds', '[]'::jsonb) ? ${m.id})`));
+    }
     if (opened.created) {
       await tx.insert(activityLog).values({
         businessId: business.id,
@@ -366,6 +380,8 @@ async function resolveSentFailures(businessId: string, report: OutboxReport): Pr
           eq(exceptions.kind, "email_send_failed"),
           eq(exceptions.status, "open"),
           sql`exists (select 1 from messages m where m.id::text = ${exceptions.detail}->>'messageId' and (m.status = 'sent' or m.manual_sent_at is not null or m.archived_at is not null))`,
+          // Every other email that joined the card (raiseFailed) went out too.
+          sql`not exists (select 1 from messages m where m.id::text in (select jsonb_array_elements_text(coalesce(${exceptions.detail}->'messageIds', '[]'::jsonb))) and not (m.status = 'sent' or m.manual_sent_at is not null or m.archived_at is not null))`,
         ),
       )
       .returning({ id: exceptions.id }),

@@ -70,6 +70,15 @@ async function main() {
   const designerBefore = await withSystemContext(async (tx) =>
     (await tx.select({ styles: designerProfiles.styles }).from(designerProfiles).where(eq(designerProfiles.userId, designer.id)))[0]?.styles ?? [],
   );
+  // Capacity is restored at the end: repeated runs on the same day would
+  // otherwise exhaust the demo designer's daily cap and the routing check
+  // would test capacity instead of the style mapping.
+  const [capBefore] = await withSystemContext((tx) =>
+    tx
+      .select({ daily: designerProfiles.dailyCapacity, maxActive: designerProfiles.maxActiveOrders })
+      .from(designerProfiles)
+      .where(eq(designerProfiles.userId, designer.id)),
+  );
 
   const [shopBefore] = await withSystemContext((tx) =>
     tx.select({ config: shops.integrationConfig }).from(shops).where(eq(shops.id, shop.id)),
@@ -301,6 +310,7 @@ async function main() {
     const oC = await mkEtsy("c", productTitle);
     await runAgentTick({ businessId });
     const routed = await withSystemContext(async (tx) => {
+      await tx.update(designerProfiles).set({ dailyCapacity: 100000, maxActiveOrders: 0 }).where(eq(designerProfiles.userId, designer.id));
       await tx.update(orders).set({ status: "ready_to_assign" }).where(eq(orders.id, oC));
       const r = await runAutoAssign(tx, { orderId: oC, businessId, assignedBy: null });
       const [a] = await tx.select({ designerId: assignments.designerId }).from(assignments).where(and(eq(assignments.orderId, oC), eq(assignments.active, true)));
@@ -353,7 +363,10 @@ async function main() {
         and(eq(exceptions.businessId, businessId), eq(exceptions.status, "open"), sql`${exceptions.detail}::text like ${"%" + MARK + "%"}`),
       );
       await tx.update(shops).set({ integrationConfig: shopBefore.config }).where(eq(shops.id, shop.id));
-      await tx.update(designerProfiles).set({ styles: designerBefore }).where(eq(designerProfiles.userId, designer.id));
+      await tx
+        .update(designerProfiles)
+        .set({ styles: designerBefore, dailyCapacity: capBefore.daily, maxActiveOrders: capBefore.maxActive })
+        .where(eq(designerProfiles.userId, designer.id));
       await tx
         .update(businesses)
         .set({ agentIntakeEnabled: biz.intake, agentAssignEnabled: biz.assign, agentInboxEnabled: biz.inbox, stageEmailAutoSend: biz.autoSend, agentConfig: biz.config })

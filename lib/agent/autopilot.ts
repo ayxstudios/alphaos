@@ -716,7 +716,8 @@ async function whyNoDesigner(
     .from(designerBusinesses)
     .innerJoin(users, and(eq(users.id, designerBusinesses.userId), eq(users.active, true), eq(users.role, "designer")))
     .innerJoin(designerProfiles, eq(designerProfiles.userId, designerBusinesses.userId))
-    .where(eq(designerBusinesses.businessId, businessId));
+    // The AI Studio agent is never a human candidate (same filter as loadRankedCandidates).
+    .where(and(eq(designerBusinesses.businessId, businessId), eq(designerProfiles.isAgent, false)));
   if (!roster.length) return { headline: "no active designers on this business", style, roster: [] };
 
   const ids = roster.map((r) => r.designerId);

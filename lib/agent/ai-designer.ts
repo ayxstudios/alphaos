@@ -595,6 +595,9 @@ export async function reassignOrder(orderId: string, designerId: string, byUserI
       // A revision in progress stays a revision job; anything else is a fresh job.
       if (o.status === "in_design" && (o.aiState === "revision" || o.aiState === "revision_claimed")) {
         await tx.update(orders).set({ aiState: "revision", aiClaimedAt: null }).where(eq(orders.id, orderId));
+      } else if (o.status === "awaiting_qc" || o.status === "awaiting_approval") {
+        // Already drawn: nothing for the agent to draw now, so never "waiting its turn".
+        // A QC fail or buyer revision turns it into a revision job (onRevisionEdge).
       } else {
         await markQueuedForAgent(tx, { orderId, businessId: o.businessId, byUserId, via: "reassign" });
       }
