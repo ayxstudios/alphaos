@@ -275,6 +275,15 @@ async function main() {
     const rf = await reassignOrder(fo, human.id, admin.id);
     const stf = await state(fo);
     check("failed order reassigned to a human", rf.ok && stf.ai === null);
+    // Fail -> reassign back to the agent: still in_design, must be listed and deliverable again.
+    const rback = await reassignOrder(fo, agentId, admin.id);
+    const stb = await state(fo);
+    check("failed order reassigned back to the agent is queued in_design", rback.ok && stb.ai === "queued" && stb.s === "in_design");
+    check("re-queued in_design job is listed again", (await listPendingJobs({ businessId })).some((j) => j.jobId === fo));
+    await claimJob(fo);
+    check("re-queued job claimable", (await state(fo)).ai === "claimed");
+    const dfo = await deliverJob(fo, { base64: PNG, contentType: "image/png", selfCheck: "Redrawn after reassign." });
+    check("re-queued job delivers into VA QC", dfo.status === "awaiting_qc" && (await state(fo)).ai === "qc");
 
     // 10. Reassign away from the agent while queued.
     const ro = await newOrder("reassign", STYLE);

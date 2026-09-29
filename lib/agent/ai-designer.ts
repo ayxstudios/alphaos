@@ -208,11 +208,14 @@ function pendingJobWhere() {
   return and(
     eq(designerProfiles.isAgent, true),
     eq(assignments.active, true),
+    // Waiting to be drawn: queued (new, or re-queued after a reassign back to the
+    // agent, so the order may already be in_design) or revision. Anything past
+    // that (claimed, qc, owner_review, with_buyer, failed) is not pending.
     or(
-      // A revision is queued while the order sits in design.
       and(eq(orders.aiState, "revision"), eq(orders.status, "in_design")),
-      // New: queued explicitly, or assigned to the agent by hand (ai_state unset).
-      and(or(eq(orders.aiState, "queued"), isNull(orders.aiState)), eq(orders.status, "ready_to_assign")),
+      and(eq(orders.aiState, "queued"), inArray(orders.status, ["ready_to_assign", "in_design"])),
+      // Assigned to the agent by hand (ai_state unset).
+      and(isNull(orders.aiState), eq(orders.status, "ready_to_assign")),
     ),
   );
 }
@@ -259,11 +262,13 @@ export async function claimJob(orderId: string): Promise<AiJob> {
   return withSystemContext(async (tx) => {
     const o = await loadHeldOrder(tx, orderId);
     const isRevision = o.aiState === "revision";
-    const isNew = (o.aiState === "queued" || o.aiState === null) && o.status === "ready_to_assign";
+    const isNew =
+      (o.aiState === "queued" && (o.status === "ready_to_assign" || o.status === "in_design")) ||
+      (o.aiState === null && o.status === "ready_to_assign");
     if (!isRevision && !isNew) {
       throw new AiJobError(409, "not_claimable", `Job is not waiting (state ${o.aiState ?? "none"}, order ${o.status}).`);
     }
-    if (isNew) {
+    if (isNew && o.status === "ready_to_assign") {
       await runTransition(tx, SYSTEM_ACTOR, { orderId, to: "in_design", expectedFrom: "ready_to_assign", metadata: { via: "ai_claim" } });
     }
     await tx

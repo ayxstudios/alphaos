@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 
 import { and, eq, inArray, like, sql } from "drizzle-orm";
 
+import { autoSendRepliesOn } from "../lib/agent/outbox";
 import { runAgentTick, type AgentBusinessReport } from "../lib/agent/autopilot";
 import { withSystemContext } from "../lib/db";
 import {
@@ -67,7 +68,7 @@ async function setFlags(businessId: string, on: boolean) {
 
 async function main() {
   const [biz] = await withSystemContext((tx) =>
-    tx.select({ id: businesses.id }).from(businesses).where(eq(businesses.name, BUSINESS_NAME)),
+    tx.select({ id: businesses.id, agentConfig: businesses.agentConfig }).from(businesses).where(eq(businesses.name, BUSINESS_NAME)),
   );
   if (!biz) throw new Error(`demo business ${BUSINESS_NAME} not found: is .env.local the DEMO database?`);
   const businessId = biz.id;
@@ -247,7 +248,10 @@ async function main() {
       r.assigned + leftover.length === unassignedBefore.length && leftover.length === explained,
       JSON.stringify({ before: unassignedBefore.length, assigned: r.assigned, leftover: leftover.length, noEligible: r.noEligibleDesigner, needsReview: r.skippedNeedsReview }));
 
-    check("mismatch: exactly one photo_shortfall draft", afterReal.shortfall.length === 1 && afterReal.shortfall[0].status === "draft",
+    // Replies auto-send by default (agentConfig.autoSendReplies), so the one
+    // photo_shortfall email is 'sent'; with auto-send off it stays a 'draft'.
+    const expectShortfall = autoSendRepliesOn(biz.agentConfig) ? "sent" : "draft";
+    check(`mismatch: exactly one photo_shortfall email (${expectShortfall})`, afterReal.shortfall.length === 1 && afterReal.shortfall[0].status === expectShortfall,
       JSON.stringify(afterReal.shortfall.map((m) => m.status)));
     check("mismatch: draft names the counts", !!afterReal.shortfall[0]?.body?.includes("3") && !!afterReal.shortfall[0]?.body?.includes("1"));
     const meta = afterReal.drafted[0]?.metadata as { have?: number; need?: number; messageId?: string } | undefined;
