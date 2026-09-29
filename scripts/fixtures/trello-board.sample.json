@@ -1,0 +1,24 @@
+{
+  "name": "Custom orders (sample)",
+  "lists": [
+    { "id": "l1", "name": "New orders" },
+    { "id": "l2", "name": "In progress" },
+    { "id": "l3", "name": "Done" },
+    { "id": "l4", "name": "Archive" }
+  ],
+  "cards": [
+    {
+      "id": "trellotest-c1",
+      "name": "Order 4410001 - Mia (2 dogs)",
+      "desc": "Two dogs, watercolor. Buyer wants it before the 20th.",
+      "due": "2026-10-20T00:00:00.000Z",
+      "idList": "l1",
+      "labels": [{ "name": "Rush", "color": "red" }],
+      "attachments": [{ "name": "photo", "url": "https://trello.com/1/cards/c1/attachments/a1/download/dogs.jpg" }]
+    },
+    { "id": "trellotest-c2", "name": "Order 4410002 - Sam", "desc": "", "due": null, "idList": "l2", "labels": [], "attachments": [] },
+    { "id": "trellotest-c3", "name": "Order 4410003 - Old one", "idList": "l3", "labels": [], "attachments": [] },
+    { "id": "trellotest-c4", "name": "Order 4410004 - Archived list", "idList": "l4", "labels": [], "attachments": [] },
+    { "id": "trellotest-c5", "name": "Order 4410005 - Closed card", "idList": "l1", "closed": true, "labels": [], "attachments": [] }
+  ]
+}

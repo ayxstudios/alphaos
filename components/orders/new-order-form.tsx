@@ -35,7 +35,7 @@ export type ExistingOrder = {
   shopLabel: string;
   orderNumber: string;
   status: string;
-  source: "etsy" | "shopify" | "manual";
+  source: "etsy" | "shopify" | "manual" | "legacy" | "trello";
   customerName: string;
   customerEmail: string;
   dueAt: string; // yyyy-mm-dd

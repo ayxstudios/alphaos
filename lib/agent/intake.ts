@@ -18,6 +18,11 @@ export type IntakeContext = {
   customerName: string | null;
   customerEmail: string | null;
   orderNotes: string | null;
+  /**
+   * The business catalog's style for this listing (exact title/SKU match), used
+   * only when the shop's own rules name no style. Ignored unless the shop offers it.
+   */
+  catalogStyle?: string | null;
 };
 
 export type IntakeValues = {
@@ -105,11 +110,11 @@ export function parseIntake(ctx: IntakeContext): IntakeParse {
   const styleRes = tx
     ? resolveStyle(tx.variations ?? [], ctx.shopConfig, tx.title)
     : { style: null, source: "unresolved" as const, note: "no line item" };
-  const want = styleRes.style?.trim().toLowerCase() ?? "";
+  const want = (styleRes.style ?? ctx.catalogStyle ?? "").trim().toLowerCase();
   const style = want ? (ctx.styleOptions.find((s) => s.trim().toLowerCase() === want) ?? null) : null;
   if (!ctx.styleOptions.length) missing.push("style (this shop has no styles configured)");
-  else if (!styleRes.style) missing.push(`style (${styleRes.note})`);
-  else if (!style) missing.push(`style ("${styleRes.style}" is not one of this shop's styles)`);
+  else if (!want) missing.push(`style (${styleRes.note})`);
+  else if (!style) missing.push(`style ("${styleRes.style ?? ctx.catalogStyle}" is not one of this shop's styles)`);
 
   // Product type: the listing's own digital flag and option values must agree.
   const productType = review.transactions[0]?.fulfillment ?? null;
@@ -128,7 +133,7 @@ export function parseIntake(ctx: IntakeContext): IntakeParse {
   const bestGuess: IntakeBestGuess = {
     figureCount: figureCount ?? fig.count ?? review.inferredFigureCount ?? stated[0] ?? null,
     figureCountNote: fig.note,
-    style: style ?? styleRes.style ?? null,
+    style: style ?? styleRes.style ?? ctx.catalogStyle ?? null,
     styleNote: styleRes.note,
     productTitle,
     productType: productType ?? (tx ? defaults.productType : null),

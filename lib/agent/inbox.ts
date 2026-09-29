@@ -14,6 +14,7 @@
 // like the Gmail poller) and never re-run. Each message and order gets its own
 // transaction; a dry run rolls every one back.
 
+import { ensureLegacyStub, parseOrderNumber } from "./legacy-intake";
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 
 import { SYSTEM_ACTOR_ID, withSystemContext, type Tx } from "@/lib/db";
@@ -570,11 +571,31 @@ async function unmatchedStep(ctx: Ctx, businessId: string, since: Date, outOfTim
       let candidates: { orderId: string; orderNumber: string; customerName: string; reason: string }[] = [];
       if (r.suggestion) {
         const [o] = await tx
-          .select({ id: orders.id })
+          .select({ id: orders.id, source: orders.source, status: orders.status })
           .from(orders)
           .where(and(eq(orders.id, r.suggestion.orderId), eq(orders.businessId, businessId)))
           .limit(1);
-        if (o) candidates = [r.suggestion];
+        // An unconfirmed legacy stub is where this thread belongs: not a "maybe".
+        const isOpenStub = o?.source === "legacy" && o.status === "awaiting_details";
+        if (o && !isOpenStub) candidates = [r.suggestion];
+      }
+      // A buyer naming an order number AlphaOS does not have is a legacy
+      // (Trello-era) order: make a stub, attach the thread, open one card.
+      if (!candidates.length && (parseOrderNumber(r.subject, r.body) || r.suggestion)) {
+        const stub = await ensureLegacyStub(tx, r.messageId);
+        if (stub) {
+          await logAgent(tx, { businessId, orderId: stub.orderId }, "agent.reply_escalated", {
+            messageId: r.messageId,
+            kind: "legacy_order",
+            exceptionId: stub.exceptionId,
+          });
+          bump((rep) => {
+            rep.unmatchedEscalated += 1;
+            if (stub.createdCard) rep.exceptionsOpened += 1;
+            if (!rep.exceptionKinds.includes("legacy_order")) rep.exceptionKinds.push("legacy_order");
+          });
+          return;
+        }
       }
       const ref = { businessId, orderId: null };
       const from = r.fromAddress ?? "unknown sender";

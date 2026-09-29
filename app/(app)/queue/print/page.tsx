@@ -24,7 +24,7 @@ type OrderRow = {
   id: string;
   orderNumber: string | null;
   fallbackNumber: string;
-  source: "etsy" | "shopify" | "manual";
+  source: "etsy" | "shopify" | "manual" | "legacy" | "trello";
   status: string;
   placedAt: Date | null;
   shopName: string;

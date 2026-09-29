@@ -10,7 +10,9 @@ export type ExceptionKind =
   | "reply_unclear"
   | "buyer_question"
   | "unmatched_reply"
-  | "email_send_failed";
+  | "email_send_failed"
+  | "legacy_order"
+  | "new_product";
 
 export type OpenExceptionInput = {
   businessId: string;

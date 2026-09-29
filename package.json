@@ -47,6 +47,7 @@
     "test:agent-completeness": "tsx scripts/test-agent-completeness.ts",
     "test:agent-autopilot": "tsx scripts/test-agent-autopilot.ts",
     "test:agent-inbox": "tsx scripts/test-agent-inbox.ts",
+    "test:legacy-intake": "tsx scripts/test-legacy-intake.ts",
     "test:ai-designer": "tsx scripts/test-ai-designer.ts",
     "test:agent-capacity": "tsx scripts/test-agent-capacity.ts",
     "test:agent-config": "tsx scripts/test-agent-config.ts",

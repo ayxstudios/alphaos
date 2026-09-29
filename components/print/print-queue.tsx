@@ -26,7 +26,7 @@ export type ReconcileState =
 export type PrintQueueItemVM = {
   id: string;
   orderNumber: string;
-  source: "etsy" | "shopify" | "manual";
+  source: "etsy" | "shopify" | "manual" | "legacy" | "trello";
   status: string;
   shopName: string;
   customerName: string;

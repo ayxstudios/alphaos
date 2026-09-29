@@ -46,7 +46,7 @@ export type TodayItem = {
   /** Sort weight; higher = nearer the top. */
   score: number;
   shop: string;
-  platform: "etsy" | "shopify" | "manual";
+  platform: "etsy" | "shopify" | "manual" | "legacy" | "trello";
   orderNumber: string;
   customerFirst: string;
   status: OrderStatus;

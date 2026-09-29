@@ -20,7 +20,7 @@ export function TrackingCompleteForm({
   onCancel,
 }: {
   orderId: string;
-  source: "etsy" | "shopify" | "manual";
+  source: "etsy" | "shopify" | "manual" | "legacy" | "trello";
   provider?: PrintProvider;
   disabled?: boolean;
   /** No top rule or margin: the caller already frames the form (the Print card). */

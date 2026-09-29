@@ -3,7 +3,10 @@ import { redirect } from "next/navigation";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
-import { withUserContext } from "@/lib/db";
+import { withSystemContext, withUserContext } from "@/lib/db";
+import { listDesignerChoices, type DesignerChoice } from "@/lib/agent/legacy-intake";
+import { listBusinessStyles } from "@/lib/designers/styles";
+import { LegacyConfirmForm, PickDesignerForm } from "@/components/exceptions/intake-cards";
 import { businesses, exceptions, orders } from "@/lib/db/schema";
 import { Badge, DataPanel, Disclosure, EmptyState, Page, PageHeader } from "@/components/ui";
 import { AlertTriangle } from "@/components/ui/icons";
@@ -20,6 +23,8 @@ const KIND_LABELS: Record<string, string> = {
   buyer_question: "Buyer question",
   unmatched_reply: "Reply with no order",
   email_send_failed: "Email failed to send",
+  legacy_order: "Order not in AlphaOS",
+  new_product: "New product",
 };
 
 function kindLabel(kind: string): string {
@@ -43,6 +48,11 @@ function valueText(v: unknown): string {
   if (typeof v === "string") return v;
   if (typeof v === "number" || typeof v === "boolean") return String(v);
   return JSON.stringify(v);
+}
+
+function detailString(detail: unknown, key: string): string {
+  const v = detail && typeof detail === "object" ? (detail as Record<string, unknown>)[key] : null;
+  return typeof v === "string" && key !== "from" ? v : typeof v === "string" && v.includes("@") ? v : "";
 }
 
 function keyLabel(key: string): string {
@@ -109,6 +119,7 @@ type Row = {
   createdAt: Date;
   resolvedAt: Date | null;
   resolutionNote: string | null;
+  businessId: string;
   orderId: string | null;
   orderName: string | null;
   businessName: string;
@@ -138,6 +149,7 @@ export default async function ExceptionsPage() {
     createdAt: exceptions.createdAt,
     resolvedAt: exceptions.resolvedAt,
     resolutionNote: exceptions.resolutionNote,
+    businessId: exceptions.businessId,
     orderId: exceptions.orderId,
     orderName: orders.platformOrderName,
     businessName: businesses.name,
@@ -162,6 +174,22 @@ export default async function ExceptionsPage() {
     ]),
   );
 
+  // Data for the two intake cards' forms (staff-only page).
+  const rows = open as Row[];
+  const legacyBiz = [...new Set(rows.filter((r) => r.kind === "legacy_order").map((r) => r.businessId))];
+  const productBiz = [...new Set(rows.filter((r) => r.kind === "new_product").map((r) => r.businessId))];
+  const styleNames = new Map<string, string[]>();
+  const designerOptions = new Map<string, DesignerChoice[]>();
+  if (legacyBiz.length || productBiz.length) {
+    await withSystemContext(async (tx) => {
+      for (const id of legacyBiz) {
+        const list = await listBusinessStyles(tx, id);
+        styleNames.set(id, list.map((x) => x.name));
+      }
+      for (const id of productBiz) designerOptions.set(id, await listDesignerChoices(tx, id));
+    });
+  }
+
   return (
     <Page>
       <PageHeader
@@ -179,7 +207,7 @@ export default async function ExceptionsPage() {
         </DataPanel>
       ) : (
         <ul className="flex flex-col gap-3">
-          {(open as Row[]).map((row) => (
+          {rows.map((row) => (
             <li key={row.id}>
               <DataPanel className="flex flex-col gap-3 p-4">
                 <div className="flex flex-wrap items-center gap-2">
@@ -195,6 +223,22 @@ export default async function ExceptionsPage() {
                 <Disclosure summary="Details" className="shadow-none ring-1 ring-line/70">
                   <DetailList detail={row.detail} />
                 </Disclosure>
+                {row.kind === "legacy_order" && (
+                  <LegacyConfirmForm
+                    exceptionId={row.id}
+                    styleOptions={styleNames.get(row.businessId) ?? []}
+                    defaults={{
+                      customerName: detailString(row.detail, "buyerName"),
+                      customerEmail: detailString(row.detail, "from"),
+                    }}
+                  />
+                )}
+                {row.kind === "new_product" && (
+                  <PickDesignerForm
+                    exceptionId={row.id}
+                    designers={(designerOptions.get(row.businessId) ?? []).map((d) => ({ id: d.id, name: d.name, openCount: d.openCount }))}
+                  />
+                )}
                 <div className="flex flex-wrap justify-end">
                   <ResolveButton id={row.id} />
                 </div>

@@ -25,7 +25,7 @@ export type OrdersDashboardRow = {
   status: string;
   derivedStatus: string;
   reviewReason: string | null;
-  sourceType: "etsy" | "shopify" | "manual";
+  sourceType: "etsy" | "shopify" | "manual" | "legacy" | "trello";
   assignee: string;
   assigneeId: string | null;
   dueAt: string | null;

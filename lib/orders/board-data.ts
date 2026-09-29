@@ -62,7 +62,7 @@ export type BoardCard = {
   /** Free-text notes / special requests (manual orders). */
   notes: string | null;
   /** Order origin — 'manual' orders are badged so staff can tell at a glance. */
-  source: "etsy" | "shopify" | "manual";
+  source: "etsy" | "shopify" | "manual" | "legacy" | "trello";
   customerName: string;
   thumbnailUrl: string | null;
   /**
@@ -91,7 +91,7 @@ type OrderRow = {
   businessId: string;
   customerId: string | null;
   revisionCount: number;
-  source: "etsy" | "shopify" | "manual";
+  source: "etsy" | "shopify" | "manual" | "legacy" | "trello";
   notes: string | null;
 };
 

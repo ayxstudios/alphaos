@@ -42,6 +42,7 @@ import { emptyInboxReport, runInboxPass, type InboxReport } from "./inbox";
 import { runOutboxPass, type OutboxReport } from "./outbox";
 import { rebalanceBusiness } from "./rebalance";
 import { parseIntake } from "./intake";
+import { findCatalogStyle, registerUnindexedProduct } from "./legacy-intake";
 
 /** How long a customer has to answer the shortfall email before a human is asked. */
 export const PHOTO_SHORTFALL_GRACE_HOURS = 72;
@@ -67,6 +68,9 @@ const REOPEN_AFTER_HOURS: Record<ExceptionKind, number | null> = {
   unmatched_reply: 0,
   // Raised by the outbox pass (./outbox.ts); one card per stuck email.
   email_send_failed: 0,
+  // Raised by the intake area (./legacy-intake.ts); one card per legacy order / product.
+  legacy_order: 0,
+  new_product: 0,
 };
 
 export type AgentOrderError = { orderId: string; message: string };
@@ -396,7 +400,16 @@ async function intakeStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
             .where(eq(customers.id, order.customerId))
         : [];
 
+      // The product this order is for, checked against the business catalog.
+      const firstTx = (order.rawImport as { transactions?: { title?: string | null; sku?: string | null }[] } | null)
+        ?.transactions?.[0];
+      const listingTitle = firstTx?.title?.trim() || null;
+      const catalog = listingTitle
+        ? await findCatalogStyle(tx, order.businessId, { title: listingTitle, sku: firstTx?.sku })
+        : null;
+
       const parse = parseIntake({
+        catalogStyle: catalog && !catalog.autoCreated ? catalog.name : null,
         rawImport: order.rawImport,
         shopConfig: (shop?.config ?? null) as EtsyIntegrationConfig | null,
         styleOptions,
@@ -421,6 +434,25 @@ async function intakeStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
           },
         });
       };
+
+      // A product AlphaOS has never mapped: index it, ask who draws it, and
+      // hold the order (never drop it) until that is answered.
+      if (!parse.confident && listingTitle && !parse.bestGuess.style && (!catalog || catalog.autoCreated)) {
+        const reg = await registerUnindexedProduct(tx, {
+          businessId: order.businessId,
+          shopId: order.shopId,
+          orderId: order.id,
+          title: listingTitle,
+          sku: firstTx?.sku,
+        });
+        if (reg.createdCard) {
+          bump((r) => {
+            r.exceptionsOpened += 1;
+            if (!r.exceptionKinds.includes("new_product")) r.exceptionKinds.push("new_product");
+          });
+        }
+        return;
+      }
 
       if (!parse.confident) {
         await unparsed(parse.missing);

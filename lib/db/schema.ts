@@ -48,7 +48,7 @@ const createdAt = () =>
 
 export const userRole = pgEnum("user_role", ["admin", "va", "designer"]);
 export const platform = pgEnum("platform", ["etsy", "shopify"]);
-export const orderSource = pgEnum("order_source", ["etsy", "shopify", "manual"]);
+export const orderSource = pgEnum("order_source", ["etsy", "shopify", "manual", "legacy", "trello"]);
 export const orderStatus = pgEnum("order_status", [
   "awaiting_photos",
   "ready_to_assign",
@@ -458,6 +458,11 @@ export const styles = pgTable(
     // human. aiFramework names the agent's drawing recipe (e.g. pixart-disney-pet).
     aiDesignerEnabled: boolean("ai_designer_enabled").notNull().default(false),
     aiFramework: text("ai_framework"),
+    // Created by the agent for a product it had never seen (no designer yet).
+    // Cleared once someone picks who draws it. listingTitle is the product
+    // title that first showed up, kept for the pick-a-designer card.
+    autoCreated: boolean("auto_created").notNull().default(false),
+    listingTitle: text("listing_title"),
     createdAt: createdAt(),
   },
   (t) => [
@@ -601,12 +606,18 @@ export const orders = pgTable(
     // human orders. Only meaningful while the active assignment is the agent.
     aiState: text("ai_state"),
     aiClaimedAt: timestamp("ai_claimed_at", { withTimezone: true }),
+    // Trello card id when the order was imported from a Trello board
+    // (scripts/import-trello.ts); unique per business so a re-run skips it.
+    trelloCardId: text("trello_card_id"),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
   },
   (t) => [
+    uniqueIndex("orders_trello_card_uq")
+      .on(t.businessId, t.trelloCardId)
+      .where(sql`${t.trelloCardId} is not null`),
     uniqueIndex("orders_shop_platform_uq").on(t.shopId, t.platformOrderId),
     index("orders_board_idx").on(t.businessId, t.status, t.dueAt),
     index("orders_live_board_idx")
