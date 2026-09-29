@@ -296,7 +296,7 @@ export async function preparePrintOrder(
       blockers.push({
         code: "unmapped_product",
         itemId: item.id,
-        message: `No print mapping for "${item.title ?? item.sku ?? "item"}"${item.sku ? ` (SKU ${item.sku})` : ""}. Add one in Settings.`,
+        message: `No print mapping for "${item.title ?? item.sku ?? "item"}"${item.sku && item.sku !== item.title ? ` (SKU ${item.sku})` : ""}. Add one in Settings.`,
       });
     } else if (!chosen && !requested) {
       blockers.push({

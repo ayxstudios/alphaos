@@ -1,5 +1,5 @@
 /** The drawing recipes the AI designer can use. Add a line here when a new flow is approved. */
-export const AI_FRAMEWORKS = [{ key: "pixart-disney-pet", label: "PixArt Disney pet (CSS flow)" }] as const;
+export const AI_FRAMEWORKS = [{ key: "pixart-disney-pet", label: "Disney-style pet portrait" }] as const;
 
 export const DEFAULT_AI_FRAMEWORK = AI_FRAMEWORKS[0].key;
 

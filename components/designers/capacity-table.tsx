@@ -13,6 +13,7 @@ import type { RebalanceMove } from "@/lib/agent/rebalance";
 
 const STATUS: Record<DesignerLoad["status"], { label: string; variant: "success" | "danger" | "warning" | "neutral" }> = {
   available: { label: "Available", variant: "success" },
+  full: { label: "Full", variant: "warning" },
   over_capacity: { label: "Over capacity", variant: "danger" },
   quiet_hours: { label: "Quiet hours", variant: "warning" },
   deactivated: { label: "Deactivated", variant: "neutral" },
@@ -111,9 +112,7 @@ function Styles({ styles }: { styles: string[] }) {
 }
 
 function Status({ d }: { d: DesignerLoad }) {
-  // At the limit exactly is not "over", but nothing new can go to them: say so.
-  const full = d.status === "available" && d.limit > 0 && d.openLoad >= d.limit;
-  const s = full ? { label: "Full", variant: "warning" as const } : STATUS[d.status];
+  const s = STATUS[d.status];
   return (
     <div className="flex flex-col items-start gap-1">
       <Badge variant={s.variant} dot>{s.label}</Badge>

@@ -43,7 +43,7 @@ export type DesignerLoad = {
   /** Orders above the limit (0 when not over). */
   excess: number;
   away: boolean;
-  status: "available" | "over_capacity" | "quiet_hours" | "deactivated";
+  status: "available" | "full" | "over_capacity" | "quiet_hours" | "deactivated";
   /** Days to clear the open load at the daily limit; null when the daily limit is 0. */
   daysToClear: number | null;
 };
@@ -139,7 +139,7 @@ export async function loadCapacityModel(
         overCapacity: over,
         excess: over ? l.open - limit : 0,
         away: !r.active || quiet,
-        status: !r.active ? "deactivated" : over ? "over_capacity" : quiet ? "quiet_hours" : "available",
+        status: !r.active ? "deactivated" : over ? "over_capacity" : quiet ? "quiet_hours" : limit > 0 && l.open >= limit ? "full" : "available",
         daysToClear: r.dailyCapacity > 0 ? round1(l.open / r.dailyCapacity) : null,
       };
     });
