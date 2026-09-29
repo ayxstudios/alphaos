@@ -27,6 +27,20 @@ const KIND_LABELS: Record<string, string> = {
   new_product: "New product",
 };
 
+/** The one thing to do, as a short imperative; `to` is where the primary button goes. */
+const TODO: Record<string, { line: string; button?: string; to?: "order" | "messages" }> = {
+  photo_count_mismatch: { line: "Ask the buyer for one more photo.", button: "Open order", to: "order" },
+  intake_unparsed: { line: "Fill in the order details.", button: "Open order", to: "order" },
+  no_eligible_designer: { line: "Pick a designer for this order.", button: "Open order", to: "order" },
+  reply_unclear: { line: "Ask the buyer if they approve or want changes.", button: "Open messages", to: "messages" },
+  buyer_question: { line: "Answer the buyer's question.", button: "Open messages", to: "messages" },
+  unmatched_reply: { line: "Find the order this email belongs to.", button: "Open messages", to: "messages" },
+  email_send_failed: { line: "Fix the address, then retry the email.", button: "Open messages", to: "messages" },
+  legacy_order: { line: "Check Trello, then confirm the order below." },
+  new_product: { line: "Pick who draws this new product." },
+  ai_designer_failed: { line: "Check the AI portrait, or give it to a designer.", button: "Open order", to: "order" },
+};
+
 function kindLabel(kind: string): string {
   if (KIND_LABELS[kind]) return KIND_LABELS[kind];
   const spaced = kind.replace(/[_.]+/g, " ").trim();
@@ -218,7 +232,8 @@ export default async function ExceptionsPage() {
                     {ago(row.createdAt)}
                   </span>
                 </div>
-                <p className="text-sm text-ink">{row.summary}</p>
+                <p className="text-base font-semibold text-ink">{TODO[row.kind]?.line ?? row.summary}</p>
+                {TODO[row.kind] && <p className="-mt-2 text-sm text-slate">{row.summary}</p>}
                 <SuggestionBlock detail={row.detail} />
                 <Disclosure summary="Details" className="shadow-none ring-1 ring-line/70">
                   <DetailList detail={row.detail} />
@@ -239,7 +254,15 @@ export default async function ExceptionsPage() {
                     designers={(designerOptions.get(row.businessId) ?? []).map((d) => ({ id: d.id, name: d.name, openCount: d.openCount }))}
                   />
                 )}
-                <div className="flex flex-wrap justify-end">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {TODO[row.kind]?.button && (TODO[row.kind].to === "messages" || row.orderId) && (
+                    <Link
+                      href={TODO[row.kind].to === "messages" ? "/emails" : `/orders/${row.orderId}`}
+                      className="inline-flex min-h-11 items-center rounded-input bg-pigment px-4 text-sm font-medium text-surface hover:opacity-90"
+                    >
+                      {TODO[row.kind].button}
+                    </Link>
+                  )}
                   <ResolveButton id={row.id} />
                 </div>
               </DataPanel>

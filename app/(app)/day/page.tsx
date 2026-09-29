@@ -147,7 +147,7 @@ function OwnerReviewCardView({ card }: { card: OwnerReviewCard }) {
       <DoLine>AI portrait ready. Look and approve to send.</DoLine>
       <CardHead card={card} label="AI portrait" />
       <p className="text-sm text-ink break-words">{card.productLine}</p>
-      {card.selfCheck && <p className="rounded-md bg-canvas p-2 text-sm text-slate break-words">AI self-check: {card.selfCheck}</p>}
+      {card.selfCheck && <p className="line-clamp-3 rounded-md bg-canvas p-2 text-sm text-slate break-words">AI self-check: {card.selfCheck}</p>}
       <div className="grid grid-cols-2 gap-3">
         <div className="min-w-0">
           <Kicker>Buyer photo</Kicker>

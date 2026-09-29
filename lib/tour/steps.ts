@@ -84,7 +84,7 @@ const VA_DAY_STEPS: TourStep[] = [
     id: "card-print",
     title: "Print and ship card",
     path: "/day",
-    acts: [{ kind: "click", target: ['[data-tour="group:print"]'], say: "Print and ship: send to the printer. Tap the title." }],
+    acts: [{ kind: "click", target: ['[data-tour="group:print"]'], say: "Print and ship: send to print. Tap the title." }],
     nav: { kind: "nav", say: "Cards wait on Day. Tap Day." },
   },
   {

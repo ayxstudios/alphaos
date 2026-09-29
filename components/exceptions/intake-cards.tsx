@@ -54,7 +54,7 @@ export function LegacyConfirmForm({
           <option value="">{styleOptions.length ? "Select style" : "No styles configured"}</option>
           {styleOptions.map((s) => (
             <option key={s} value={s}>
-              {s}
+              {s.charAt(0).toUpperCase() + s.slice(1)}
             </option>
           ))}
         </Select>
