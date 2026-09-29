@@ -920,16 +920,26 @@ export default async function OrdersPage({
             headline={q ? `No orders match "${q}"` : activeFilters.length ? "No orders match" : "Nothing here right now"}
             body={
               q
-                ? `${selectedView === "active" ? "" : `Only ${selectedViewMeta.label} was searched. `}Check the spelling, or try the order number.`
+                ? `${selectedView === "active" ? "Only open orders were searched. " : `Only ${selectedViewMeta.label} was searched. `}Check the spelling, or search every order, finished ones too.`
                 : activeFilters.length
                   ? "Try clearing a filter."
                   : `No orders are in ${selectedViewMeta.label} at the moment.`
             }
             action={
               q ? (
-                <Link href={clearSearchHref(currentParams)} className="inline-flex min-h-11 items-center text-sm font-medium text-pigment hover:text-ink sm:min-h-0">
-                  Clear search
-                </Link>
+                <div className="flex flex-wrap items-center justify-center gap-x-4">
+                  {/* The list only holds one tab of open orders: one tap looks through every order, finished ones too. */}
+                  <Link
+                    href={`/orders/find?q=${encodeURIComponent(q)}`}
+                    prefetch={false}
+                    className="inline-flex min-h-11 items-center rounded-input bg-pigment px-4 text-sm font-medium text-surface hover:opacity-90"
+                  >
+                    Search all orders
+                  </Link>
+                  <Link href={clearSearchHref(currentParams)} className="inline-flex min-h-11 items-center text-sm font-medium text-pigment hover:text-ink sm:min-h-0">
+                    Clear search
+                  </Link>
+                </div>
               ) : activeFilters.length ? (
                 <Link href={clearFiltersHref(currentParams)} className="inline-flex min-h-11 items-center text-sm font-medium text-pigment hover:text-ink sm:min-h-0">
                   Clear filters

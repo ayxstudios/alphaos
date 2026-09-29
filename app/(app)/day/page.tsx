@@ -172,11 +172,17 @@ function PrintCardView({ card }: { card: DayPrintCard }) {
   const blocked = card.blockers.filter((b) => b.code !== "not_approved");
   return (
     <DataPanel className="flex h-full flex-col gap-3 p-4">
-      <DoLine>Print this order. Check file and address.</DoLine>
+      <DoLine>
+        {card.ready
+          ? "Print this order. Check file and address."
+          : blocked.length
+            ? `Fix ${blocked.length === 1 ? "the item" : `the ${blocked.length} items`} below, then print.`
+            : "Not ready to print yet."}
+      </DoLine>
       <CardHead card={card} label="Print and ship" />
       <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[7rem_minmax(0,1fr)]">
         <dt className="font-medium text-ink">Product</dt>
-        <dd className="break-words text-slate">{card.productLine}</dd>
+        <dd className="break-words text-slate">{card.productLine.trim() || "Product not matched"}</dd>
         <dt className="font-medium text-ink">Provider</dt>
         <dd className="text-slate">{card.providerLabel ?? "Not set"}</dd>
         <dt className="font-medium text-ink">Cost</dt>

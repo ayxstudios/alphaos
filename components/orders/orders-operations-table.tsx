@@ -823,12 +823,12 @@ export function OrdersOperationsTable({
                   </div>
                   {row.reviewReason && <p className="mt-1 line-clamp-2 text-sm leading-snug text-amber">{row.reviewReason}</p>}
                   <div className="mt-1.5 flex items-center justify-between gap-3">
-                    <p className="min-w-0 truncate text-xs text-slate">
+                    <p className="min-w-0 text-xs text-slate [overflow-wrap:anywhere]">
                       {row.source} · {row.assignee}
                       {row.stageTimer.remainingMs != null && (
                         <>
                           {" · "}
-                          <span className={row.stageTimer.isOverdue ? "font-medium text-rose" : undefined}>
+                          <span className={cn("whitespace-nowrap", row.stageTimer.isOverdue && "font-medium text-rose")}>
                             Step {formatStageRemaining(row.stageTimer)}
                           </span>
                         </>

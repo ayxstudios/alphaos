@@ -96,7 +96,7 @@ export function QuickReassign({
               >
                 <span className="min-w-0 truncate text-left">
                   {d.name}
-                  {d.current && <span className="ml-2 text-xs font-normal text-slate">has it now</span>}
+                  {d.current && <span className="ml-2 text-xs font-normal text-slate"><span className="sr-only">, </span>has it now</span>}
                 </span>
                 <span className="shrink-0 text-sm font-normal text-slate">{d.openOrders} open</span>
               </Button>

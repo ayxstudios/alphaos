@@ -24,6 +24,11 @@ const PROTECTED = [
   /^\/health(\/|$)/,
   /^\/help(\/|$)/,
   /^\/me(\/|$)/,
+  // Agent-first pages (Day queue, Overview, Exceptions): a signed-out visit
+  // keeps its callbackUrl, and a designer gets the clean 307 to /board.
+  /^\/day(\/|$)/,
+  /^\/overview(\/|$)/,
+  /^\/exceptions(\/|$)/,
   // The component styleguide is a staff design reference, not a public page.
   /^\/styleguide(\/|$)/,
 ];

@@ -126,8 +126,8 @@ export default async function QcQueuePage() {
                       )}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="text-sm font-semibold text-ink">{r.orderNumber}</span>
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="whitespace-nowrap text-sm font-semibold text-ink">{r.orderNumber}</span>
                         <ShopBadge platform={r.platform} name={r.shopName} className="hidden text-xs sm:inline-flex" />
                         {late && <Badge variant="danger">Late</Badge>}
                       </div>

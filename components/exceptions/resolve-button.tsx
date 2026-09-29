@@ -46,7 +46,7 @@ export function ResolveButton({ id }: { id: string }) {
         <Button type="button" size="sm" variant="primary" className="min-h-11" loading={pending} onClick={onResolve}>
           Mark resolved
         </Button>
-        <Button type="button" size="sm" variant="secondary" className="min-h-11" onClick={() => setOpen(false)}>
+        <Button type="button" size="sm" variant="secondary" className="min-h-11" disabled={pending} onClick={() => setOpen(false)}>
           Cancel
         </Button>
       </div>

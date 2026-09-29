@@ -90,7 +90,7 @@ function ShopRow({ shop, catalog }: { shop: ShopStylesVM; catalog: string[] }) {
 
   return (
     <details className="group rounded-input bg-canvas/70">
-      <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-2.5">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 px-3 py-2.5">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-semibold text-ink">{shop.name}</span>

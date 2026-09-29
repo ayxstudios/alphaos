@@ -38,6 +38,8 @@ export function AgentSettingsPanel({ vm }: { vm: AgentSettingsVM }) {
   const toast = useToast();
   const [pending, start] = useTransition();
   const [flagPending, startFlag] = useTransition();
+  // The one switch being saved: only its button spins, the others just wait.
+  const [flipping, setFlipping] = useState<"intake" | "assign" | "inbox" | null>(null);
   const [flags, setFlags] = useState(vm.flags);
   const [channels, setChannels] = useState(vm.channels);
   const [readInbox, setReadInbox] = useState(vm.mailbox.readInbox);
@@ -53,7 +55,10 @@ export function AgentSettingsPanel({ vm }: { vm: AgentSettingsVM }) {
   const thresholdBad = !Number.isFinite(thresholdNum) || thresholdNum < 50 || thresholdNum > 100;
 
   function flip(key: "intake" | "assign" | "inbox") {
+    if (flagPending) return;
     const next = !flags[key];
+    const label = FLAGS.find((f) => f.key === key)?.label ?? key;
+    setFlipping(key);
     setFlags((f) => ({ ...f, [key]: next }));
     startFlag(async () => {
       const res = await saveAgentSettingsAction(vm.businessId, { flags: { [key]: next } });
@@ -62,7 +67,7 @@ export function AgentSettingsPanel({ vm }: { vm: AgentSettingsVM }) {
         toast({ variant: "danger", title: "Could not change the switch", description: res.message });
         return;
       }
-      toast({ variant: "success", title: `Agent ${key} ${next ? "on" : "off"}` });
+      toast({ variant: "success", title: `${label} is ${next ? "on" : "off"}` });
       router.refresh();
     });
   }
@@ -103,7 +108,7 @@ export function AgentSettingsPanel({ vm }: { vm: AgentSettingsVM }) {
             <Badge variant={flags[f.key] ? "success" : "neutral"} dot>
               {flags[f.key] ? "On" : "Off"}
             </Badge>
-            <Button type="button" size="sm" variant="secondary" className="ml-auto" loading={flagPending} onClick={() => flip(f.key)}>
+            <Button type="button" size="sm" variant="secondary" className="ml-auto" loading={flagPending && flipping === f.key} disabled={flagPending} onClick={() => flip(f.key)}>
               {flags[f.key] ? "Turn off" : "Turn on"}
             </Button>
             <p className="w-full text-xs text-slate">{f.help}</p>

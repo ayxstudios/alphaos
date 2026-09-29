@@ -23,8 +23,11 @@ function LoadBar({ d }: { d: DesignerLoad }) {
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between gap-2 text-xs">
-        <span className={cn("tabular-nums", d.overCapacity ? "font-medium text-rose" : "text-ink")}>
-          {d.openLoad} / {d.limit}
+        <span
+          className={cn("tabular-nums", d.overCapacity ? "font-medium text-rose" : "text-ink")}
+          title="Open orders against their limit (the tighter of the weekly limit and the most they may hold at once)"
+        >
+          {d.openLoad} of {d.limit} open
         </span>
         <span className="text-slate">{Math.round(d.utilisation * 100)}%</span>
       </div>
@@ -108,7 +111,9 @@ function Styles({ styles }: { styles: string[] }) {
 }
 
 function Status({ d }: { d: DesignerLoad }) {
-  const s = STATUS[d.status];
+  // At the limit exactly is not "over", but nothing new can go to them: say so.
+  const full = d.status === "available" && d.limit > 0 && d.openLoad >= d.limit;
+  const s = full ? { label: "Full", variant: "warning" as const } : STATUS[d.status];
   return (
     <div className="flex flex-col items-start gap-1">
       <Badge variant={s.variant} dot>{s.label}</Badge>

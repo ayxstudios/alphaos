@@ -25,6 +25,7 @@ const KIND_LABELS: Record<string, string> = {
   email_send_failed: "Email failed to send",
   legacy_order: "Order not in AlphaOS",
   new_product: "New product",
+  ai_designer_failed: "AI portrait failed",
 };
 
 /** The one thing to do, as a short imperative; `to` is where the primary button goes. */
@@ -32,8 +33,9 @@ const TODO: Record<string, { line: string; button?: string; to?: "order" | "mess
   photo_count_mismatch: { line: "Ask the buyer for one more photo.", button: "Open order", to: "order" },
   intake_unparsed: { line: "Fill in the order details.", button: "Open order", to: "order" },
   no_eligible_designer: { line: "Pick a designer for this order.", button: "Open order", to: "order" },
-  reply_unclear: { line: "Ask the buyer if they approve or want changes.", button: "Open messages", to: "messages" },
-  buyer_question: { line: "Answer the buyer's question.", button: "Open messages", to: "messages" },
+  // The buyer's thread lives on the order page (Email customer), so a reply on a known order opens the order.
+  reply_unclear: { line: "Ask the buyer if they approve or want changes.", button: "Open order", to: "order" },
+  buyer_question: { line: "Answer the buyer's question.", button: "Open order", to: "order" },
   unmatched_reply: { line: "Find the order this email belongs to.", button: "Open messages", to: "messages" },
   email_send_failed: { line: "Fix the address, then retry the email.", button: "Open messages", to: "messages" },
   legacy_order: { line: "Check Trello, then confirm the order below." },
@@ -57,11 +59,41 @@ function ago(value: Date | string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+
+/**
+ * Any detail value as plain words, never raw JSON: a date reads as a date, a
+ * list as a comma list, an object as "Key: value" pairs. Nested shapes the
+ * agent writes (a designer roster, Etsy variations) read as one line each.
+ */
 function valueText(v: unknown): string {
-  if (v === null || v === undefined) return "none";
-  if (typeof v === "string") return v;
-  if (typeof v === "number" || typeof v === "boolean") return String(v);
-  return JSON.stringify(v);
+  if (v === null || v === undefined || v === "") return "none";
+  if (typeof v === "string") return ISO_RE.test(v) ? formatAt(v, { dateStyle: "medium", timeStyle: "short" }) : v;
+  if (typeof v === "number") return Number.isInteger(v) ? String(v) : String(Math.round(v * 100) / 100);
+  if (typeof v === "boolean") return v ? "yes" : "no";
+  if (Array.isArray(v)) return v.length ? v.map(valueText).join("; ") : "none";
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    // Roster line: "Mia Designer: does not do renaissance"
+    if (typeof o.name === "string" && Array.isArray(o.blockers)) {
+      return `${o.name}: ${o.blockers.length ? o.blockers.map(valueText).join(", ") : "free"}`;
+    }
+    // Etsy variation: "Vibe Zzz Unknown Flavour"
+    if (typeof o.formatted_name === "string") return `${o.formatted_name} ${valueText(o.formatted_value)}`;
+    if (typeof o.title === "string" && Array.isArray(o.variations)) {
+      return o.variations.length ? `${o.title} (${o.variations.map(valueText).join(", ")})` : o.title;
+    }
+    const parts = Object.entries(o)
+      .filter(([k, x]) => !isInternalKey(k) && x !== null && x !== undefined && x !== "")
+      .map(([k, x]) => `${keyLabel(k)}: ${valueText(x)}`);
+    return parts.length ? parts.join("; ") : "none";
+  }
+  return String(v);
+}
+
+/** Ids and machine keys a person never needs to read. */
+function isInternalKey(key: string): boolean {
+  return /(^id$|Id$|_id$)/.test(key);
 }
 
 function detailString(detail: unknown, key: string): string {
@@ -111,7 +143,7 @@ function SuggestionBlock({ detail }: { detail: unknown }) {
 function DetailList({ detail }: { detail: unknown }) {
   const obj = detail && typeof detail === "object" && !Array.isArray(detail) ? (detail as Record<string, unknown>) : {};
   // The suggestion has its own block above the card details.
-  const entries = Object.entries(obj).filter(([k]) => k !== "suggested");
+  const entries = Object.entries(obj).filter(([k]) => k !== "suggested" && !isInternalKey(k));
   if (entries.length === 0) return <p className="text-sm text-slate">No extra details.</p>;
   return (
     <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[10rem_1fr]">
@@ -165,7 +197,7 @@ export default async function ExceptionsPage() {
     resolutionNote: exceptions.resolutionNote,
     businessId: exceptions.businessId,
     orderId: exceptions.orderId,
-    orderName: orders.platformOrderName,
+    orderName: sql<string | null>`coalesce(${orders.platformOrderName}, ${orders.platformOrderId})`,
     businessName: businesses.name,
   };
   const [open, resolved] = await withUserContext(user, async (tx) =>
@@ -255,14 +287,21 @@ export default async function ExceptionsPage() {
                   />
                 )}
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  {TODO[row.kind]?.button && (TODO[row.kind].to === "messages" || row.orderId) && (
-                    <Link
-                      href={TODO[row.kind].to === "messages" ? "/emails" : `/orders/${row.orderId}`}
-                      className="inline-flex min-h-11 items-center rounded-input bg-pigment px-4 text-sm font-medium text-surface hover:opacity-90"
-                    >
-                      {TODO[row.kind].button}
-                    </Link>
-                  )}
+                  {(() => {
+                    const todo = TODO[row.kind];
+                    if (!todo?.button) return null;
+                    // No order on the card: the message is the only place to act on it.
+                    const toOrder = todo.to === "order" && row.orderId;
+                    if (todo.to === "order" && !row.orderId && row.kind !== "reply_unclear" && row.kind !== "buyer_question") return null;
+                    return (
+                      <Link
+                        href={toOrder ? `/orders/${row.orderId}` : "/emails"}
+                        className="inline-flex min-h-11 items-center rounded-input bg-pigment px-4 text-sm font-medium text-surface hover:opacity-90"
+                      >
+                        {toOrder ? todo.button : "Open messages"}
+                      </Link>
+                    );
+                  })()}
                   <ResolveButton id={row.id} />
                 </div>
               </DataPanel>

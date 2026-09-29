@@ -167,9 +167,12 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
 
   const needsYou = item.status === "failed";
   const who = item.customerName ?? item.toAddress ?? "the customer";
-  const lead = item.handedToHuman
-    ? `Email to ${who} failed after ${item.retryAttempts} retries. Check the address, then retry it.`
-    : `Email to ${who} did not send. Retry it.`;
+  // One plain to-do line: what went wrong and the one thing to do next.
+  const lead = !item.toAddress
+    ? `Email to ${who} has no address. Add one on the order, then retry.`
+    : item.handedToHuman
+      ? `Email to ${who} did not send${item.retryAttempts > 0 ? ` after ${item.retryAttempts} ${item.retryAttempts === 1 ? "retry" : "retries"}` : ""}. Check the address, then retry it.`
+      : `Email to ${who} did not send. Retry it.`;
 
   return (
     <div className="px-4 py-3">
@@ -182,19 +185,17 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
       <button type="button" onClick={() => setOpen((o) => !o)} className="-my-3 flex w-full flex-wrap items-center gap-2 py-3 text-left">
         {item.templateLabel && <Badge variant="info">{item.templateLabel}</Badge>}
         {queued && <Badge variant="warning" dot>Sending soon</Badge>}
-        {item.status === "failed" && <Badge variant="danger" dot>Failed</Badge>}
         {item.skippedReason && <Badge variant="warning" dot>Skipped</Badge>}
         {item.orderFinished && <Badge variant="warning" dot>Order {item.orderFinished}</Badge>}
         <span className="min-w-0 truncate text-sm font-medium text-ink">{item.subject || "(no subject)"}</span>
         <span className="w-full text-xs text-slate sm:ml-auto sm:w-auto">
-          {item.customerName ?? item.toAddress ?? "-"}
-          {item.orderNumber ? ` · ${item.orderNumber}` : ""} · {fmtDateTime(item.createdAt)}
+          {[item.customerName ?? item.toAddress ?? "No address", item.orderNumber, fmtDateTime(item.createdAt)].filter(Boolean).join(" · ")}
         </span>
       </button>
       {open && (
         <div className="mt-3">
           <div className="rounded-input border border-line bg-canvas p-3 text-sm">
-            <p className="text-xs text-slate">To: <span className="text-ink">{item.toAddress ?? "-"}</span></p>
+            <p className="text-xs text-slate">To: <span className="text-ink">{item.toAddress ?? "No address yet"}</span></p>
             <p className="text-xs text-slate">Subject: <span className="font-medium text-ink">{item.subject}</span></p>
           </div>
           {item.status === "failed" && item.error && <p className="mt-2 text-xs text-rose">Last error: {item.error}</p>}
@@ -222,20 +223,20 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
               </Button>
             )}
             {item.orderId && <Link href={`/orders/${item.orderId}`} className="inline-flex min-h-11 items-center text-sm font-medium text-pigment hover:text-ink sm:min-h-0">Open order</Link>}
-            {!queued && !manualSent && <Button type="button" size="sm" variant="ghost" onClick={() => setManualSent(true)}>Mark sent manually</Button>}
+            {!queued && !manualSent && <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => setManualSent(true)}>Mark sent manually</Button>}
             {!discarding ? (
               <Button type="button" size="sm" variant="ghost" className="ml-auto" onClick={() => setDiscarding(true)}>Discard</Button>
             ) : (
               <div className="ml-auto flex items-center gap-2">
                 <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why discard it?" aria-label="Why discard it" className="h-8 w-48" />
-                <Button type="button" size="sm" variant="danger" disabled={!reason.trim()} onClick={() => run(() => discardDraft(item.messageId, reason))}>Confirm</Button>
+                <Button type="button" size="sm" variant="danger" loading={pending} disabled={!reason.trim()} onClick={() => run(() => discardDraft(item.messageId, reason))}>Confirm</Button>
               </div>
             )}
           </div>
           {manualSent && (
             <div className="mt-2 flex flex-wrap items-center gap-2 rounded-input border border-line bg-canvas p-2">
               <Input value={manualReason} onChange={(e) => setManualReason(e.target.value)} placeholder="How was it sent? e.g. from Etsy" aria-label="How was it sent" className="h-8 w-72 max-w-full" />
-              <Button type="button" size="sm" disabled={!manualReason.trim()} onClick={() => run(() => markEmailSentManually(item.messageId, manualReason))}>Confirm manual send</Button>
+              <Button type="button" size="sm" loading={pending} disabled={!manualReason.trim()} onClick={() => run(() => markEmailSentManually(item.messageId, manualReason))}>Confirm manual send</Button>
             </div>
           )}
         </div>
@@ -316,7 +317,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
                   <div key={o.orderId} className="flex items-center gap-2 px-3 py-2 text-sm">
                     <span className="min-w-0 truncate text-ink">{o.orderNumber}</span>
                     {o.customerName && <span className="text-xs text-slate">{o.customerName}</span>}
-                    <Button type="button" size="sm" variant="secondary" className="ml-auto" onClick={() => run(() => linkReplyToOrder(reply.messageId, o.orderId))}>Link</Button>
+                    <Button type="button" size="sm" variant="secondary" className="ml-auto" disabled={pending} onClick={() => run(() => linkReplyToOrder(reply.messageId, o.orderId))}>Link</Button>
                   </div>
                 ))}
               </div>
@@ -324,8 +325,8 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
           </div>
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
             <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason, e.g. not a customer" aria-label="Why archive it" className="h-11 w-full sm:h-8 sm:w-56" />
-            <Button type="button" size="sm" variant="ghost" disabled={!reason.trim()} onClick={() => run(() => archiveReply(reply.messageId, reason))}>Archive</Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => run(() => ignoreSenderFromMessage(reply.messageId))}>Ignore sender</Button>
+            <Button type="button" size="sm" variant="ghost" disabled={!reason.trim() || pending} onClick={() => run(() => archiveReply(reply.messageId, reason))}>Archive</Button>
+            <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => run(() => ignoreSenderFromMessage(reply.messageId))}>Ignore sender</Button>
           </div>
         </div>
       )}
@@ -334,7 +335,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
 }
 
 function IgnoredSenderRow({ sender }: { sender: IgnoredSender }) {
-  const { run } = useActionRunner();
+  const { run, pending } = useActionRunner();
   return (
     <div className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm">
       <Badge variant={sender.active ? "warning" : "neutral"}>{sender.active ? "Ignored" : "Restored"}</Badge>
@@ -343,7 +344,7 @@ function IgnoredSenderRow({ sender }: { sender: IgnoredSender }) {
         <span className="text-xs text-slate">{sender.matchType === "domain" ? "whole domain" : "any address containing this"}</span>
       )}
       {sender.active && (
-        <Button type="button" size="sm" variant="ghost" className="ml-auto" onClick={() => run(() => removeIgnoredSender(sender.id))}>
+        <Button type="button" size="sm" variant="ghost" className="ml-auto" loading={pending} onClick={() => run(() => removeIgnoredSender(sender.id))}>
           Restore sender
         </Button>
       )}

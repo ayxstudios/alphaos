@@ -199,6 +199,12 @@ export async function runStep(h: Hooks, step: TourStep, open = false): Promise<v
     // A busy server can take a while to answer the menu press: wait for the page itself.
     await waitFor(h, () => location.pathname === step.path, 60000);
     await waitFor(h, () => pageReady(step.path, before), 15000);
+  } else {
+    // Already on the page, but the last press may still be painting it (a
+    // slow server streams the Day queue in late): let the real content land
+    // before the short grace below, or a present card was taken for an empty
+    // queue and the person was told to tap the page they are on.
+    await waitFor(h, () => pageReady(step.path), 15000);
   }
 
   // The first act the page can do right now (short grace for late content).
@@ -215,7 +221,9 @@ export async function runStep(h: Hooks, step: TourStep, open = false): Promise<v
   const got = await waitFor(h, pick, walked || open ? 3000 : 1200);
   if (!got) {
     // Nothing to act on here. Just walked in with the menu: that was the step.
-    if (walked) return;
+    // Already standing on the page (no cards of this kind today): pressing its
+    // menu item would change nothing, so there is nothing to point at.
+    if (walked || (!open && location.pathname === step.path)) return;
     for (const link of navLinks(step)) await h.point({ ...link, line: link.kind === "nav" ? step.nav.say : link.line });
     return;
   }

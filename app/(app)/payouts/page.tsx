@@ -177,7 +177,7 @@ export default async function PayoutsPage({
           <a
             href={`/payouts/export?${qs.toString()}`}
             download
-            className="inline-flex h-10 items-center justify-center rounded-input bg-surface px-4 text-sm font-medium text-ink shadow-card transition-colors hover:bg-canvas"
+            className="inline-flex h-11 items-center justify-center rounded-input bg-surface px-4 lg:h-10 text-sm font-medium text-ink shadow-card transition-colors hover:bg-canvas"
           >
             Export CSV
           </a>
@@ -205,7 +205,7 @@ export default async function PayoutsPage({
             {blocked.map((row) => (
               <div key={row.id} className="grid grid-cols-1 gap-2 px-4 py-3 text-sm lg:grid-cols-[1fr_1fr_auto_auto] lg:items-center">
                 <div>
-                  <Link href={`/orders/${row.orderId}`} className="font-medium text-ink hover:text-pigment">
+                  <Link href={`/orders/${row.orderId}`} className="-my-3 inline-flex min-h-11 items-center font-medium text-ink hover:text-pigment lg:my-0 lg:min-h-0">
                     {row.orderNumber}
                   </Link>
                   <p className="text-xs text-slate">{row.designerName} · {styleSummary(row.breakdown)}</p>
@@ -300,7 +300,7 @@ export default async function PayoutsPage({
               // Phone: order and amount on one line, the details under them, then the status.
               <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 px-4 py-3 text-sm lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_7rem_5rem_15rem] lg:items-center lg:gap-2">
                 <div>
-                  <Link href={`/orders/${row.orderId}`} className="font-medium text-ink hover:text-pigment">
+                  <Link href={`/orders/${row.orderId}`} className="-my-3 inline-flex min-h-11 items-center font-medium text-ink hover:text-pigment lg:my-0 lg:min-h-0">
                     {row.orderNumber}
                   </Link>
                   <p className="text-xs text-slate">{formatDate(row.createdAt)}</p>
@@ -334,7 +334,7 @@ export default async function PayoutsPage({
             {voided.map((row) => (
               <div key={row.id} className="grid grid-cols-1 gap-2 px-4 py-3 text-sm md:grid-cols-[1fr_1fr_auto] md:items-center">
                 <div>
-                  <Link href={`/orders/${row.orderId}`} className="font-medium text-ink hover:text-pigment">
+                  <Link href={`/orders/${row.orderId}`} className="-my-3 inline-flex min-h-11 items-center font-medium text-ink hover:text-pigment lg:my-0 lg:min-h-0">
                     {row.orderNumber}
                   </Link>
                   <p className="text-xs text-slate">{row.designerName} · {formatDate(row.voidedAt)}</p>
