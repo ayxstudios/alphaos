@@ -220,7 +220,7 @@ export function AgentSettingsPanel({ vm }: { vm: AgentSettingsVM }) {
         })}
       </Card>
 
-      <div className="sticky bottom-20 z-10 lg:static">
+      <div className="sticky bottom-20 z-10 -mx-4 bg-gradient-to-t from-canvas via-canvas/95 to-transparent px-4 pb-2 pt-6 sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:bg-none lg:p-0">
         <Button type="button" className="w-full sm:w-auto" loading={pending} onClick={save}>
           Save agent settings
         </Button>

@@ -48,7 +48,7 @@ export function SetupChecklist({
               <AlertTriangle size={15} className="shrink-0 text-amber" />
             )}
             <span className={item.ok ? "text-ink" : "font-medium text-ink"}>{item.label}</span>
-            <span className="truncate text-xs text-slate">{item.ok ? item.detail : item.action}</span>
+            <span className="min-w-0 text-xs text-slate sm:truncate">{item.ok ? item.detail : item.action}</span>
           </Link>
         ))}
       </div>
