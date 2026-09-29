@@ -26,7 +26,7 @@ import {
   sendDesignerReassigned,
   sendVaAttention,
 } from "@/lib/notifications/designer-events";
-import { assets, assignments, activityLog, notificationFires, orderItems, orders } from "@/lib/db/schema";
+import { assets, assignments, activityLog, designerProfiles, notificationFires, orderItems, orders } from "@/lib/db/schema";
 import { ALERT_TYPES } from "./types";
 
 const HOUR = 60 * 60 * 1000;
@@ -68,9 +68,12 @@ async function loadInDesignAssignments(tx: Tx, now: Date): Promise<AssignmentRow
     })
     .from(assignments)
     .innerJoin(orders, eq(orders.id, assignments.orderId))
+    .innerJoin(designerProfiles, eq(designerProfiles.userId, assignments.designerId))
     .where(
       and(
         eq(assignments.active, true),
+        // The AI Studio agent is never nudged or auto-reassigned by the 24h/48h sweep.
+        eq(designerProfiles.isAgent, false),
         eq(orders.status, "in_design"),
         lte(assignments.assignedAt, new Date(now.getTime() - NUDGE_AFTER_MS)),
         liveOrderWhere(),

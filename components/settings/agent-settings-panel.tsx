@@ -45,6 +45,8 @@ export function AgentSettingsPanel({ vm }: { vm: AgentSettingsVM }) {
   const [overrides, setOverrides] = useState<PrintRoutingOverride[]>(vm.printMix.overrides);
   const [threshold, setThreshold] = useState(String(Math.round(vm.replyConfidenceThreshold * 100)));
   const [auto, setAuto] = useState<Set<AutoSendTemplateKey>>(new Set(vm.autoSendTemplates));
+  const [autoReplies, setAutoReplies] = useState(vm.autoSendReplies);
+  const [ownerApproval, setOwnerApproval] = useState(vm.aiOwnerApproval);
 
   const on = FLAGS.filter((f) => flags[f.key]).map((f) => f.label.toLowerCase());
   const thresholdNum = Number(threshold);
@@ -77,6 +79,8 @@ export function AgentSettingsPanel({ vm }: { vm: AgentSettingsVM }) {
         printMix: { defaultProvider: provider, overrides: overrides.filter((o) => o.productType?.trim() || o.size?.trim()) },
         replyConfidenceThreshold: thresholdNum / 100,
         autoSendTemplates: [...auto],
+        autoSendReplies: autoReplies,
+        aiOwnerApproval: ownerApproval,
       });
       toast(res.ok ? { variant: "success", title: "Agent settings saved" } : { variant: "danger", title: "Not saved", description: res.message });
       if (res.ok) router.refresh();
@@ -218,6 +222,26 @@ export function AgentSettingsPanel({ vm }: { vm: AgentSettingsVM }) {
             </label>
           );
         })}
+      </Card>
+
+      <Card title="Email replies" help="When the agent answers a buyer, it can send the reply itself or leave it as a draft for you.">
+        <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-input bg-canvas/70 px-3 py-2">
+          <Checkbox checked={autoReplies} onChange={(e) => setAutoReplies(e.currentTarget.checked)} />
+          <span className="text-sm font-medium text-ink">Send my email replies automatically</span>
+        </label>
+      </Card>
+
+      <Card
+        title="AI designer"
+        help="The AI designer is switched on per product (each style has an AI designer switch and a framework). Orders for those products go to the AI Studio designer instead of a person, then through QC like any other portrait."
+      >
+        <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-input bg-canvas/70 px-3 py-2">
+          <Checkbox checked={ownerApproval} onChange={(e) => setOwnerApproval(e.currentTarget.checked)} />
+          <span className="text-sm font-medium text-ink">I approve each AI portrait before it goes out</span>
+        </label>
+        <p className="text-xs text-slate">
+          While this is on, an AI portrait that passes QC waits for your approval and the buyer gets nothing until you approve it. Turn it off and it goes to the buyer straight after QC.
+        </p>
       </Card>
 
       <div className="sticky bottom-20 z-10 -mx-4 bg-gradient-to-t from-canvas via-canvas/95 to-transparent px-4 pb-2 pt-6 sm:-mx-6 sm:px-6 lg:static lg:mx-0 lg:bg-none lg:p-0">

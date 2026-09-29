@@ -30,6 +30,8 @@ export const AGENT_CONFIG_DEFAULTS: AgentConfig = {
   channels: {},
   mailbox: {},
   autoSendTemplates: [],
+  autoSendReplies: true,
+  aiOwnerApproval: true,
 };
 
 function num(v: unknown, min: number, max: number, fallback: number): number {
@@ -77,6 +79,8 @@ export function getAgentConfig(business: { agentConfig?: unknown } | null | unde
     channels: cleanChannels(raw.channels),
     mailbox: cleanMailbox(raw.mailbox),
     autoSendTemplates: cleanAutoSend(raw.autoSendTemplates),
+    autoSendReplies: raw.autoSendReplies !== false,
+    aiOwnerApproval: raw.aiOwnerApproval !== false,
   };
 }
 
@@ -96,6 +100,10 @@ export type AgentSettings = {
   printMix: { defaultProvider: PrintRoutingProvider; overrides: PrintRoutingOverride[] };
   replyConfidenceThreshold: number;
   autoSendTemplates: AutoSendTemplateKey[];
+  /** 'Send my email replies automatically' (default on). */
+  autoSendReplies: boolean;
+  /** 'I approve each AI portrait before it goes out' (default on). */
+  aiOwnerApproval: boolean;
 };
 
 export type AgentSettingsPatch = Partial<{
@@ -105,6 +113,8 @@ export type AgentSettingsPatch = Partial<{
   printMix: { defaultProvider?: PrintRoutingProvider; overrides?: PrintRoutingOverride[] };
   replyConfidenceThreshold: number;
   autoSendTemplates: string[];
+  autoSendReplies: boolean;
+  aiOwnerApproval: boolean;
 }>;
 
 /** Shape a businesses row + its active shop platforms into the settings view. Pure. */
@@ -141,6 +151,8 @@ export function buildAgentSettings(
     printMix: { defaultProvider: rule.default, overrides: rule.overrides },
     replyConfidenceThreshold: cfg.replyConfidenceThreshold,
     autoSendTemplates: cfg.autoSendTemplates as AutoSendTemplateKey[],
+    autoSendReplies: cfg.autoSendReplies,
+    aiOwnerApproval: cfg.aiOwnerApproval,
   };
 }
 
@@ -197,6 +209,8 @@ export async function saveAgentSettings(tx: Tx, businessId: string, patch: Agent
     next.replyConfidenceThreshold = Math.round(t * 100) / 100;
   }
   if (patch.autoSendTemplates) next.autoSendTemplates = cleanAutoSend(patch.autoSendTemplates);
+  if (typeof patch.autoSendReplies === "boolean") next.autoSendReplies = patch.autoSendReplies;
+  if (typeof patch.aiOwnerApproval === "boolean") next.aiOwnerApproval = patch.aiOwnerApproval;
   set.agentConfig = next as AgentConfigInput;
   if (patch.printMix) {
     const rule = parsePrintRouting(biz.printRouting);

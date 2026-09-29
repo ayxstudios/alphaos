@@ -32,6 +32,7 @@ import {
 } from "@/lib/orders/transitions";
 import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
 import { qcPassEmailInFlight } from "@/lib/qc/send-guard";
+import { holdForOwnerReview, ownerReviewRequired } from "@/lib/agent/ai-designer";
 import { generateProofToken } from "@/lib/proofs/tokens";
 import { proofUrl } from "@/lib/urls";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
@@ -267,8 +268,12 @@ export async function confirmQcPassAndSend(input: {
         },
       })
       .returning({ id: messages.id });
+    // AI portraits wait for the owner (aiOwnerApproval): the pass is recorded
+    // and the order moves on, but the proof email is held as a draft.
+    const hold = await ownerReviewRequired(tx, ctx.order.id, ctx.order.businessId);
     return {
       ok: true as const,
+      hold,
       messageId: message.id,
       businessId: ctx.order.businessId,
       orderId: ctx.order.id,
@@ -279,10 +284,12 @@ export async function confirmQcPassAndSend(input: {
 
   if (!prepared.ok) return prepared;
 
-  const sent = await sendMessage(prepared.messageId, {
-    approvedById: user.id,
-    markRetryableFailed: true,
-  });
+  const sent = prepared.hold
+    ? ({ ok: true } as const)
+    : await sendMessage(prepared.messageId, {
+        approvedById: user.id,
+        markRetryableFailed: true,
+      });
   if (!sent.ok) {
     await withUserContext(user, async (tx) => {
       await notifyVaEmailFailure(tx, {
@@ -316,6 +323,13 @@ export async function confirmQcPassAndSend(input: {
       expectedFrom: input.expectedFrom,
       metadata: { itemResults: input.itemResults, signature: input.signature, via: "qc_email_send", messageId: prepared.messageId },
     });
+    if (prepared.hold) {
+      await withUserContext(user, (tx) =>
+        holdForOwnerReview(tx, { orderId: prepared.orderId, businessId: prepared.businessId, messageId: prepared.messageId, byUserId: user.id }),
+      );
+      revalidate(input.orderId);
+      return { ok: true, status };
+    }
     await withUserContext(user, async (tx) => {
       await tx.update(proofs).set({ sentAt: new Date() }).where(eq(proofs.id, prepared.proofId));
       await tx.insert(activityLog).values({

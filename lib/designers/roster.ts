@@ -38,6 +38,7 @@ const railDesignersCached = cache(
           users,
           and(eq(users.id, designerProfiles.userId), eq(users.active, true), eq(users.role, "designer")),
         )
+        .where(eq(designerProfiles.isAgent, false))
         .orderBy(asc(designerProfiles.rank), asc(users.name));
 
       if (!roster.length) return [];
@@ -115,6 +116,7 @@ export async function getDesignerRoster(user: RequestUser): Promise<DesignerRow[
         users,
         and(eq(users.id, designerProfiles.userId), eq(users.active, true), eq(users.role, "designer")),
       )
+      .where(eq(designerProfiles.isAgent, false))
       .orderBy(asc(designerProfiles.rank), asc(users.name));
 
     if (!roster.length) return [];

@@ -406,6 +406,10 @@ export const designerProfiles = pgTable("designer_profiles", {
   quietStart: text("quiet_start"),
   quietEnd: text("quiet_end"),
   maxActiveOrders: integer("max_active_orders").notNull().default(0),
+  // The business's "AI Studio" agent designer. Never ranked, never counted in
+  // human capacity, never sent a brief; work reaches it through the agent
+  // jobs API (lib/agent/ai-designer.ts).
+  isAgent: boolean("is_agent").notNull().default(false),
   createdAt: createdAt(),
 });
 
@@ -450,6 +454,10 @@ export const styles = pgTable(
     // a blocked earning rather than silently paying zero.
     perFigureRate: numeric("per_figure_rate", { precision: 10, scale: 2 }),
     isDefault: boolean("is_default").notNull().default(false),
+    // Orders for this style go to the AI Studio agent designer instead of a
+    // human. aiFramework names the agent's drawing recipe (e.g. pixart-disney-pet).
+    aiDesignerEnabled: boolean("ai_designer_enabled").notNull().default(false),
+    aiFramework: text("ai_framework"),
     createdAt: createdAt(),
   },
   (t) => [
@@ -588,6 +596,11 @@ export const orders = pgTable(
     // for customer history/search, excluded from active operations and alerts.
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     archiveReason: text("archive_reason"),
+    // Where an AI-designer order is in the agent loop: queued | claimed |
+    // revision | revision_claimed | qc | owner_review | with_buyer. Null for
+    // human orders. Only meaningful while the active assignment is the agent.
+    aiState: text("ai_state"),
+    aiClaimedAt: timestamp("ai_claimed_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()

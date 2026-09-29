@@ -12,6 +12,7 @@ import {
 } from "@/lib/db/schema";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { sendDesignerBrief } from "@/lib/notifications/designer-events";
+import { findStyle, getAgentDesignerId, markQueuedForAgent } from "@/lib/agent/ai-core";
 
 export const DESIGNER_SLA_HOURS = 24;
 
@@ -52,12 +53,20 @@ export async function createAssignment(
     })
     .returning({ id: assignments.id });
 
-  await sendDesignerBrief(tx, {
-    orderId: input.orderId,
-    designerId: input.designerId,
-    dueAt,
-    reason: input.reason ?? null,
-  });
+  // The AI Studio agent has no phone or chat: it reads its jobs from the API.
+  const [profile] = await tx
+    .select({ isAgent: designerProfiles.isAgent })
+    .from(designerProfiles)
+    .where(eq(designerProfiles.userId, input.designerId))
+    .limit(1);
+  if (!profile?.isAgent) {
+    await sendDesignerBrief(tx, {
+      orderId: input.orderId,
+      designerId: input.designerId,
+      dueAt,
+      reason: input.reason ?? null,
+    });
+  }
 
   return { assignmentId: row.id, dueAt };
 }
@@ -154,6 +163,8 @@ export async function loadRankedCandidates(
     .where(
       and(
         eq(designerBusinesses.businessId, input.businessId),
+        // The AI Studio agent is never a human candidate and never uses human capacity.
+        eq(designerProfiles.isAgent, false),
         ...(input.excludeDesignerId ? [ne(designerProfiles.userId, input.excludeDesignerId)] : []),
       ),
     );
@@ -234,6 +245,27 @@ export async function runAutoAssign(
     .where(eq(orderItems.orderId, order.orderId))
     .limit(1);
   const style = item?.style ?? null;
+
+  // A product with the AI designer switched on goes to the agent, not a human.
+  const styleRow = await findStyle(tx, order.businessId, style);
+  if (styleRow?.aiDesignerEnabled) {
+    const agentId = await getAgentDesignerId(tx, order.businessId);
+    if (agentId) {
+      await createAssignment(tx, {
+        orderId: order.orderId,
+        businessId: order.businessId,
+        designerId: agentId,
+        assignedBy: order.assignedBy,
+      });
+      await markQueuedForAgent(tx, {
+        orderId: order.orderId,
+        businessId: order.businessId,
+        byUserId: order.assignedBy,
+        via: "auto_assign",
+      });
+      return { assigned: agentId };
+    }
+  }
 
   const ranked = await loadRankedCandidates(tx, { businessId: order.businessId, style });
   if (!ranked.length) return { assigned: null };

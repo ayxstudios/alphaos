@@ -30,4 +30,11 @@ export type AgentConfigInput = {
    * default, empty list) is a draft for one-tap approval (docs/AGENT_FIRST.md 5).
    */
   autoSendTemplates?: string[];
+  /** Send the agent's buyer email replies without a human tap. Default true. */
+  autoSendReplies?: boolean;
+  /**
+   * Hold each AI-designer portrait for the owner after QC passes; the proof
+   * email goes out only once the owner approves it. Default true.
+   */
+  aiOwnerApproval?: boolean;
 };

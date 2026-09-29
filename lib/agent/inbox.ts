@@ -620,7 +620,15 @@ async function reminderStep(
     const waiting = await tx
       .select({ id: orders.id })
       .from(orders)
-      .where(and(eq(orders.businessId, businessId), eq(orders.status, "awaiting_approval"), liveOrderWhere()))
+      .where(
+        and(
+          eq(orders.businessId, businessId),
+          eq(orders.status, "awaiting_approval"),
+          liveOrderWhere(),
+          // An AI portrait held for the owner has no sent proof to remind about.
+          sql`${orders.aiState} is distinct from 'owner_review'`,
+        ),
+      )
       .orderBy(asc(orders.createdAt))
       .limit(BATCH);
     if (!waiting.length) return [];

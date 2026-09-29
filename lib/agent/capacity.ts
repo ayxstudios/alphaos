@@ -77,7 +77,7 @@ export async function loadCapacityModel(
     .from(designerBusinesses)
     .innerJoin(users, and(eq(users.id, designerBusinesses.userId), eq(users.role, "designer")))
     .innerJoin(designerProfiles, eq(designerProfiles.userId, designerBusinesses.userId))
-    .where(eq(designerBusinesses.businessId, businessId))
+    .where(and(eq(designerBusinesses.businessId, businessId), eq(designerProfiles.isAgent, false)))
     .orderBy(designerProfiles.rank, users.name);
   if (!roster.length) return { businessId, designers: [] };
   const ids = roster.map((r) => r.designerId);

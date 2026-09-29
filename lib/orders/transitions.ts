@@ -23,6 +23,7 @@ import {
   type ChecklistSnapshot,
   type ItemResults,
 } from "@/lib/qc/checklist";
+import { onRevisionEdge } from "@/lib/agent/ai-core";
 import { runAutoAssign } from "./assign";
 import { SENT_BACK_FROM } from "./board-constants";
 import { prepareProofForApproval, queueStageEmail } from "@/lib/email/dispatch";
@@ -268,10 +269,19 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
   if (to === "ready_to_assign") {
     await runAutoAssign(tx, { orderId, businessId: order.businessId, assignedBy: actor.role === "system" ? null : actor.id });
   }
+  let aiRevision = false;
+  if (edge.revision) {
+    aiRevision = await onRevisionEdge(tx, {
+      orderId,
+      businessId: order.businessId,
+      from: order.status,
+      revisionCount: order.revisionCount + 1,
+    });
+  }
   if (qc) await insertQc(tx, order, actor, qc);
   // QC fail -> tell the assigned designer exactly what to fix (Alpha event
   // designer.qc_feedback), reading the qc_checks row just inserted above.
-  if (qc && qc.result === "fail") await sendQcFeedback(tx, { orderId: order.id });
+  if (qc && qc.result === "fail" && !aiRevision) await sendQcFeedback(tx, { orderId: order.id });
   // Earnings only for design completions. Non-portrait completes never pay
   // (and have no assignment anyway — createEarnings is a double safeguard).
   if (to === "complete" && !nonPortraitComplete) await createEarningForCompletion(tx, order.id, order.businessId);
