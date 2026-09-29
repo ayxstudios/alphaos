@@ -49,17 +49,50 @@ function keyLabel(key: string): string {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
+/**
+ * The agent's suggestion as one plain sentence. `suggested` is either a
+ * sentence already (inbox: reply_unclear, buyer_question) or the parsed intake
+ * guess {figureCount, style, productType} (intake_unparsed). An object may
+ * also carry its own summary/text.
+ */
+function suggestionText(suggested: unknown): string | null {
+  if (suggested === null || suggested === undefined) return null;
+  if (typeof suggested === "string") return suggested.trim() || null;
+  if (typeof suggested !== "object" || Array.isArray(suggested)) return valueText(suggested);
+  const s = suggested as Record<string, unknown>;
+  for (const key of ["summary", "text"]) {
+    if (typeof s[key] === "string" && (s[key] as string).trim()) return (s[key] as string).trim();
+  }
+  const parts: string[] = [];
+  if (typeof s.figureCount === "number") parts.push(`${s.figureCount} ${s.figureCount === 1 ? "figure" : "figures"}`);
+  if (typeof s.style === "string" && s.style) parts.push(`${keyLabel(s.style)} style`);
+  if (typeof s.productType === "string" && s.productType) parts.push(`${s.productType} product`);
+  if (parts.length) return `Best guess from the order: ${parts.join(", ")}. Check it, then fill in the order details.`;
+  return null;
+}
+
+function SuggestionBlock({ detail }: { detail: unknown }) {
+  const obj = detail && typeof detail === "object" && !Array.isArray(detail) ? (detail as Record<string, unknown>) : {};
+  const text = suggestionText(obj.suggested);
+  if (!text) return null;
+  return (
+    <div className="rounded-card bg-pigment-soft px-3 py-2.5">
+      <p className="text-xs font-medium text-pigment">Agent suggests</p>
+      <p className="mt-0.5 break-words text-sm text-ink">{text}</p>
+    </div>
+  );
+}
+
 function DetailList({ detail }: { detail: unknown }) {
   const obj = detail && typeof detail === "object" && !Array.isArray(detail) ? (detail as Record<string, unknown>) : {};
-  const entries = Object.entries(obj);
-  // The agent's suggestion leads, labelled plainly.
-  entries.sort(([a], [b]) => (a === "suggested" ? -1 : b === "suggested" ? 1 : 0));
+  // The suggestion has its own block above the card details.
+  const entries = Object.entries(obj).filter(([k]) => k !== "suggested");
   if (entries.length === 0) return <p className="text-sm text-slate">No extra details.</p>;
   return (
     <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[10rem_1fr]">
       {entries.map(([k, v]) => (
         <div key={k} className="contents">
-          <dt className="font-medium text-ink">{k === "suggested" ? "Agent suggests" : keyLabel(k)}</dt>
+          <dt className="font-medium text-ink">{keyLabel(k)}</dt>
           <dd className="min-w-0 break-words text-slate">{valueText(v)}</dd>
         </div>
       ))}
@@ -83,7 +116,7 @@ type Row = {
 function OrderLink({ row }: { row: Row }) {
   if (!row.orderId) return null;
   return (
-    <Link href={`/orders/${row.orderId}`} className="font-medium text-pigment hover:underline">
+    <Link href={`/orders/${row.orderId}`} className="-my-2.5 inline-flex min-h-11 items-center font-medium text-pigment hover:underline">
       {row.orderName ?? "Order"}
     </Link>
   );
@@ -157,6 +190,7 @@ export default async function ExceptionsPage() {
                   </span>
                 </div>
                 <p className="text-sm text-ink">{row.summary}</p>
+                <SuggestionBlock detail={row.detail} />
                 <Disclosure summary="Details" className="shadow-none ring-1 ring-line/70">
                   <DetailList detail={row.detail} />
                 </Disclosure>
