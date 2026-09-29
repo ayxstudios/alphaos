@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 import { Button, ConfirmDrawer, Input, Badge, useToast } from "@/components/ui";
 import { ChevronDown } from "@/components/ui/icons";
@@ -277,6 +278,14 @@ export function GmailBusinessCard({ gmail }: { gmail: GmailBusinessVM }) {
             {!gmail.sendingEnabled && " Nothing sends while customer email sending is off."}
           </p>
         </div>
+
+        <p className="mb-4 text-xs text-slate">
+          The agent switches (intake, assignment, inbox) live in{" "}
+          <Link href="/settings?section=agent" className="-my-3 inline-flex min-h-11 items-center underline">
+            Settings &gt; Agent
+          </Link>{" "}
+          with the rest of the agent setup. They still work here too.
+        </p>
 
         {([
           {

@@ -23,6 +23,8 @@ type AppShellProps = {
   user: { name: string; email: string; role: Role };
   options: BusinessOption[];
   selected: BusinessOption;
+  /** Any agent switch on for the selected business: Day/Overview/Exceptions replace Today/QC. */
+  agentMode?: boolean;
   unread: number;
   recentNotifications: ShellData["recentNotifications"];
   initialCollapsed?: boolean;
@@ -35,6 +37,7 @@ export function AppShell({
   user,
   options,
   selected,
+  agentMode = false,
   unread,
   recentNotifications,
   initialCollapsed = false,
@@ -57,6 +60,7 @@ export function AppShell({
       <div className="hidden h-screen shrink-0 lg:block">
         <Sidebar
           role={user.role}
+          agentMode={agentMode}
           collapsed={collapsed}
           onToggle={toggleCollapsed}
         />
@@ -73,6 +77,7 @@ export function AppShell({
           <div className="absolute inset-y-0 left-0 w-[min(20rem,calc(100vw-3rem))] bg-surface shadow-lg">
             <Sidebar
               role={user.role}
+              agentMode={agentMode}
               onNavigate={() => setMobileOpen(false)}
               mobile
             />
@@ -117,7 +122,7 @@ export function AppShell({
         <main className="min-h-0 flex-1 overflow-y-auto px-4 py-5 pb-24 sm:px-6 lg:px-8 lg:pb-10">
           <ToastProvider>{children}</ToastProvider>
         </main>
-        <BottomTabs role={user.role} onMore={() => setMobileOpen(true)} />
+        <BottomTabs role={user.role} agentMode={agentMode} onMore={() => setMobileOpen(true)} />
       </div>
       {/* Loaded on demand, not in the first-load bundle (docs/PERF.md). */}
       <LazyAlphaChat user={user} />

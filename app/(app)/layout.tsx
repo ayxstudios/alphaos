@@ -33,7 +33,7 @@ export default async function AppLayout({
   if (!session?.user) redirect("/login");
 
   const user = { id: session.user.id, role: session.user.role };
-  const [{ options, selected, unread, recentNotifications, displayName, onboarding }, cookieStore] = await Promise.all([
+  const [{ options, selected, agentMode, unread, recentNotifications, displayName, onboarding }, cookieStore] = await Promise.all([
     loadShellData(user),
     cookies(),
   ]);
@@ -49,6 +49,7 @@ export default async function AppLayout({
       }}
       options={options}
       selected={selected}
+      agentMode={agentMode}
       unread={unread}
       recentNotifications={recentNotifications}
       initialCollapsed={initialCollapsed}

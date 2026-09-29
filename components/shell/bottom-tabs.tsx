@@ -6,9 +6,10 @@ import { PrefetchKind } from "next/dist/client/components/router-reducer/router-
 
 import { cn } from "@/lib/utils";
 import { focusRing } from "@/components/ui/styles";
-import { Grid, ListChecks, Package, Mail, Columns, Calendar, Menu, type IconProps } from "@/components/ui/icons";
+import { Grid, CheckCircle, ListChecks, Package, Mail, Columns, Calendar, Menu, type IconProps } from "@/components/ui/icons";
 import type { ComponentType } from "react";
 import type { Role } from "@/lib/auth/config";
+import { tabNavKeys } from "@/lib/agent/nav";
 
 // Prefetch on touch start only. With Link's default prefetch every tab in
 // view fired its own `?_rsc=` request during a cold load (7 to 9 of them on
@@ -20,12 +21,14 @@ const TOUCH_PREFETCH = { kind: PrefetchKind.FULL };
 
 type Tab = { label: string; href: string; icon: ComponentType<IconProps> };
 
-const ADMIN_VA_TABS: Tab[] = [
-  { label: "Home", href: "/dashboard", icon: Grid },
-  { label: "Today", href: "/today", icon: ListChecks },
-  { label: "Orders", href: "/orders", icon: Package },
-  { label: "Messages", href: "/emails", icon: Mail },
-];
+const ADMIN_VA_TABS: Record<"home" | "today" | "day" | "orders" | "messages", Tab> = {
+  home: { label: "Home", href: "/dashboard", icon: Grid },
+  today: { label: "Today", href: "/today", icon: ListChecks },
+  // Agent mode: Day is the queue, so it takes Today's place (lib/agent/nav.ts).
+  day: { label: "Day", href: "/day", icon: CheckCircle },
+  orders: { label: "Orders", href: "/orders", icon: Package },
+  messages: { label: "Messages", href: "/emails", icon: Mail },
+};
 
 const DESIGNER_TABS: Tab[] = [
   { label: "Home", href: "/dashboard", icon: Grid },
@@ -40,10 +43,11 @@ const DESIGNER_TABS: Tab[] = [
  * the same mobile sidebar drawer for everything else. Alpha AI opens from
  * its tab in the top bar.
  */
-export function BottomTabs({ role, onMore }: { role: Role; onMore: () => void }) {
+export function BottomTabs({ role, agentMode = false, onMore }: { role: Role; agentMode?: boolean; onMore: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
-  const tabs = role === "designer" ? DESIGNER_TABS : ADMIN_VA_TABS;
+  const tabs =
+    role === "designer" ? DESIGNER_TABS : tabNavKeys(agentMode).map((k) => ADMIN_VA_TABS[k as keyof typeof ADMIN_VA_TABS]);
   return (
     <nav
       aria-label="Primary"

@@ -133,7 +133,7 @@ export function rankCandidates(
  * reassign step (48 h, no submission) — `excludeDesignerId` drops the
  * currently-assigned designer so a reassignment never picks the same person.
  */
-async function loadRankedCandidates(
+export async function loadRankedCandidates(
   tx: Tx,
   input: { businessId: string; style: string | null; excludeDesignerId?: string | null },
 ): Promise<RankedCandidate[]> {

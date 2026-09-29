@@ -1,5 +1,6 @@
 import { and, desc, eq, isNotNull, isNull, ne } from "drizzle-orm";
 
+import { getAgentConfig } from "@/lib/agent/config";
 import { withSystemContext, type Tx } from "@/lib/db";
 import { businesses, customers, messages, notifications, proofs, users } from "@/lib/db/schema";
 import { GmailClient, GmailNotConnectedError, GmailReauthRequiredError } from "@/lib/integrations/gmail";
@@ -263,15 +264,17 @@ export async function queueStageEmail(
   const ctx = await readEmailContext(tx, order.businessId, order.customerId);
   if (!ctx) return null;
   const [biz] = await tx
-    .select({ autoSend: businesses.stageEmailAutoSend })
+    .select({ autoSend: businesses.stageEmailAutoSend, agentConfig: businesses.agentConfig })
     .from(businesses)
     .where(eq(businesses.id, order.businessId));
+  // Settings > Agent can flip single templates to automatic; the default is a draft.
+  const autoSend = !!biz?.autoSend || getAgentConfig(biz).autoSendTemplates.includes(key);
   return insertRendered(tx, {
     businessId: order.businessId,
     orderId: order.id,
     customerId: order.customerId,
     key,
-    status: biz?.autoSend ? "queued" : "draft",
+    status: autoSend ? "queued" : "draft",
     orderNumber: order.platformOrderName ?? order.platformOrderId,
     ctx,
     vars,

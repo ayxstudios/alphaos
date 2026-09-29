@@ -58,6 +58,8 @@ import {
 } from "@/lib/integrations/shopify";
 import type { GmailCredentials } from "@/lib/integrations/gmail";
 import { getBusinessPrintCredentials } from "@/lib/db/credentials";
+import { AUTO_SEND_TEMPLATE_KEYS, getBusinessAgentSettings } from "@/lib/agent/config";
+import { AgentSettingsPanel, type AgentSettingsVM } from "@/components/settings/agent-settings-panel";
 import {
   PrintProviderCredentialsPanel,
   type PrintProviderCredentialsVM,
@@ -70,6 +72,7 @@ const SETTINGS_SECTIONS = [
   { key: "shopify", label: "Shopify" },
   { key: "portrait-styles", label: "Portrait Styles" },
   { key: "email", label: "Customer Email" },
+  { key: "agent", label: "Agent" },
   { key: "print", label: "Print Providers" },
   { key: "notifications", label: "Notifications" },
   { key: "business", label: "Business" },
@@ -461,6 +464,22 @@ export default async function SettingsPage({
     },
   ];
 
+  const agentVM: AgentSettingsVM | null =
+    activeSection === "agent" && selected.id
+      ? await withUserContext(user, (tx) => getBusinessAgentSettings(tx, selected.id)).then((a) =>
+          a
+            ? {
+                ...a,
+                businessName: selected.name,
+                templateKeys: [...AUTO_SEND_TEMPLATE_KEYS],
+                templateLabels: Object.fromEntries(
+                  AUTO_SEND_TEMPLATE_KEYS.map((k) => [k, TEMPLATE_META[k].label]),
+                ) as AgentSettingsVM["templateLabels"],
+              }
+            : null,
+        )
+      : null;
+
   return (
     <Page>
       {/* Title first, full width, so it lines up with every other page; then
@@ -588,6 +607,23 @@ export default async function SettingsPage({
                   icon={SettingsIcon}
                   headline="Pick a business"
                   body="Select a single business (top bar) to configure its mailbox and email templates."
+                />
+              </DataPanel>
+            )}
+          </section>
+        )}
+
+        {activeSection === "agent" && (
+          <section className="flex flex-col gap-4">
+            <SectionHeader title="Agent" />
+            {agentVM ? (
+              <AgentSettingsPanel key={agentVM.businessId} vm={agentVM} />
+            ) : (
+              <DataPanel>
+                <EmptyState
+                  icon={SettingsIcon}
+                  headline="Pick a business"
+                  body="Select a single business (top bar) to set up its agent."
                 />
               </DataPanel>
             )}

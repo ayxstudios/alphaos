@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { focusRing } from "@/components/ui/styles";
 import { Tooltip } from "@/components/ui";
 import type { Role } from "@/lib/auth/config";
+import { adminExtraKeys, primaryNavKeys, type NavKey } from "@/lib/agent/nav";
 import {
   Grid,
   Package,
@@ -39,39 +40,29 @@ type NavItem = { label: string; href: string; icon: ComponentType<IconProps> };
 // Everything else (Customers, Portrait Styles, System Health) still exists —
 // it just lives in the quieter "More" group below, so the main list stays
 // calm and obvious instead of listing every page in the app.
-const ADMIN_NAV: NavItem[] = [
-  { label: "Home", href: "/dashboard", icon: Grid },
-  { label: "Today", href: "/today", icon: ListChecks },
-  { label: "Orders", href: "/orders", icon: Package },
-  { label: "QC", href: "/qc", icon: Eye },
-  { label: "Messages", href: "/emails", icon: Mail },
-  { label: "Overview", href: "/overview", icon: Sliders },
-  { label: "Day", href: "/day", icon: CheckCircle },
-  { label: "Exceptions", href: "/exceptions", icon: AlertTriangle },
-  { label: "Boards", href: "/board", icon: Columns },
-  { label: "Print", href: "/queue/print", icon: Truck },
-  { label: "Money", href: "/payouts", icon: Wallet },
-  { label: "Settings", href: "/settings", icon: Settings },
-];
+const ITEMS: Record<NavKey, NavItem> = {
+  home: { label: "Home", href: "/dashboard", icon: Grid },
+  today: { label: "Today", href: "/today", icon: ListChecks },
+  orders: { label: "Orders", href: "/orders", icon: Package },
+  qc: { label: "QC", href: "/qc", icon: Eye },
+  messages: { label: "Messages", href: "/emails", icon: Mail },
+  overview: { label: "Overview", href: "/overview", icon: Sliders },
+  day: { label: "Day", href: "/day", icon: CheckCircle },
+  exceptions: { label: "Exceptions", href: "/exceptions", icon: AlertTriangle },
+  boards: { label: "Boards", href: "/board", icon: Columns },
+  print: { label: "Print", href: "/queue/print", icon: Truck },
+  money: { label: "Money", href: "/payouts", icon: Wallet },
+  settings: { label: "Settings", href: "/settings", icon: Settings },
+};
 
+// Agent mode (any agent switch on for the business): Day, Overview and
+// Exceptions replace Today and QC. Switches off: the list is exactly as it was
+// before the agent (lib/agent/nav.ts holds the rule).
 const ADMIN_MORE: NavItem[] = [
   { label: "System Health", href: "/health", icon: AlertTriangle },
   { label: "Designers", href: "/designers", icon: Palette },
   { label: "Portrait Styles", href: "/styles", icon: Brush },
   { label: "Customers", href: "/customers", icon: Users },
-];
-
-const VA_NAV: NavItem[] = [
-  { label: "Home", href: "/dashboard", icon: Grid },
-  { label: "Today", href: "/today", icon: ListChecks },
-  { label: "Orders", href: "/orders", icon: Package },
-  { label: "QC", href: "/qc", icon: Eye },
-  { label: "Messages", href: "/emails", icon: Mail },
-  { label: "Overview", href: "/overview", icon: Sliders },
-  { label: "Day", href: "/day", icon: CheckCircle },
-  { label: "Exceptions", href: "/exceptions", icon: AlertTriangle },
-  { label: "Boards", href: "/board", icon: Columns },
-  { label: "Print", href: "/queue/print", icon: Truck },
 ];
 
 const VA_MORE: NavItem[] = [
@@ -89,6 +80,8 @@ const DESIGNER_MORE: NavItem[] = [];
 
 type SidebarProps = {
   role: Role;
+  /** Any agent switch on for the active business (see lib/agent/nav.ts). */
+  agentMode?: boolean;
   collapsed?: boolean;
   mobile?: boolean;
   onToggle?: () => void;
@@ -97,14 +90,20 @@ type SidebarProps = {
 
 export function Sidebar({
   role,
+  agentMode = false,
   collapsed = false,
   mobile = false,
   onToggle,
   onNavigate,
 }: SidebarProps) {
   const pathname = usePathname();
-  const nav = role === "designer" ? DESIGNER_NAV : role === "admin" ? ADMIN_NAV : VA_NAV;
-  const more = role === "designer" ? DESIGNER_MORE : role === "admin" ? ADMIN_MORE : VA_MORE;
+  const nav = role === "designer" ? DESIGNER_NAV : primaryNavKeys(role, agentMode).map((k) => ITEMS[k]);
+  const more =
+    role === "designer"
+      ? DESIGNER_MORE
+      : role === "admin"
+        ? [...adminExtraKeys(agentMode).map((k) => ITEMS[k]), ...ADMIN_MORE]
+        : VA_MORE;
   const homeHref = "/dashboard";
 
   function renderItem(item: NavItem) {

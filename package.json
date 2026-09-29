@@ -47,6 +47,8 @@
     "test:agent-completeness": "tsx scripts/test-agent-completeness.ts",
     "test:agent-autopilot": "tsx scripts/test-agent-autopilot.ts",
     "test:agent-inbox": "tsx scripts/test-agent-inbox.ts",
+    "test:agent-capacity": "tsx scripts/test-agent-capacity.ts",
+    "test:agent-config": "tsx scripts/test-agent-config.ts",
     "test:email-noise": "tsx scripts/test-email-noise.ts"
   },
   "dependencies": {

@@ -39,6 +39,7 @@ import { completeOrderDetailsCore } from "@/lib/orders/complete-details";
 import { computeCompleteness } from "./completeness";
 import { openExceptionTx, type ExceptionKind } from "./exceptions";
 import { emptyInboxReport, runInboxPass, type InboxReport } from "./inbox";
+import { rebalanceBusiness } from "./rebalance";
 import { parseIntake } from "./intake";
 
 /** How long a customer has to answer the shortfall email before a human is asked. */
@@ -88,6 +89,8 @@ export type AgentBusinessReport = {
   noEligibleDesigner: number;
   /** Left to a human: the importer flagged them (missing email, conflicts). */
   skippedNeedsReview: number;
+  /** Not-yet-started orders moved off an over-capacity or away designer. */
+  rebalanced: number;
   /** Inbox pass counts (all zero when the inbox switch is off). */
   inbox: Omit<InboxReport, "exceptionsOpened" | "exceptionKinds" | "errors">;
   errors: AgentOrderError[];
@@ -189,6 +192,7 @@ export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTi
       assigned: 0,
       noEligibleDesigner: 0,
       skippedNeedsReview: 0,
+      rebalanced: 0,
       inbox: inboxCounts(emptyInboxReport()),
       errors: [],
     };
@@ -198,6 +202,15 @@ export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTi
     if (biz.intake && !outOfTime()) await intakeStep(ctx, biz.id, outOfTime);
     if (biz.intake && !outOfTime()) await completenessStep(ctx, biz.id, outOfTime);
     if (biz.assign && !outOfTime()) await assignStep(ctx, biz.id, outOfTime);
+    if (biz.assign && !outOfTime()) {
+      try {
+        const rb = await rebalanceBusiness(biz.id, { dryRun, now });
+        report.rebalanced += rb.moves.length;
+        for (const e of rb.errors) report.errors.push(e);
+      } catch (e) {
+        report.errors.push({ orderId: "", message: `rebalance: ${errorMessage(e)}` });
+      }
+    }
     if (biz.inbox && !outOfTime()) {
       const inbox = await runInboxPass(biz, { dryRun, now, outOfTime });
       report.inbox = inboxCounts(inbox);

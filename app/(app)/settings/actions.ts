@@ -15,6 +15,7 @@ import {
   type ShopCredentials,
 } from "@/lib/db/credentials";
 import { shops, businesses, emailTemplates, printProductMappings, styles, users } from "@/lib/db/schema";
+import { saveAgentSettings, type AgentSettingsPatch } from "@/lib/agent/config";
 import { reresolveShop, type ReresolveSummary } from "@/lib/orders/resolution";
 import type { FigureRule } from "@/lib/integrations/figures";
 import type { GmailCredentials } from "@/lib/integrations/gmail";
@@ -1055,6 +1056,23 @@ export async function clearPrintProviderCredentials(businessId: string, provider
     });
     revalidatePath("/settings");
     return { ok: true };
+  } catch (e) {
+    return { ok: false, message: plainError(e) };
+  }
+}
+
+/**
+ * Settings > Agent: validated save of the per-business agent config (flags,
+ * channels, mailbox, print mix, confidence bar, template auto-send). Admin only.
+ */
+export async function saveAgentSettingsAction(businessId: string, patch: AgentSettingsPatch): Promise<SaveResult> {
+  const user = await requireAdmin();
+  try {
+    const saved = await withUserContext(user, (tx) => saveAgentSettings(tx, businessId, patch));
+    if (!saved) return { ok: false, message: "Business not found." };
+    revalidatePath("/settings");
+    revalidatePath("/", "layout");
+    return { ok: true, message: "Agent settings saved." };
   } catch (e) {
     return { ok: false, message: plainError(e) };
   }

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
@@ -34,7 +35,16 @@ export default async function DesignersPage() {
         title="Designers"
         tourId="page:roster"
         description="New orders go to the first designer on this list who draws the style and is under their daily limit."
-        actions={isAdmin && designers.length > 0 ? <AddDesigner businesses={options} variant="secondary" /> : undefined}
+        actions={
+          isAdmin && designers.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <Link href="/designers/capacity" className="inline-flex min-h-11 items-center text-sm font-medium text-pigment hover:underline lg:min-h-9">
+                Capacity
+              </Link>
+              <AddDesigner businesses={options} variant="secondary" />
+            </div>
+          ) : undefined
+        }
       />
 
       {designers.length === 0 ? (

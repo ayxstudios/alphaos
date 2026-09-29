@@ -2,6 +2,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
+import { isAgentMode } from "@/lib/agent/nav";
 import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { businesses as businessesTable, notifications, users as usersTable } from "@/lib/db/schema";
@@ -10,6 +11,7 @@ import { fallbackNotificationTitle, type NotificationVM } from "@/lib/notificati
 import type { OnboardingState } from "@/lib/tour/state";
 
 export type BusinessOption = { id: string; name: string };
+export type BusinessAgentFlags = { agentIntakeEnabled: boolean; agentAssignEnabled: boolean; agentInboxEnabled: boolean };
 
 export type ShellData = {
   /** Options for the switcher. Staff work in one business at a time. */
@@ -25,6 +27,8 @@ export type ShellData = {
    */
   displayName: string | null;
   recentNotifications: NotificationVM[];
+  /** True when any agent switch is on for the selected business (drives the nav, lib/agent/nav.ts). */
+  agentMode: boolean;
   /** First-run tour progress for this user (null = never seen it). */
   onboarding: OnboardingState | null;
 };
@@ -57,7 +61,13 @@ const loadShellCached = cache(
         .where(eq(usersTable.id, userId))
         .limit(1);
       const businesses = await tx
-        .select({ id: businessesTable.id, name: businessesTable.name })
+        .select({
+          id: businessesTable.id,
+          name: businessesTable.name,
+          agentIntakeEnabled: businessesTable.agentIntakeEnabled,
+          agentAssignEnabled: businessesTable.agentAssignEnabled,
+          agentInboxEnabled: businessesTable.agentInboxEnabled,
+        })
         .from(businessesTable)
         // A demo workspace never wins the default slot: real businesses first, then by name.
         .orderBy(sql`${businessesTable.name} ilike '%demo%'`, businessesTable.name);
@@ -94,13 +104,14 @@ const loadShellCached = cache(
       };
     });
 
-    const options: BusinessOption[] = businesses;
+    const options: BusinessOption[] = businesses.map(({ id, name }) => ({ id, name }));
 
     const cookieVal = (await cookies()).get(BUSINESS_COOKIE)?.value;
     const selected =
       options.find((o) => o.id === cookieVal) ??
       options[0] ?? { id: "", name: "No workspace" };
+    const agentMode = isAgentMode(businesses.find((b) => b.id === selected.id));
 
-    return { options, selected, unread, recentNotifications, displayName, onboarding };
+    return { options, selected, agentMode, unread, recentNotifications, displayName, onboarding };
   },
 );
