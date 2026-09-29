@@ -79,3 +79,32 @@ export type LumaShippingWebhookPayload = {
   externalId: string;
   shipments: LumaShipment[];
 };
+
+// POST /api/v1/orders ("Submit a new order", api-docs.lumaprints.com/api-5384560).
+// One-tap submit from the order page (lib/print/submit.ts). subcategoryId and
+// the size/options come from the business's print mapping providerConfig.
+export type LumaCreateOrderItem = {
+  externalItemId: string;
+  subcategoryId: number;
+  quantity: number;
+  width: number;
+  height: number;
+  file: { imageUrl: string };
+  orderItemOptions?: Array<{ optionId: number }>;
+};
+
+export type LumaCreateOrderPayload = {
+  externalId: string;
+  storeId: string;
+  shippingMethod: string;
+  productionTime?: string;
+  recipient: LumaRecipient;
+  orderItems: LumaCreateOrderItem[];
+};
+
+export type LumaCreateOrderResponse = {
+  orderNumber: string | number;
+  externalId?: string | null;
+  orderStatus?: LumaOrderStatus;
+  orderTotal?: number;
+};

@@ -1,6 +1,13 @@
 import { GelatoApiError, GelatoAuthError } from "./errors";
-import { findGelatoFixtureByReference, findGelatoFixtureById } from "./fixtures";
-import { GELATO_ORDER_BASE, type GelatoCredentials, type GelatoOrder, type GelatoSearchResponse } from "./types";
+import { findGelatoFixtureByReference, findGelatoFixtureById, mockGelatoCreateOrder } from "./fixtures";
+import {
+  GELATO_ORDER_BASE,
+  type GelatoCreateOrderPayload,
+  type GelatoCreateOrderResponse,
+  type GelatoCredentials,
+  type GelatoOrder,
+  type GelatoSearchResponse,
+} from "./types";
 import type { NormalizedProviderOrder, PrintProviderClient } from "@/lib/print/provider-types";
 import { mocksAllowed } from "@/lib/mock/guard";
 
@@ -70,11 +77,11 @@ export class GelatoClient implements PrintProviderClient {
     this.credentials = credentials;
   }
 
-  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  private async request<T>(path: string, init: RequestInit = {}, maxAttempts = MAX_ATTEMPTS): Promise<T> {
     if (isMockMode(this.credentials)) throw new Error("request() must not be called in mock mode");
     let attempt = 0;
     let lastError: unknown = null;
-    while (attempt < MAX_ATTEMPTS) {
+    while (attempt < maxAttempts) {
       attempt += 1;
       await throttle();
       try {
@@ -121,6 +128,27 @@ export class GelatoClient implements PrintProviderClient {
       if (error instanceof GelatoApiError && error.status === 404) return null;
       throw error;
     }
+  }
+
+  /**
+   * POST /v4/orders. One attempt only (a retry after Gelato accepted the order
+   * would duplicate it; lib/print/submit.ts guards re-submits). Gelato has no
+   * sandbox host, so sandbox credentials force orderType "draft".
+   */
+  async createOrder(payload: GelatoCreateOrderPayload): Promise<GelatoCreateOrderResponse> {
+    const body: GelatoCreateOrderPayload = this.credentials.sandbox ? { ...payload, orderType: "draft" } : payload;
+    if (isMockMode(this.credentials)) {
+      const response = mockGelatoCreateOrder(body);
+      log("create_order_mock", { orderReferenceId: body.orderReferenceId, id: response.id });
+      return response;
+    }
+    const response = await this.request<GelatoCreateOrderResponse>(
+      "/v4/orders",
+      { method: "POST", body: JSON.stringify(body) },
+      1,
+    );
+    log("create_order", { orderReferenceId: body.orderReferenceId, id: response.id, orderType: body.orderType });
+    return response;
   }
 
   /**

@@ -4,6 +4,9 @@ export const GELATO_ORDER_BASE = "https://order.gelatoapis.com";
 export type GelatoCredentials = {
   apiKey: string;
   webhookSecret?: string | null;
+  // Gelato has no separate sandbox host. When true, createOrder sends
+  // orderType "draft": the order is stored in the dashboard but never produced.
+  sandbox?: boolean;
 };
 
 // Gelato's own fulfillment status words (dashboard.gelato.com/docs/orders/order_details/).
@@ -63,3 +66,43 @@ export type GelatoWebhookEvent = {
   fulfillmentStatus: GelatoFulfillmentStatus;
   items: GelatoOrderItem[];
 };
+
+// POST /v4/orders (dashboard.gelato.com/docs/orders/v4/create/). Used by the
+// one-tap submit (lib/print/submit.ts); productUid comes from the mapping.
+export type GelatoShippingAddress = {
+  firstName: string;
+  lastName: string;
+  companyName?: string | null;
+  addressLine1: string;
+  addressLine2?: string | null;
+  city: string;
+  state?: string | null;
+  postCode: string;
+  country: string;
+  email?: string | null;
+  phone?: string | null;
+};
+
+export type GelatoCreateOrderPayload = {
+  orderType: "order" | "draft";
+  orderReferenceId: string;
+  customerReferenceId: string;
+  currency: string;
+  shipmentMethodUid?: string;
+  items: Array<{
+    itemReferenceId: string;
+    productUid: string;
+    quantity: number;
+    files: Array<{ type: "default"; url: string }>;
+  }>;
+  shippingAddress: GelatoShippingAddress;
+};
+
+export type GelatoReceipt = {
+  currency: string;
+  productsPriceInitial?: number;
+  shippingPriceInitial?: number;
+  totalInclVat?: number;
+};
+
+export type GelatoCreateOrderResponse = GelatoOrder & { receipts?: GelatoReceipt[] };

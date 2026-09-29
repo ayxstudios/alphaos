@@ -1,7 +1,9 @@
 import { LumaPrintsApiError, LumaPrintsAuthError } from "./errors";
-import { findLumaFixtureByExternalId, findLumaFixtureByOrderNumber, lumaShipmentsFor } from "./fixtures";
+import { findLumaFixtureByExternalId, findLumaFixtureByOrderNumber, lumaShipmentsFor, mockLumaCreateOrder } from "./fixtures";
 import {
   LUMAPRINTS_BASE,
+  type LumaCreateOrderPayload,
+  type LumaCreateOrderResponse,
   type LumaOrder,
   type LumaOrdersPage,
   type LumaPrintsCredentials,
@@ -82,11 +84,11 @@ export class LumaPrintsClient implements PrintProviderClient {
     return `Basic ${token}`;
   }
 
-  private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  private async request<T>(path: string, init: RequestInit = {}, maxAttempts = MAX_ATTEMPTS): Promise<T> {
     if (isMockMode(this.credentials)) throw new Error("request() must not be called in mock mode");
     let attempt = 0;
     let lastError: unknown = null;
-    while (attempt < MAX_ATTEMPTS) {
+    while (attempt < maxAttempts) {
       attempt += 1;
       await throttle();
       try {
@@ -144,6 +146,27 @@ export class LumaPrintsClient implements PrintProviderClient {
       if (error instanceof LumaPrintsApiError && error.status === 404) return null;
       throw error;
     }
+  }
+
+  /**
+   * POST /api/v1/orders. One attempt only: a timeout after Luma accepted the
+   * order would otherwise create a duplicate. lib/print/submit.ts records the
+   * job row first and refuses a second submit while one is active. Sandbox
+   * credentials hit the sandbox host (baseUrl()).
+   */
+  async createOrder(payload: LumaCreateOrderPayload): Promise<LumaCreateOrderResponse> {
+    if (isMockMode(this.credentials)) {
+      const response = mockLumaCreateOrder(payload);
+      log("create_order_mock", { externalId: payload.externalId, orderNumber: response.orderNumber });
+      return response;
+    }
+    const response = await this.request<LumaCreateOrderResponse>(
+      "/api/v1/orders",
+      { method: "POST", body: JSON.stringify(payload) },
+      1,
+    );
+    log("create_order", { externalId: payload.externalId, orderNumber: response.orderNumber, sandbox: Boolean(this.credentials.sandbox) });
+    return response;
   }
 
   /**

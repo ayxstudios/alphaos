@@ -72,6 +72,7 @@ import { currentMatchForProduct, countOrdersForProduct } from "@/lib/orders/styl
 import { formatAt } from "@/lib/time";
 import { sizedImageUrl } from "@/lib/images";
 import { activityLabel } from "@/lib/orders/activity-label";
+import { PrintShipCard } from "./print-card";
 
 export const dynamic = "force-dynamic";
 
@@ -205,7 +206,7 @@ function nextSuggestedAction(input: {
       return { kind: "info", label: "Waiting for the customer to approve" };
     case "approved":
       return input.hasPhysical && !input.hasPrintJob
-        ? { kind: "link", label: "Approved. Send it to print", cta: "Open Print", href: "/queue/print" }
+        ? { kind: "link", label: "Approved. Check the print order below and submit it", cta: "Review print order", href: "#print" }
         : { kind: "info", label: "Approved, move it forward" };
     case "printing":
       return { kind: "info", label: "Printing, waiting for it to ship" };
@@ -239,13 +240,19 @@ const REVISION_FROM_STATUSES = new Set<OrderStatus>([
 
 export default async function OrderDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ printProvider?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
   const { id } = await params;
+  // "Use <other provider>" on the Print and ship card re-prepares for that one.
+  const { printProvider } = await searchParams;
+  const requestedPrintProvider =
+    printProvider === "lumaprints" || printProvider === "gelato" ? printProvider : null;
   // A designer's view of an order is its card on My Board (their own deadline,
   // the customer's first name, the upload area). A notification or a pasted
   // link to /orders/<id> opens that card; one not on their board says so there.
@@ -603,6 +610,17 @@ export default async function OrderDetailPage({
           </Link>
         )}
       </div>
+
+      {/* Print and ship (docs/AGENT_FIRST.md 3.2): the agent-prepared print order
+          and its one Submit tap, then where the print job is. */}
+      {staffView && hasPhysicalItem && ["approved", "printing", "shipped"].includes(order.status) && (
+        <PrintShipCard
+          user={user}
+          orderId={order.id}
+          orderStatus={order.status}
+          requestedProvider={requestedPrintProvider}
+        />
+      )}
 
       {/* At-a-glance strip — the facts a VA needs before anything else. Style is
           shown here only when there's no editable style bar below (that bar

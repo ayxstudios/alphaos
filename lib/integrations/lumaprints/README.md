@@ -31,7 +31,7 @@ sandbox? }` in `businesses.print_credentials.lumaprints` (`lib/db/credentials.ts
 | Get one order | GET | `/api/v1/orders/{orderNumber}` | [Get an order](https://api-docs.lumaprints.com/api-5384558) |
 | List orders | GET | `/api/v1/orders?storeId=&page=&orderDateStart=&orderDateEnd=` | [Get multiple orders](https://api-docs.lumaprints.com/api-5384559) |
 | Shipments/tracking | GET | `/api/v1/shipments/{orderNumber}` | [Get shipments of an order](https://api-docs.lumaprints.com/api-5384566) |
-| Submit an order | POST | `/api/v1/orders` | [Submit a new order](https://api-docs.lumaprints.com/api-5384560) - not used; the VA submits through Luma's own dashboard |
+| Submit an order | POST | `/api/v1/orders` | [Submit a new order](https://api-docs.lumaprints.com/api-5384560) - `createOrder`, the one-tap submit on the order page (lib/print/submit.ts); sandbox credentials use the sandbox host, PRINT_PROVIDER_MOCK answers from fixtures |
 | Store list | GET | `/api/v1/stores` | [Get all stores](https://api-docs.lumaprints.com/api-5384565) - not used yet, would let Settings validate `storeId` |
 | Webhook subscription | dashboard only | dashboard.lumaprints.com/developer/webhook | [Webhook](https://api-docs.lumaprints.com/doc-513534) |
 

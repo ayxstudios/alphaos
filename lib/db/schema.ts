@@ -17,6 +17,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import type { OnboardingState } from "../tour/state";
+import type { PrintRoutingRule } from "../print/routing-types";
 import type { AgentConfigInput } from "../agent/config-types";
 
 /**
@@ -313,6 +314,11 @@ export const businesses = pgTable("businesses", {
   // Agent tunables; read through getAgentConfig (lib/agent/config.ts), which
   // fills in the defaults for any key left out.
   agentConfig: jsonb("agent_config").$type<AgentConfigInput>().notNull().default(sql`'{}'::jsonb`),
+  // --- Agent-first phase 3: print routing (migration 0044) ---
+  // Which print provider a physical item goes to. Read via chooseProvider in
+  // lib/print/routing.ts; {} means Lumaprints for everything.
+  printRouting: jsonb("print_routing").$type<PrintRoutingRule>().notNull().default(sql`'{}'::jsonb`),
+  // --- end phase 3 print routing ---
   createdAt: createdAt(),
 });
 

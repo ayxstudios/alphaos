@@ -1,4 +1,4 @@
-import type { GelatoOrder } from "./types";
+import type { GelatoCreateOrderPayload, GelatoCreateOrderResponse, GelatoOrder } from "./types";
 
 /**
  * PRINT_PROVIDER_MOCK=1 fixtures. Keyed by orderReferenceId (what we look orders
@@ -118,6 +118,79 @@ export function findGelatoFixtureByReference(referenceId: string): GelatoOrder |
 export function findGelatoFixtureById(id: string): GelatoOrder | null {
   const fixed = Object.values(GELATO_FIXTURES).find((order) => order.id === id);
   if (fixed) return fixed;
+  const created = createdMockOrder(id);
+  if (created) return created;
   const m = id.match(/^mock-gelato-(.+)$/);
   return m ? synthesizeGelatoOrder(m[1].toUpperCase()) : null;
+}
+
+/**
+ * Orders created through the mock createOrder (one-tap submit). The id carries
+ * the creation time and our reference ("mock-gelato-api-<epochSeconds>-<ref>"),
+ * so any later process can answer getOrder without shared state: "created"
+ * until PRINT_MOCK_SHIP_AFTER_SECONDS (default 600) have passed, then
+ * "shipped" with a FedEx tracking number. Checked before the synth rule above.
+ */
+const MOCK_CREATED_ORDER = /^mock-gelato-api-(\d{10})-(.+)$/;
+
+function mockShipAfterSeconds(): number {
+  const raw = Number(process.env.PRINT_MOCK_SHIP_AFTER_SECONDS);
+  return Number.isFinite(raw) && raw >= 0 ? raw : 600;
+}
+
+export function mockGelatoCreateOrder(payload: GelatoCreateOrderPayload, now = new Date()): GelatoCreateOrderResponse {
+  const epoch = Math.floor(now.getTime() / 1000);
+  const id = `mock-gelato-api-${epoch}-${payload.orderReferenceId}`;
+  const products = payload.items.reduce((sum, item) => sum + item.quantity * 24, 0);
+  return {
+    ...createdMockOrder(id, now)!,
+    orderType: payload.orderType,
+    receipts: [
+      {
+        currency: payload.currency,
+        productsPriceInitial: products,
+        shippingPriceInitial: 7.5,
+        totalInclVat: Math.round((products + 7.5) * 100) / 100,
+      },
+    ],
+  };
+}
+
+function createdMockOrder(id: string, now = new Date()): GelatoOrder | null {
+  const m = id.match(MOCK_CREATED_ORDER);
+  if (!m) return null;
+  const createdAt = new Date(Number(m[1]) * 1000);
+  const shipped = (now.getTime() - createdAt.getTime()) / 1000 >= mockShipAfterSeconds();
+  const status: GelatoOrder["fulfillmentStatus"] = shipped ? "shipped" : "created";
+  const tracking = `7${m[1]}`;
+  return {
+    id,
+    orderType: "order",
+    orderReferenceId: m[2],
+    fulfillmentStatus: status,
+    createdAt: createdAt.toISOString(),
+    updatedAt: now.toISOString(),
+    items: [
+      {
+        id: "item-1",
+        itemReferenceId: "1",
+        fulfillmentStatus: status,
+        ...(shipped
+          ? {
+              fulfillments: [
+                {
+                  trackingCode: tracking,
+                  trackingUrl: `https://www.fedex.com/fedextrack/?trknbr=${tracking}`,
+                  shipmentMethodName: "FedEx Ground",
+                  shipmentMethodUid: "fedex_ground",
+                  fulfillmentCountry: "US",
+                  fulfillmentStateProvince: null,
+                  fulfillmentFacilityId: null,
+                },
+              ],
+            }
+          : {}),
+      },
+    ],
+  };
 }

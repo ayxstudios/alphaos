@@ -175,6 +175,25 @@ export async function reconcileBusinessPrintJobs(
   return summary;
 }
 
+/**
+ * Reconcile ONE order (same rules as the business sweep). Used right after a
+ * one-tap submit check and by scripts/test-print-submit.ts so a test never
+ * sweeps every printing order of a business. Null when the order is not a
+ * reconcile candidate (not printing / stale-approved, or no physical items).
+ */
+export async function reconcileOrderPrintJob(
+  tx: Tx,
+  businessId: string,
+  orderId: string,
+  source: ReconcileSource = "cron",
+): Promise<ReconcileOrderResult | null> {
+  const order = (await loadCandidates(tx, businessId)).find((candidate) => candidate.id === orderId);
+  if (!order) return null;
+  const credentials = ((await getBusinessPrintCredentials(tx, businessId)) as BusinessPrintCredentials | null) ?? {};
+  const job = await latestJobFor(tx, order.id);
+  return reconcileOneOrder(tx, { businessId, order, job, credentials, source });
+}
+
 async function reconcileOneOrder(
   tx: Tx,
   ctx: {
@@ -270,7 +289,8 @@ async function handleMatch(
     .update(printJobs)
     .set({
       providerOrderId: result.providerOrderId,
-      providerOrderNumber: result.referenceId,
+      // Keep what submit stored when the provider answer carries no reference.
+      ...(result.referenceId ? { providerOrderNumber: result.referenceId } : {}),
       providerResponse: result.raw as object,
       providerStatus: result.rawStatus,
       providerStatusReason: result.reason,
