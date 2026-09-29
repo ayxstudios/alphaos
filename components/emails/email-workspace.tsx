@@ -152,8 +152,20 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
     });
   }
 
+  const needsYou = item.status === "failed";
+  const who = item.customerName ?? item.toAddress ?? "the customer";
+  const lead = item.handedToHuman
+    ? `Email to ${who} failed after ${item.retryAttempts} retries. Check the address, then retry it.`
+    : `Email to ${who} did not send. Retry it.`;
+
   return (
     <div className="px-4 py-3">
+      {needsYou && (
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <p className="min-w-0 flex-1 text-sm font-medium text-ink">{lead}</p>
+          <Button type="button" size="sm" onClick={send} loading={pending} disabled={!sendingEnabled}>Retry send</Button>
+        </div>
+      )}
       <button type="button" onClick={() => setOpen((o) => !o)} className="-my-3 flex w-full flex-wrap items-center gap-2 py-3 text-left">
         {item.templateLabel && <Badge variant="info">{item.templateLabel}</Badge>}
         {queued && <Badge variant="warning" dot>Sending soon</Badge>}
@@ -191,9 +203,9 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
             <Textarea label="Body" value={body} onChange={(e) => setBody(e.target.value)} rows={10} className="mt-2 font-mono text-xs" />
           )}
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            {!queued && (
+            {!queued && !needsYou && (
               <Button type="button" size="sm" onClick={send} loading={pending} disabled={!sendingEnabled}>
-                {item.status === "failed" ? "Retry send" : "Approve & send"}
+                Approve &amp; send
               </Button>
             )}
             {item.orderId && <Link href={`/orders/${item.orderId}`} className="inline-flex min-h-11 items-center text-sm font-medium text-pigment hover:text-ink sm:min-h-0">Open order</Link>}
@@ -235,10 +247,28 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
     startSearch(async () => setResults(await searchOrdersForLink(businessId, term)));
   }
 
+  const lead = reply.noise
+    ? "Automatic notification. No reply needed."
+    : reply.suggestion
+      ? `Customer wrote in. Link it to ${reply.suggestion.orderNumber}.`
+      : "Customer wrote in. Find the order it belongs to.";
+
   return (
     <div className="relative px-4 py-3">
       {/* The "waiting over a day" dot sits in the gutter, so every row's text lines up with the header. */}
       {stale && <span className="absolute left-1.5 top-[1.35rem] size-1.5 rounded-full bg-rose" aria-hidden="true" title="Waiting over 24h" />}
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <p className="min-w-0 flex-1 text-sm font-medium text-ink">{lead}</p>
+        {reply.noise ? (
+          <Button type="button" size="sm" loading={pending} onClick={() => run(() => archiveReply(reply.messageId, "notification"))}>Archive</Button>
+        ) : reply.suggestion ? (
+          <Button type="button" size="sm" loading={pending} onClick={() => run(() => linkReplyToOrder(reply.messageId, reply.suggestion!.orderId))}>
+            Link to {reply.suggestion.orderNumber}
+          </Button>
+        ) : (
+          <Button type="button" size="sm" onClick={() => setOpen(true)}>Find the order</Button>
+        )}
+      </div>
       <button type="button" onClick={() => setOpen((o) => !o)} className="-my-3 flex w-full items-center gap-3 py-3 text-left" aria-expanded={open}>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-ink">{reply.subject || "(no subject)"}</span>

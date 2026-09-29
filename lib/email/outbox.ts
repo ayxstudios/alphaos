@@ -31,6 +31,11 @@ export type OutboxItem = {
   skippedReason: string | null;
   /** The order is already delivered, complete or cancelled: a stage email here is out of date. */
   orderFinished: string | null;
+  /** The agent wrote this one (an answer, a reminder, a photo request). */
+  agentDrafted: boolean;
+  /** Failed sends: automatic retries used so far, and whether an "Email failed to send" card is open. */
+  retryAttempts: number;
+  handedToHuman: boolean;
   createdAt: string; // ISO
 };
 
@@ -109,6 +114,9 @@ export async function getOutbox(
       skippedReason:
         ((r.metadata as { skippedOnEnable?: { reason?: string } } | null)?.skippedOnEnable?.reason) ?? null,
       orderFinished: r.orderStatus && FINISHED_STATUSES.has(r.orderStatus) ? r.orderStatus : null,
+      agentDrafted: (r.metadata as { agentDrafted?: unknown } | null)?.agentDrafted === true,
+      retryAttempts: Number((r.metadata as { sendRetry?: { attempts?: unknown } } | null)?.sendRetry?.attempts ?? 0) || 0,
+      handedToHuman: !!(r.metadata as { sendRetry?: { exceptionId?: unknown } } | null)?.sendRetry?.exceptionId,
       createdAt: r.createdAt.toISOString(),
     }));
   });

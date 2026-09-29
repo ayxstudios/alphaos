@@ -223,7 +223,7 @@ async function main() {
           agentAssignEnabled: false,
           agentInboxEnabled: true,
           stageEmailAutoSend: false,
-          agentConfig: { ...(biz.config ?? {}), inboxEnabledAt: new Date(now.getTime() - 60_000).toISOString() },
+          agentConfig: { ...(biz.config ?? {}), autoSendReplies: false, inboxEnabledAt: new Date(now.getTime() - 60_000).toISOString() },
         })
         .where(eq(businesses.id, businessId)),
     );
@@ -382,6 +382,79 @@ async function main() {
         s.errors.length === 0,
       JSON.stringify(s?.inbox),
     );
+
+
+    // ---- auto-send: on / off, sensitive hold, retry then exception ---------
+    const setAuto = (on: boolean) =>
+      withSystemContext((tx) =>
+        tx
+          .update(businesses)
+          .set({ agentConfig: { ...(biz.config ?? {}), autoSendReplies: on, inboxEnabledAt: new Date(now.getTime() - 60_000).toISOString() } })
+          .where(eq(businesses.id, businessId)),
+      );
+    const mkOut = (o: { id: string } | null, subject: string, status: "draft" | "failed", meta: Record<string, unknown>, address: string | null = `${MARK}${stamp}@example.test`) =>
+      withSystemContext(async (tx) => {
+        const [m] = await tx
+          .insert(messages)
+          .values({
+            businessId,
+            orderId: o?.id ?? null,
+            direction: "outbound",
+            channel: "email",
+            status,
+            subject: `${MARK}${stamp} ${subject}`,
+            address,
+            body: "Hello, this is a test reply.",
+            metadata: meta,
+          })
+          .returning({ id: messages.id });
+        return m.id;
+      });
+    const getMsg = async (id: string) =>
+      (await withSystemContext((tx) => tx.select({ status: messages.status, metadata: messages.metadata }).from(messages).where(eq(messages.id, id))))[0];
+    const failedEx = async (id: string) =>
+      withSystemContext((tx) =>
+        tx
+          .select({ id: exceptions.id })
+          .from(exceptions)
+          .where(and(eq(exceptions.businessId, businessId), eq(exceptions.kind, "email_send_failed"), eq(exceptions.status, "open"), sql`${exceptions.detail}->>'messageId' = ${id}`)),
+      );
+
+    const draftOff = await mkOut(ids.unclear, "answer off", "draft", { agentDrafted: "true", replyToMessageId: ids.msg.question });
+    await setAuto(false);
+    await runAgentTick({ businessId });
+    check("auto-send off: agent draft stays a draft", (await getMsg(draftOff))?.status === "draft");
+
+    const sensitiveIn = await withSystemContext(async (tx) => {
+      const [m] = await tx
+        .insert(messages)
+        .values({ businessId, orderId: ids.question.id, direction: "inbound", channel: "email", status: "received", subject: `${MARK}${stamp} refund`, address: `${MARK}${stamp}@example.test`, body: "I want a refund please", gmailThreadId: `${MARK}thread-${randomUUID()}` })
+        .returning({ id: messages.id });
+      return m.id;
+    });
+    const draftSensitive = await mkOut(ids.question, "answer refund", "draft", { agentDrafted: "true", replyToMessageId: sensitiveIn });
+    const draftOn = draftOff;
+    const exhausted = await mkOut(ids.unclear, "exhausted", "failed", { sendRetry: { attempts: 3, nextAt: null } });
+    const backing = await mkOut(ids.unclear, "backing off", "failed", { sendRetry: { attempts: 1, nextAt: new Date(Date.now() + 6 * HOUR).toISOString() } });
+    const noAddress = await mkOut(ids.stale, "no address", "failed", { sendRetry: { attempts: 0, nextAt: null } }, null);
+    await withSystemContext((tx) => tx.update(messages).set({ error: "No recipient address" }).where(eq(messages.id, noAddress)));
+
+    await setAuto(true);
+    const on = await runAgentTick({ businessId });
+    const draftOnAfter = await getMsg(draftOn);
+    check(
+      "auto-send on: agent draft goes out and is marked auto-sent",
+      draftOnAfter?.status === "sent" && (draftOnAfter.metadata as { autoSent?: unknown } | null)?.autoSent === true,
+      JSON.stringify(draftOnAfter),
+    );
+    check("auto-send on: refund question stays a draft for a human", (await getMsg(draftSensitive))?.status === "draft");
+    check("retry: exhausted email opens an 'Email failed to send' exception", (await failedEx(exhausted)).length === 1);
+    check("retry: email with no address opens the exception straight away", (await failedEx(noAddress)).length === 1);
+    check("retry: email still backing off is left alone", (await failedEx(backing)).length === 0 && (await getMsg(backing))?.status === "failed");
+    check("auto-send on: no errors", (on.businesses[0]?.errors.length ?? 1) === 0, JSON.stringify(on.businesses[0]?.errors));
+
+    await runAgentTick({ businessId });
+    check("retry: a second tick does not open a duplicate exception", (await failedEx(exhausted)).length === 1);
 
     console.log(`questionPath=${questionPath}`);
   } finally {

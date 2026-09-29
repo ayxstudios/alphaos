@@ -19,6 +19,7 @@ const KIND_LABELS: Record<string, string> = {
   reply_unclear: "Buyer reply unclear",
   buyer_question: "Buyer question",
   unmatched_reply: "Reply with no order",
+  email_send_failed: "Email failed to send",
 };
 
 function kindLabel(kind: string): string {

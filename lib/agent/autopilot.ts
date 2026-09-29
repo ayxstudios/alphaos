@@ -39,6 +39,7 @@ import { completeOrderDetailsCore } from "@/lib/orders/complete-details";
 import { computeCompleteness } from "./completeness";
 import { openExceptionTx, type ExceptionKind } from "./exceptions";
 import { emptyInboxReport, runInboxPass, type InboxReport } from "./inbox";
+import { runOutboxPass, type OutboxReport } from "./outbox";
 import { rebalanceBusiness } from "./rebalance";
 import { parseIntake } from "./intake";
 
@@ -64,6 +65,8 @@ const REOPEN_AFTER_HOURS: Record<ExceptionKind, number | null> = {
   reply_unclear: 0,
   buyer_question: 0,
   unmatched_reply: 0,
+  // Raised by the outbox pass (./outbox.ts); one card per stuck email.
+  email_send_failed: 0,
 };
 
 export type AgentOrderError = { orderId: string; message: string };
@@ -93,6 +96,8 @@ export type AgentBusinessReport = {
   rebalanced: number;
   /** Inbox pass counts (all zero when the inbox switch is off). */
   inbox: Omit<InboxReport, "exceptionsOpened" | "exceptionKinds" | "errors">;
+  /** Outbox pass counts: agent mail sent by itself, retries, failed-send exceptions. */
+  outbox?: Omit<OutboxReport, "errors">;
   errors: AgentOrderError[];
 };
 
@@ -219,6 +224,15 @@ export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTi
       for (const e of inbox.errors) {
         report.errors.push({ orderId: e.orderId ?? "", message: e.messageId ? `message ${e.messageId}: ${e.message}` : e.message });
       }
+    }
+    // Every enabled business: the agent's mail goes out on its own, failed sends are retried.
+    if (!outOfTime()) {
+      const outbox = await runOutboxPass(biz, { dryRun, now, outOfTime });
+      const { errors, ...counts } = outbox;
+      report.outbox = counts;
+      report.exceptionsOpened += outbox.exceptionsOpened;
+      if (outbox.exceptionsOpened && !report.exceptionKinds.includes("email_send_failed")) report.exceptionKinds.push("email_send_failed");
+      for (const e of errors) report.errors.push({ orderId: "", message: e.messageId ? `email ${e.messageId}: ${e.message}` : e.message });
     }
   }
 

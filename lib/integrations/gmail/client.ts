@@ -46,6 +46,14 @@ export class GmailClient {
       return { creds: c, name: b?.name ?? null };
     });
     if (!creds) throw new GmailNotConnectedError(businessId);
+    // A demo mailbox holds a mock refresh token. If this process never ran the
+    // instrumentation hook (a script, a worker) the token would go to real
+    // Google and come back invalid_client, so install the mock transport here.
+    // Idempotent, and refused on production.
+    if (String((creds as { refreshToken?: unknown }).refreshToken ?? "").startsWith("mock_")) {
+      const { installMockTransport } = await import("@/lib/mock/transport");
+      installMockTransport();
+    }
     return new GmailClient(businessId, creds as GmailCredentials, name);
   }
 
