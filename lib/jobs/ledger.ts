@@ -15,6 +15,7 @@ export const JOB_NAMES = {
   shopifyWebhookImport: "shopify.webhook_import",
   cronPrintReconcile: "cron.print_reconcile",
   gelatoWebhook: "gelato.webhook",
+  cronAgent: "cron.agent",
 } as const;
 
 export type JobName = (typeof JOB_NAMES)[keyof typeof JOB_NAMES];

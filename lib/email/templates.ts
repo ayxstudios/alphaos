@@ -168,6 +168,20 @@ Reply to this email if you have any questions.
 Warmly,
 The {{business_name}} team`,
   },
+  photo_shortfall: {
+    subject: "One more thing for your {{business_name}} portrait (order {{order_number}})",
+    body: `Hi {{first_name}},
+
+Thanks for sending your photos for order {{order_number}}! Your portrait has {{photos_need}} people or pets in it, and we have {{photos_have}} photo(s) so far.
+
+So our artist can get every face just right, please add a clear photo of each one here:
+{{upload_link}}
+
+If one photo already shows everyone, just reply and let us know and we'll get started.
+
+Warmly,
+The {{business_name}} team`,
+  },
   proof_reminder: {
     subject: "Your {{business_name}} proof is waiting for you",
     body: `Hi {{first_name}},

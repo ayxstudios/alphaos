@@ -1,9 +1,9 @@
 import { and, eq, sql } from "drizzle-orm";
 
-import { withSystemContext } from "@/lib/db";
+import { withSystemContext, type Tx } from "@/lib/db";
 import { exceptions } from "@/lib/db/schema";
 
-export type ExceptionKind = "photo_count_mismatch" | "intake_unparsed";
+export type ExceptionKind = "photo_count_mismatch" | "intake_unparsed" | "no_eligible_designer";
 
 export type OpenExceptionInput = {
   businessId: string;
@@ -20,38 +20,48 @@ export type OpenExceptionInput = {
  * ticks racing cannot double up).
  */
 export async function openException(input: OpenExceptionInput): Promise<string> {
-  return withSystemContext(async (tx) => {
-    const [created] = await tx
-      .insert(exceptions)
-      .values({
-        businessId: input.businessId,
-        orderId: input.orderId,
-        kind: input.kind,
-        summary: input.summary,
-        detail: input.detail,
-      })
-      .onConflictDoNothing()
-      .returning({ id: exceptions.id });
-    if (created) return created.id;
+  return withSystemContext(async (tx) => (await openExceptionTx(tx, input)).id);
+}
 
-    // Conflict: an open row for this order+kind exists. Order-less rows never
-    // conflict, so orderId is non-null here.
-    const [existing] = await tx
-      .select({ id: exceptions.id })
-      .from(exceptions)
-      .where(
-        and(
-          eq(exceptions.orderId, input.orderId as string),
-          eq(exceptions.kind, input.kind),
-          eq(exceptions.status, "open"),
-        ),
-      )
-      .limit(1);
-    if (!existing) {
-      throw new Error("openException: conflict but no open exception found");
-    }
-    return existing.id;
-  });
+/**
+ * openException inside the caller's transaction, so the agent can write the
+ * exception and its audit row atomically. `created` is false when an open
+ * exception for this order and kind already existed.
+ */
+export async function openExceptionTx(
+  tx: Tx,
+  input: OpenExceptionInput,
+): Promise<{ id: string; created: boolean }> {
+  const [created] = await tx
+    .insert(exceptions)
+    .values({
+      businessId: input.businessId,
+      orderId: input.orderId,
+      kind: input.kind,
+      summary: input.summary,
+      detail: input.detail,
+    })
+    .onConflictDoNothing()
+    .returning({ id: exceptions.id });
+  if (created) return { id: created.id, created: true };
+
+  // Conflict: an open row for this order+kind exists. Order-less rows never
+  // conflict, so orderId is non-null here.
+  const [existing] = await tx
+    .select({ id: exceptions.id })
+    .from(exceptions)
+    .where(
+      and(
+        eq(exceptions.orderId, input.orderId as string),
+        eq(exceptions.kind, input.kind),
+        eq(exceptions.status, "open"),
+      ),
+    )
+    .limit(1);
+  if (!existing) {
+    throw new Error("openException: conflict but no open exception found");
+  }
+  return { id: existing.id, created: false };
 }
 
 /** Mark an open exception resolved. Returns false if it was not open. */

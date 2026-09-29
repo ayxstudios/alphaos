@@ -126,6 +126,8 @@ export const emailTemplateKey = pgEnum("email_template_key", [
   // Reminders sweep. photo_reminder is the second auto-send exception.
   "photo_reminder",
   "proof_reminder",
+  // Agent autopilot: fewer photos than figures ordered (always a VA draft).
+  "photo_shortfall",
 ]);
 export const printProvider = pgEnum("print_provider", ["lumaprints", "gelato"]);
 export const printMethod = pgEnum("print_method", ["api", "manual"]);

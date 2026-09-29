@@ -20,7 +20,10 @@ export type TemplateKey =
   // exception (always queued); proof_reminder follows stage_email_auto_send
   // like the other stage emails (draft unless the business opted in).
   | "photo_reminder"
-  | "proof_reminder";
+  | "proof_reminder"
+  // Agent autopilot (lib/agent/autopilot.ts): fewer photos than figures
+  // ordered. Always a draft; a VA approves it in the outbox.
+  | "photo_shortfall";
 
 /** The variables a template body/subject may reference, as `{{snake_case}}`. */
 export type TemplateVars = {
@@ -31,6 +34,8 @@ export type TemplateVars = {
   upload_link?: string;
   tracking_number?: string;
   tracking_url?: string;
+  photos_have?: string;
+  photos_need?: string;
 };
 
 export type EmailTemplate = { subject: string; body: string };
@@ -106,6 +111,11 @@ export const TEMPLATE_META: Record<
     description: "Sent three days after a proof if the customer has not answered.",
     variables: ["first_name", "order_number", "business_name", "proof_link"],
   },
+  photo_shortfall: {
+    label: "More photos needed",
+    description: "Drafted by the agent when an order has fewer photos than people or pets ordered. Waits for approval.",
+    variables: ["first_name", "order_number", "business_name", "photos_have", "photos_need", "upload_link"],
+  },
 };
 
 export const EDITABLE_TEMPLATE_KEYS: TemplateKey[] = [
@@ -121,6 +131,7 @@ export const EDITABLE_TEMPLATE_KEYS: TemplateKey[] = [
   "shipped",
   "photo_reminder",
   "proof_reminder",
+  "photo_shortfall",
 ];
 
 /**
@@ -149,6 +160,8 @@ export function sampleTemplateVars(businessName: string, appOrigin: string): Tem
     upload_link: `${appOrigin}/upload/sample-test`,
     tracking_number: "TEST123456789",
     tracking_url: "https://example.com/track/TEST123456789",
+    photos_have: "1",
+    photos_need: "3",
   };
 }
 

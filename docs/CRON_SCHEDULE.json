@@ -3,5 +3,6 @@
   "/api/cron/gmail-poll": "*/15 * * * *",
   "/api/cron/notifications": "*/15 * * * *",
   "/api/cron/daily-health": "0 21 * * *",
-  "/api/cron/retention": "0 3 * * *"
+  "/api/cron/retention": "0 3 * * *",
+  "/api/cron/agent": "*/15 * * * *"
 }

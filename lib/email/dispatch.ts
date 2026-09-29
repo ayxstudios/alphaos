@@ -208,6 +208,42 @@ export async function queuePhotoReminder(
   });
 }
 
+/**
+ * Draft the "more photos needed" email the agent autopilot writes when an order
+ * has fewer reference photos than figures ordered (lib/agent/autopilot.ts).
+ * Always `draft`: a VA approves it in the outbox, because a single photo can
+ * show several subjects. Returns the message id, or null with no customer email.
+ */
+export async function queuePhotoShortfall(
+  tx: Tx,
+  order: {
+    id: string;
+    businessId: string;
+    customerId: string | null;
+    platformOrderId: string;
+    platformOrderName?: string | null;
+    uploadToken: string;
+  },
+  counts: { have: number; need: number },
+): Promise<string | null> {
+  const ctx = await readEmailContext(tx, order.businessId, order.customerId);
+  if (!ctx) return null;
+  return insertRendered(tx, {
+    businessId: order.businessId,
+    orderId: order.id,
+    customerId: order.customerId,
+    key: "photo_shortfall",
+    status: "draft",
+    orderNumber: order.platformOrderName ?? order.platformOrderId,
+    ctx,
+    vars: {
+      upload_link: uploadUrl(order.uploadToken),
+      photos_have: String(counts.have),
+      photos_need: String(counts.need),
+    },
+  });
+}
+
 export type StageEmailKey = "order_received" | "in_design" | "printing" | "shipped" | "proof_reminder";
 
 /**
