@@ -4,6 +4,7 @@ import { withUserContext, type RequestUser } from "@/lib/db";
 import { activityLog, assignments, businesses, exceptions, orders, users } from "@/lib/db/schema";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { stageTimer } from "@/lib/orders/stage-timers";
+import { isRevisionStage, stageWithRound } from "@/lib/orders/stage-timeline";
 
 /** Statuses that are finished: they never appear as an open order. */
 const CLOSED = ["complete", "cancelled", "delivered"] as const;
@@ -63,6 +64,8 @@ export type OverviewRow = {
   businessName: string;
   status: string;
   stage: string;
+  /** Revision rounds so far; 0 for a first pass. */
+  revisionCount: number;
   stageStartedAt: string;
   timeInStageMs: number;
   /** Target for this stage in ms, or null when the stage has no timer. */
@@ -127,6 +130,7 @@ export async function getOverview(scope: RequestUser, nowInput: Date = new Date(
         fallbackNumber: orders.platformOrderId,
         businessId: orders.businessId,
         status: orders.status,
+        revisionCount: orders.revisionCount,
         updatedAt: orders.updatedAt,
         createdAt: orders.createdAt,
         designer: users.name,
@@ -174,7 +178,8 @@ export async function getOverview(scope: RequestUser, nowInput: Date = new Date(
         businessId: o.businessId,
         businessName: nameOf.get(o.businessId) ?? "",
         status: o.status,
-        stage: stageLabel(o.status),
+        stage: isRevisionStage(o.status, o.revisionCount) ? stageWithRound(o.status, o.revisionCount) : stageLabel(o.status),
+        revisionCount: o.revisionCount ?? 0,
         stageStartedAt: started.toISOString(),
         timeInStageMs,
         targetMs,

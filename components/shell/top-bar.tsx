@@ -70,13 +70,15 @@ export function TopBar({
   // search looks through their own cards on /board instead.
   const designer = user.role === "designer";
   const searchPath = designer ? "/board" : "/orders";
-  const searchLabel = designer ? "Search my cards" : "Search orders or customers";
+  const searchLabel = designer ? "Search my cards" : "Find order number or buyer";
 
   function submitSearch(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmed = query.trim();
+    if (!trimmed) return router.push(searchPath);
+    // Staff jump straight to the order when the number or buyer is one match.
     router.push(
-      trimmed ? `${searchPath}?q=${encodeURIComponent(trimmed)}` : searchPath,
+      designer ? `${searchPath}?q=${encodeURIComponent(trimmed)}` : `/orders/find?q=${encodeURIComponent(trimmed)}`,
     );
   }
 

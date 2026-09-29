@@ -126,7 +126,7 @@ export function AppShell({
       </div>
       {/* Loaded on demand, not in the first-load bundle (docs/PERF.md). */}
       <LazyAlphaChat user={user} />
-      <LazyTour role={user.role} firstName={tour.firstName} onboarding={tour.onboarding} signedInAt={tour.signedInAt} />
+      <LazyTour role={user.role} agentMode={agentMode} firstName={tour.firstName} onboarding={tour.onboarding} signedInAt={tour.signedInAt} />
       <ServiceWorkerRegister />
     </div>
   );

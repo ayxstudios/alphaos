@@ -115,7 +115,11 @@ const STATUS_LABEL: Record<string, string> = {
   "Fulfilment Only": "Fulfilment only",
 };
 
-function statusLabel(row: { derivedStatus: string; assignee: string; status: string }): string {
+function statusLabel(row: { derivedStatus: string; assignee: string; status: string; revisionCount?: number }): string {
+  // A revision says which round it is, so a VA can find "in revision" at a glance.
+  if (row.derivedStatus === "Awaiting Designer Revision" && row.revisionCount) return `In revision, round ${row.revisionCount}`;
+  if (row.status === "awaiting_qc" && row.revisionCount) return `Revision QC, round ${row.revisionCount}`;
+  if (row.status === "awaiting_approval" && row.revisionCount) return `Revision with buyer, round ${row.revisionCount}`;
   // An unassigned order waiting for a designer says so plainly.
   if (row.derivedStatus === "Needs VA Review" && row.status === "ready_to_assign" && row.assignee === "Unassigned") {
     return "Unassigned";

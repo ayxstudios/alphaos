@@ -11,7 +11,7 @@ export { TOUR_START_EVENT };
 
 // The tour's code is only fetched when it is needed: on a first sign-in, or
 // when someone asks for it. Hovering the "?" button warms it up.
-type RuntimeProps = { role: Role; firstName: string; request: TourRequest | null };
+type RuntimeProps = { role: Role; agentMode: boolean; firstName: string; request: TourRequest | null };
 let runtime: Promise<ComponentType<RuntimeProps>> | null = null;
 const loadRuntime = () => (runtime ??= import("./tour-runtime").then((m) => m.default));
 // This module is itself loaded only when the tour is due or asked for
@@ -21,11 +21,13 @@ if (typeof window !== "undefined") void loadRuntime().catch(() => (runtime = nul
 
 export function Tour({
   role,
+  agentMode = false,
   firstName,
   onboarding,
   signedInAt,
 }: {
   role: Role;
+  agentMode?: boolean;
   firstName: string;
   onboarding: OnboardingState | null;
   signedInAt: number;
@@ -77,5 +79,5 @@ export function Tour({
   }, [wanted, Runtime]);
 
   if (!wanted || !Runtime) return null;
-  return <Runtime role={role} firstName={firstName} request={request} />;
+  return <Runtime role={role} agentMode={agentMode} firstName={firstName} request={request} />;
 }

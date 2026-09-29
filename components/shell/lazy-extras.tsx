@@ -24,7 +24,7 @@ import { tourOpening, type OnboardingState } from "@/lib/tour/state";
 export const TOUR_START_EVENT = "alphaos:tour-start";
 const CHAT_OPEN_EVENT = "alphaos:chat-open";
 
-type TourProps = { role: Role; firstName: string; onboarding: OnboardingState | null; signedInAt: number };
+type TourProps = { role: Role; agentMode?: boolean; firstName: string; onboarding: OnboardingState | null; signedInAt: number };
 type ChatProps = { user: { name: string; email: string; role: Role } };
 
 function useLazyOnEvent<P>(

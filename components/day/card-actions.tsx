@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Button, Textarea, useToast } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { tourIsRunning } from "@/lib/tour/live";
 import { splitChecklistLabel, type ChecklistItem } from "@/lib/qc/checklist";
 import {
   approvePrintAction,
@@ -53,12 +54,14 @@ export function DayCardActions({
 
   function approve() {
     setError(null);
+    if (tourIsRunning()) return toast({ variant: "success", title: "That approves it. Nothing was sent in the tour." });
     setWhich("approve");
     start(async () => finish(kind === "print" ? await approvePrintAction(orderId) : await approveQcAction(orderId)));
   }
 
   function bounce() {
     setError(null);
+    if (tourIsRunning()) return toast({ variant: "success", title: "That sends it back. Nothing was sent in the tour." });
     if (!note.trim()) return setError("Write a note for the designer first.");
     if (kind !== "print" && wrong.length === 0) return setError("Tick what is wrong first.");
     setWhich("bounce");

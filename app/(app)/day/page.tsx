@@ -7,6 +7,8 @@ import { getDayQueue, type DayImage, type DayPrintCard, type DayQcCard, type Day
 import { Badge, DataPanel, EmptyState, Page, PageHeader } from "@/components/ui";
 import { CheckCircle } from "@/components/ui/icons";
 import { DayCardActions } from "@/components/day/card-actions";
+import { QcCompare } from "@/components/day/qc-compare";
+import { QuickReassign } from "@/components/orders/quick-reassign";
 import { formatAt } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +41,15 @@ function Thumb({ image, className, alt }: { image: DayImage; className: string; 
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={image.url} alt={alt} loading="lazy" className="size-full object-cover" />
     </a>
+  );
+}
+
+/** The one plain line that says exactly what to do on this card. */
+function DoLine({ children }: { children: React.ReactNode }) {
+  return (
+    <p data-tour="day-do" className="font-display text-base font-semibold text-ink">
+      {children}
+    </p>
   );
 }
 
@@ -102,6 +113,7 @@ function QcBody({ card }: { card: DayQcCard | DayRevisionCard }) {
 function QcCardView({ card, kind }: { card: DayQcCard | DayRevisionCard; kind: "portrait" | "revision" }) {
   return (
     <DataPanel className="flex h-full flex-col gap-3 p-4">
+      <DoLine>{kind === "portrait" ? "Check this portrait against the photo." : "Buyer wants a change. Check the new version."}</DoLine>
       <CardHead card={card} label={kind === "portrait" ? "Portrait QC" : "Revision QC"} />
       <p className="text-sm text-ink break-words">
         {card.productLine}
@@ -109,7 +121,18 @@ function QcCardView({ card, kind }: { card: DayQcCard | DayRevisionCard; kind: "
       </p>
       {card.buyerNotes && <p className="rounded-md bg-canvas p-2 text-sm text-slate break-words">Buyer notes: {card.buyerNotes}</p>}
       <QcBody card={card} />
-      <div className="mt-auto pt-1">
+      <div className="mt-auto flex flex-col gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <QcCompare
+            orderId={card.orderId}
+            orderNumber={card.orderNumber}
+            buyerPhotos={card.buyerPhotos}
+            portrait={card.portrait}
+            checklist={card.checklist}
+            kind={kind}
+          />
+          <QuickReassign orderId={card.orderId} />
+        </div>
         <DayCardActions orderId={card.orderId} kind={kind} checklist={card.checklist} />
       </div>
     </DataPanel>
@@ -120,6 +143,7 @@ function PrintCardView({ card }: { card: DayPrintCard }) {
   const blocked = card.blockers.filter((b) => b.code !== "not_approved");
   return (
     <DataPanel className="flex h-full flex-col gap-3 p-4">
+      <DoLine>Print this order. Check file and address.</DoLine>
       <CardHead card={card} label="Print and ship" />
       <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[7rem_minmax(0,1fr)]">
         <dt className="font-medium text-ink">Product</dt>
@@ -164,11 +188,11 @@ function PrintCardView({ card }: { card: DayPrintCard }) {
   );
 }
 
-function Group({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
+function Group({ title, count, tour, children }: { title: string; count: number; tour: string; children: React.ReactNode }) {
   if (count === 0) return null;
   return (
     <section className="flex flex-col gap-3" aria-label={title}>
-      <h2 className="font-display text-lg font-semibold text-ink">
+      <h2 data-tour={`group:${tour}`} className="font-display text-lg font-semibold text-ink">
         {title} <span className="text-slate">({count})</span>
       </h2>
       <ul className="grid gap-4 xl:grid-cols-2">{children}</ul>
@@ -208,21 +232,21 @@ export default async function DayPage() {
         </DataPanel>
       ) : (
         <>
-          <Group title="Portrait QC" count={q.portrait.length}>
+          <Group title="Portrait QC" tour="portrait" count={q.portrait.length}>
             {q.portrait.map((c) => (
               <li key={c.orderId}>
                 <QcCardView card={c} kind="portrait" />
               </li>
             ))}
           </Group>
-          <Group title="Revision QC" count={q.revision.length}>
+          <Group title="Revision QC" tour="revision" count={q.revision.length}>
             {q.revision.map((c) => (
               <li key={c.orderId}>
                 <QcCardView card={c} kind="revision" />
               </li>
             ))}
           </Group>
-          <Group title="Print and ship" count={q.print.length}>
+          <Group title="Print and ship" tour="print" count={q.print.length}>
             {q.print.map((c) => (
               <li key={c.orderId}>
                 <PrintCardView card={c} />

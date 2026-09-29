@@ -73,6 +73,8 @@ import { formatAt } from "@/lib/time";
 import { sizedImageUrl } from "@/lib/images";
 import { activityLabel } from "@/lib/orders/activity-label";
 import { PrintShipCard } from "./print-card";
+import { QuickReassign } from "@/components/orders/quick-reassign";
+import { buildStageTimeline, isRevisionStage, stageWithRound } from "@/lib/orders/stage-timeline";
 
 export const dynamic = "force-dynamic";
 
@@ -536,6 +538,8 @@ export default async function OrderDetailPage({
             : "Waiting to send";
 
 
+  const stageSteps = buildStageTimeline(detail.events);
+
   return (
     <Page className="max-w-6xl">
       <PageHeader
@@ -549,6 +553,14 @@ export default async function OrderDetailPage({
               status={order.status as OrderStatus}
               label={order.status === "ready_to_assign" && hasDesigner ? "Not started" : undefined}
             />
+            {isRevisionStage(order.status, order.revisionCount) && (
+              <Badge variant="warning" dot>
+                {stageWithRound(order.status, order.revisionCount)}
+              </Badge>
+            )}
+            {editable && !["complete", "cancelled", "delivered", "shipped"].includes(order.status) && (
+              <QuickReassign orderId={order.id} />
+            )}
             {editable && order.customerEmail && (
               <ComposeButton
                 businessId={order.businessId}
@@ -1039,6 +1051,34 @@ export default async function OrderDetailPage({
               />
             )}
           </Disclosure>
+
+          <DataPanel className="flex flex-col gap-3 p-4" data-tour="order-timeline">
+            <h2 className="font-display text-base font-semibold text-ink">Where this order has been</h2>
+            {stageSteps.length === 0 ? (
+              <p className="text-sm text-slate">No steps yet.</p>
+            ) : (
+              <ol className="flex flex-col">
+                {stageSteps.map((step, i) => (
+                  <li key={step.id} className="relative flex gap-3 pb-3 last:pb-0">
+                    {i < stageSteps.length - 1 && <span aria-hidden="true" className="absolute left-[5px] top-3.5 h-full w-px bg-line" />}
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        "relative mt-1.5 size-3 shrink-0 rounded-full",
+                        step.tone === "revision" ? "bg-amber" : step.tone === "good" ? "bg-sage" : step.tone === "warn" ? "bg-rose" : "bg-slate/50",
+                        i === stageSteps.length - 1 && "ring-4 ring-pigment/20",
+                      )}
+                    />
+                    <div className="min-w-0">
+                      <p className={cn("text-sm text-ink", i === stageSteps.length - 1 && "font-semibold")}>{step.label}</p>
+                      {step.detail && <p className="break-words text-sm text-slate">{step.detail}</p>}
+                      <p className="text-xs text-slate">{fmtDateTime(step.at)}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </DataPanel>
 
           {/* The order's history: open from lg up, folded on a phone (a link
               to #notes still opens it there). */}

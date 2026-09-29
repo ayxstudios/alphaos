@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
 import { loadShellData } from "@/lib/shell/context";
-import { TOUR_STEPS, stepWhat } from "@/lib/tour/steps";
+import { tourStepsFor, stepWhat } from "@/lib/tour/steps";
 import { GUIDE_ANSWERS } from "@/lib/tour/guide";
 import { cn } from "@/lib/utils";
 import { DataPanel, Disclosure, Page, PageHeader } from "@/components/ui";
@@ -20,8 +20,8 @@ export default async function HelpPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
-  const { onboarding } = await loadShellData(user);
-  const steps = TOUR_STEPS[user.role];
+  const { onboarding, agentMode } = await loadShellData(user);
+  const steps = tourStepsFor(user.role, agentMode);
   const answers = GUIDE_ANSWERS[user.role];
   const seenUpTo = onboarding?.completedAt ? steps.length : onboarding?.startedAt ? (onboarding.lastStep ?? 0) + 1 : 0;
 

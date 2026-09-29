@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { PrefetchOptions } from "next/dist/shared/lib/app-router-context.shared-runtime";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/utils";
 import { focusRing } from "@/components/ui/styles";
 import { Check } from "@/components/ui/icons";
 import type { Role } from "@/lib/auth/config";
-import { TOUR_STEPS } from "@/lib/tour/steps";
+import { tourStepsFor } from "@/lib/tour/steps";
 import type { TourEvent } from "@/lib/tour/state";
 import type { TourMode, TourRequest } from "@/lib/tour/request";
 import { TourAborted, find, firstLine, runStep, submitGet, waitFor, type Hooks, type Link as TourLink } from "@/lib/tour/player";
@@ -370,8 +370,8 @@ function SamplePortrait({ className }: { className?: string }) {
   );
 }
 
-export default function TourRuntime({ role, firstName, request }: { role: Role; firstName: string; request: TourRequest | null }) {
-  const steps = TOUR_STEPS[role];
+export default function TourRuntime({ role, agentMode, firstName, request }: { role: Role; agentMode: boolean; firstName: string; request: TourRequest | null }) {
+  const steps = useMemo(() => tourStepsFor(role, agentMode), [role, agentMode]);
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [mode, setMode] = useState<Mode>("none");
@@ -1067,7 +1067,7 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
                   Later
                 </button>
               </div>
-              <p className="text-sm text-slate">A few steps point to what you use every day. You do each one yourself, at your own pace.</p>
+              <p className="text-sm text-slate">We point. You tap. Nothing is sent for you.</p>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <button type="button" onClick={skip} className={secondaryBtn}>
                   Skip
@@ -1082,9 +1082,9 @@ export default function TourRuntime({ role, firstName, request }: { role: Role; 
           {mode === "done" && (
             <div className="flex flex-col gap-3">
               <h2 id={titleId} className="font-display text-lg font-semibold text-ink">
-                You are ready.
+                Done. You are ready.
               </h2>
-              <p className="text-sm text-slate">Everything you tried works the same way every day. The&nbsp;? at the top brings this back any time.</p>
+              <p className="text-sm text-slate">Tap the&nbsp;? at the top to see this again.</p>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <Link href="/help" onClick={() => stop("none")} className={secondaryBtn}>
                   Quick guide

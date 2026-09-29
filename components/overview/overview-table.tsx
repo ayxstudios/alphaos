@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { Badge, DataPanel, EmptyState, Select } from "@/components/ui";
 import { Package } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
+import { QuickReassign } from "@/components/orders/quick-reassign";
 import type { OverviewRow } from "@/lib/agent/overview";
 
 function duration(ms: number): string {
@@ -116,13 +117,14 @@ export function OverviewTable({
                     <span className="min-w-0 truncate text-sm text-slate">{r.businessName}</span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className="font-medium text-ink">{r.stage}</span>
+                    <span className={cn("font-medium", r.revisionCount > 0 ? "text-amber" : "text-ink")}>{r.stage}</span>
                     <TimeCell row={r} />
                   </div>
                   <dl className="grid grid-cols-2 gap-2 text-sm">
                     <div><dt className="text-xs text-slate">Designer</dt><dd className="break-words text-ink">{r.designer ?? "Unassigned"}</dd></div>
                     <div><dt className="text-xs text-slate">Next</dt><dd className="text-ink">{r.nextActor}</dd></div>
                   </dl>
+                  <QuickReassign orderId={r.id} className="self-start -ml-2" />
                 </DataPanel>
               </li>
             ))}
@@ -133,7 +135,7 @@ export function OverviewTable({
               <table className="w-full text-left text-sm">
                 <thead className="sticky top-0 z-10 bg-surface text-xs text-slate shadow-[0_1px_0_0_var(--color-line)]">
                   <tr>
-                    {["Order", "Business", "Stage", "Time in stage / target", "Designer", "Next"].map((h) => (
+                    {["Order", "Business", "Stage", "Time in stage / target", "Designer", "Next", ""].map((h) => (
                       <th key={h} scope="col" className="px-4 py-2.5 font-medium">{h}</th>
                     ))}
                   </tr>
@@ -145,10 +147,11 @@ export function OverviewTable({
                         <Link href={`/orders/${r.id}`} className="font-medium text-pigment hover:underline">{r.orderNumber}</Link>
                       </td>
                       <td className="px-4 py-2.5 text-slate">{r.businessName}</td>
-                      <td className="px-4 py-2.5 text-ink">{r.stage}</td>
+                      <td className={cn("px-4 py-2.5", r.revisionCount > 0 ? "font-medium text-amber" : "text-ink")}>{r.stage}</td>
                       <td className="px-4 py-2.5"><TimeCell row={r} /></td>
                       <td className="px-4 py-2.5 text-ink">{r.designer ?? "Unassigned"}</td>
                       <td className="px-4 py-2.5 text-ink">{r.nextActor}</td>
+                      <td className="px-4 py-1 text-right"><QuickReassign orderId={r.id} /></td>
                     </tr>
                   ))}
                 </tbody>
