@@ -44,6 +44,7 @@
     "test:tour": "node scripts/tour-check.mjs",
     "db:local-tour": "scripts/local-db/setup-tour-db.sh",
     "test:due-date": "tsx scripts/test-due-date.ts",
+    "test:agent-completeness": "tsx scripts/test-agent-completeness.ts",
     "test:email-noise": "tsx scripts/test-email-noise.ts"
   },
   "dependencies": {

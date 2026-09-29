@@ -300,6 +300,10 @@ export const businesses = pgTable("businesses", {
   // proof reminder are DRAFTS for the VA outbox unless this is on, in which case
   // they queue for the automatic flush (still gated by email_sending_enabled).
   stageEmailAutoSend: boolean("stage_email_auto_send").notNull().default(false),
+  // Agent-first phase 1 switches (docs/AGENT_FIRST.md). Both off until an admin
+  // turns them on per business; nothing migrates a row to true.
+  agentIntakeEnabled: boolean("agent_intake_enabled").notNull().default(false),
+  agentAssignEnabled: boolean("agent_assign_enabled").notNull().default(false),
   createdAt: createdAt(),
 });
 
@@ -1067,6 +1071,40 @@ export const activityLog = pgTable(
       t.action,
       t.createdAt,
     ),
+  ],
+);
+
+// Things the agent could not settle on its own and hands to a human. kind and
+// status are plain text so new kinds need no migration. kind now:
+// photo_count_mismatch, intake_unparsed. status: open | resolved. detail holds
+// the context and the agent's suggested answer. At most one OPEN row per
+// (order, kind). Staff-scoped by RLS.
+export const exceptions = pgTable(
+  "exceptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "restrict" }),
+    orderId: text("order_id").references(() => orders.id, {
+      onDelete: "set null",
+    }),
+    kind: text("kind").notNull(),
+    status: text("status").notNull().default("open"),
+    summary: text("summary").notNull(),
+    detail: jsonb("detail").notNull().default(sql`'{}'::jsonb`),
+    createdAt: createdAt(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+    resolvedBy: text("resolved_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    resolutionNote: text("resolution_note"),
+  },
+  (t) => [
+    index("exceptions_business_status_idx").on(t.businessId, t.status),
+    uniqueIndex("exceptions_open_order_kind_uq")
+      .on(t.orderId, t.kind)
+      .where(sql`${t.status} = 'open' and ${t.orderId} is not null`),
   ],
 );
 
