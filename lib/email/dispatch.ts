@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, isNull, ne } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, ne, sql } from "drizzle-orm";
 
 import { getAgentConfig } from "@/lib/agent/config";
 import { withSystemContext, type Tx } from "@/lib/db";
@@ -56,10 +56,16 @@ type DraftParams = {
   proofId?: string;
   ctx: NonNullable<EmailContext>;
   orderNumber: string; // human-facing order number for the {{order_number}} var
+  /** Unique per customer-facing moment; a repeat insert is dropped and returns null. */
+  dedupeKey?: string;
 };
 
-/** Render a template and insert the message row. Returns the new message id. */
-async function insertRendered(tx: Tx, p: DraftParams): Promise<string> {
+/**
+ * Render a template and insert the message row. Returns the new message id, or
+ * null when `dedupeKey` already exists (the customer already has, or is already
+ * due, this mail).
+ */
+async function insertRendered(tx: Tx, p: DraftParams): Promise<string | null> {
   const template = await resolveTemplate(tx, p.businessId, p.key);
   const rendered = renderTemplate(template, {
     first_name: p.ctx.firstName,
@@ -81,9 +87,11 @@ async function insertRendered(tx: Tx, p: DraftParams): Promise<string> {
       subject: rendered.subject,
       address: p.ctx.email,
       body: rendered.body,
+      dedupeKey: p.dedupeKey ?? null,
     })
+    .onConflictDoNothing({ target: messages.dedupeKey, where: sql`${messages.dedupeKey} is not null` })
     .returning({ id: messages.id });
-  return row.id;
+  return row?.id ?? null;
 }
 
 /**
@@ -150,6 +158,7 @@ export async function queuePhotoRequest(
     customerId: order.customerId,
     key: "photo_request",
     status: "queued",
+    dedupeKey: `stage:${order.id}:photo_request`,
     orderNumber: order.platformOrderName ?? order.platformOrderId,
     ctx,
     vars: { upload_link: uploadUrl(order.uploadToken) },
@@ -269,7 +278,12 @@ export async function queueStageEmail(
     .where(eq(businesses.id, order.businessId));
   // Settings > Agent can flip single templates to automatic; the default is a draft.
   const autoSend = !!biz?.autoSend || getAgentConfig(biz).autoSendTemplates.includes(key);
+  // One mail per stage entry the customer should hear about. Internal re-entries
+  // (reassign, AI job re-list, a status reset) hit the same key and are dropped;
+  // a new proof (reminder) or a new tracking number (shipped) is a new moment.
+  const moment = key === "proof_reminder" ? vars.proof_link : key === "shipped" ? vars.tracking_number : undefined;
   return insertRendered(tx, {
+    dedupeKey: `stage:${order.id}:${key}${moment ? `:${moment}` : ""}`,
     businessId: order.businessId,
     orderId: order.id,
     customerId: order.customerId,
@@ -348,13 +362,15 @@ export async function sendMessage(
         attachmentAssetId: messages.attachmentAssetId,
         attachmentFilename: messages.attachmentFilename,
         attachmentContentType: messages.attachmentContentType,
+        manualSentAt: messages.manualSentAt,
       })
       .from(messages)
       .where(eq(messages.id, messageId));
     return m;
   });
   if (!msg) return { ok: false, error: "Message not found", retryable: false };
-  if (msg.status === "sent") return { ok: true };
+  // Never resend what already reached the customer (sent, or marked sent by hand).
+  if (msg.status === "sent" || msg.manualSentAt) return { ok: true };
   if (msg.direction !== "outbound") return { ok: false, error: "Not an outbound message", retryable: false };
   if (!msg.address) {
     await markFailed(messageId, "No recipient address");
@@ -375,12 +391,33 @@ export async function sendMessage(
     return { ok: false, error: "Email sending is turned OFF for this business", retryable: true };
   }
 
+  // Claim the row: only one pass at a time may hold a send in flight. A claim
+  // older than 5 minutes is a crashed pass and may be taken over.
+  const claimed = await withSystemContext((tx) =>
+    tx
+      .update(messages)
+      .set({ sendClaimedAt: new Date() })
+      .where(
+        and(
+          eq(messages.id, messageId),
+          ne(messages.status, "sent"),
+          isNull(messages.manualSentAt),
+          sql`(${messages.sendClaimedAt} is null or ${messages.sendClaimedAt} < now() - interval '5 minutes')`,
+        ),
+      )
+      .returning({ id: messages.id }),
+  );
+  if (!claimed.length) return { ok: false, error: "Another send of this email is in progress", retryable: true };
+  const release = () =>
+    withSystemContext((tx) => tx.update(messages).set({ sendClaimedAt: null }).where(eq(messages.id, messageId)));
+
   let client: GmailClient;
   try {
     client = await GmailClient.forBusiness(msg.businessId);
   } catch (e) {
     if (e instanceof GmailNotConnectedError) {
       if (opts?.markRetryableFailed) await markFailed(messageId, "Gmail not connected for this business");
+      await release();
       return { ok: false, error: "Gmail not connected for this business", retryable: true };
     }
     throw e;
@@ -478,6 +515,7 @@ export async function sendMessage(
           gmailMessageId: res.id,
           gmailRfcMessageId: rfcMessageId,
           error: null,
+          sendClaimedAt: null,
           ...(opts?.approvedById ? { approvedBy: opts.approvedById } : {}),
         })
         .where(eq(messages.id, messageId)),
@@ -487,6 +525,7 @@ export async function sendMessage(
     // A reauth requirement is transient from the message's point of view.
     if (e instanceof GmailReauthRequiredError) {
       if (opts?.markRetryableFailed) await markFailed(messageId, "Gmail needs re-authentication");
+      await release();
       return { ok: false, error: "Gmail needs re-authentication", retryable: true };
     }
     const error = e instanceof Error ? e.message : String(e);
@@ -497,7 +536,7 @@ export async function sendMessage(
 
 async function markFailed(messageId: string, error: string): Promise<void> {
   await withSystemContext((tx) =>
-    tx.update(messages).set({ status: "failed", error }).where(eq(messages.id, messageId)),
+    tx.update(messages).set({ status: "failed", error, sendClaimedAt: null }).where(eq(messages.id, messageId)),
   );
 }
 

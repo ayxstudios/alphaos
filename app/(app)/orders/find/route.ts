@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
       .where(
         or(
           sql`lower(${orders.platformOrderName}) in (${bare.toLowerCase()}, ${`#${bare}`.toLowerCase()})`,
-          eq(orders.platformOrderId, bare),
+          sql`lower(${orders.platformOrderId}) = ${bare.toLowerCase()}`,
         ),
       )
       .limit(2);

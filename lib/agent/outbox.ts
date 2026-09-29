@@ -211,7 +211,7 @@ async function sendStep(
     } catch (e) {
       // sendMessage throws for an unexpected fault; count it like a hard failure.
       const error = errorMessage(e);
-      await withSystemContext((tx) => tx.update(messages).set({ status: "failed", error }).where(eq(messages.id, r.id)));
+      await withSystemContext((tx) => tx.update(messages).set({ status: "failed", error, sendClaimedAt: null }).where(eq(messages.id, r.id)));
       res = { ok: false, error, retryable: false };
     }
     if (res.ok) report.sent += 1;

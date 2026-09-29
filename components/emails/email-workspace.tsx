@@ -37,6 +37,17 @@ export function fmtDateTime(iso: string | null): string {
   return formatAt(iso, { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }, "Unknown");
 }
 
+/** First row per id: the same message can arrive in two refreshes of a list, and React needs unique keys. */
+function uniqueBy<T>(rows: T[], id: (row: T) => string): T[] {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    const k = id(row);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 export function EmailWorkspace({
   businessId,
   sendingEnabled,
@@ -52,12 +63,14 @@ export function EmailWorkspace({
   history: ReactNode;
   ignoredSenders: IgnoredSender[];
 }) {
-  const failed = outbox.filter((m) => m.status === "failed");
-  const pendingOutbox = outbox.filter((m) => m.status !== "failed");
+  const outboxRows = uniqueBy(outbox, (m) => m.messageId);
+  const failed = outboxRows.filter((m) => m.status === "failed");
+  const pendingOutbox = outboxRows.filter((m) => m.status !== "failed");
   // Notifications and marketing mail (lib/email/noise.ts) never count as
   // "Needs you": they wait, folded, in their own section below.
-  const people = unmatched.filter((r) => !r.noise);
-  const notices = unmatched.filter((r) => r.noise);
+  const unmatchedRows = uniqueBy(unmatched, (r) => r.messageId);
+  const people = unmatchedRows.filter((r) => !r.noise);
+  const notices = unmatchedRows.filter((r) => r.noise);
 
   return (
     <div className="flex flex-col gap-4">
@@ -80,8 +93,8 @@ export function EmailWorkspace({
             <p className="px-4 py-6 text-center text-sm text-slate">All caught up. Nothing needs a reply.</p>
           ) : (
             <>
-              {people.map((reply) => <ReplyCard key={reply.messageId} reply={reply} businessId={businessId} />)}
-              {failed.map((item) => <DraftCard key={item.messageId} item={item} sendingEnabled={sendingEnabled} />)}
+              {people.map((reply) => <ReplyCard key={`reply-${reply.messageId}`} reply={reply} businessId={businessId} />)}
+              {failed.map((item) => <DraftCard key={`failed-${item.messageId}`} item={item} sendingEnabled={sendingEnabled} />)}
             </>
           )}
         </div>
@@ -93,7 +106,7 @@ export function EmailWorkspace({
           hint={`${notices.length} not counted`}
         >
           <div className="-mx-4 divide-y divide-line/70">
-            {notices.map((reply) => <ReplyCard key={reply.messageId} reply={reply} businessId={businessId} />)}
+            {notices.map((reply) => <ReplyCard key={`notice-${reply.messageId}`} reply={reply} businessId={businessId} />)}
           </div>
         </Disclosure>
       )}
@@ -107,7 +120,7 @@ export function EmailWorkspace({
           <p className="py-1 text-sm text-slate">Every email has gone out.</p>
         ) : (
           <div className="-mx-4 divide-y divide-line/70">
-            {pendingOutbox.map((item) => <DraftCard key={item.messageId} item={item} sendingEnabled={sendingEnabled} />)}
+            {pendingOutbox.map((item) => <DraftCard key={`pending-${item.messageId}`} item={item} sendingEnabled={sendingEnabled} />)}
           </div>
         )}
       </Disclosure>
@@ -122,7 +135,7 @@ export function EmailWorkspace({
           hint={`${ignoredSenders.filter((s) => s.active).length} ignored`}
         >
           <div className="-mx-4 divide-y divide-line/70">
-            {ignoredSenders.map((sender) => (
+            {uniqueBy(ignoredSenders, (s) => s.id).map((sender) => (
               <IgnoredSenderRow key={sender.id} sender={sender} />
             ))}
           </div>
@@ -299,7 +312,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
             {searching && <p className="mt-1 text-xs text-slate">Searching…</p>}
             {results.length > 0 && (
               <div className="mt-2 flex flex-col divide-y divide-line rounded-input border border-line">
-                {results.map((o) => (
+                {uniqueBy(results, (o) => o.orderId).map((o) => (
                   <div key={o.orderId} className="flex items-center gap-2 px-3 py-2 text-sm">
                     <span className="min-w-0 truncate text-ink">{o.orderNumber}</span>
                     {o.customerName && <span className="text-xs text-slate">{o.customerName}</span>}

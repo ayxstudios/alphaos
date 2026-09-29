@@ -899,9 +899,15 @@ export const messages = pgTable(
     }),
     manualSentReason: text("manual_sent_reason"),
     sentAt: timestamp("sent_at", { withTimezone: true }),
+    // One customer mail per (order, template, stage entry): a second insert with
+    // the same key is dropped by the unique index below (lib/email/dispatch.ts).
+    dedupeKey: text("dedupe_key"),
+    // Set for the few seconds a send is in flight so two passes never both send.
+    sendClaimedAt: timestamp("send_claimed_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [
+    uniqueIndex("messages_dedupe_key_uq").on(t.dedupeKey).where(sql`${t.dedupeKey} is not null`),
     index("messages_order_idx").on(t.orderId),
     index("messages_gmail_thread_idx").on(t.gmailThreadId),
     // The outbox: pending drafts across the tenant, newest first.
