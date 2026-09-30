@@ -188,7 +188,7 @@ export function TodayQueueList({ groups }: { groups: Record<TodayBand, TodayItem
                           else rowRefs.current.delete(item.id);
                         }}
                         onMouseEnter={() => setCursor(idx)}
-                        className={cn("relative flex items-center gap-3 px-4 py-2.5", selected && "bg-pigment-soft/40")}
+                        className={cn("relative flex flex-col items-stretch gap-2 px-4 py-2.5 sm:flex-row sm:items-center sm:gap-3", selected && "bg-pigment-soft/40")}
                       >
                         {selected && <span aria-hidden className="absolute inset-y-2 left-0 w-0.5 rounded-full bg-pigment" />}
                         <div className="min-w-0 flex-1">
@@ -210,7 +210,7 @@ export function TodayQueueList({ groups }: { groups: Record<TodayBand, TodayItem
                           // No viewport prefetch: every row is a different order, each one a request of its own on a phone (docs/PERF.md).
                           prefetch={false}
                           className={cn(
-                            "inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-input px-3 text-sm font-medium sm:h-9",
+                            "inline-flex h-11 shrink-0 items-center justify-center gap-1.5 self-end rounded-input px-3 text-sm font-medium sm:h-9 sm:self-auto",
                             band === "now" ? "bg-pigment text-surface hover:opacity-90" : "bg-canvas text-ink hover:bg-pigment-soft",
                             focusRing,
                           )}
