@@ -198,7 +198,7 @@ function Row({
         className={cn("flex min-w-0 items-center gap-2.5 rounded-input", focusRing)}
       >
         <Avatar name={d.name} size="sm" />
-        <span className="truncate text-sm font-medium text-ink hover:text-pigment">{d.name}</span>
+        <span className="line-clamp-2 min-w-0 break-words text-sm font-medium text-ink hover:text-pigment">{d.name}</span>
       </Link>
 
       {/* Styles */}

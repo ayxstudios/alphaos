@@ -237,6 +237,25 @@ const REVISION_FROM_STATUSES = new Set<OrderStatus>([
   "complete",
 ]);
 
+/**
+ * An email body in the message list: five lines, then the whole thing on a tap.
+ * break-words so a proof link never runs past the edge of a phone.
+ */
+function MessageBody({ body }: { body: string }) {
+  const long = body.length > 320 || body.split("\n").length > 5;
+  if (!long) return <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate">{body}</p>;
+  return (
+    <details className="group mt-1">
+      <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+        <p className="line-clamp-5 whitespace-pre-wrap break-words text-sm text-slate group-open:hidden">{body}</p>
+        <span className="mt-1 inline-block py-1 text-xs font-medium text-pigment group-open:hidden">Show whole message</span>
+        <span className="mt-1 hidden py-1 text-xs font-medium text-pigment group-open:inline-block">Show less</span>
+      </summary>
+      <p className="whitespace-pre-wrap break-words text-sm text-slate">{body}</p>
+    </details>
+  );
+}
+
 export default async function OrderDetailPage({
   params,
 }: {
@@ -840,7 +859,7 @@ export default async function OrderDetailPage({
                           <span className="text-xs text-slate">{fmtDateTime(when)}</span>
                         </div>
                         {m.subject && <p className="text-sm font-medium text-ink">{m.subject}</p>}
-                        {m.body && <p className="mt-1 whitespace-pre-wrap text-sm text-slate line-clamp-5">{m.body}</p>}
+                        {m.body && <MessageBody body={m.body} />}
                         {editable && suggestion && <ReplyClassificationSuggestion suggestion={suggestion} />}
                         {editable && inbound && m.body && (
                           <details className="mt-3 rounded-input bg-canvas p-2">

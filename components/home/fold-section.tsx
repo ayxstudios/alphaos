@@ -86,7 +86,7 @@ export function FoldSection({
       >
         <span className="min-w-0 flex-1">
           <span className={cn("block font-semibold text-ink", quiet ? "text-sm" : "text-base")}>{title}</span>
-          <span className="block truncate text-xs text-slate">{open ? description : (summary ?? description)}</span>
+          <span className="line-clamp-2 block text-xs text-slate">{open ? description : (summary ?? description)}</span>
         </span>
         <ChevronDown size={18} className={cn("shrink-0 text-slate transition-transform duration-200", open && "rotate-180")} />
       </button>

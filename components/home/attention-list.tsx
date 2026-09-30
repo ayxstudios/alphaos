@@ -59,7 +59,7 @@ export function AttentionList({ items, total, allHref = "/today" }: { items: Tod
                 <span className="shrink-0 font-semibold text-ink">{it.orderNumber}</span>
                 <span className="ml-auto shrink-0 whitespace-nowrap tabular-nums">{it.age}</span>
               </div>
-              <p className="truncate text-sm text-ink">{it.todo}</p>
+              <p className="line-clamp-2 text-sm text-ink">{it.todo}</p>
             </Link>
             <Link
               href={it.action.href}

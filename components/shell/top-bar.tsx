@@ -42,6 +42,13 @@ const ROLE_LABEL: Record<Role, string> = {
   designer: "Designer",
 };
 
+/** "Northlight Portraits" -> "NP": the phone top bar has room for two letters, not a name. */
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const s = words.slice(0, 2).map((w) => w[0]).join("");
+  return (s || name.slice(0, 2)).toUpperCase();
+}
+
 export function TopBar({
   user,
   options,
@@ -109,7 +116,9 @@ export function TopBar({
             trigger={
               <>
                 <Building size={16} className="hidden shrink-0 text-pigment sm:block" />
-                <span className="min-w-0 truncate sm:min-w-[3.5rem]">{selected.name}</span>
+                {/* A phone gets the initials: at 360px the full name showed two letters and a dot. */}
+                <span className="sm:hidden" aria-label={selected.name}>{initials(selected.name)}</span>
+                <span className="hidden min-w-0 truncate sm:inline sm:min-w-[3.5rem]">{selected.name}</span>
                 <ChevronDown size={15} className="shrink-0 text-slate" />
               </>
             }

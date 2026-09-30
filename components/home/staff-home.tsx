@@ -194,7 +194,7 @@ function MailLine({ unmatched, failed }: { unmatched: number; failed: number }) 
   return (
     <Link href="/emails" className="flex min-h-11 items-center gap-2 rounded-input bg-canvas px-3 py-2 text-sm text-ink hover:bg-pigment-soft/60">
       <Mail size={16} className="text-pigment" />
-      <span className="min-w-0 truncate">
+      <span className="min-w-0">
         {unmatched ? `${unmatched} message${unmatched === 1 ? "" : "s"} not matched to an order` : ""}
         {unmatched && failed ? ", " : ""}
         {failed ? `${failed} failed send${failed === 1 ? "" : "s"}` : ""}
@@ -211,7 +211,7 @@ function ShopRows({ shops }: { shops: StaffHome["shops"] }) {
       {shops.map((s) => (
         // Phone: the shop name gets its own line so it is never cut short.
         <li key={s.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 text-sm sm:flex">
-          <span className="col-span-2 truncate text-ink sm:w-36 sm:shrink-0" title={s.name}>
+          <span className="col-span-2 truncate text-ink sm:w-48 sm:shrink-0" title={s.name}>
             {s.name}
           </span>
           <span className="h-2 flex-1 overflow-hidden rounded-full" style={{ background: "var(--color-chart-track)" }}>
