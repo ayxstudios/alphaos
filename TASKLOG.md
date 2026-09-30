@@ -7,3 +7,4 @@
 - next: deploy-demo.sh once, live verify
 - branch pushed to origin (14c2409); .vercel relinked to project alphaos (the earlier link had created a stray empty Vercel project alphaos-wt-demofix-req41951 on the vision team, left untouched); deploy-demo.sh launched, log /tmp/alphaos-demo-deploy.log; next: live verify, wrap-up to Yousif
 - DONE 2026-09-30 16:25: demo deployed (alphaos-38bq2umwe, alias alphaos-demo.vercel.app), all 6 fixes verified live; QC orders enriched (enrich-qc-orders.cjs); wrap-up sent to Yousif. Branch task/alphaos-wt-demofix-req41951 pushed, NOT merged (demo only).
+- 2026-09-30 round 3: QC phone two-up compare + Enlarge (compare-viewer.tsx), Messages "Reply needed" + action line and Ignore sender confirm (email-workspace.tsx). Demo redeployed (alphaos-8xtdp0f24, alias alphaos-demo.vercel.app, token VERCEL_TOKEN_VISION), verified live at 390x844; shots in alphaos-demo-assets/round3. Not merged.
