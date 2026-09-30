@@ -161,6 +161,7 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
         {item.skippedReason && <Badge variant="warning" dot>Skipped</Badge>}
         {item.orderFinished && <Badge variant="warning" dot>Order {item.orderFinished}</Badge>}
         <span className="min-w-0 truncate text-sm font-medium text-ink">{item.subject || "(no subject)"}</span>
+        <span className="block w-full truncate text-xs font-medium text-amber">{draftAction(item, queued)}</span>
         <span className="w-full text-xs text-slate sm:ml-auto sm:w-auto">
           {item.customerName ?? item.toAddress ?? "-"}
           {item.orderNumber ? ` · ${item.orderNumber}` : ""} · {fmtDateTime(item.createdAt)}
@@ -300,6 +301,15 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
       )}
     </div>
   );
+}
+
+/** One plain line for a drafted or failed email: what exactly the person reading has to do. */
+function draftAction(item: OutboxItem, queued: boolean): string {
+  if (item.status === "failed") return "Sending failed, open and tap Retry send";
+  if (item.skippedReason) return "Skipped, open to read why and send or discard";
+  if (item.orderFinished) return `Order already ${item.orderFinished}, open and send or discard`;
+  if (queued) return "Sending soon, open to stop it if it is wrong";
+  return "Drafted for you, open to approve and send";
 }
 
 /** One plain line: what exactly the person reading has to do. */
