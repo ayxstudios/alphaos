@@ -819,7 +819,7 @@ export function OrdersOperationsTable({
                   </div>
                   {row.reviewReason && <p className="mt-1 line-clamp-2 text-sm leading-snug text-amber">{row.reviewReason}</p>}
                   <div className="mt-1.5 flex flex-col items-stretch gap-2">
-                    <p className="min-w-0 truncate text-xs text-slate">
+                    <p className="min-w-0 text-xs leading-snug text-slate">
                       {row.source} · {row.assignee}
                       {row.stageTimer.remainingMs != null && (
                         <>
