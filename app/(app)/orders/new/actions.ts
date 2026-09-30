@@ -13,6 +13,7 @@ import { parseFigureCount } from "@/lib/orders/manual-input";
 import { runTransition } from "@/lib/orders/transitions";
 import { normalizeOrderNumber } from "@/lib/orders/reconcile";
 import { shopStyleChoices } from "@/lib/designers/styles";
+import { withSizeOption } from "@/lib/orders/size-option";
 import { referenceUploadProblem } from "@/lib/uploads/verify";
 import {
   assetKey,
@@ -33,6 +34,8 @@ export type NewOrderInput = {
   style?: string | null;
   productTitle?: string | null;
   productType: "digital" | "physical";
+  /** Print size / canvas, saved as a Size option on the item. */
+  size?: string;
   notes?: string;
   dueAt?: string; // ISO (date)
   r2Keys?: string[];
@@ -239,6 +242,7 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
           // A style the VA picked by hand is a hand-set, not a fallback default.
           styleLocked: !!input.style?.trim(),
         productType: input.productType,
+        options: withSizeOption(null, input.size),
       });
 
       const assetRows = [
@@ -309,6 +313,7 @@ export async function completeOrderDetails(input: {
   style?: string | null;
   productTitle?: string | null;
   productType: "digital" | "physical";
+  size?: string;
   notes?: string;
   dueAt?: string;
   customerName?: string;
@@ -375,7 +380,7 @@ export async function completeOrderDetails(input: {
       }
 
       const [existingItem] = await tx
-        .select({ id: orderItems.id })
+        .select({ id: orderItems.id, options: orderItems.options })
         .from(orderItems)
         .where(eq(orderItems.orderId, order.id))
         .for("update")
@@ -391,6 +396,9 @@ export async function completeOrderDetails(input: {
         // as chosen (not "Defaulted ... please confirm") and a re-resolve keeps it.
         styleLocked: !!input.style?.trim(),
         productType: input.productType,
+        // Only touch options when the form carried a size, so an imported
+        // order's other options are never lost.
+        ...(input.size !== undefined ? { options: withSizeOption(existingItem?.options, input.size) } : {}),
       };
       if (existingItem) {
         await tx.update(orderItems).set(itemValues).where(eq(orderItems.id, existingItem.id));

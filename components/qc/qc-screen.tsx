@@ -16,6 +16,7 @@ import {
 } from "@/app/(app)/qc/actions";
 import { CompareViewer } from "./compare-viewer";
 import { ChecklistPanel } from "./checklist-panel";
+import { OrderSaysPanel } from "./order-says-panel";
 import { VersionStrip } from "./version-strip";
 import { QcHeader } from "./qc-header";
 import { FailDialog } from "./fail-dialog";
@@ -327,6 +328,7 @@ export function QcScreen({
         />
 
         <aside className="flex min-h-[28rem] flex-col rounded-card bg-surface p-4 shadow-card">
+          <OrderSaysPanel says={ctx.orderSays} />
           <div className="min-h-0 flex-1">
               <ChecklistPanel
                 items={items}

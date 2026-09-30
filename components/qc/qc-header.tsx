@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { cn, styleLabel } from "@/lib/utils";
@@ -58,7 +59,16 @@ export function QcHeader({
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
         <div className="flex items-center gap-3">
           <h1 className="font-display text-xl font-semibold text-ink">
-            {ctx.orderNumber}
+            <Link
+              href={`/orders/${ctx.orderId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-input underline-offset-4 hover:text-pigment hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pigment"
+              aria-label={`Open order ${ctx.orderNumber} in a new tab`}
+              title="Open the order in a new tab"
+            >
+              {ctx.orderNumber}
+            </Link>
           </h1>
           <StatusChip status={ctx.status as OrderStatus} />
           {/* Only a live QC clock: a passed or finished order is not "in QC". */}
@@ -72,7 +82,17 @@ export function QcHeader({
             <Badge variant="warning">Not set</Badge>
           )}
         </Fact>
-        <Fact label="Style">{ctx.style ? styleLabel(ctx.style) : "Not set"}</Fact>
+        <Fact label={ctx.styleGuessed ? "Style (guessed)" : "Style"}>
+          {ctx.style ? (
+            ctx.styleGuessed ? (
+              <span className="text-amber">Guessed {styleLabel(ctx.style)}. Please check it.</span>
+            ) : (
+              styleLabel(ctx.style)
+            )
+          ) : (
+            "Not set"
+          )}
+        </Fact>
         <Fact label="Designer">{ctx.designerName ?? "Unassigned"}</Fact>
       </div>
 

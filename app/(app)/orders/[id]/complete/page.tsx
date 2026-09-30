@@ -12,6 +12,7 @@ import {
   orderItems,
   assets,
 } from "@/lib/db/schema";
+import { sizeFromOptions } from "@/lib/orders/size-option";
 import { isR2Configured } from "@/lib/storage/r2";
 import { shopStyleChoices } from "@/lib/designers/styles";
 import { resolveStyle } from "@/lib/integrations/etsy/figures";
@@ -85,6 +86,7 @@ export default async function CompleteOrderPage({
         figureCount: orderItems.figureCount,
         style: orderItems.style,
         productType: orderItems.productType,
+        options: orderItems.options,
       })
       .from(orderItems)
       .where(eq(orderItems.orderId, order.id))
@@ -118,6 +120,7 @@ export default async function CompleteOrderPage({
     suggestedStyle,
     styleOptions,
     savedProductType: item?.productType ?? null,
+    savedSize: sizeFromOptions(item?.options),
     savedNotes: order.notes ?? "",
     photoCount: photoCountRow?.count ?? 0,
     rawImport: order.rawImport,
