@@ -10,3 +10,10 @@
 - 2026-09-30 round 3: QC phone two-up compare + Enlarge (compare-viewer.tsx), Messages "Reply needed" + action line and Ignore sender confirm (email-workspace.tsx). Demo redeployed (alphaos-8xtdp0f24, alias alphaos-demo.vercel.app, token VERCEL_TOKEN_VISION), verified live at 390x844; shots in alphaos-demo-assets/round3. Not merged.
 
 - 2026-09-30 17:39 gauntlet: loop 2 first run invalid (stale next-server 47945 kept :3155 while .next was rebuilt, all assets 400). Killed it, restarted server on build WOZqh8VKl8XuHFWVhzUef, rerunning loop 2 (pid 91987).
+
+## 2026-09-30 18:10 gauntlet close-out
+- Loop 3 + loop 4 clean (results-loop4.json: only known noise, phone orders small[] empty).
+- Deploy: scripts/demo/deploy-demo.sh -> https://alphaos-76mexaw3l-almacorpvision.vercel.app, alias alphaos-demo.vercel.app attached (pid 19968 done).
+- Live verify: page-check on /login (laptop+phone) + logged-in worker pass: Order says panel + ORD link on QC (routes are UUIDs, ORD-1003 reached via /qc), phone QC two-up with Enlarge, phone order action pills 44px, /emails Reply needed with action line, no console errors.
+- Noted, not fixed this round: phone /emails subject and sender lines ellipsis-truncate; agenttest-inbox threads leak into Messages.
+- Local gauntlet server (var/gauntlet/server.pid) stopped. Branch stays unmerged.
