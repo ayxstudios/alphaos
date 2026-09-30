@@ -835,7 +835,7 @@ export function OrdersOperationsTable({
                         href={row.action.href}
                         prefetch={false}
                         aria-label={`${row.action.label}, order ${row.orderNumber}`}
-                        className="relative z-10 -my-2 inline-flex h-9 max-w-[55%] shrink-0 items-center gap-1 rounded-input bg-pigment px-3 text-xs font-medium text-surface shadow-sm hover:opacity-90 before:absolute before:-inset-y-1 before:inset-x-0"
+                        className="relative z-10 -my-3 inline-flex h-11 max-w-[55%] shrink-0 items-center gap-1 rounded-input bg-pigment px-3.5 text-xs font-medium text-surface shadow-sm hover:opacity-90"
                       >
                         <span className="truncate">{row.action.label}</span>
                         <ArrowRight size={13} className="shrink-0" />
