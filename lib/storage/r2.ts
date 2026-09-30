@@ -26,7 +26,7 @@ export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
 export const ALLOWED_IMAGE_TYPES = /^image\/(jpeg|png|webp|gif|heic|heif)$/i;
 
 const PUT_TTL_SECONDS = 300; // presigned PUT validity
-const GET_TTL_SECONDS = 300; // presigned GET validity (short — bucket is private)
+const GET_TTL_SECONDS = 3600; // presigned GET validity: an hour, so a photo on a page left open does not go blank after 5 min (bucket stays private)
 
 let cached: S3Client | null = null;
 function client(): S3Client {
