@@ -18,3 +18,11 @@
 - Noted, not fixed this round: phone /emails subject and sender lines ellipsis-truncate; agenttest-inbox threads leak into Messages.
 - Local gauntlet server (var/gauntlet/server.pid) stopped. Branch stays unmerged.
 - 2026-09-30 18:30 gauntlet on PRODUCTION (skill gauntlet-loop): harness loop p1 vs alias = 0 new mechanical findings vs the local baseline, 20/20 flows. LOOK pass (hard worker, 4 viewports, touch) found: 44px pills covering the due date on phone Orders cards and the order id on phone Today rows (fixed f74ef70: pill on its own row), Failed/queued Messages cards with no action line (fixed 97f1ee4, touchup t3bf78efe). Notes not fixed: /emails demo seed junk (agenttest-inbox threads), laptop QC photo panes have empty space above/below, 14px hint lines on phone QC and dashboard. Deploy 3 (f74ef70) in flight, deploy 4 (97f1ee4) next, then loops p2/p3 on the alias.
+
+## 2026-09-30 18:50 production gauntlet, final
+- Deploy 5 (2bf5cfa) aliased alphaos-demo.vercel.app -> alphaos-8eiwiommu-almacorpvision.vercel.app.
+- Loops p1/p2/p3 on production (laptop1440, laptop1280, phone390, phone360): 0 new findings vs the loop4 baseline, 20/20 flows each.
+- Pill check on phone: Orders and Today action pills 44px, no overlaps; Orders meta line wraps in full (no "...").
+- Loop 4a fidelity (hard worker, laptop + iPhone 13): Messages action lines on drafted/queued/failed cards, Reply needed label + action line, ORD-1003 QC two-up + Enlarge + Order says panel + order link, no horizontal scroll on /, /today, /orders, /emails, /qc, QC page, 0 console errors: all PASS.
+- Loop 4b touchup (every card states the needed action in one line): PASS on Orders cards, Today rows, Messages cards.
+- Branch stays unmerged; nothing to production.
