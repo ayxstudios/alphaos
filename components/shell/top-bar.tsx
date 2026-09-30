@@ -104,7 +104,8 @@ export function TopBar({
         {/* One workspace (a designer in one business): nothing to switch, and
             on a phone the button could only show "Lu...". The page names
             the business; a laptop keeps it as a label. */}
-        <div className={cn("min-w-0", options.length <= 1 && "max-sm:hidden")}>
+        {/* sm:shrink-0: at 1280px the search box was squeezing the business name to "Northlight Portr…". */}
+        <div className={cn("min-w-0 sm:shrink-0", options.length <= 1 && "max-sm:hidden")}>
           <Popover
             align="start"
             ariaLabel="Switch workspace"
@@ -156,7 +157,7 @@ export function TopBar({
         <form
           role="search"
           onSubmit={submitSearch}
-          className="relative hidden w-full max-w-md sm:block"
+          className="relative hidden w-full min-w-0 max-w-md sm:block"
         >
           <Search
             size={16}

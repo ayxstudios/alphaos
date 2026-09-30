@@ -243,7 +243,7 @@ function Pane({
   return (
     <div className="flex min-h-[13rem] flex-col lg:min-h-[20rem] overflow-hidden rounded-card bg-surface shadow-card">
       <div className="flex items-center justify-between border-b border-line/70 px-3 py-1.5">
-        <span className="truncate text-xs font-medium text-slate">{label}</span>
+        <span className="min-w-0 break-words text-xs font-medium leading-tight text-slate">{label}</span>
         {image && (
           <button
             type="button"
