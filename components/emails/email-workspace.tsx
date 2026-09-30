@@ -55,7 +55,7 @@ export function EmailWorkspace({
   const failed = outbox.filter((m) => m.status === "failed");
   const pendingOutbox = outbox.filter((m) => m.status !== "failed");
   // Notifications and marketing mail (lib/email/noise.ts) never count as
-  // "Needs you": they wait, folded, in their own section below.
+  // "Reply needed": they wait, folded, in their own section below.
   const people = unmatched.filter((r) => !r.noise);
   const notices = unmatched.filter((r) => r.noise);
 
@@ -72,7 +72,7 @@ export function EmailWorkspace({
       {/* The hero: what a person has to deal with. */}
       <section className="rounded-card bg-surface shadow-card">
         <div className="flex items-center gap-2 px-4 py-3" data-tour="page:messages">
-          <h2 className="text-base font-semibold text-ink">Needs you</h2>
+          <h2 className="text-base font-semibold text-ink">Reply needed</h2>
           {people.length + failed.length > 0 && <Badge variant="warning">{people.length + failed.length}</Badge>}
         </div>
         <div className="divide-y divide-line/70 border-t border-line/70">
@@ -113,7 +113,7 @@ export function EmailWorkspace({
       </Disclosure>
 
       {/* All mail: streamed in its own Suspense boundary (app/(app)/emails/page.tsx),
-          so "Needs you" paints before the 50-row history query returns. */}
+          so "Reply needed" paints before the 50-row history query returns. */}
       {history}
 
       {ignoredSenders.length > 0 && (
@@ -226,6 +226,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
   const [results, setResults] = useState<{ orderId: string; orderNumber: string; customerName: string | null }[]>([]);
   const [searching, startSearch] = useTransition();
   const [reason, setReason] = useState("");
+  const [confirmIgnore, setConfirmIgnore] = useState(false);
   // Nobody waits on a notification, so it never gets the "waiting" dot.
   const stale = !reply.noise && reply.ageMs > DAY_MS;
 
@@ -242,6 +243,9 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
       <button type="button" onClick={() => setOpen((o) => !o)} className="-my-3 flex w-full items-center gap-3 py-3 text-left" aria-expanded={open}>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-ink">{reply.subject || "(no subject)"}</span>
+          {!reply.noise && (
+            <span className="block truncate text-xs font-medium text-amber">{replyAction(reply)}</span>
+          )}
           <span className="block truncate text-xs text-slate">
             {reply.fromAddress ?? "unknown sender"}
             {reply.noise ? ` · ${reply.noise}` : ""}
@@ -282,12 +286,28 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
             <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason, e.g. not a customer" aria-label="Why archive it" className="h-11 w-full sm:h-8 sm:w-56" />
             <Button type="button" size="sm" variant="ghost" disabled={!reason.trim()} onClick={() => run(() => archiveReply(reply.messageId, reason))}>Archive</Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => run(() => ignoreSenderFromMessage(reply.messageId))}>Ignore sender</Button>
+            {!confirmIgnore ? (
+              <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmIgnore(true)}>Ignore sender</Button>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Confirm ignore sender">
+                <span className="text-sm text-ink">Ignore this sender? Their mail stops showing here.</span>
+                <Button type="button" size="sm" variant="danger" loading={pending} onClick={() => run(() => ignoreSenderFromMessage(reply.messageId))}>Confirm</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmIgnore(false)}>Cancel</Button>
+              </div>
+            )}
           </div>
         </div>
       )}
     </div>
   );
+}
+
+/** One plain line: what exactly the person reading has to do. */
+function replyAction(reply: UnmatchedReply): string {
+  if (reply.suggestion) return `Link to ${reply.suggestion.orderNumber}, then answer ${reply.suggestion.customerName}`;
+  if (/photo|picture|image|attach/i.test(`${reply.subject} ${reply.body}`)) return "Photo received, confirm it is usable";
+  if (/proof|approve|changes?|revision/i.test(`${reply.subject} ${reply.body}`)) return "Answering a proof, record approved or changes";
+  return "Customer replied, needs an answer";
 }
 
 function IgnoredSenderRow({ sender }: { sender: IgnoredSender }) {

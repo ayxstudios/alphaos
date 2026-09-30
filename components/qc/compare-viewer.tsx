@@ -35,6 +35,8 @@ export function CompareViewer({
 }) {
   const [t, setT] = useState<Transform>(IDENTITY);
   const [refIndex, setRefIndex] = useState(0);
+  // Phone only: tap "Enlarge" on a pane to see it full screen.
+  const [enlarged, setEnlarged] = useState<{ label: string; image: string } | null>(null);
   const dragging = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(
     null,
   );
@@ -121,7 +123,7 @@ export function CompareViewer({
       </div>
 
       {/* Panes */}
-      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-2">
+      <div className="grid min-h-0 flex-1 grid-cols-2 gap-2 lg:gap-3">
         <Pane
           label="Customer photo"
           image={reference}
@@ -133,6 +135,7 @@ export function CompareViewer({
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
           onDoubleClick={reset}
+          onEnlarge={setEnlarged}
         />
         <Pane
           label={portraitLabel}
@@ -145,8 +148,25 @@ export function CompareViewer({
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
           onDoubleClick={reset}
+          onEnlarge={setEnlarged}
         />
       </div>
+
+      {enlarged && (
+        <div
+          role="dialog"
+          aria-label={`${enlarged.label} enlarged`}
+          className="fixed inset-0 z-50 flex flex-col bg-ink/90 p-3 lg:hidden"
+          onClick={() => setEnlarged(null)}
+        >
+          <div className="flex items-center justify-between pb-2 text-sm text-white">
+            <span>{enlarged.label}</span>
+            <Button size="sm" variant="secondary" onClick={() => setEnlarged(null)}>Close</Button>
+          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={enlarged.image} alt={enlarged.label} className="min-h-0 flex-1 object-contain" />
+        </div>
+      )}
 
       {/* Reference thumbnail rail — switch which photo the left pane shows. */}
       {references.length > 1 && (
@@ -188,6 +208,7 @@ function Pane({
   transform,
   zoomed,
   onZoom,
+  onEnlarge,
   ...handlers
 }: {
   label: string;
@@ -196,6 +217,7 @@ function Pane({
   zoomed: boolean;
   /** Zoom toward a point given in pane-centre-relative coordinates. */
   onZoom: (cx: number, cy: number, factor: number) => void;
+  onEnlarge: (v: { label: string; image: string }) => void;
 } & Pick<
   React.HTMLAttributes<HTMLDivElement>,
   "onPointerDown" | "onPointerMove" | "onPointerUp" | "onPointerCancel" | "onDoubleClick"
@@ -219,9 +241,18 @@ function Pane({
   }, [onZoom]);
 
   return (
-    <div className="flex min-h-[20rem] flex-col overflow-hidden rounded-card bg-surface shadow-card">
+    <div className="flex min-h-[13rem] flex-col lg:min-h-[20rem] overflow-hidden rounded-card bg-surface shadow-card">
       <div className="flex items-center justify-between border-b border-line/70 px-3 py-1.5">
-        <span className="text-xs font-medium text-slate">{label}</span>
+        <span className="truncate text-xs font-medium text-slate">{label}</span>
+        {image && (
+          <button
+            type="button"
+            onClick={() => onEnlarge({ label, image })}
+            className="-my-1.5 inline-flex min-h-11 shrink-0 items-center pl-2 text-xs font-medium text-pigment lg:hidden"
+          >
+            Enlarge
+          </button>
+        )}
       </div>
       <div
         ref={surfaceRef}

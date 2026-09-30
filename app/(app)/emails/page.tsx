@@ -76,7 +76,7 @@ export default async function EmailsPage({ searchParams }: { searchParams: Searc
         unmatched={unmatched}
         outbox={outbox}
         history={
-          // Its own boundary: "Needs you" paints while the 50-row history
+          // Its own boundary: "Reply needed" paints while the 50-row history
           // query is still running (the page used to wait for all of it).
           <Suspense fallback={<MailHistoryFallback />}>
             <MailHistorySection user={user} {...historyOpts} />
