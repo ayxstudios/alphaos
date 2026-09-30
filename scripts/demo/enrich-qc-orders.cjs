@@ -7,15 +7,15 @@ require("dotenv").config({ path: process.env.DEMO_ENV_FILE });
 const sql = neon(process.env.DEMO_DIRECT_URL);
 const data = {
   "ORD-1003": {
-    title: "Custom Pet Portrait from Photo, Watercolor Style Dog Cat Print",
+    title: "Custom Pet Portrait from Photo, Royal Renaissance Cat Dog Print",
     size: '11x14"',
-    personalization: "Biscuit (golden retriever), add a red bandana please",
-    buyerNote: "He has a small white patch on his chest, please keep it!",
+    personalization: "Marmalade (ginger cat) and Frank (dachshund), both in royal outfits please",
+    buyerNote: "Frank has a grey patch on his muzzle, please keep it!",
   },
   "ORD-1002": {
-    title: "Family Portrait Illustration from Photo, Line Art Couple Print",
+    title: "Adventure Buddies Illustration from Photo, You and Your Dog Custom Art",
     size: '8x10"',
-    personalization: "Sam and Priya, wedding date 14.06.2025 under the drawing",
+    personalization: "Ben and Scout, write Summit Day 14.06.2025 under the drawing",
     buyerNote: null,
   },
 };
