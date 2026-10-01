@@ -104,6 +104,19 @@ const AUDIT = () => {
   return out;
 };
 
+
+// Full-content shot: the app shell scrolls <main>, not the document, so grow the viewport to the scroller's content height.
+async function fullShot(page, file) {
+  const vp = page.viewportSize();
+  const extra = await page.evaluate(() => {
+    const sc = [...document.querySelectorAll("main, *")].find((e) => /(auto|scroll)/.test(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight + 5 && e.clientHeight > innerHeight * 0.3);
+    return sc ? sc.scrollHeight - sc.clientHeight : 0;
+  }).catch(() => 0);
+  if (extra > 4) { await page.setViewportSize({ width: vp.width, height: Math.min(vp.height + extra, 5000) }); await page.waitForTimeout(500); }
+  await page.screenshot({ path: file, fullPage: true }).catch(() => {});
+  if (extra > 4) await page.setViewportSize(vp);
+}
+
 async function login(page, email) {
   await page.goto(`${BASE}/login`, { waitUntil: "domcontentloaded" });
   await page.fill('input[type="email"], input[name="email"]', email);
@@ -151,7 +164,7 @@ for (const [cname, copts] of Object.entries(CTXS)) {
       await page.waitForTimeout(700);
       const a = await page.evaluate(AUDIT).catch((e) => ({ error: String(e) }));
       const slug = label.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "");
-      await page.screenshot({ path: `${SHOTS}/${cname}__${slug}.png`, fullPage: true }).catch(() => {});
+      await fullShot(page, `${SHOTS}/${cname}__${slug}.png`);
       res.pages[label] = { ms: Date.now() - t0, console: [...bucket.console], failed: [...bucket.failed], ...a };
     }
 
@@ -230,7 +243,7 @@ for (const [cname, copts] of Object.entries(CTXS)) {
         await thumbs.nth(0).click(); await page.keyboard.press("ArrowRight"); await page.waitForTimeout(250);
         note(cname, "QC arrow-right goes to photo 2", (await activeIdx()) === 1);
       }
-      await page.screenshot({ path: `${SHOTS}/${cname}__qc_after_switch.png`, fullPage: true });
+      await fullShot(page, `${SHOTS}/${cname}__qc_after_switch.png`);
     }
 
     // ---------- TEST: boards business scoping ----------
@@ -258,7 +271,7 @@ for (const [cname, copts] of Object.entries(CTXS)) {
         res.boardsB = { namesB, header: await bizName() };
         const overlap = idsA.filter((x) => idsB.includes(x));
         note(cname, "Boards rail changes with business", idsB.length > 0 && JSON.stringify(idsA) !== JSON.stringify(idsB) && overlap.length < Math.max(idsA.length, idsB.length), `A=${namesA.join(",")} | B=${namesB.join(",")}`);
-        await page.screenshot({ path: `${SHOTS}/${cname}__board_businessB.png`, fullPage: true });
+        await fullShot(page, `${SHOTS}/${cname}__board_businessB.png`);
         // designer id from A falls back in B
         const foreign = idsA.find((x) => !idsB.includes(x));
         if (foreign) {
@@ -308,7 +321,7 @@ for (const [role, pages] of [["designer", ["/dashboard", "/board", "/me"]], ["ad
         await page.goto(BASE + p, { waitUntil: "load", timeout: 60000 }).catch(() => {});
         await page.waitForTimeout(500);
         const a = await page.evaluate(AUDIT).catch((e) => ({ error: String(e) }));
-        await page.screenshot({ path: `${SHOTS}/${role}_${cname}__${p.replace(/\W+/g, "_")}.png`, fullPage: true }).catch(() => {});
+        await fullShot(page, `${SHOTS}/${role}_${cname}__${p.replace(/\W+/g, "_")}.png`);
         const h1 = await page.locator("main h1").first().innerText().catch(() => "");
         (results.contexts[`${role}_${cname}`] ??= { pages: {} }).pages[p] = { url: new URL(page.url()).pathname, h1, console: [...bucket.console], failed: [...bucket.failed], ...a };
       }
