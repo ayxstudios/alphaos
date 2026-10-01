@@ -110,17 +110,21 @@ function boardThumbnailUrl(url: string): string {
   return url.includes("picsum.photos") ? url.replace(/\/900\/900$/, "/400/400") : sizedImageUrl(url, 640);
 }
 
-async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<BoardCard[]> {
+async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]> {
   if (!rows.length) return [];
+  const viewerRole = user.role;
   const ids = rows.map((o) => o.id);
   const revisionIds = rows.filter((o) => o.status === "in_design").map((o) => o.id);
   const custIds = rows.map((o) => o.customerId).filter((x): x is string => !!x);
 
   // Every query below only reads from `ids`/`revisionIds`/`custIds` (already
-  // known from `rows`), so none of them depends on another's result — run
-  // them together instead of one round trip after another. Still the same
-  // tx/withUserContext, so the RLS GUCs set on it apply to every one of these.
-  const [items, refs, failRows, revRows, vaRevisionRows, customerRows, submissionRows] = await Promise.all([
+  // known from `rows`), so none depends on another's result. A transaction is
+  // ONE connection, so queries "in parallel" on it still go over the wire one
+  // after another (docs/PERF.md: the ~5 s board). The queries are therefore
+  // split over two read-only transactions that run side by side; each sets its
+  // own RLS GUCs (withUserContext), so scoping is unchanged.
+  const [[items, refs, customerRows], [failRows, revRows, vaRevisionRows, submissionRows]] = await Promise.all([
+    withUserContext(user, (tx) => Promise.all([
     tx
       .select({
         orderId: orderItems.orderId,
@@ -135,6 +139,19 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
       .select({ orderId: assets.orderId, url: assets.url, storage: assets.storage, r2Key: assets.r2Key })
       .from(assets)
       .where(and(inArray(assets.orderId, ids), eq(assets.type, "reference"), isNull(assets.deletedAt))),
+    custIds.length
+      ? isDesignerLike(viewerRole)
+        ? tx
+            .select({ id: customerPublic.id, firstName: customerPublic.firstName })
+            .from(customerPublic)
+            .where(inArray(customerPublic.id, custIds))
+        : tx
+            .select({ id: customers.id, firstName: customers.firstName, lastName: customers.lastName })
+            .from(customers)
+            .where(inArray(customers.id, custIds))
+      : Promise.resolve([]),
+    ])),
+    withUserContext(user, (tx) => Promise.all([
     revisionIds.length
       ? tx
           .select({
@@ -173,25 +190,14 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
           .where(and(inArray(activityLog.orderId, revisionIds), eq(activityLog.action, "order.in_design")))
           .orderBy(desc(activityLog.createdAt))
       : Promise.resolve([]),
-    custIds.length
-      ? isDesignerLike(viewerRole)
-        ? tx
-            .select({ id: customerPublic.id, firstName: customerPublic.firstName })
-            .from(customerPublic)
-            .where(inArray(customerPublic.id, custIds))
-        : tx
-            .select({ id: customers.id, firstName: customers.firstName, lastName: customers.lastName })
-            .from(customers)
-            .where(inArray(customers.id, custIds))
-      : Promise.resolve([]),
     revisionIds.length
       ? tx
           .select({ orderId: assets.orderId, createdAt: assets.createdAt })
           .from(assets)
           .where(and(inArray(assets.orderId, revisionIds), eq(assets.type, "submission"), isNull(assets.deletedAt)))
       : Promise.resolve([]),
+    ])),
   ]);
-
   // Ready for QC: the newest portrait version is newer than the last send-back.
   const lastSendBack = new Map<string, number>();
   for (const r of vaRevisionRows) {
@@ -419,17 +425,21 @@ export async function getDesignerBoard(
   }
   const target = isHelper ? (options.helperFor as string) : (designerId ?? user.id);
   const includeEarnings = isHelper ? false : options.includeEarnings !== false;
-  return withUserContext(user, async (tx) => {
-    const assignedToTarget = (status: OrderRow["status"] | OrderRow["status"][]) =>
-      and(
-        Array.isArray(status) ? inArray(orders.status, status) : eq(orders.status, status),
-        liveOrderWhere(),
-        businessId ? eq(orders.businessId, businessId) : undefined,
-      );
+  const assignedToTarget = (status: OrderRow["status"] | OrderRow["status"][]) =>
+    and(
+      Array.isArray(status) ? inArray(orders.status, status) : eq(orders.status, status),
+      liveOrderWhere(),
+      businessId ? eq(orders.businessId, businessId) : undefined,
+    );
 
-    // The live columns (queue/in-design/QC) and the capped Complete column are
-    // independent queries — same with the earnings figures below — so they all
-    // go over the wire together instead of one round trip after another.
+  // Speed (docs/PERF.md): one transaction is ONE connection, so "Promise.all"
+  // inside it still runs query after query (the ~5 s board). The independent
+  // read groups below each get their own read-only withUserContext
+  // transaction (each sets its own RLS GUCs) and run side by side:
+  //   1. the owner's timezone, then (if allowed) the three earnings reads;
+  //   2. the live columns; 3. the capped Complete column.
+  // Then enrich() fans out over two more transactions.
+  const ownerPay = withUserContext(user, async (tx) => {
     // The board owner's zone first: "Today" (earnings) is their day, like every deadline they see.
     const [profile] = await tx
       .select({ timezone: designerProfiles.timezone })
@@ -437,47 +447,20 @@ export async function getDesignerBoard(
       .where(eq(designerProfiles.userId, target))
       .limit(1);
     const timeZone = isValidTimezone(profile?.timezone ?? null) ? (profile?.timezone as string) : DEFAULT_TIMEZONE;
+    if (!includeEarnings) {
+      return { timeZone, daily: undefined, period: undefined, earningRows: [] as EarningRow[] };
+    }
     const dayStart = startOfDayInTimezone(new Date(), timeZone);
-
-    const [activeRows, completeRows, [daily], [period], earningRows] = await Promise.all([
+    const [[daily], [period], earningRows] = await Promise.all([
       tx
-        .select(BOARD_ROW_SELECT)
-        .from(orders)
-        .innerJoin(
-          assignments,
-          and(eq(assignments.orderId, orders.id), eq(assignments.active, true), eq(assignments.designerId, target)),
-        )
-        .where(assignedToTarget(["ready_to_assign", "in_design", "awaiting_qc", ...WITH_CUSTOMER_STATUSES])) as Promise<OrderRow[]>,
+        .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
+        .from(earnings)
+        .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), gte(earnings.createdAt, dayStart))),
       tx
-        .select(BOARD_ROW_SELECT)
-        .from(orders)
-        .innerJoin(
-          assignments,
-          and(eq(assignments.orderId, orders.id), eq(assignments.active, true), eq(assignments.designerId, target)),
-        )
-        .where(
-          and(
-            assignedToTarget("complete"),
-            gte(orders.updatedAt, sql`now() - interval '1 day' * ${COMPLETE_COLUMN_WINDOW_DAYS}`),
-          ),
-        )
-        .orderBy(desc(orders.updatedAt))
-        .limit(COMPLETE_COLUMN_MAX) as Promise<OrderRow[]>,
-      includeEarnings
-        ? tx
-            .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
-            .from(earnings)
-            .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), gte(earnings.createdAt, dayStart)))
-        : Promise.resolve([] as { total: string }[]),
-      includeEarnings
-        ? tx
-            .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
-            .from(earnings)
-            .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), eq(earnings.period, currentPeriod())))
-        : Promise.resolve([] as { total: string }[]),
-      !includeEarnings
-        ? Promise.resolve([] as EarningRow[])
-        : tx
+        .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
+        .from(earnings)
+        .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), eq(earnings.period, currentPeriod()))),
+      tx
         .select({
           id: earnings.id,
           orderId: earnings.orderId,
@@ -494,11 +477,44 @@ export async function getDesignerBoard(
         .innerJoin(orders, eq(orders.id, earnings.orderId))
         .where(eq(earnings.designerId, target))
         .orderBy(desc(earnings.createdAt))
-        .limit(20),
+        .limit(20) as Promise<EarningRow[]>,
     ]);
+    return { timeZone, daily, period, earningRows };
+  });
 
+  const activeP = withUserContext(user, (tx) =>
+    tx
+      .select(BOARD_ROW_SELECT)
+      .from(orders)
+      .innerJoin(
+        assignments,
+        and(eq(assignments.orderId, orders.id), eq(assignments.active, true), eq(assignments.designerId, target)),
+      )
+      .where(assignedToTarget(["ready_to_assign", "in_design", "awaiting_qc", ...WITH_CUSTOMER_STATUSES])) as Promise<OrderRow[]>,
+  );
+  const completeP = withUserContext(user, (tx) =>
+    tx
+      .select(BOARD_ROW_SELECT)
+      .from(orders)
+      .innerJoin(
+        assignments,
+        and(eq(assignments.orderId, orders.id), eq(assignments.active, true), eq(assignments.designerId, target)),
+      )
+      .where(
+        and(
+          assignedToTarget("complete"),
+          gte(orders.updatedAt, sql`now() - interval '1 day' * ${COMPLETE_COLUMN_WINDOW_DAYS}`),
+        ),
+      )
+      .orderBy(desc(orders.updatedAt))
+      .limit(COMPLETE_COLUMN_MAX) as Promise<OrderRow[]>,
+  );
+
+  {
+    const [activeRows, completeRows] = await Promise.all([activeP, completeP]);
+    const { timeZone, daily, period, earningRows } = await ownerPay;
     const rows = [...activeRows, ...completeRows];
-    const cards = await enrich(tx, rows, user.role);
+    const cards = await enrich(user, rows);
     const meta = new Map(rows.map((r) => [r.id, r]));
     // "Soonest deadline first": every live column is sorted by the date the
     // viewer is shown (undated cards last). Complete keeps most-recent-first.
@@ -537,5 +553,5 @@ export async function getDesignerBoard(
         createdAt: earning.createdAt.toISOString(),
       })),
     };
-  });
+  }
 }
