@@ -6,7 +6,7 @@ import { PrefetchKind } from "next/dist/client/components/router-reducer/router-
 
 import { cn } from "@/lib/utils";
 import { focusRing } from "@/components/ui/styles";
-import { Grid, ListChecks, Package, Mail, Columns, Calendar, Menu, type IconProps } from "@/components/ui/icons";
+import { Grid, ListChecks, Package, Mail, Columns, Calendar, Eye, Menu, type IconProps } from "@/components/ui/icons";
 import type { ComponentType } from "react";
 import type { Role } from "@/lib/auth/config";
 
@@ -20,11 +20,18 @@ const TOUCH_PREFETCH = { kind: PrefetchKind.FULL };
 
 type Tab = { label: string; href: string; icon: ComponentType<IconProps> };
 
-const ADMIN_VA_TABS: Tab[] = [
+const ADMIN_TABS: Tab[] = [
   { label: "Home", href: "/dashboard", icon: Grid },
   { label: "Today", href: "/today", icon: ListChecks },
   { label: "Orders", href: "/orders", icon: Package },
   { label: "Messages", href: "/emails", icon: Mail },
+];
+
+const VA_TABS: Tab[] = [
+  { label: "Home", href: "/dashboard", icon: Grid },
+  { label: "Awaiting QC", href: "/qc", icon: Eye },
+  { label: "Messages", href: "/emails", icon: Mail },
+  { label: "Boards", href: "/board", icon: Columns },
 ];
 
 const DESIGNER_TABS: Tab[] = [
@@ -43,7 +50,7 @@ const DESIGNER_TABS: Tab[] = [
 export function BottomTabs({ role, onMore }: { role: Role; onMore: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
-  const tabs = role === "designer" ? DESIGNER_TABS : ADMIN_VA_TABS;
+  const tabs = role === "designer" ? DESIGNER_TABS : role === "va" ? VA_TABS : ADMIN_TABS;
   return (
     <nav
       aria-label="Primary"

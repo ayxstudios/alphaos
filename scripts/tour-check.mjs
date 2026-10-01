@@ -79,7 +79,7 @@ const OUT = path.join(ROOT, args.out || "var/tour-shots");
 const PASSWORD = args.password || "tourpass123";
 const USERS = {
   admin: { email: "tour-admin@alphaos.test", first: "Amira", steps: 6, paths: ["/orders", "/designers", "/styles", "/settings", "/payouts", "/health"], extra: ["/orders?view=overdue", "/settings?section=email", "/health?scope=all"] },
-  va: { email: "tour-va@alphaos.test", first: "Vera", steps: 6, paths: ["/today", "/orders", "/qc", "/emails", "/queue/print"], extra: ["/orders?view=needs_details", "/orders?q=Gwen"] },
+  va: { email: "tour-va@alphaos.test", first: "Vera", steps: 5, paths: ["/orders", "/qc", "/emails", "/queue/print"], extra: ["/orders?view=needs_details", "/orders?q=Gwen"] },
   designer: { email: "tour-designer@alphaos.test", first: "Dina", steps: 4, paths: ["/board", "/me"] },
 };
 const ROLES = String(args.roles || "admin,va,designer").split(",");

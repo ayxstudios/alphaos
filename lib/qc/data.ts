@@ -291,6 +291,10 @@ export type QcQueueRow = {
   shopName: string;
   platform: string;
   designerName: string | null;
+  /** Customer first name for the list row. */
+  customerFirstName: string | null;
+  /** How many reference photos the customer sent. */
+  photoCount: number;
   figureCount: number;
   style: string | null;
   dueAt: string | null;
@@ -313,6 +317,8 @@ export async function getQcQueue(user: RequestUser, businessId: string | null): 
         dueAt: orders.dueAt,
         updatedAt: orders.updatedAt,
         thumbUrl: sql<string | null>`(select ${assets.url} from ${assets} where ${assets.orderId} = ${orders.id} and ${assets.type} in ('submission', 'final') and ${assets.deletedAt} is null and ${assets.url} is not null order by ${assets.createdAt} desc limit 1)`,
+        photoCount: sql<number>`(select count(*) from ${assets} where ${assets.orderId} = ${orders.id} and ${assets.type} = 'reference' and ${assets.deletedAt} is null)::int`,
+        customerFirstName: customers.firstName,
         shopName: shops.name,
         platform: shops.platform,
         designerName: users.name,
@@ -321,6 +327,7 @@ export async function getQcQueue(user: RequestUser, businessId: string | null): 
       })
       .from(orders)
       .innerJoin(shops, eq(shops.id, orders.shopId))
+      .leftJoin(customers, eq(customers.id, orders.customerId))
       .leftJoin(assignments, and(eq(assignments.orderId, orders.id), eq(assignments.active, true)))
       .leftJoin(users, eq(users.id, assignments.designerId))
       .where(bizFilter ? and(eq(orders.status, "awaiting_qc"), liveOrderWhere(), bizFilter) : and(eq(orders.status, "awaiting_qc"), liveOrderWhere()))
@@ -333,6 +340,8 @@ export async function getQcQueue(user: RequestUser, businessId: string | null): 
       shopName: r.shopName,
       platform: r.platform,
       designerName: r.designerName ?? null,
+      customerFirstName: r.customerFirstName?.trim() || null,
+      photoCount: Number(r.photoCount ?? 0),
       figureCount: Number(r.figures ?? 0),
       style: r.style ?? null,
       dueAt: r.dueAt ? r.dueAt.toISOString() : null,

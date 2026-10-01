@@ -7,6 +7,7 @@ import { getStaffHome, type StaffHome } from "@/lib/home/staff";
 import { pctDelta } from "@/lib/home/shared";
 import { AttentionList } from "./attention-list";
 import { FoldSection } from "./fold-section";
+import { VaHome } from "./va-home";
 import { DayLine, HomeSection, RowLabel, StatTile } from "./primitives";
 
 /**
@@ -17,11 +18,12 @@ import { DayLine, HomeSection, RowLabel, StatTile } from "./primitives";
  */
 export async function StaffHome({ user, businessId, role }: { user: RequestUser; businessId: string; role: "admin" | "va" }) {
   const h = await getStaffHome(user, businessId);
+  if (role === "va") return <VaHome h={h} />;
   const doneCount = h.stages.find((s) => s.key === "done")?.n ?? 0;
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
       <DayLine>{daySentence(h)}</DayLine>
-      {role === "admin" ? <AdminTiles h={h} /> : <VaTiles h={h} />}
+      <AdminTiles h={h} />
 
       <div className="grid gap-4 sm:gap-5 lg:grid-cols-5">
         <HomeSection title="Do first" description={h.attention.counts.total ? doFirstLine(h.attention.counts) : undefined} action={h.attention.counts.total ? { label: "Full queue", href: "/today" } : undefined} className="lg:col-span-3">
@@ -171,19 +173,6 @@ function AdminTiles({ h }: { h: StaffHome }) {
         hint={`${fmtMoney(h.money?.designerPayOwed ?? 0)} still to pay`}
         href="/payouts"
       />
-    </div>
-  );
-}
-
-function VaTiles({ h }: { h: StaffHome }) {
-  const replies = h.attention.byKind.find((k) => k.kind === "reply")?.n ?? 0;
-  const qc = h.attention.byKind.find((k) => k.kind === "qc")?.n ?? 0;
-  return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <StatTile label="Needs you now" value={fmtInt(h.attention.counts.now)} hint="Someone is waiting" tone={h.attention.counts.now === 0 ? "good" : "bad"} href="/today" />
-      <StatTile label="For today" value={fmtInt(h.attention.counts.today)} hint={h.attention.counts.soon ? `${h.attention.counts.soon} for later` : "Nothing for later"} tone={h.attention.counts.today === 0 ? "good" : "warn"} href="/today" />
-      <StatTile label="Replies to send" value={fmtInt(replies)} hint={h.messages.unmatched ? `${h.messages.unmatched} to link to an order` : "All linked to orders"} href="/emails" />
-      <StatTile label="Overdue orders" value={fmtInt(h.overdue)} hint={qc ? `${qc} waiting for QC` : `${h.dueToday} due today`} tone={h.overdue === 0 ? "good" : "bad"} href="/orders?view=overdue" />
     </div>
   );
 }

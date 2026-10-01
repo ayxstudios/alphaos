@@ -58,12 +58,11 @@ const ADMIN_MORE: NavItem[] = [
 
 const VA_NAV: NavItem[] = [
   { label: "Home", href: "/dashboard", icon: Grid },
-  { label: "Today", href: "/today", icon: ListChecks },
-  { label: "Orders", href: "/orders", icon: Package },
-  { label: "QC", href: "/qc", icon: Eye },
+  { label: "Awaiting QC", href: "/qc", icon: Eye },
   { label: "Messages", href: "/emails", icon: Mail },
   { label: "Boards", href: "/board", icon: Columns },
   { label: "Print", href: "/queue/print", icon: Truck },
+  { label: "All Orders Overview", href: "/orders", icon: Package },
 ];
 
 const VA_MORE: NavItem[] = [

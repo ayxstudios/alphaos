@@ -55,13 +55,6 @@ const CARDS: Sel = ['[data-tour="card:in_design"]', '[data-tour="card:ready_to_a
 
 const VA_STEPS: TourStep[] = [
   {
-    id: "today",
-    title: "Today",
-    path: "/today",
-    acts: [],
-    nav: { kind: "nav", say: "Today lists what needs you first. Tap Today and work from the top down." },
-  },
-  {
     id: "search",
     title: "Find an order",
     path: "/orders",
@@ -73,7 +66,7 @@ const VA_STEPS: TourStep[] = [
         say: "Search finds any order fast. Type a customer's name, then press Enter.",
       },
     ],
-    nav: { kind: "nav", say: "Orders holds every order from every shop. Open it to find the one you need." },
+    nav: { kind: "nav", say: "All Orders Overview holds every order from every shop. Open it to find the one you need." },
   },
   {
     id: "needs-details",

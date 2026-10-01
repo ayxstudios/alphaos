@@ -33,11 +33,19 @@ export default async function HomePage() {
       </div>
       <Suspense
         fallback={
+          user.role === "va" ? (
+            <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
+              <SectionSkeleton h={176} />
+              <SectionSkeleton h={176} />
+              <SectionSkeleton h={176} />
+            </div>
+          ) : (
           <div className="flex flex-col gap-5">
             <TileSkeleton />
             <SectionSkeleton h={260} />
             <SectionSkeleton h={260} />
           </div>
+          )
         }
       >
         {user.role === "designer" ? <DesignerHome user={user} /> : <StaffHome user={user} businessId={selected.id} role={user.role} />}
