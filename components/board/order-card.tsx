@@ -17,6 +17,7 @@ export function OrderCard({
   overlay = false,
   onOpen,
   eager = false,
+  compact = false,
 }: {
   card: BoardCard;
   dragging?: boolean;
@@ -24,6 +25,13 @@ export function OrderCard({
   onOpen?: () => void;
   /** First few cards above the fold: skip lazy-loading so they paint immediately. */
   eager?: boolean;
+  /**
+   * Staff boards (VA/admin) show the slim Trello-style row: number, title,
+   * due chip, a small thumb and only the labels that need acting on — so a
+   * column of 50+ orders stays scannable. Everything else is in the card
+   * that opens. Designers keep the full card with the cover photo.
+   */
+  compact?: boolean;
 }) {
   const labels = cardLabels(card);
   const revision = card.qcFail ?? card.customerRevision;
@@ -31,6 +39,62 @@ export function OrderCard({
   const note = revision ? revisionNote(revision.reason, revision.failedItems) : null;
   const summary = optionsSummary(card.options);
   const fullOptions = card.options.map((o) => `${optionName(o.name)}: ${o.value}`).join("\n");
+
+  if (compact) {
+    // Only what a VA acts on makes a pill here; source and style stay in the open card.
+    const urgent: { text: string; tone: "rose" | "pigment" | "amber" }[] = [];
+    if (card.qcFail) urgent.push({ text: "QC failed", tone: "rose" });
+    if (card.customerRevision) urgent.push({ text: "Revision", tone: "pigment" });
+    if (!card.figuresResolved) urgent.push({ text: "Figures ?", tone: "amber" });
+    return (
+      <div
+        onClick={onOpen}
+        data-tour={overlay ? undefined : `card:${card.status}`}
+        className={cn(
+          "group flex gap-2.5 rounded-card bg-surface p-2.5 transition-[box-shadow,transform] duration-150",
+          overlay ? "rotate-2 shadow-lg" : "shadow-card hover:-translate-y-0.5 hover:shadow-md",
+          dragging && "opacity-40",
+          onOpen && "cursor-pointer",
+        )}
+      >
+        {card.thumbnailUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={card.thumbnailUrl}
+            alt=""
+            className="size-12 shrink-0 rounded-input bg-canvas object-cover"
+            draggable={false}
+            loading={eager ? "eager" : "lazy"}
+            decoding="async"
+          />
+        ) : (
+          <div className="flex size-12 shrink-0 items-center justify-center rounded-input bg-canvas text-slate">
+            <Camera size={14} />
+          </div>
+        )}
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="min-w-0 truncate text-sm font-semibold text-ink">{card.orderNumber}</span>
+            <span className="shrink-0">
+              <Countdown dueAt={card.dueAt} done={card.status === "complete"} withCustomer={isWithCustomer(card.status)} />
+            </span>
+          </div>
+          <p className="truncate text-xs text-slate" title={[card.title, summary].filter(Boolean).join("\n") || undefined}>
+            {card.title ?? card.customerName}
+          </p>
+          {urgent.length > 0 && (
+            <div className="flex flex-wrap gap-1 pt-0.5">
+              {urgent.map((l) => (
+                <span key={l.text} className={cn("inline-flex rounded px-1.5 py-0.5 text-xs font-medium", LABEL_CLASS[l.tone])}>
+                  {l.text}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
