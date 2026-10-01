@@ -22,3 +22,5 @@ State:
 Facts: demo logins in ~/Documents/ai-employee-agent/.local/alphaos-demo.env. Counts exist in lib/home/staff.ts attention.byKind (qc, reply, print). getRailDesigners has no business filter (the leak Yousif saw).
 
 2026-10-01: all chunks committed, demo deployed (alphaos-k6352f9mf), QA passed desktop+phone (/tmp/alphaos-va-qa/report.json), Tessa link sent. Reply count = all unanswered messages until the agent-first inbox is switched on. Production NOT touched (Yousif reviews first).
+
+2026-10-01 later: gauntlet loops 1-3 + loop 4 done (88 pass / 0 fail, commits b4219e5 6ab8618 45dfa79), demo redeployed, Tessa magic link re-verified (lands on 3-tile dashboard), branch pushed. Known untouched: 14px phone body text app-wide, low contrast on /emails /orders /customers /queue/print /styles. Production NOT touched.
