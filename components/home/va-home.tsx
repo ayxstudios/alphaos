@@ -30,7 +30,7 @@ export function VaHome({ h }: { h: StaffHome }) {
             key={t.kind}
             href={t.href}
             className={cn(
-              "group flex min-h-44 min-w-0 flex-col justify-between gap-6 rounded-card bg-surface p-6 shadow-card transition-[transform,box-shadow] duration-150 hover:-translate-y-0.5 hover:shadow-md",
+              "group flex min-h-44 min-w-0 flex-col gap-5 rounded-card bg-surface p-6 shadow-card transition-[transform,box-shadow] duration-150 hover:-translate-y-0.5 hover:shadow-md",
               focusRing,
             )}
           >

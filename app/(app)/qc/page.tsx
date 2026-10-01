@@ -123,7 +123,7 @@ export default async function QcQueuePage() {
                 </Link>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-base font-semibold text-ink">{who}</p>
-                  <p className="truncate text-sm text-slate">
+                  <p className="break-words text-sm text-slate">
                     {r.style ? styleLabel(r.style) : "Style not set"}
                     {" · "}
                     {r.designerName ?? "Unassigned"}

@@ -61,7 +61,7 @@ export function QcHeader({
               href={`/orders/${ctx.orderId}`}
               target="_blank"
               rel="noreferrer"
-              className="rounded-input underline-offset-4 hover:text-pigment hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pigment"
+              className="rounded-input underline-offset-4 max-sm:inline-flex max-sm:min-h-11 max-sm:items-center hover:text-pigment hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pigment"
               aria-label={`Open order ${ctx.orderNumber} in a new tab`}
               title="Open the order in a new tab"
             >

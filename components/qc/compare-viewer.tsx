@@ -117,7 +117,7 @@ export function CompareViewer({
             <p className="text-sm font-semibold text-ink">
               Customer sent {references.length} photos
             </p>
-            <p className="text-xs text-slate">
+            <p className="text-sm text-slate">
               Showing photo {refIndex + 1} of {references.length}
               <span className="hidden sm:inline"> · use ← → to switch</span>
             </p>
@@ -277,7 +277,7 @@ function Pane({
   }, [onZoom]);
 
   return (
-    <div className="flex h-[22rem] flex-col overflow-hidden md:h-auto md:min-h-[26rem] rounded-card bg-surface shadow-card">
+    <div className="flex h-[22rem] flex-col overflow-hidden md:h-[clamp(24rem,calc(100dvh-26rem),44rem)] rounded-card bg-surface shadow-card">
       <div className="flex items-center justify-between border-b border-line/70 px-3 py-1.5">
         <span className="min-w-0 break-words text-sm font-semibold leading-tight text-ink">{label}</span>
         {image && (

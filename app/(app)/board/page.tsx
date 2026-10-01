@@ -104,8 +104,15 @@ async function BoardContent({
   // Staff only see the selected business's designers and, on each board,
   // only that business's orders (Yousif 2026-10-01). A ?designer= link from
   // another business falls back to this business's first designer.
-  const businessId = isStaff ? (await loadShellData(user)).selected.id || undefined : undefined;
-  const designers = isStaff ? await getRailDesigners(user, businessId) : [];
+  const selectedBusiness = isStaff ? (await loadShellData(user)).selected : undefined;
+  const businessId = selectedBusiness?.id || undefined;
+  // "AI Studio (Northlight Portraits)": inside that business the suffix only
+  // says what the page header already says, and it truncated in the rail.
+  const suffix = selectedBusiness?.name ? ` (${selectedBusiness.name})` : "";
+  const designers = (isStaff ? await getRailDesigners(user, businessId) : []).map((d) => ({
+    ...d,
+    name: suffix && d.name.endsWith(suffix) ? d.name.slice(0, -suffix.length) : d.name,
+  }));
   const resolvedId = isStaff
     ? (designers.find((d) => d.id === targetId) ?? designers[0])?.id
     : targetId;
