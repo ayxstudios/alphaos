@@ -97,7 +97,7 @@ const AUDIT = () => {
   if (main) {
     const scroller = [...document.querySelectorAll("*")].find((e) => /(auto|scroll)/.test(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight + 5 && e.clientHeight > innerHeight * 0.4) || document.scrollingElement;
     const prev = scroller.scrollTop; scroller.style.scrollBehavior = "auto"; scroller.scrollTop = scroller.scrollHeight;
-    const last = [...main.querySelectorAll("a,button,p,li,h2,h3,td")].filter(vis).sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom)[0];
+    const last = [...main.querySelectorAll("a,button,p,li,h2,h3,td")].filter((e) => vis(e) && !e.closest("details:not([open])")).sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom)[0];
     if (last) { const lb = last.getBoundingClientRect().bottom; for (const b of bars) { const br = b.getBoundingClientRect(); if (br.top < innerHeight / 2) continue; if (lb > br.top + 1) out.overlap.push({ bar: sel(b), contentBottom: Math.round(lb), barTop: Math.round(br.top), last: sel(last) }); } }
     scroller.scrollTop = prev;
   }
