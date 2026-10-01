@@ -31,6 +31,6 @@ State:
 - [x] Feature committed: 97b28c2 (+ journal fix 3a5cd84)
 - [x] Local next build green
 - [x] Links minted: Leo (designer, Northlight ~109 orders), Tessa (VA), 30 days
-- [ ] Demo deploy (deploy-demo.sh, VERCEL_TOKEN_VISION) -> /tmp/alphaos-demo-deploy-053f1.log
-- [ ] Live QA on alphaos-demo.vercel.app: VA menu has no Portrait Styles, Designers add/link/remove loop as Tessa, Leo board via link, desktop+phone snaps
+- [x] Demo deploy green: alphaos-n2mf3xgr0 aliased to alphaos-demo.vercel.app
+- [x] Live QA passed: Tessa link signs in, sidebar+phone More have no Portrait Styles, add QA Test Designer -> Create link (Copy button, 90 days) -> Remove all worked live as the VA (RLS 0041 live), Leo link lands on his dashboard/board (10 queue / 40 in design / 2 failed QC example orders), desktop 1440x900 + phone 390x844 snaps in /tmp/alphaos-qa-053f1. Links sent to Yousif (Leo + Tessa, 30 days).
 Production untouched.
