@@ -24,3 +24,13 @@ Facts: demo logins in ~/Documents/ai-employee-agent/.local/alphaos-demo.env. Cou
 2026-10-01: all chunks committed, demo deployed (alphaos-k6352f9mf), QA passed desktop+phone (/tmp/alphaos-va-qa/report.json), Tessa link sent. Reply count = all unanswered messages until the agent-first inbox is switched on. Production NOT touched (Yousif reviews first).
 
 2026-10-01 later: gauntlet loops 1-3 + loop 4 done (88 pass / 0 fail, commits b4219e5 6ab8618 45dfa79), demo redeployed, Tessa magic link re-verified (lands on 3-tile dashboard), branch pushed. Known untouched: 14px phone body text app-wide, low contrast on /emails /orders /customers /queue/print /styles. Production NOT touched.
+
+# VA designer management (Yousif 2026-10-01, task req053f1)
+Request: VAs add/remove designers + Copy sign-in link for WhatsApp; Portrait Styles tab admin-only (VA sees a card only when a style has no designer); send a no-sign-in designer board link with example data.
+State:
+- [x] Feature committed: 97b28c2 (+ journal fix 3a5cd84)
+- [x] Local next build green
+- [x] Links minted: Leo (designer, Northlight ~109 orders), Tessa (VA), 30 days
+- [ ] Demo deploy (deploy-demo.sh, VERCEL_TOKEN_VISION) -> /tmp/alphaos-demo-deploy-053f1.log
+- [ ] Live QA on alphaos-demo.vercel.app: VA menu has no Portrait Styles, Designers add/link/remove loop as Tessa, Leo board via link, desktop+phone snaps
+Production untouched.
