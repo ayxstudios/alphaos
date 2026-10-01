@@ -11,12 +11,14 @@ Deliver: new VA dashboard on the demo (alphaos-demo.vercel.app), magic link to Y
 
 State:
 - [x] Branch rebased on origin/main + merged origin/task/alphaos-wt-demofix-req41951 (Tuesday demo fixes) -> HEAD 72f9a07
-- [ ] Chunk A: VA nav + VA dashboard (sidebar.tsx, bottom-tabs.tsx, staff-home.tsx, lib/home/staff.ts, dashboard/page.tsx)
-- [ ] Chunk B: QC list page + QC screen multi-photo (app/(app)/qc/*, components/qc/*)
-- [ ] Chunk C: Boards scoped to selected business (board/page.tsx, lib/designers/roster.ts, designer-rail/picker)
-- [ ] Chunk D: performance/preloading (next.config.ts staleTimes, app-shell idle prefetch, docs/PERF.md)
-- [ ] Build + tests, commit
-- [ ] Deploy demo (scripts/demo/deploy-demo.sh; fix .vercel/project.json to prj_o9jxHFw46R17KuV2V6DkmqaygF3V first; VERCEL_TOKEN_VISION)
-- [ ] QA desktop+phone on demo as Tessa (VA), magic link, send reply
+- [x] Chunk A: VA nav + VA dashboard (sidebar.tsx, bottom-tabs.tsx, staff-home.tsx, lib/home/staff.ts, dashboard/page.tsx)
+- [x] Chunk B: QC list page + QC screen multi-photo (app/(app)/qc/*, components/qc/*)
+- [x] Chunk C: Boards scoped to selected business (board/page.tsx, lib/designers/roster.ts, designer-rail/picker)
+- [x] Chunk D: performance/preloading (next.config.ts staleTimes, app-shell idle prefetch, docs/PERF.md)
+- [x] Build + tests, commit
+- [x] Deploy demo (scripts/demo/deploy-demo.sh; fix .vercel/project.json to prj_o9jxHFw46R17KuV2V6DkmqaygF3V first; VERCEL_TOKEN_VISION)
+- [x] QA desktop+phone on demo as Tessa (VA), magic link, send reply
 
 Facts: demo logins in ~/Documents/ai-employee-agent/.local/alphaos-demo.env. Counts exist in lib/home/staff.ts attention.byKind (qc, reply, print). getRailDesigners has no business filter (the leak Yousif saw).
+
+2026-10-01: all chunks committed, demo deployed (alphaos-k6352f9mf), QA passed desktop+phone (/tmp/alphaos-va-qa/report.json), Tessa link sent. Reply count = all unanswered messages until the agent-first inbox is switched on. Production NOT touched (Yousif reviews first).
