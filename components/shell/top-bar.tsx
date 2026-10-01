@@ -40,6 +40,7 @@ const ROLE_LABEL: Record<Role, string> = {
   admin: "Admin",
   va: "VA",
   designer: "Designer",
+  helper: "Teammate",
 };
 
 /** "Northlight Portraits" -> "NP": the phone top bar has room for two letters, not a name. */
@@ -75,7 +76,8 @@ export function TopBar({
 
   // Designers cannot open /orders (it redirects to their board), so their
   // search looks through their own cards on /board instead.
-  const designer = user.role === "designer";
+  const helper = user.role === "helper";
+  const designer = user.role === "designer" || helper;
   const searchPath = designer ? "/board" : "/orders";
   const searchLabel = designer ? "Search my cards" : "Search orders or customers";
 
@@ -105,6 +107,7 @@ export function TopBar({
             on a phone the button could only show "Lu...". The page names
             the business; a laptop keeps it as a label. */}
         {/* sm:shrink-0: at 1280px the search box was squeezing the business name to "Northlight Portr…". */}
+        {!helper && (
         <div className={cn("min-w-0 sm:shrink-0", options.length <= 1 && "max-sm:hidden")}>
           <Popover
             align="start"
@@ -153,6 +156,7 @@ export function TopBar({
             )}
           </Popover>
         </div>
+        )}
 
         <form
           role="search"
@@ -195,6 +199,7 @@ export function TopBar({
           </button>
         )}
         {/* Alpha as a proper tab at the top (owner 2026-09-09), not just an icon. */}
+        {!helper && (
         <button
           type="button"
           aria-label="Open Alpha AI"
@@ -208,6 +213,7 @@ export function TopBar({
           <Bot size={18} />
           <span className="hidden sm:inline">Alpha AI</span>
         </button>
+        )}
         {/* Help: the guided tour (it points, you click), or the one-page guide. */}
         <div data-tour="help">
           <Popover

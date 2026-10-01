@@ -18,7 +18,7 @@ export default async function DesignersPage() {
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
   // Staff-only surface; designers have no business here.
-  if (user.role === "designer") redirect("/board");
+  if (user.role === "designer" || user.role === "helper") redirect("/board");
 
   const { selected, options } = await loadShellData(user);
   const isAdmin = user.role === "admin";

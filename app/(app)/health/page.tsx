@@ -102,7 +102,7 @@ export default async function HealthPage({
 }
 
 type HealthScope = Parameters<typeof loadHealthMetrics>[1];
-type SessionUser = { id: string; role: "admin" | "va" | "designer" };
+type SessionUser = { id: string; role: "admin" | "va" | "designer" | "helper" };
 
 async function HealthBody({ user, scope, showAiFeatures }: { user: SessionUser; scope: HealthScope; showAiFeatures: boolean }) {
   const metrics = await loadHealthMetrics(user, scope);

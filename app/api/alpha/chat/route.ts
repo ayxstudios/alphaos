@@ -37,10 +37,13 @@ function sanitizeMessages(input: unknown): AlphaChatMessage[] {
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  // A designer's teammate has no Alpha: its designer snapshot carries pay.
+  const role = session.user.role;
+  if (role === "helper") return NextResponse.json({ error: "Not available" }, { status: 403 });
 
-  const user: RequestUser & { name: string } = {
+  const user: Omit<RequestUser, "role"> & { role: "admin" | "va" | "designer"; name: string } = {
     id: session.user.id,
-    role: session.user.role,
+    role,
     name: session.user.name ?? "Someone",
   };
 

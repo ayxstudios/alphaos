@@ -122,7 +122,7 @@ export function AppShell({
         <IdlePrefetch role={user.role} />
       </div>
       {/* Loaded on demand, not in the first-load bundle (docs/PERF.md). */}
-      <LazyAlphaChat user={user} />
+      {user.role !== "helper" && <LazyAlphaChat user={user} />}
       <LazyTour role={user.role} firstName={tour.firstName} onboarding={tour.onboarding} signedInAt={tour.signedInAt} />
       <ServiceWorkerRegister />
     </div>

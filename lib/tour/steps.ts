@@ -259,6 +259,8 @@ export const TOUR_STEPS: Record<Role, TourStep[]> = {
   admin: ADMIN_STEPS,
   va: VA_STEPS,
   designer: DESIGNER_STEPS,
+  // A teammate works the same board but never sees pay: no My Week step.
+  helper: DESIGNER_STEPS.filter((s) => s.id !== "week"),
 };
 
 /** The line the Quick guide shows for a step (its preferred act). */

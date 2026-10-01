@@ -390,7 +390,7 @@ export default async function OrdersPage({
   const session = await auth();
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
-  if (user.role === "designer") redirect("/board");
+  if (user.role === "designer" || user.role === "helper") redirect("/board");
 
   const [{ selected }, params, cookieStore] = await Promise.all([
     loadShellData(user),

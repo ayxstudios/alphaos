@@ -193,7 +193,7 @@ export default async function CustomerDetailPage({
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (session.user.role === "designer") redirect("/board");
+  if (session.user.role === "designer" || session.user.role === "helper") redirect("/board");
   const user = { id: session.user.id, role: session.user.role };
   const { id } = await params;
 

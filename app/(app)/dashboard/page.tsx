@@ -19,6 +19,7 @@ export const dynamic = "force-dynamic";
 export default async function HomePage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
+  if (session.user.role === "helper") redirect("/board");
   const user = { id: session.user.id, role: session.user.role };
   const { selected, displayName } = await loadShellData(user);
   const first = (displayName ?? session.user.name ?? "there").split(/\s+/)[0];

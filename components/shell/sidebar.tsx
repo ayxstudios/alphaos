@@ -24,6 +24,7 @@ import {
   Eye,
   type IconProps,
   Wallet,
+  BookOpen,
 } from "@/components/ui/icons";
 
 type NavItem = { label: string; href: string; icon: ComponentType<IconProps> };
@@ -75,10 +76,19 @@ const DESIGNER_NAV: NavItem[] = [
 ];
 const DESIGNER_MORE: NavItem[] = [];
 
+// A designer's teammate: the board and the guide, nothing else (never pay).
+const HELPER_NAV: NavItem[] = [
+  { label: "Board", href: "/board", icon: Columns },
+  { label: "Help", href: "/help", icon: BookOpen },
+];
+
+function navFor(role: Role): NavItem[] {
+  return role === "helper" ? HELPER_NAV : role === "designer" ? DESIGNER_NAV : role === "admin" ? ADMIN_NAV : VA_NAV;
+}
+
 /** The role's main menu pages, for the idle prefetcher (components/shell/idle-prefetch.tsx). */
 export function mainNavHrefs(role: Role): string[] {
-  const nav = role === "designer" ? DESIGNER_NAV : role === "admin" ? ADMIN_NAV : VA_NAV;
-  return nav.map((n) => n.href);
+  return navFor(role).map((n) => n.href);
 }
 
 type SidebarProps = {
@@ -97,9 +107,9 @@ export function Sidebar({
   onNavigate,
 }: SidebarProps) {
   const pathname = usePathname();
-  const nav = role === "designer" ? DESIGNER_NAV : role === "admin" ? ADMIN_NAV : VA_NAV;
-  const more = role === "designer" ? DESIGNER_MORE : role === "admin" ? ADMIN_MORE : VA_MORE;
-  const homeHref = "/dashboard";
+  const nav = navFor(role);
+  const more = role === "helper" || role === "designer" ? DESIGNER_MORE : role === "admin" ? ADMIN_MORE : VA_MORE;
+  const homeHref = role === "helper" ? "/board" : "/dashboard";
 
   function renderItem(item: NavItem) {
     const active = pathname === item.href || pathname.startsWith(item.href + "/");

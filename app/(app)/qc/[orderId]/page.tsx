@@ -16,7 +16,7 @@ export default async function QcPage({
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
   // QC is VA/admin only — designers never see the gate.
-  if (user.role === "designer") redirect("/board");
+  if (user.role === "designer" || user.role === "helper") redirect("/board");
 
   const { orderId } = await params;
   const { selected, displayName } = await loadShellData(user);

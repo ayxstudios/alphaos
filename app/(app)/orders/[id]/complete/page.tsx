@@ -31,7 +31,7 @@ export default async function CompleteOrderPage({
   const session = await auth();
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
-  if (user.role === "designer") redirect("/board");
+  if (user.role === "designer" || user.role === "helper") redirect("/board");
   const { id } = await params;
 
   const [order] = await withUserContext(user, (tx) =>

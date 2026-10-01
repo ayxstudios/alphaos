@@ -79,4 +79,6 @@ export const GUIDE_ANSWERS: Record<Role, GuideAnswer[]> = {
   va: [CUSTOMER_REPLIED, NEEDS_DETAILS, PASS_FAIL, UPLOAD_STAFF, AWAITING_APPROVAL, LATE, PRINT],
   admin: [CUSTOMER_REPLIED, NEEDS_DETAILS, PASS_FAIL, UPLOAD_STAFF, AWAITING_APPROVAL, LATE, PRINT, ROSTER],
   designer: DESIGNER,
+  // A teammate never sees pay, so the earnings answer is dropped.
+  helper: DESIGNER.filter((a) => !a.q.includes("earned")),
 };

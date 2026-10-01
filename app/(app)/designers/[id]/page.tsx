@@ -13,7 +13,7 @@ export default async function DesignerWeekPage({ params }: { params: Promise<{ i
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
   // Staff-only surface — a designer looks at their own week at /me instead.
-  if (user.role === "designer") redirect("/board");
+  if (user.role === "designer" || user.role === "helper") redirect("/board");
 
   const { id } = await params;
   const week = await getDesignerWeek(user, id);

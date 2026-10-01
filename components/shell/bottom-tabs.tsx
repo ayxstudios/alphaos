@@ -6,7 +6,7 @@ import { PrefetchKind } from "next/dist/client/components/router-reducer/router-
 
 import { cn } from "@/lib/utils";
 import { focusRing } from "@/components/ui/styles";
-import { Grid, ListChecks, Package, Mail, Columns, Calendar, Eye, Menu, type IconProps } from "@/components/ui/icons";
+import { Grid, ListChecks, Package, Mail, Columns, Calendar, Eye, Menu, BookOpen, type IconProps } from "@/components/ui/icons";
 import type { ComponentType } from "react";
 import type { Role } from "@/lib/auth/config";
 
@@ -40,6 +40,11 @@ const DESIGNER_TABS: Tab[] = [
   { label: "My Week", href: "/me", icon: Calendar },
 ];
 
+const HELPER_TABS: Tab[] = [
+  { label: "Board", href: "/board", icon: Columns },
+  { label: "Help", href: "/help", icon: BookOpen },
+];
+
 /**
  * Phone-only sticky bottom navigation, for every role: admin/va get the
  * four places they live day to day (Home is the charts overview, the full
@@ -50,7 +55,7 @@ const DESIGNER_TABS: Tab[] = [
 export function BottomTabs({ role, onMore }: { role: Role; onMore: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
-  const tabs = role === "designer" ? DESIGNER_TABS : role === "va" ? VA_TABS : ADMIN_TABS;
+  const tabs = role === "helper" ? HELPER_TABS : role === "designer" ? DESIGNER_TABS : role === "va" ? VA_TABS : ADMIN_TABS;
   return (
     <nav
       aria-label="Primary"

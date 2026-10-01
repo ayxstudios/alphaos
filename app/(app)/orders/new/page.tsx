@@ -16,7 +16,7 @@ export default async function NewOrderPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
-  if (user.role === "designer") redirect("/board");
+  if (user.role === "designer" || user.role === "helper") redirect("/board");
   const { selected } = await loadShellData(user);
 
   const rows = await withUserContext(user, async (tx) => {

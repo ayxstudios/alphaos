@@ -268,7 +268,7 @@ export default async function OrderDetailPage({
   // A designer's view of an order is its card on My Board (their own deadline,
   // the customer's first name, the upload area). A notification or a pasted
   // link to /orders/<id> opens that card; one not on their board says so there.
-  if (user.role === "designer") redirect(`/board?open=${encodeURIComponent(id)}`);
+  if (user.role === "designer" || user.role === "helper") redirect(`/board?open=${encodeURIComponent(id)}`);
 
   const staffView = user.role === "admin" || user.role === "va";
 

@@ -12,7 +12,7 @@ import { TodayQueueList } from "@/components/today/today-queue";
 
 export const dynamic = "force-dynamic";
 
-type U = { id: string; role: "admin" | "va" | "designer" };
+type U = { id: string; role: "admin" | "va" };
 
 // Both the summary line and the list read the same queue; one query per request.
 const queueFor = cache((userId: string, role: U["role"], businessId: string) => getTodayQueue({ id: userId, role }, businessId));
@@ -24,8 +24,8 @@ const queueFor = cache((userId: string, role: U["role"], businessId: string) => 
 export default async function TodayPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
+  if (session.user.role === "designer" || session.user.role === "helper") redirect("/board");
   const user: U = { id: session.user.id, role: session.user.role };
-  if (user.role === "designer") redirect("/board");
 
   const { selected } = await loadShellData(user);
 

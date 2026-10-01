@@ -10,6 +10,7 @@ import { loadShellData } from "@/lib/shell/context";
 import { DesignerBoard } from "@/components/board/designer-board";
 import { BoardSwitcher } from "@/components/board/board-switcher";
 import { EarningsHistory } from "@/components/board/earnings-history";
+import { ShareBoard } from "@/components/board/share-board";
 import { DataPanel, EmptyState, Page, PageHeader } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
 import { Calendar, Columns, Search } from "@/components/ui/icons";
@@ -44,7 +45,7 @@ export default async function BoardPage({
   const user = { id: session.user.id, role: session.user.role };
   const sp = await searchParams;
   const designerParam = typeof sp.designer === "string" ? sp.designer : undefined;
-  const isStaff = user.role !== "designer";
+  const isStaff = user.role === "admin" || user.role === "va";
   // Designer search (top bar) lands here: filter their own cards. Staff search
   // goes to /orders, so a stray ?q= on a staff board is ignored.
   const q = !isStaff && typeof sp.q === "string" ? sp.q.trim().slice(0, 100) : "";
@@ -53,7 +54,8 @@ export default async function BoardPage({
 
   // Designers can only ever see their own board; staff pick one from the
   // right-hand rail (app shell) or the mobile dropdown below.
-  const targetId = isStaff ? designerParam : user.id;
+  // A teammate (helper) works their designer's board: same view, no pay.
+  const targetId = isStaff ? designerParam : user.role === "helper" ? (session.user.helperFor ?? undefined) : user.id;
 
   // Staff: the boundary is keyed once (the BoardSwitcher keeps its own cache
   // and switches designers on the client, so a refresh must not remount it).
@@ -65,19 +67,21 @@ export default async function BoardPage({
   // boundary on targetId forces a fresh Suspense fallback on every switch.
   return (
     <Suspense key={isStaff ? "staff" : `${targetId ?? "none"}:${q}`} fallback={<BoardLoading />}>
-      <BoardContent user={user} isStaff={isStaff} targetId={targetId} q={q} openId={openId} />
+      <BoardContent user={user} helperFor={session.user.helperFor ?? null} isStaff={isStaff} targetId={targetId} q={q} openId={openId} />
     </Suspense>
   );
 }
 
 async function BoardContent({
   user,
+  helperFor,
   isStaff,
   targetId,
   q,
   openId,
 }: {
   user: RequestUser;
+  helperFor: string | null;
   isStaff: boolean;
   targetId?: string;
   q: string;
@@ -100,7 +104,7 @@ async function BoardContent({
   const resolvedId = isStaff
     ? (designers.find((d) => d.id === targetId) ?? designers[0])?.id
     : targetId;
-  const board = resolvedId ? await getDesignerBoard(user, resolvedId, businessId) : null;
+  const board = resolvedId ? await getDesignerBoard(user, resolvedId, businessId, { helperFor }) : null;
   targetId = resolvedId;
 
   // Staff: one client component owns the header, the rail and the board, so
@@ -121,6 +125,7 @@ async function BoardContent({
   const count = (cols: BoardData["columns"]) => Object.values(cols).reduce((n, list) => n + list.length, 0);
   const columns = board ? (q ? filterColumns(board.columns, q) : board.columns) : null;
   const matched = columns ? count(columns) : 0;
+  const isHelper = user.role === "helper";
 
   return (
     <Page className="max-w-none">
@@ -135,17 +140,20 @@ async function BoardContent({
           // overflows a 390px phone instead of shrinking). Row + wrap once
           // there's room.
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-            <Link
-              href="/me"
-              className={cn(
-                "inline-flex h-11 w-fit items-center gap-1.5 rounded-input border border-line bg-surface px-3 text-sm font-medium text-ink hover:bg-canvas lg:h-9",
-                focusRing,
-              )}
-            >
-              <Calendar size={15} />
-              My Week
-            </Link>
-            {board && (
+            {!isHelper && <ShareBoard />}
+            {!isHelper && (
+              <Link
+                href="/me"
+                className={cn(
+                  "inline-flex h-11 w-fit items-center gap-1.5 rounded-input border border-line bg-surface px-3 text-sm font-medium text-ink hover:bg-canvas lg:h-9",
+                  focusRing,
+                )}
+              >
+                <Calendar size={15} />
+                My Week
+              </Link>
+            )}
+            {board && !isHelper && (
               <div className="flex items-center gap-4 rounded-card bg-surface px-4 py-2 text-sm shadow-card">
                 <span className="flex items-baseline gap-1.5">
                   <span className="text-xs text-slate">Today</span>
@@ -186,7 +194,7 @@ async function BoardContent({
                 </div>
               )}
               <DesignerBoard initial={columns} viewerRole="designer" timeZone={board.timeZone} openId={openId} />
-              <EarningsHistory history={board.earningHistory} />
+              {!isHelper && <EarningsHistory history={board.earningHistory} />}
             </div>
           ) : (
             <DataPanel>
