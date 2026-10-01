@@ -886,7 +886,7 @@ export default async function OrdersPage({
           {emailAttention > 0 && (
             <Link
               href="/emails"
-              className="ml-auto inline-flex h-11 items-center gap-2 rounded-full px-3 text-sm text-slate transition-colors hover:text-ink"
+              className="inline-flex h-11 w-full items-center gap-2 rounded-full px-3 text-sm text-slate transition-colors hover:text-ink sm:ml-auto sm:w-auto"
             >
               <Mail size={15} className="text-rose" />
               <span>
