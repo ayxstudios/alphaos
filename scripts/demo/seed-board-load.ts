@@ -70,6 +70,7 @@ async function main() {
       dueAt: new Date(now + (n - 10) * 3_600_000),
       createdAt: new Date(now - n * 600_000),
       updatedAt: new Date(now - n * 300_000),
+      revisionCount: 0,
       rawImport: { ...(source.rawImport as object ?? {}), loadSeeded: "1" },
     }).returning({ id: schema.orders.id });
     for (const it of items) {
