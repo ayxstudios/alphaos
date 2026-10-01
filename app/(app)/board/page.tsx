@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import type { RequestUser } from "@/lib/db";
 import { getDesignerBoard, type BoardCard, type DesignerBoard as BoardData } from "@/lib/orders/board-data";
 import { getRailDesigners } from "@/lib/designers/roster";
+import { loadShellData } from "@/lib/shell/context";
 import { DesignerBoard } from "@/components/board/designer-board";
 import { DesignerPicker } from "@/components/board/designer-picker";
 import { DesignerRail } from "@/components/board/designer-rail";
@@ -100,9 +101,15 @@ async function BoardContent({
 }) {
   // Staff land on a board, never on a picker: with no ?designer= the first
   // designer in the rail (rank order) is opened. The rail switches.
-  const designers = isStaff ? await getRailDesigners(user) : [];
-  const resolvedId = targetId ?? (isStaff ? designers[0]?.id : undefined);
-  const board = resolvedId ? await getDesignerBoard(user, resolvedId) : null;
+  // Staff only see the selected business's designers and, on each board,
+  // only that business's orders (Yousif 2026-10-01). A ?designer= link from
+  // another business falls back to this business's first designer.
+  const businessId = isStaff ? (await loadShellData(user)).selected.id || undefined : undefined;
+  const designers = isStaff ? await getRailDesigners(user, businessId) : [];
+  const resolvedId = isStaff
+    ? (designers.find((d) => d.id === targetId) ?? designers[0])?.id
+    : targetId;
+  const board = resolvedId ? await getDesignerBoard(user, resolvedId, businessId) : null;
   targetId = resolvedId;
 
   const pickerDesigners = designers.map((d) => ({ id: d.id, name: d.name }));

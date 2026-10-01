@@ -15,7 +15,7 @@ type Tile = { label: string; kind: TodayKind; href: string; hint: string };
 // which is the one a person has to press OK on).
 const TILES: Tile[] = [
   { label: "Awaiting QC", kind: "qc", href: "/qc", hint: "Portraits to check against the customer photos" },
-  { label: "Need a VA reply", kind: "reply", href: "/emails", hint: "Only the complex messages, Alpha answers the rest" },
+  { label: "Need a VA reply", kind: "reply", href: "/emails", hint: "Customers waiting on an answer" },
   { label: "Awaiting print approval", kind: "print", href: "/queue/print", hint: "Print jobs waiting for your OK" },
 ];
 

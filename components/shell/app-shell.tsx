@@ -13,6 +13,7 @@ import { TopBar } from "./top-bar";
 import { BottomTabs } from "./bottom-tabs";
 import { LazyAlphaChat, LazyTour } from "./lazy-extras";
 import { ServiceWorkerRegister } from "./sw-register";
+import { IdlePrefetch } from "./idle-prefetch";
 import type { OnboardingState } from "@/lib/tour/state";
 
 /** Cookie the sidebar collapse preference persists in (read by the layout). */
@@ -118,6 +119,7 @@ export function AppShell({
           <ToastProvider>{children}</ToastProvider>
         </main>
         <BottomTabs role={user.role} onMore={() => setMobileOpen(true)} />
+        <IdlePrefetch role={user.role} />
       </div>
       {/* Loaded on demand, not in the first-load bundle (docs/PERF.md). */}
       <LazyAlphaChat user={user} />

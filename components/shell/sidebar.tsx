@@ -78,6 +78,12 @@ const DESIGNER_NAV: NavItem[] = [
 ];
 const DESIGNER_MORE: NavItem[] = [];
 
+/** The role's main menu pages, for the idle prefetcher (components/shell/idle-prefetch.tsx). */
+export function mainNavHrefs(role: Role): string[] {
+  const nav = role === "designer" ? DESIGNER_NAV : role === "admin" ? ADMIN_NAV : VA_NAV;
+  return nav.map((n) => n.href);
+}
+
 type SidebarProps = {
   role: Role;
   collapsed?: boolean;

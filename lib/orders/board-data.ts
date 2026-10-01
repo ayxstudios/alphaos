@@ -386,13 +386,19 @@ const BOARD_ROW_SELECT = {
 } as const;
 
 /** Designer board for `designerId` (self, or a VA viewing ?designer=X). */
-export async function getDesignerBoard(user: RequestUser, designerId?: string): Promise<DesignerBoard> {
+export async function getDesignerBoard(
+  user: RequestUser,
+  designerId?: string,
+  /** Staff view: only this business's orders on the board (the switcher's selection). */
+  businessId?: string,
+): Promise<DesignerBoard> {
   const target = designerId ?? user.id;
   return withUserContext(user, async (tx) => {
     const assignedToTarget = (status: OrderRow["status"] | OrderRow["status"][]) =>
       and(
         Array.isArray(status) ? inArray(orders.status, status) : eq(orders.status, status),
         liveOrderWhere(),
+        businessId ? eq(orders.businessId, businessId) : undefined,
       );
 
     // The live columns (queue/in-design/QC) and the capped Complete column are
