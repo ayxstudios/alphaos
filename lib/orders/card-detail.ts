@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { activityLog, assets, assignments, orders, users } from "@/lib/db/schema";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
+import { isDesignerLike } from "@/lib/auth/roles";
 import type { OrderStatus } from "./transitions";
 
 /**
@@ -94,7 +95,7 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
       // A comment is free text a VA (or Alpha's saved answer) wrote, and it can
       // carry the customer's address; the same scrub as the metadata applies
       // (customer + security QA 2026-09-25).
-      const body = rawBody !== null && user.role === "designer" ? rawBody.replace(EMAIL_RE, "[hidden]") : rawBody;
+      const body = rawBody !== null && isDesignerLike(user.role) ? rawBody.replace(EMAIL_RE, "[hidden]") : rawBody;
       return {
         id: r.id,
         action: r.action,
@@ -103,7 +104,7 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
         fromState: r.fromState as OrderStatus | null,
         toState: r.toState as OrderStatus | null,
         body,
-        metadata: user.role === "designer" ? designerSafeMetadata(meta) : meta,
+        metadata: isDesignerLike(user.role) ? designerSafeMetadata(meta) : meta,
         createdAt: r.createdAt.toISOString(),
       };
     });
@@ -164,7 +165,7 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
             id: a.id,
             type: a.type as CardImage["type"],
             url,
-            uploadedBy: a.uploadedByName ?? (user.role === "designer" ? null : a.uploadedByEmail) ?? null,
+            uploadedBy: a.uploadedByName ?? (isDesignerLike(user.role) ? null : a.uploadedByEmail) ?? null,
             createdAt: a.createdAt.toISOString(),
           });
         }

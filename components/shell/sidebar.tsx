@@ -26,11 +26,6 @@ import {
   Wallet,
 } from "@/components/ui/icons";
 
-// Next 15.5 Link: full prefetch (page data, not only the skeleton) on pointer
-// hover or touch start. The prop exists at runtime but is missing from the
-// public next/link types, hence the spread (docs/PERF.md).
-const HOVER_PREFETCH = { unstable_dynamicOnHover: true } as object;
-
 type NavItem = { label: string; href: string; icon: ComponentType<IconProps> };
 
 // Plain and short: the six groups a VA actually thinks in, plus Settings.
@@ -113,10 +108,10 @@ export function Sidebar({
       <Link
         key={item.href}
         href={item.href}
-        // In view: the page skeleton is prefetched. Pointer over it (or a
-        // touch starting on it): the page data is fetched too, so the click
-        // lands on a ready page (docs/PERF.md).
-        {...HOVER_PREFETCH}
+        // Full prefetch (page data, not only the skeleton) as soon as the link
+        // is in view, kept warm by idle-prefetch.tsx, so the click paints from
+        // the router cache with no network (docs/PERF.md).
+        prefetch={true}
         onClick={onNavigate}
         aria-current={active ? "page" : undefined}
         data-tour={`nav:${item.href}`}

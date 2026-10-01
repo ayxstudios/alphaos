@@ -11,6 +11,11 @@ import type { RailDesigner } from "@/lib/designers/roster";
 
 const COLLAPSE_KEY = "board.rail.collapsed";
 
+/** A plain left click (no modifier): the one the client-side switcher takes over. */
+function isPlainClick(e: React.MouseEvent): boolean {
+  return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
+}
+
 /**
  * Instant feedback for a rail click: `useLinkStatus` reports the nearest
  * ancestor `<Link>`'s pending state during the transition, so the rail item
@@ -36,10 +41,32 @@ function RailLinkBody({ children, className }: { children: React.ReactNode; clas
 export function DesignerRail({
   designers,
   current,
+  onSelect,
+  onWarm,
 }: {
   designers: RailDesigner[];
   current?: string;
+  /** Client-side switch (components/board/board-switcher.tsx); without it a click is a normal navigation. */
+  onSelect?: (id: string) => void;
+  /** Hover / keyboard focus on a designer: the switcher loads their board ahead of the click. */
+  onWarm?: (id: string) => void;
 }) {
+  // Modified clicks (new tab) and no-JS keep the real href; a plain click is handled here.
+  const linkProps = (id: string) => ({
+    href: `/board?designer=${id}`,
+    ...(onSelect
+      ? {
+          prefetch: false,
+          onClick: (e: React.MouseEvent) => {
+            if (!isPlainClick(e)) return;
+            e.preventDefault();
+            onSelect(id);
+          },
+          onPointerEnter: () => onWarm?.(id),
+          onFocus: () => onWarm?.(id),
+        }
+      : {}),
+  });
   const [collapsed, setCollapsed] = useState(false);
   const [q, setQ] = useState("");
 
@@ -76,7 +103,7 @@ export function DesignerRail({
         {designers.map((d) => (
           <Link
             key={d.id}
-            href={`/board?designer=${d.id}`}
+            {...linkProps(d.id)}
             title={d.name}
             aria-current={d.id === current ? "page" : undefined}
             className={cn(
@@ -139,7 +166,7 @@ export function DesignerRail({
               return (
                 <li key={d.id}>
                   <Link
-                    href={`/board?designer=${d.id}`}
+                    {...linkProps(d.id)}
                     aria-current={active ? "page" : undefined}
                     className={cn(
                       "flex items-center rounded-input px-2 py-1.5 text-sm transition-colors motion-hover",

@@ -7,9 +7,12 @@ import { Select } from "@/components/ui";
 export function DesignerPicker({
   designers,
   current,
+  onSelect,
 }: {
   designers: { id: string; name: string }[];
   current?: string;
+  /** Client-side switch (components/board/board-switcher.tsx); without it the picker navigates. */
+  onSelect?: (id: string) => void;
 }) {
   const router = useRouter();
   return (
@@ -18,7 +21,9 @@ export function DesignerPicker({
         label="View designer"
         value={current ?? ""}
         onChange={(e) => {
-          if (e.target.value) router.push(`/board?designer=${e.target.value}`);
+          if (!e.target.value) return;
+          if (onSelect) onSelect(e.target.value);
+          else router.push(`/board?designer=${e.target.value}`);
         }}
       >
         <option value="">Select a designer…</option>

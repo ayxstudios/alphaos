@@ -31,7 +31,9 @@ import { sendQcFeedback } from "@/lib/notifications/designer-events";
 
 export type OrderStatus = (typeof orderStatus.enumValues)[number];
 export type TransitionRole = "admin" | "va" | "designer" | "system";
-type Actor = { id: string; role: TransitionRole };
+// A helper (a designer's team member) moves cards with exactly the designer's
+// edges; the audit trail keeps the helper's own id as the actor.
+type Actor = { id: string; role: TransitionRole | "helper" };
 
 const STAFF: TransitionRole[] = ["admin", "va", "system"];
 const STAFF_AND_DESIGNER: TransitionRole[] = ["admin", "va", "system", "designer"];
@@ -224,7 +226,8 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
   const key = `${order.status}->${to}`;
   const edge = GRAPH[key];
   if (!edge) throw new IllegalTransitionError(order.status, to);
-  if (!edge.roles.includes(actor.role)) {
+  const edgeRole: TransitionRole = actor.role === "helper" ? "designer" : actor.role;
+  if (!edge.roles.includes(edgeRole)) {
     throw new ForbiddenTransitionError(actor.role, order.status, to);
   }
 
