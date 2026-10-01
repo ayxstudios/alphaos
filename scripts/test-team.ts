@@ -132,7 +132,9 @@ async function main() {
       (await recheckToken(liveToken)) === null,
       "token issued before deactivation = null",
     );
-    report("a VA cannot deactivate anyone", !(await setUserActive(seedVa, vaId, false)).ok, "setUserActive(va) refused");
+    // Since 2026-10-01 a VA MAY deactivate a designer (Designers-page Remove);
+    // admins and other VAs stay admin-managed.
+    report("a VA cannot deactivate a VA or admin", !(await setUserActive(seedVa, vaId, false)).ok, "setUserActive(va -> va) refused");
 
     // ---- 3. Role change, sign-out and password reset end older sessions ------
     report("a token whose role no longer matches is refused", (await recheckToken({ ...liveToken, role: "admin" })) === null, "va row, admin token");

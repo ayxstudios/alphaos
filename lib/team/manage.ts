@@ -48,6 +48,15 @@ function isAdmin(actor: RequestUser | null): actor is RequestUser {
   return !!actor && actor.role === "admin";
 }
 
+/**
+ * Admin or VA: both run the Designers page (add/remove designers and their
+ * sign-in links — Yousif 2026-10-01). VA writes are still limited to designer
+ * targets, checked per call below AND by RLS (migration 0041).
+ */
+function isStaff(actor: RequestUser | null): actor is RequestUser {
+  return !!actor && (actor.role === "admin" || actor.role === "va");
+}
+
 function fail(error: unknown, fallback: string): { ok: false; message: string } {
   if (error instanceof TeamError) return { ok: false, message: error.message };
   console.error("[team]", error);
@@ -146,7 +155,7 @@ export async function setUserActive(
   targetId: string,
   active: boolean,
 ): Promise<TeamResult<{ openOrders: number }>> {
-  if (!isAdmin(actor)) return { ok: false, message: "Only an admin can do this" };
+  if (!isStaff(actor)) return { ok: false, message: "Not permitted" };
   // Server actions take hand-edited JSON: a string like "no" skipped the
   // last-admin guard (!"no" is false) and Postgres still read it as false.
   if (typeof active !== "boolean") return { ok: false, message: "Choose active or inactive" };
@@ -158,6 +167,10 @@ export async function setUserActive(
         .where(eq(users.id, targetId))
         .limit(1);
       if (!target) throw new TeamError("That person was not found");
+      // A VA manages designers only; admins and other VAs stay admin-managed.
+      if (actor.role === "va" && target.role !== "designer") {
+        throw new TeamError("Only an admin can do this for admins and VAs");
+      }
 
       if (!active && target.role === "admin" && target.active) {
         const otherAdmins = await tx
@@ -238,15 +251,18 @@ export async function createSignInLink(
   targetId: string,
   options: { days?: number } = {},
 ): Promise<TeamResult<{ url: string; expiresAt: string }>> {
-  if (!isAdmin(actor)) return { ok: false, message: "Only an admin can make sign-in links" };
+  if (!isStaff(actor)) return { ok: false, message: "Not permitted" };
   try {
     const minted = await withUserContext(actor, async (tx) => {
       const [target] = await tx
-        .select({ id: users.id, active: users.active })
+        .select({ id: users.id, role: users.role, active: users.active })
         .from(users)
         .where(eq(users.id, targetId))
         .limit(1);
       if (!target) throw new TeamError("That person was not found");
+      if (actor.role === "va" && target.role !== "designer") {
+        throw new TeamError("Only an admin can make sign-in links for admins and VAs");
+      }
       if (!target.active) throw new TeamError("Reactivate them first, then make a link");
       return mintLoginLinkTx(tx, { userId: target.id, createdBy: actor.id, days: linkDays(options.days) });
     });
@@ -261,9 +277,22 @@ export async function revokeSignInLink(
   actor: RequestUser | null,
   targetId: string,
 ): Promise<TeamResult<{ revoked: number }>> {
-  if (!isAdmin(actor)) return { ok: false, message: "Only an admin can revoke sign-in links" };
+  if (!isStaff(actor)) return { ok: false, message: "Not permitted" };
   try {
-    const revoked = await withUserContext(actor, (tx) => revokeLoginLinksTx(tx, targetId));
+    const revoked = await withUserContext(actor, async (tx) => {
+      if (actor.role === "va") {
+        const [target] = await tx
+          .select({ role: users.role })
+          .from(users)
+          .where(eq(users.id, targetId))
+          .limit(1);
+        if (!target) throw new TeamError("That person was not found");
+        if (target.role !== "designer") {
+          throw new TeamError("Only an admin can revoke sign-in links for admins and VAs");
+        }
+      }
+      return revokeLoginLinksTx(tx, targetId);
+    });
     return { ok: true, revoked };
   } catch (error) {
     return fail(error, "Could not revoke the link. Try again.");

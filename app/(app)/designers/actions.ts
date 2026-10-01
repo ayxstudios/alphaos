@@ -230,7 +230,11 @@ export async function addDesigner(input: AddDesignerInput): Promise<AddDesignerR
   const session = await auth();
   if (!session?.user) return { ok: false, message: "Not signed in" };
   const user: RequestUser = { id: session.user.id, role: session.user.role };
-  if (user.role !== "admin") return { ok: false, message: "Only an admin can add designers" };
+  // Admin or VA (Yousif 2026-10-01): VAs run the roster day to day, so they
+  // can mint a designer login too. RLS (migration 0041) holds the same line.
+  if (user.role !== "admin" && user.role !== "va") {
+    return { ok: false, message: "Only staff can add designers" };
+  }
 
   const problem = newUserProblem({ name: input.name, email: input.email, password: input.password });
   if (problem) return { ok: false, message: problem };

@@ -19,10 +19,37 @@ const TILES: Tile[] = [
   { label: "Awaiting print approval", kind: "print", href: "/queue/print", hint: "Print jobs waiting for your OK" },
 ];
 
-/** VA home: three large tiles and nothing else. */
+/**
+ * VA home: three large tiles, plus one card that only appears when Alpha
+ * cannot tell which designer draws a style (the Portrait Styles tab is
+ * admin-only, so this is the one moment a VA is pointed at /styles).
+ */
 export function VaHome({ h }: { h: StaffHome }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
+    <div className="flex flex-col gap-4 sm:gap-5">
+      {h.styleGaps.length > 0 && (
+        <Link
+          href="/styles"
+          className={cn(
+            "flex min-w-0 flex-col gap-1 rounded-card border border-amber/30 bg-surface p-4 shadow-card transition-[transform,box-shadow] duration-150 hover:-translate-y-0.5 hover:shadow-md sm:flex-row sm:items-center sm:justify-between sm:gap-3",
+            focusRing,
+          )}
+        >
+          <div className="min-w-0">
+            <span className="flex items-center gap-2 text-sm font-medium text-ink">
+              <span className="size-2 shrink-0 rounded-full bg-amber" />
+              Who draws {h.styleGaps.length === 1 ? "this style" : "these styles"}?
+            </span>
+            <p className="mt-1 truncate text-sm text-slate" title={h.styleGaps.join(", ")}>
+              No designer is set for {h.styleGaps.join(", ")} — orders in {h.styleGaps.length === 1 ? "it" : "them"} can&apos;t be assigned.
+            </p>
+          </div>
+          <span className="flex shrink-0 items-center gap-1 text-sm font-medium text-pigment">
+            Pick the designer <ArrowRight size={14} />
+          </span>
+        </Link>
+      )}
+      <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
       {TILES.map((t) => {
         let n = h.attention.byKind.find((k) => k.kind === t.kind)?.n ?? 0;
         // Same total as the Messages page: customers waiting on an order, plus
@@ -51,6 +78,7 @@ export function VaHome({ h }: { h: StaffHome }) {
           </Link>
         );
       })}
+      </div>
     </div>
   );
 }

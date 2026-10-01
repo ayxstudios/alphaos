@@ -34,7 +34,7 @@ export default async function DesignersPage() {
         title="Designers"
         tourId="page:roster"
         description="New orders go to the first designer on this list who draws the style and is under their daily limit."
-        actions={isAdmin && designers.length > 0 ? <AddDesigner businesses={options} variant="secondary" /> : undefined}
+        actions={designers.length > 0 ? <AddDesigner businesses={options} variant="secondary" /> : undefined}
       />
 
       {designers.length === 0 ? (
@@ -42,12 +42,8 @@ export default async function DesignersPage() {
           <EmptyState
             icon={Users}
             headline="No designers yet"
-            body={
-              isAdmin
-                ? "Add a designer and their board, with the finished-portrait upload, appears right away."
-                : "Ask an admin to add designers; they appear here to rank and configure."
-            }
-            action={isAdmin ? <AddDesigner businesses={options} /> : undefined}
+            body="Add a designer and their board, with the finished-portrait upload, appears right away."
+            action={<AddDesigner businesses={options} />}
           />
         </DataPanel>
       ) : (

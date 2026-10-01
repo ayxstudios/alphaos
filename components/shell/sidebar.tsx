@@ -65,9 +65,11 @@ const VA_NAV: NavItem[] = [
   { label: "All Orders Overview", href: "/orders", icon: Package },
 ];
 
+// No Portrait Styles for VAs (Yousif 2026-10-01): Alpha matches styles to
+// designers itself; when it can't, the question shows up on the VA home with a
+// link straight to /styles (the page itself stays reachable for that case).
 const VA_MORE: NavItem[] = [
   { label: "Designers", href: "/designers", icon: Palette },
-  { label: "Portrait Styles", href: "/styles", icon: Brush },
   { label: "Customers", href: "/customers", icon: Users },
 ];
 
