@@ -4,7 +4,7 @@ import Credentials from "next-auth/providers/credentials";
 import { authConfig, type Role } from "./config";
 import { authenticate, loginClientIp } from "./login";
 import { authenticateLink } from "./login-link";
-import { recheckToken } from "./session-check";
+import { loadHelperLink, recheckToken } from "./session-check";
 import { revokeOnSignOut } from "./sign-out";
 
 /**
@@ -25,7 +25,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // password reset since this token was issued. See ./session-check.ts.
     async jwt(params) {
       const token = authConfig.callbacks.jwt(params);
-      if (params.user) return token; // fresh sign-in: authenticate() just checked the row
+      if (params.user) {
+        // Fresh sign-in: authenticate() just checked the row. A helper also
+        // carries the designer whose board they work, read here (not in the
+        // sign-in queries) so only helper sign-ins touch the helper_for column.
+        if (token.role === "helper") {
+          const link = await loadHelperLink(params.user.id as string);
+          if (!link.helperFor || !link.principalActive) return null;
+          token.helperFor = link.helperFor;
+        }
+        return token;
+      }
       return recheckToken(token);
     },
   },
@@ -65,7 +75,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
 });
 
-export type SessionUser = { id: string; role: Role };
+export type SessionUser = { id: string; role: Role; helperFor?: string | null };
 
 /**
  * Current user as a RequestUser for withUserContext, or null if signed out.
@@ -73,5 +83,5 @@ export type SessionUser = { id: string; role: Role };
 export async function getSessionUser(): Promise<SessionUser | null> {
   const session = await auth();
   if (!session?.user) return null;
-  return { id: session.user.id, role: session.user.role };
+  return { id: session.user.id, role: session.user.role, helperFor: session.user.helperFor ?? null };
 }

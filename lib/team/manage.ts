@@ -74,6 +74,8 @@ export async function listTeam(actor: RequestUser): Promise<TeamMember[]> {
     const rows = await tx
       .select({ id: users.id, name: users.name, email: users.email, role: users.role, active: users.active })
       .from(users)
+      // Helpers belong to a designer (lib/team/helpers.ts), not the team list.
+      .where(ne(users.role, "helper"))
       .orderBy(desc(users.active), asc(users.role), asc(users.name));
 
     const designerIds = rows.filter((r) => r.role === "designer").map((r) => r.id);

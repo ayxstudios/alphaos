@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { currentPeriod } from "@/lib/orders/earnings";
+import { isDesignerLike } from "@/lib/auth/roles";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import {
@@ -173,7 +174,7 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
           .orderBy(desc(activityLog.createdAt))
       : Promise.resolve([]),
     custIds.length
-      ? viewerRole === "designer"
+      ? isDesignerLike(viewerRole)
         ? tx
             .select({ id: customerPublic.id, firstName: customerPublic.firstName })
             .from(customerPublic)
@@ -285,7 +286,7 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
   }
 
   const name = new Map<string, string>();
-  if (viewerRole === "designer") {
+  if (isDesignerLike(viewerRole)) {
     for (const c of customerRows as { id: string | null; firstName: string | null }[]) {
       if (c.id) name.set(c.id, c.firstName ?? "-");
     }
@@ -302,7 +303,7 @@ async function enrich(tx: Tx, rows: OrderRow[], viewerRole: string): Promise<Boa
     status: o.status,
     // A designer works to their own deadline; the customer SLA is staff-facing.
     // An assignment without a due_at (legacy rows) falls back to the SLA.
-    dueAt: iso(viewerRole === "designer" ? (o.assignmentDueAt ?? o.dueAt) : o.dueAt),
+    dueAt: iso(isDesignerLike(viewerRole) ? (o.assignmentDueAt ?? o.dueAt) : o.dueAt),
     orderDueAt: iso(o.dueAt),
     assignmentDueAt: iso(o.assignmentDueAt),
     figureCount: fig.get(o.id) ?? 0,
@@ -385,14 +386,39 @@ const BOARD_ROW_SELECT = {
   notes: orders.notes,
 } as const;
 
+type EarningRow = {
+  id: string;
+  orderId: string;
+  orderNumber: string | null;
+  fallbackOrderNumber: string;
+  figureCount: number;
+  rate: string;
+  amount: string;
+  status: DesignerEarningHistory["status"];
+  breakdown: unknown;
+  createdAt: Date;
+};
+
 /** Designer board for `designerId` (self, or a VA viewing ?designer=X). */
 export async function getDesignerBoard(
   user: RequestUser,
   designerId?: string,
   /** Staff view: only this business's orders on the board (the switcher's selection). */
   businessId?: string,
+  options: {
+    /** False: no pay anywhere (0 / 0 / []). Always false for a helper, whatever is passed. */
+    includeEarnings?: boolean;
+    /** A helper's principal designer (session.user.helperFor). */
+    helperFor?: string | null;
+  } = {},
 ): Promise<DesignerBoard> {
-  const target = designerId ?? user.id;
+  const isHelper = user.role === "helper";
+  // A helper loads exactly their principal's board, nobody else's.
+  if (isHelper && (!options.helperFor || (designerId && designerId !== options.helperFor))) {
+    throw new Error("Not permitted");
+  }
+  const target = isHelper ? (options.helperFor as string) : (designerId ?? user.id);
+  const includeEarnings = isHelper ? false : options.includeEarnings !== false;
   return withUserContext(user, async (tx) => {
     const assignedToTarget = (status: OrderRow["status"] | OrderRow["status"][]) =>
       and(
@@ -437,15 +463,21 @@ export async function getDesignerBoard(
         )
         .orderBy(desc(orders.updatedAt))
         .limit(COMPLETE_COLUMN_MAX) as Promise<OrderRow[]>,
-      tx
-        .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
-        .from(earnings)
-        .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), gte(earnings.createdAt, dayStart))),
-      tx
-        .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
-        .from(earnings)
-        .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), eq(earnings.period, currentPeriod()))),
-      tx
+      includeEarnings
+        ? tx
+            .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
+            .from(earnings)
+            .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), gte(earnings.createdAt, dayStart)))
+        : Promise.resolve([] as { total: string }[]),
+      includeEarnings
+        ? tx
+            .select({ total: sql<string>`coalesce(sum(${earnings.amount}), 0)` })
+            .from(earnings)
+            .where(and(eq(earnings.designerId, target), inArray(earnings.status, ["pending", "paid"]), eq(earnings.period, currentPeriod())))
+        : Promise.resolve([] as { total: string }[]),
+      !includeEarnings
+        ? Promise.resolve([] as EarningRow[])
+        : tx
         .select({
           id: earnings.id,
           orderId: earnings.orderId,

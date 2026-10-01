@@ -39,6 +39,15 @@ const DESIGNER_ALLOWED = [
   /^\/orders\/(?!new\/?$)[^/]+\/?$/,
 ];
 
+// What a designer's helper may reach: the designer's allowlist minus every pay
+// area (/me is the earnings page; /dashboard is the designer's home, which
+// carries earnings, so a helper lands on /board instead). Helpers never see pay
+// in any page; the board page hides it server-side as the second line.
+const HELPER_ALLOWED = [
+  /^\/board(\/|$)/,
+  /^\/help(\/|$)/,
+];
+
 // Admin-only areas (VAs are sent home, matching the pages' own redirects).
 const ADMIN_ONLY = [/^\/payouts(\/|$)/, /^\/health(\/|$)/];
 
@@ -84,6 +93,16 @@ export default auth((req) => {
     }
     const allowed = DESIGNER_ALLOWED.some((r) => r.test(pathname));
     if (!allowed) {
+      return NextResponse.redirect(new URL("/board", req.nextUrl.origin));
+    }
+  } else if (session.user.role === "helper") {
+    // Same clean 307 as a designer for an order link; everything outside the
+    // helper allowlist (/, /dashboard, /me, payouts, staff pages) goes to the board.
+    const order = pathname.match(/^\/orders\/(?!new\/?$)([^/]+)\/?$/);
+    if (order) {
+      return NextResponse.redirect(new URL(`/board?open=${encodeURIComponent(order[1])}`, req.nextUrl.origin));
+    }
+    if (!HELPER_ALLOWED.some((r) => r.test(pathname))) {
       return NextResponse.redirect(new URL("/board", req.nextUrl.origin));
     }
   } else if (session.user.role !== "admin" && ADMIN_ONLY.some((r) => r.test(pathname))) {

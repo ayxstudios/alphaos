@@ -56,7 +56,7 @@ export { schema };
 
 export type RequestUser = {
   id: string;
-  role: "admin" | "va" | "designer";
+  role: "admin" | "va" | "designer" | "helper";
 };
 
 export type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];

@@ -30,6 +30,7 @@ export type SessionRow = {
 export type SessionToken = {
   id?: unknown;
   role?: unknown;
+  helperFor?: unknown;
   signedInAt?: unknown;
 };
 
@@ -60,6 +61,31 @@ export const loadSessionRow = cache(async (userId: string): Promise<SessionRow |
 });
 
 /**
+ * A helper's principal, read on its own (only for role 'helper', so the
+ * helper_for column is never touched for anyone else and sign-in keeps working
+ * on a database the 0042 migration has not reached). `active` is the
+ * principal's flag: a helper stops working the moment their designer is
+ * deactivated.
+ */
+export const loadHelperLink = cache(
+  async (userId: string): Promise<{ helperFor: string | null; principalActive: boolean }> => {
+    const [row] = await db
+      .select({ helperFor: users.helperFor })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    const helperFor = row?.helperFor ?? null;
+    if (!helperFor) return { helperFor: null, principalActive: false };
+    const [principal] = await db
+      .select({ active: users.active, role: users.role })
+      .from(users)
+      .where(eq(users.id, helperFor))
+      .limit(1);
+    return { helperFor, principalActive: !!principal?.active && principal.role === "designer" };
+  },
+);
+
+/**
  * The token when the session is still good, else null (Auth.js then treats the
  * request as signed out and clears the cookie where it can). A database error
  * keeps the token: the page's own queries fail loudly anyway, and a DB blip
@@ -75,5 +101,16 @@ export async function recheckToken<T extends object>(token: T): Promise<T | null
     console.error("[auth] session re-check failed, keeping the session", error);
     return token;
   }
-  return isSessionCurrent(row, t) ? token : null;
+  if (!isSessionCurrent(row, t)) return null;
+  if (t.role === "helper") {
+    // A helper's session also dies when their designer is gone, deactivated,
+    // or the helper was re-pointed at someone else (the JWT's helperFor is stale).
+    try {
+      const link = await loadHelperLink(t.id);
+      if (!link.helperFor || !link.principalActive || link.helperFor !== t.helperFor) return null;
+    } catch (error) {
+      console.error("[auth] helper re-check failed, keeping the session", error);
+    }
+  }
+  return token;
 }
