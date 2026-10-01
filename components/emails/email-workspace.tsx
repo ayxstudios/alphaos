@@ -21,6 +21,7 @@ import {
   type OutboxActionResult,
 } from "@/app/(app)/emails/actions";
 import { formatAt } from "@/lib/time";
+import type { TodayItem } from "@/lib/orders/today-queue";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -41,6 +42,7 @@ export function EmailWorkspace({
   businessId,
   sendingEnabled,
   unmatched,
+  waiting,
   outbox,
   history,
   ignoredSenders,
@@ -48,6 +50,8 @@ export function EmailWorkspace({
   businessId: string;
   sendingEnabled: boolean;
   unmatched: UnmatchedReply[];
+  /** Customers who wrote about an order and are waiting on us (Today queue). */
+  waiting: TodayItem[];
   outbox: OutboxItem[];
   history: ReactNode;
   ignoredSenders: IgnoredSender[];
@@ -73,13 +77,14 @@ export function EmailWorkspace({
       <section className="rounded-card bg-surface shadow-card">
         <div className="flex items-center gap-2 px-4 py-3" data-tour="page:messages">
           <h2 className="text-base font-semibold text-ink">Reply needed</h2>
-          {people.length + failed.length > 0 && <Badge variant="warning">{people.length + failed.length}</Badge>}
+          {waiting.length + people.length + failed.length > 0 && <Badge variant="warning">{waiting.length + people.length + failed.length}</Badge>}
         </div>
         <div className="divide-y divide-line/70 border-t border-line/70">
-          {people.length === 0 && failed.length === 0 ? (
+          {waiting.length === 0 && people.length === 0 && failed.length === 0 ? (
             <p className="px-4 py-6 text-center text-sm text-slate">All caught up. Nothing needs a reply.</p>
           ) : (
             <>
+              {waiting.map((w) => <WaitingCard key={w.id} item={w} />)}
               {people.map((reply) => <ReplyCard key={reply.messageId} reply={reply} businessId={businessId} />)}
               {failed.map((item) => <DraftCard key={item.messageId} item={item} sendingEnabled={sendingEnabled} />)}
             </>
@@ -216,6 +221,19 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function WaitingCard({ item }: { item: TodayItem }) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3">
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium text-ink">{item.todo}</span>
+        <span className="block truncate text-xs text-slate">{item.orderNumber} · {item.shop}</span>
+      </span>
+      <span className="shrink-0 text-xs tabular-nums text-slate">{item.age}</span>
+      <Link href={item.action.href} className="inline-flex min-h-11 shrink-0 items-center rounded-input bg-pigment px-3 text-sm font-medium text-white sm:min-h-9">Reply</Link>
     </div>
   );
 }

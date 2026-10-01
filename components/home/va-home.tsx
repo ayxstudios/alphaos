@@ -24,7 +24,10 @@ export function VaHome({ h }: { h: StaffHome }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
       {TILES.map((t) => {
-        const n = h.attention.byKind.find((k) => k.kind === t.kind)?.n ?? 0;
+        let n = h.attention.byKind.find((k) => k.kind === t.kind)?.n ?? 0;
+        // Same total as the Messages page: customers waiting on an order, plus
+        // unmatched replies and failed sends (it lists all three).
+        if (t.kind === "reply") n += h.messages.unmatched + h.messages.failed;
         return (
           <Link
             key={t.kind}
