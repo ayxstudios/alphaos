@@ -890,7 +890,7 @@ export default async function OrdersPage({
             >
               <Mail size={15} className="text-rose" />
               <span>
-                {plural(emailAttention, "email needs", "emails need")} a reply
+                {plural(emailAttention, "email")} not linked to an order
               </span>
               <ArrowRight size={14} />
             </Link>
