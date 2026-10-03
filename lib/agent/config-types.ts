@@ -57,4 +57,12 @@ export type AgentConfigInput = {
    * person to submit. Default off.
    */
   printDrafts?: boolean;
+  /**
+   * The business's email signature, appended under every email AlphaOS sends
+   * (the same block its people's Gmail adds by hand). Set by an admin; the html
+   * is trusted, the text is the plain-text twin.
+   */
+  emailSignature?: { text: string; html: string } | null;
+  /** How drafted answers sign off, e.g. "Regards,\nBrianna" (the shop's persona). Default: "Warm regards," + the team. */
+  replySignOff?: string | null;
 };

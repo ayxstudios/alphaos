@@ -4,7 +4,7 @@ import { getAgentConfig } from "@/lib/agent/config";
 import { withSystemContext, type Tx } from "@/lib/db";
 import { businesses, customers, exceptions, messages, notifications, proofs, users } from "@/lib/db/schema";
 import { GmailClient, GmailNotConnectedError, GmailReauthRequiredError } from "@/lib/integrations/gmail";
-import { header } from "@/lib/integrations/gmail/mime";
+import { header, textToHtml } from "@/lib/integrations/gmail/mime";
 import { loadAssetAttachment } from "@/lib/email/attachments";
 import { generateProofToken } from "@/lib/proofs/tokens";
 import { proofUrl, uploadUrl } from "@/lib/urls";
@@ -342,6 +342,12 @@ export type SendResult = { ok: true } | { ok: false; error: string; retryable: b
 const SEND_CAP_SUMMARY = "Automatic emails paused: hourly limit reached";
 
 /** Null when an automatic send may go out; otherwise the reason it is held. */
+/** The stored body plus the business's signature block, as the text and html parts. */
+export function withSignature(body: string, signature: { text: string; html: string } | null | undefined): { text: string; html?: string } {
+  if (!signature) return { text: body };
+  return { text: `${body}\n\n${signature.text}`, html: `${textToHtml(body)}\n<br>${signature.html}` };
+}
+
 async function autoSendCapHit(businessId: string): Promise<string | null> {
   return withSystemContext(async (tx) => {
     const [b] = await tx.select({ agentConfig: businesses.agentConfig }).from(businesses).where(eq(businesses.id, businessId));
@@ -422,12 +428,12 @@ export async function sendMessage(
 
   // Safety rail: no real customer send unless this business has sending enabled.
   // Retryable (left as-is), so turning it on later flushes the same rows.
-  const sendingEnabled = await withSystemContext(async (tx) => {
+  const { sendingEnabled, signature } = await withSystemContext(async (tx) => {
     const [b] = await tx
-      .select({ on: businesses.emailSendingEnabled })
+      .select({ on: businesses.emailSendingEnabled, agentConfig: businesses.agentConfig })
       .from(businesses)
       .where(eq(businesses.id, msg.businessId));
-    return !!b?.on;
+    return { sendingEnabled: !!b?.on, signature: b ? getAgentConfig(b).emailSignature : null };
   });
   if (!sendingEnabled) {
     if (opts?.markRetryableFailed) await markFailed(messageId, "Email sending is turned OFF for this business");
@@ -535,7 +541,7 @@ export async function sendMessage(
       {
         to: msg.address,
         subject: msg.subject ?? "",
-        text: msg.body ?? "",
+        ...withSignature(msg.body ?? "", signature),
         inReplyToMessageId: prior?.rfcMessageId ?? undefined,
         ...(attachment ? { attachments: [attachment] } : {}),
       },

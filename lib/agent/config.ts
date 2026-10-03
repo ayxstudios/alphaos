@@ -35,7 +35,17 @@ export const AGENT_CONFIG_DEFAULTS: AgentConfig = {
   agentFrom: null,
   maxAutoSendsPerHour: 30,
   printDrafts: false,
+  emailSignature: null,
+  replySignOff: null,
 };
+
+function cleanSignature(v: unknown): { text: string; html: string } | null {
+  if (!v || typeof v !== "object") return null;
+  const { text, html } = v as { text?: unknown; html?: unknown };
+  if (typeof text !== "string" || typeof html !== "string") return null;
+  if (!text.trim() || !html.trim() || text.length > 2000 || html.length > 5000) return null;
+  return { text, html };
+}
 
 function num(v: unknown, min: number, max: number, fallback: number): number {
   return typeof v === "number" && Number.isFinite(v) && v >= min && v <= max ? v : fallback;
@@ -87,6 +97,8 @@ export function getAgentConfig(business: { agentConfig?: unknown } | null | unde
     agentFrom: typeof raw.agentFrom === "string" && !Number.isNaN(Date.parse(raw.agentFrom)) ? raw.agentFrom : null,
     maxAutoSendsPerHour: num(raw.maxAutoSendsPerHour, 1, 1000, AGENT_CONFIG_DEFAULTS.maxAutoSendsPerHour),
     printDrafts: raw.printDrafts === true,
+    emailSignature: cleanSignature(raw.emailSignature),
+    replySignOff: typeof raw.replySignOff === "string" && raw.replySignOff.trim() && raw.replySignOff.length <= 200 ? raw.replySignOff : null,
   };
 }
 

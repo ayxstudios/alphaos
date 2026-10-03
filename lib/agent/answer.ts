@@ -14,6 +14,8 @@ export type AnswerDraftInput = {
   /** Plain words, e.g. "waiting for the customer to approve the proof". */
   orderStage: string;
   question: string;
+  /** The exact closing lines (agentConfig.replySignOff); default "Warm regards," + the team. */
+  signOff?: string | null;
 };
 
 export async function draftAnswerToQuestion(input: AnswerDraftInput): Promise<string | null> {
@@ -22,6 +24,8 @@ export async function draftAnswerToQuestion(input: AnswerDraftInput): Promise<st
     `You write for ${input.businessName}, a small custom portrait shop. A staff member reviews the draft before it is sent.`,
     "Rules: 2 to 5 short sentences, warm and plain. Do not promise prices, refunds, size or product changes, or dates;",
     "for anything like that say the team will check and confirm. No em dashes. No placeholders. Output only the email body.",
+    `Open with "Hi ${input.firstName ?? "there"}," on its own line, and end with exactly these closing lines:`,
+    input.signOff?.trim() || `Warm regards,\nThe ${input.businessName} Team`,
     `Customer first name: ${input.firstName ?? "there"}`,
     `Order: ${input.orderNumber} (${input.orderStage})`,
     `Question: ${input.question}`,

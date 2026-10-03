@@ -374,6 +374,7 @@ async function handleReply(ctx: Ctx, row: ReplyRow, threshold: number): Promise<
           platformOrderId: orders.platformOrderId,
           platformOrderName: orders.platformOrderName,
           businessName: businesses.name,
+          agentConfig: businesses.agentConfig,
           firstName: customers.firstName,
         })
         .from(orders)
@@ -391,6 +392,7 @@ async function handleReply(ctx: Ctx, row: ReplyRow, threshold: number): Promise<
           orderNumber: facts.platformOrderName ?? facts.platformOrderId,
           orderStage: stageWords(facts.status),
           question: cleaned,
+          signOff: getAgentConfig(facts).replySignOff,
         });
       } catch {
         answer = null;

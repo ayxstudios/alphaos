@@ -11,6 +11,7 @@ import { AGENT_CONFIG_DEFAULTS, getAgentConfig, getBusinessAgentSettings, saveAg
 import { adminExtraKeys, isAgentMode, primaryNavKeys, tabNavKeys } from "../lib/agent/nav";
 import { withSystemContext } from "../lib/db";
 import { businesses } from "../lib/db/schema";
+import { withSignature } from "../lib/email/dispatch";
 import { chooseProvider } from "../lib/print/routing";
 
 const BUSINESS_NAME = "Northlight Portraits";
@@ -32,6 +33,12 @@ async function main() {
   const safe = getAgentConfig({ agentConfig: { agentFrom: "2026-09-30T14:00:00Z", maxAutoSendsPerHour: 5000, printDrafts: "yes" } });
   check("safety keys validated", safe.agentFrom === "2026-09-30T14:00:00Z" && safe.maxAutoSendsPerHour === 30 && safe.printDrafts === false);
   check("junk cutoff dropped", getAgentConfig({ agentConfig: { agentFrom: "soon" } }).agentFrom === null);
+  const sig = getAgentConfig({ agentConfig: { emailSignature: { text: "Shop | shop.co", html: "<b>Shop</b> | shop.co" } } }).emailSignature;
+  check("signature kept when well formed", sig?.text === "Shop | shop.co" && d.emailSignature === null);
+  check("junk signature dropped", getAgentConfig({ agentConfig: { emailSignature: { text: "x" } } }).emailSignature === null);
+  const signed = withSignature("Hi Sam,\n\nThanks!", sig);
+  check("signature appended to text and html", signed.text.endsWith("\n\nShop | shop.co") && !!signed.html?.includes("<b>Shop</b>") && !!signed.html?.includes("<p>Hi Sam,</p>"));
+  check("no signature = body untouched", withSignature("Hi", null).text === "Hi" && withSignature("Hi", null).html === undefined);
   const off = primaryNavKeys("va", false);
   const on = primaryNavKeys("va", true);
   check("VA flags off = Yousif's VA menu (qc, no today/day/overview/exceptions)", off.join() === "home,qc,messages,boards,print,orders");
