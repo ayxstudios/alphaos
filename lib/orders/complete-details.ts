@@ -37,7 +37,7 @@ export type CompleteDetailsInput = {
   size?: string;
 };
 
-export type CompleteDetailsActor = { id: string; role: "admin" | "va" | "designer" | "system" };
+export type CompleteDetailsActor = { id: string; role: "admin" | "va" | "designer" | "helper" | "system" };
 
 export type CompleteDetailsOptions = {
   /** Refuse (ok:false) unless the order is in this status when locked. */
