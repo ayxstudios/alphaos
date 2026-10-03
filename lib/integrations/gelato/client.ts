@@ -136,7 +136,7 @@ export class GelatoClient implements PrintProviderClient {
    * sandbox host, so sandbox credentials force orderType "draft".
    */
   async createOrder(payload: GelatoCreateOrderPayload): Promise<GelatoCreateOrderResponse> {
-    const body: GelatoCreateOrderPayload = this.credentials.sandbox ? { ...payload, orderType: "draft" } : payload;
+    const body: GelatoCreateOrderPayload = this.credentials.sandbox || this.credentials.draftOnly ? { ...payload, orderType: "draft" } : payload;
     if (isMockMode(this.credentials)) {
       const response = mockGelatoCreateOrder(body);
       log("create_order_mock", { orderReferenceId: body.orderReferenceId, id: response.id });

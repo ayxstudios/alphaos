@@ -37,4 +37,24 @@ export type AgentConfigInput = {
    * email goes out only once the owner approves it. Default true.
    */
   aiOwnerApproval?: boolean;
+  /**
+   * Go-live cutoff (ISO time). Orders placed before it belong to the old
+   * process: the agent, its outbox and the automatic reminders never touch
+   * them. Unset = no cutoff. Orders that came from Trello are always skipped.
+   */
+  agentFrom?: string | null;
+  /**
+   * Hard ceiling on automatic (no human tap) customer emails per business per
+   * rolling hour. Past it, mail stays queued and an exception is opened, so a
+   * bug can never turn into a bulk send. Human-approved sends are not counted
+   * against it.
+   */
+  maxAutoSendsPerHour?: number;
+  /**
+   * Approved orders that route to Gelato are set up there as DRAFT orders by
+   * the agent (needs the Gelato credentials' draftOnly switch); a person
+   * approves each draft in the Gelato dashboard. Anything else stays for a
+   * person to submit. Default off.
+   */
+  printDrafts?: boolean;
 };

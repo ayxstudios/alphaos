@@ -26,14 +26,20 @@ import {
   messages,
   orderItems,
   orders,
+  printJobs,
   shops,
   users,
 } from "@/lib/db/schema";
+import { preparePrintOrder } from "@/lib/print/prepare";
+import { submitPrintOrder } from "@/lib/print/submit";
+import { getAgentConfig } from "./config";
+import { ensureAgentDesigner } from "./ai-core";
 import { queuePhotoRequest, queuePhotoShortfall } from "@/lib/email/dispatch";
 import { shopStyleChoices } from "@/lib/designers/styles";
 import type { EtsyIntegrationConfig, EtsyTransaction } from "@/lib/integrations/etsy/types";
 import { runAutoAssign } from "@/lib/orders/assign";
 import { liveOrderWhere } from "@/lib/orders/archive";
+import { agentOrderScope } from "./scope";
 import { completeOrderDetailsCore } from "@/lib/orders/complete-details";
 
 import { computeCompleteness } from "./completeness";
@@ -98,6 +104,12 @@ export type AgentBusinessReport = {
   skippedNeedsReview: number;
   /** Not-yet-started orders moved off an over-capacity or away designer. */
   rebalanced: number;
+  /** Approved orders looked at for a print draft (agentConfig.printDrafts). */
+  printChecked?: number;
+  /** Gelato draft orders set up (dry run: would be set up), waiting for a person in Gelato. */
+  printDrafts?: number;
+  /** Approved orders left for a person to submit (not Gelato, or not ready). */
+  printLeftForPerson?: number;
   /** Inbox pass counts (all zero when the inbox switch is off). */
   inbox: Omit<InboxReport, "exceptionsOpened" | "exceptionKinds" | "errors">;
   /** Outbox pass counts: agent mail sent by itself, retries, failed-send exceptions. */
@@ -220,6 +232,7 @@ export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTi
         report.errors.push({ orderId: "", message: `rebalance: ${errorMessage(e)}` });
       }
     }
+    if (biz.assign && getAgentConfig(biz).printDrafts && !outOfTime()) await printDraftStep(ctx, biz.id, outOfTime);
     if (biz.inbox && !outOfTime()) {
       const inbox = await runInboxPass(biz, { dryRun, now, outOfTime });
       report.inbox = inboxCounts(inbox);
@@ -359,6 +372,7 @@ async function intakeStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
           eq(orders.status, "awaiting_details"),
           eq(orders.source, "etsy"),
           liveOrderWhere(),
+          agentOrderScope(),
         ),
       )
       .orderBy(orders.createdAt)
@@ -538,6 +552,7 @@ async function completenessStep(ctx: TickCtx, businessId: string, outOfTime: () 
           eq(orders.businessId, businessId),
           inArray(orders.status, ["awaiting_photos", "ready_to_assign"]),
           liveOrderWhere(),
+          agentOrderScope(),
           sql`${photoCount} > 0`,
         ),
       )
@@ -614,6 +629,51 @@ async function completenessStep(ctx: TickCtx, businessId: string, outOfTime: () 
 }
 
 // ---------------------------------------------------------------------------
+// Print drafts: approved orders that route to Gelato become Gelato DRAFT
+// orders (nothing prints until a person approves the draft in Gelato). An
+// order that ever had a print job is never touched again, so a failed or
+// rejected submit is a person's call, never retried in a loop.
+// ---------------------------------------------------------------------------
+
+async function printDraftStep(ctx: TickCtx, businessId: string, outOfTime: () => boolean): Promise<void> {
+  const rows = await withSystemContext((tx) =>
+    tx
+      .select({ id: orders.id })
+      .from(orders)
+      .where(
+        and(
+          eq(orders.businessId, businessId),
+          eq(orders.status, "approved"),
+          liveOrderWhere(),
+          agentOrderScope(),
+          sql`not exists (select 1 from ${printJobs} pj where pj.order_id = ${orders.id})`,
+        ),
+      )
+      .orderBy(orders.createdAt)
+      .limit(BATCH),
+  );
+  const r = ctx.report;
+  for (const { id } of rows) {
+    if (outOfTime()) return;
+    r.printChecked = (r.printChecked ?? 0) + 1;
+    try {
+      if (ctx.dryRun) {
+        const plan = await withSystemContext((tx) => preparePrintOrder(id, { tx }));
+        if (plan && plan.provider === "gelato" && !plan.blockers.length) r.printDrafts = (r.printDrafts ?? 0) + 1;
+        else r.printLeftForPerson = (r.printLeftForPerson ?? 0) + 1;
+        continue;
+      }
+      const agentId = await withSystemContext((tx) => ensureAgentDesigner(tx, businessId));
+      const res = await submitPrintOrder({ orderId: id, actorUserId: agentId, actorRole: "admin", requireDraft: true });
+      if (res.ok) r.printDrafts = (r.printDrafts ?? 0) + 1;
+      else r.printLeftForPerson = (r.printLeftForPerson ?? 0) + 1;
+    } catch (e) {
+      r.errors.push({ orderId: id, message: `print draft: ${errorMessage(e)}` });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Assign: ready_to_assign with no active assignment
 // ---------------------------------------------------------------------------
 
@@ -627,6 +687,7 @@ async function assignStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
           eq(orders.businessId, businessId),
           eq(orders.status, "ready_to_assign"),
           liveOrderWhere(),
+          agentOrderScope(),
           sql`not exists (select 1 from ${assignments} where ${assignments.orderId} = ${orders.id} and ${assignments.active})`,
         ),
       )

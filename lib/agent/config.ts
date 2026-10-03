@@ -32,6 +32,9 @@ export const AGENT_CONFIG_DEFAULTS: AgentConfig = {
   autoSendTemplates: [],
   autoSendReplies: true,
   aiOwnerApproval: true,
+  agentFrom: null,
+  maxAutoSendsPerHour: 30,
+  printDrafts: false,
 };
 
 function num(v: unknown, min: number, max: number, fallback: number): number {
@@ -81,6 +84,9 @@ export function getAgentConfig(business: { agentConfig?: unknown } | null | unde
     autoSendTemplates: cleanAutoSend(raw.autoSendTemplates),
     autoSendReplies: raw.autoSendReplies !== false,
     aiOwnerApproval: raw.aiOwnerApproval !== false,
+    agentFrom: typeof raw.agentFrom === "string" && !Number.isNaN(Date.parse(raw.agentFrom)) ? raw.agentFrom : null,
+    maxAutoSendsPerHour: num(raw.maxAutoSendsPerHour, 1, 1000, AGENT_CONFIG_DEFAULTS.maxAutoSendsPerHour),
+    printDrafts: raw.printDrafts === true,
   };
 }
 

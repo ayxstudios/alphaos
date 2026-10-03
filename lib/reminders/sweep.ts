@@ -6,6 +6,7 @@ import { queuePhotoReminder, queueStageEmail } from "@/lib/email/dispatch";
 import { approveProof } from "@/lib/proofs/decide";
 import { proofUrl } from "@/lib/urls";
 import { sendAlphaEvent } from "@/lib/alpha/client";
+import { agentOrderScope } from "@/lib/agent/scope";
 
 const DAY = 24 * 60 * 60 * 1000;
 export const PHOTO_REMINDER_AFTER_MS = 48 * 60 * 60 * 1000; // 48h
@@ -93,6 +94,7 @@ export async function runRemindersSweep(opts: { businessIds?: string[]; now?: Da
         and(
           eq(orders.status, "awaiting_photos"),
           isNull(orders.archivedAt),
+          agentOrderScope(),
           lte(orders.createdAt, photoCutoff),
           ...(bizFilter ? [bizFilter] : []),
         ),
@@ -137,6 +139,7 @@ export async function runRemindersSweep(opts: { businessIds?: string[]; now?: Da
           isNull(proofs.decision),
           eq(orders.status, "awaiting_approval"),
           isNull(orders.archivedAt),
+          agentOrderScope(),
           ...(bizFilter ? [bizFilter] : []),
         ),
       ),

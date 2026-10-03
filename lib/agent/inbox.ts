@@ -43,6 +43,7 @@ import {
 } from "@/lib/email/reply-classifier";
 import { mergeReplyClassification } from "@/lib/integrations/gmail/inbound";
 import { liveOrderWhere } from "@/lib/orders/archive";
+import { agentOrderScope } from "./scope";
 import { proofUrl } from "@/lib/urls";
 
 import { draftAnswerToQuestion } from "./answer";
@@ -335,6 +336,7 @@ async function repliesStep(
           sql`coalesce(${messages.metadata}->'replyClassification'->'vaDecision', 'null'::jsonb) = 'null'::jsonb`,
           sql`not ${handled}`,
           liveOrderWhere(),
+          agentOrderScope(),
         ),
       )
       .orderBy(asc(messages.createdAt))
@@ -646,6 +648,7 @@ async function reminderStep(
           eq(orders.businessId, businessId),
           eq(orders.status, "awaiting_approval"),
           liveOrderWhere(),
+          agentOrderScope(),
           // An AI portrait held for the owner has no sent proof to remind about.
           sql`${orders.aiState} is distinct from 'owner_review'`,
         ),

@@ -7,6 +7,9 @@ export type GelatoCredentials = {
   // Gelato has no separate sandbox host. When true, createOrder sends
   // orderType "draft": the order is stored in the dashboard but never produced.
   sandbox?: boolean;
+  // Live account, but every order is created as a draft: it waits in the
+  // Gelato dashboard until a person approves it there (the VA print check).
+  draftOnly?: boolean;
 };
 
 // Gelato's own fulfillment status words (dashboard.gelato.com/docs/orders/order_details/).

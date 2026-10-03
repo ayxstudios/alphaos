@@ -2,7 +2,7 @@ import { and, desc, eq, isNotNull, isNull, ne, sql } from "drizzle-orm";
 
 import { getAgentConfig } from "@/lib/agent/config";
 import { withSystemContext, type Tx } from "@/lib/db";
-import { businesses, customers, messages, notifications, proofs, users } from "@/lib/db/schema";
+import { businesses, customers, exceptions, messages, notifications, proofs, users } from "@/lib/db/schema";
 import { GmailClient, GmailNotConnectedError, GmailReauthRequiredError } from "@/lib/integrations/gmail";
 import { header } from "@/lib/integrations/gmail/mime";
 import { loadAssetAttachment } from "@/lib/email/attachments";
@@ -339,6 +339,46 @@ export async function draftFreeformReply(
 /** `busy`: another pass holds this send right now; nothing was attempted, so it is no failure. */
 export type SendResult = { ok: true } | { ok: false; error: string; retryable: boolean; busy?: boolean };
 
+const SEND_CAP_SUMMARY = "Automatic emails paused: hourly limit reached";
+
+/** Null when an automatic send may go out; otherwise the reason it is held. */
+async function autoSendCapHit(businessId: string): Promise<string | null> {
+  return withSystemContext(async (tx) => {
+    const [b] = await tx.select({ agentConfig: businesses.agentConfig }).from(businesses).where(eq(businesses.id, businessId));
+    const cap = getAgentConfig(b).maxAutoSendsPerHour;
+    const [row] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.businessId, businessId),
+          eq(messages.direction, "outbound"),
+          eq(messages.status, "sent"),
+          isNull(messages.approvedBy),
+          sql`${messages.sentAt} > now() - interval '1 hour'`,
+        ),
+      );
+    const sent = Number(row?.n ?? 0);
+    if (sent < cap) return null;
+    const [open] = await tx
+      .select({ id: exceptions.id })
+      .from(exceptions)
+      .where(and(eq(exceptions.businessId, businessId), eq(exceptions.status, "open"), eq(exceptions.summary, SEND_CAP_SUMMARY)))
+      .limit(1);
+    if (!open) {
+      await tx.insert(exceptions).values({
+        businessId,
+        orderId: null,
+        kind: "email_send_failed",
+        summary: SEND_CAP_SUMMARY,
+        detail: { reason: "send_cap", cap, sentLastHour: sent },
+      });
+      console.error(`[email] business ${businessId}: ${sent} automatic sends in the last hour (cap ${cap}); holding the rest`);
+    }
+    return `${SEND_CAP_SUMMARY} (${cap} per hour)`;
+  });
+}
+
 /**
  * Send one message via the business's Gmail mailbox and stamp the result on the
  * row. Opens its own system transaction. Safe to call on a `draft`, `queued`, or
@@ -392,6 +432,15 @@ export async function sendMessage(
   if (!sendingEnabled) {
     if (opts?.markRetryableFailed) await markFailed(messageId, "Email sending is turned OFF for this business");
     return { ok: false, error: "Email sending is turned OFF for this business", retryable: true };
+  }
+
+  // Circuit breaker: automatic sends (no human tap) are capped per business
+  // per rolling hour (agentConfig.maxAutoSendsPerHour). Past the cap the row
+  // stays queued and one open exception tells the team, so a bug can never
+  // become a bulk email. Human-approved sends are never held here.
+  if (!opts?.approvedById) {
+    const held = await autoSendCapHit(msg.businessId);
+    if (held) return { ok: false, error: held, retryable: true };
   }
 
   // Claim the row: only one pass at a time may hold a send in flight. A claim

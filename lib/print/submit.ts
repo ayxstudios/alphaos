@@ -173,7 +173,14 @@ export async function activePrintJob(tx: Tx, orderId: string) {
 }
 
 export async function submitPrintOrder(
-  input: { orderId: string; actorUserId: string; actorRole?: RequestUser["role"]; provider?: PrintProvider | null },
+  input: {
+    orderId: string;
+    actorUserId: string;
+    actorRole?: RequestUser["role"];
+    provider?: PrintProvider | null;
+    /** The agent's path: only a Gelato draft (nothing printed until a person approves it) may be created. */
+    requireDraft?: boolean;
+  },
   tx?: Tx,
 ): Promise<SubmitPrintResult> {
   if (!tx) {
@@ -230,7 +237,10 @@ export async function submitPrintOrder(
   const mode =
     provider === "lumaprints"
       ? isLumaMock(luma) ? "mock" : luma?.sandbox ? "sandbox" : "live"
-      : isGelatoMock(gelato) ? "mock" : gelato?.sandbox ? "sandbox" : "live";
+      : isGelatoMock(gelato) ? "mock" : gelato?.sandbox ? "sandbox" : gelato?.draftOnly ? "draft" : "live";
+  if (input.requireDraft && !(provider === "gelato" && (mode === "draft" || mode === "sandbox" || mode === "mock"))) {
+    return { ok: false, message: "Left for a person: only Gelato draft orders are set up automatically." };
+  }
 
   let imageUrl: string;
   try {

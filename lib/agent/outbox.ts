@@ -21,6 +21,7 @@ import { activityLog, exceptions, messages, orders } from "@/lib/db/schema";
 import { sendMessage } from "@/lib/email/dispatch";
 
 import { openExceptionTx } from "./exceptions";
+import { agentMessageScope } from "./scope";
 
 /** Retries after the first failure. */
 export const MAX_SEND_RETRIES = 3;
@@ -138,6 +139,7 @@ async function promoteStep(businessId: string, dryRun: boolean, report: OutboxRe
           eq(messages.direction, "outbound"),
           eq(messages.status, "draft"),
           isNull(messages.archivedAt),
+          agentMessageScope(),
           sql`(${messages.metadata}->>'agentDrafted' = 'true' or ${messages.templateKey} in (${sql.join(
             AGENT_TEMPLATES.map((k) => sql`${k}`),
             sql`, `,
@@ -197,7 +199,7 @@ async function sendStep(
     tx
       .select({ id: messages.id, metadata: messages.metadata })
       .from(messages)
-      .where(and(eq(messages.businessId, businessId), eq(messages.direction, "outbound"), eq(messages.status, "queued"), isNull(messages.archivedAt)))
+      .where(and(eq(messages.businessId, businessId), eq(messages.direction, "outbound"), eq(messages.status, "queued"), isNull(messages.archivedAt), agentMessageScope()))
       .orderBy(asc(messages.createdAt))
       .limit(BATCH),
   );
@@ -257,6 +259,7 @@ async function retryStep(
           eq(messages.direction, "outbound"),
           eq(messages.status, "failed"),
           isNull(messages.archivedAt),
+          agentMessageScope(),
           sql`${messages.manualSentAt} is null`,
         ),
       )

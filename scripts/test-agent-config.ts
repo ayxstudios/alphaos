@@ -28,6 +28,10 @@ async function main() {
   check("junk is dropped or defaulted", junk.replyConfidenceThreshold === 0.85 && junk.autoSendTemplates.join() === "shipped" && junk.channels.etsy === undefined && junk.mailbox.sendFrom === undefined);
   check("agent mode: all off = false", !isAgentMode({}) && !isAgentMode({ agentIntakeEnabled: false, agentAssignEnabled: false, agentInboxEnabled: false }));
   check("agent mode: any one on = true", isAgentMode({ agentInboxEnabled: true }) && isAgentMode({ agentAssignEnabled: true }));
+  check("safety defaults: no cutoff, 30 auto sends/hour, no print drafts", d.agentFrom === null && d.maxAutoSendsPerHour === 30 && d.printDrafts === false);
+  const safe = getAgentConfig({ agentConfig: { agentFrom: "2026-09-30T14:00:00Z", maxAutoSendsPerHour: 5000, printDrafts: "yes" } });
+  check("safety keys validated", safe.agentFrom === "2026-09-30T14:00:00Z" && safe.maxAutoSendsPerHour === 30 && safe.printDrafts === false);
+  check("junk cutoff dropped", getAgentConfig({ agentConfig: { agentFrom: "soon" } }).agentFrom === null);
   const off = primaryNavKeys("va", false);
   const on = primaryNavKeys("va", true);
   check("VA flags off = Yousif's VA menu (qc, no today/day/overview/exceptions)", off.join() === "home,qc,messages,boards,print,orders");
