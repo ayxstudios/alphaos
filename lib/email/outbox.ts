@@ -5,6 +5,7 @@ import { noiseReason } from "@/lib/email/noise";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { customers, emailSenderIgnores, messages, orders } from "@/lib/db/schema";
 import { TEMPLATE_META } from "./templates";
+import { todoMessageScope } from "@/lib/orders/todo-scope";
 import { cleanSearchTerm, likeContains } from "@/lib/search";
 
 /** Pull the bare email out of a "Name <email>" From header. */
@@ -194,7 +195,7 @@ export type UnmatchedReply = {
  */
 export async function getUnmatchedReplies(
   user: RequestUser,
-  opts: { businessId: string | null; includeSuppressed?: boolean; since?: Date },
+  opts: { businessId: string | null; includeSuppressed?: boolean; since?: Date; todoOnly?: boolean },
 ): Promise<UnmatchedReply[]> {
   return withUserContext(user, async (tx) => {
     const bizFilter =
@@ -223,6 +224,7 @@ export async function getUnmatchedReplies(
           ...(bizFilter ? [bizFilter] : []),
           ...(suppressionFilter ? [suppressionFilter] : []),
           ...(opts.since ? [gte(messages.createdAt, opts.since)] : []),
+          ...(opts.todoOnly ? [todoMessageScope()] : []),
         ),
       )
       .orderBy(asc(messages.createdAt)) // oldest first — the longest wait is most urgent
@@ -408,6 +410,7 @@ export async function getEmailNeedsActionCounts(
             isNull(messages.orderId),
             isNull(messages.archivedAt),
             isNull(messages.suppressedAt),
+            todoMessageScope(),
             ...(bizFilter ? [bizFilter] : []),
           ),
         ),

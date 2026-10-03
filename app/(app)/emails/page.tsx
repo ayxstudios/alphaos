@@ -49,7 +49,7 @@ export default async function EmailsPage({ searchParams }: { searchParams: Searc
         .limit(1);
       return row ?? { emailSendingEnabled: false, gmailAddress: null };
     }),
-    getUnmatchedReplies(user, { businessId: selected.id, includeSuppressed: false }),
+    getUnmatchedReplies(user, { businessId: selected.id, includeSuppressed: false, todoOnly: true }),
     getOutbox(user, { businessId: selected.id }),
     getIgnoredSenders(user, { businessId: selected.id }),
     getTodayQueue(user, selected.id).catch(() => null),

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, desc, eq, ilike, inArray, or } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser } from "@/lib/db";
@@ -318,6 +318,39 @@ export async function archiveReply(messageId: string, reasonRaw: string): Promis
     revalidatePath("/emails");
     revalidatePath("/dashboard");
     return { ok: true as const, message: "Reply archived" };
+  });
+}
+
+/**
+ * "Done" on a Messages "Reply needed" row: the customer was already answered
+ * outside AlphaOS (Gmail, Etsy), so the order's open inbound mail is stamped
+ * handledAt and the row leaves the to-do list. Nothing is deleted or hidden
+ * from the thread; a new email from the customer brings the row back.
+ */
+export async function markOrderRepliesHandled(orderId: string): Promise<OutboxActionResult> {
+  const user = await requireStaff();
+  if (!user) return { ok: false, message: "Not permitted" };
+  return withUserContext(user, async (tx) => {
+    const [o] = await tx.select({ businessId: orders.businessId }).from(orders).where(eq(orders.id, orderId));
+    if (!o) return { ok: false as const, message: "Order not found" };
+    const done = await tx
+      .update(messages)
+      .set({
+        metadata: sql`coalesce(${messages.metadata}, '{}'::jsonb) || jsonb_build_object('handledAt', now(), 'handledBy', ${user.id}::text)`,
+      })
+      .where(and(eq(messages.orderId, orderId), eq(messages.direction, "inbound"), sql`(${messages.metadata}->>'handledAt') is null`))
+      .returning({ id: messages.id });
+    await tx.insert(activityLog).values({
+      businessId: o.businessId,
+      orderId,
+      actorId: user.id,
+      action: "message.handled",
+      metadata: { messages: done.length },
+    });
+    revalidatePath("/emails");
+    revalidatePath("/today");
+    revalidatePath("/dashboard");
+    return { ok: true as const, message: "Marked done" };
   });
 }
 

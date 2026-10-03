@@ -13,6 +13,7 @@ import {
   users,
 } from "@/lib/db/schema";
 import { liveOrderWhere } from "@/lib/orders/archive";
+import { todoOrderScope } from "@/lib/orders/todo-scope";
 import { isNoiseMail } from "@/lib/email/noise";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
 import type { OrderStatus } from "./transitions";
@@ -129,7 +130,7 @@ export async function getTodayQueue(user: RequestUser, businessId: string, now =
       .leftJoin(customers, eq(customers.id, orders.customerId))
       .leftJoin(assignments, and(eq(assignments.orderId, orders.id), eq(assignments.active, true)))
       .leftJoin(users, eq(users.id, assignments.designerId))
-      .where(and(eq(orders.businessId, businessId), liveOrderWhere(), inArray(orders.status, ACTIVE)))
+      .where(and(eq(orders.businessId, businessId), liveOrderWhere(), todoOrderScope(), inArray(orders.status, ACTIVE)))
       .orderBy(desc(orders.createdAt))
       .limit(500);
 
@@ -166,6 +167,7 @@ export async function getTodayQueue(user: RequestUser, businessId: string, now =
           subject: messages.subject,
           channel: messages.channel,
           kind: sql<string | null>`${messages.metadata}->>'kind'`,
+          handled: sql<boolean>`((${messages.metadata}->>'handledAt') is not null)`,
           at: sql<Date>`coalesce(${messages.sentAt}, ${messages.createdAt})`,
         })
         .from(messages)
@@ -211,7 +213,9 @@ export async function getTodayQueue(user: RequestUser, businessId: string, now =
 
       // 1. Customer waiting on a reply.
       const m = latestMsg.get(o.id);
-      if (m && m.direction === "inbound") {
+      // A VA can mark a conversation done ("Done" on Messages) when it was
+      // answered outside AlphaOS: the latest inbound then carries handledAt.
+      if (m && m.direction === "inbound" && !m.handled) {
         const since = new Date(m.at).getTime();
         // The line says who is waiting; the button says who the reply goes to
         // (or which order, when we have no name), so a row never reads

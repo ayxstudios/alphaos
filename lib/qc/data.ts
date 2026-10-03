@@ -2,6 +2,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { liveOrderWhere } from "@/lib/orders/archive";
+import { todoOrderScope } from "@/lib/orders/todo-scope";
 import {
   orders,
   orderItems,
@@ -272,8 +273,8 @@ export async function getQcQueueIds(
       .from(orders)
       .where(
         bizFilter
-          ? and(eq(orders.status, "awaiting_qc"), liveOrderWhere(), bizFilter)
-          : and(eq(orders.status, "awaiting_qc"), liveOrderWhere()),
+          ? and(eq(orders.status, "awaiting_qc"), liveOrderWhere(), todoOrderScope(), bizFilter)
+          : and(eq(orders.status, "awaiting_qc"), liveOrderWhere(), todoOrderScope()),
       )
       // NULL due dates sort last, then oldest in QC first.
       .orderBy(sql`${orders.dueAt} asc nulls last`, asc(orders.createdAt));
@@ -330,7 +331,7 @@ export async function getQcQueue(user: RequestUser, businessId: string | null): 
       .leftJoin(customers, eq(customers.id, orders.customerId))
       .leftJoin(assignments, and(eq(assignments.orderId, orders.id), eq(assignments.active, true)))
       .leftJoin(users, eq(users.id, assignments.designerId))
-      .where(bizFilter ? and(eq(orders.status, "awaiting_qc"), liveOrderWhere(), bizFilter) : and(eq(orders.status, "awaiting_qc"), liveOrderWhere()))
+      .where(bizFilter ? and(eq(orders.status, "awaiting_qc"), liveOrderWhere(), todoOrderScope(), bizFilter) : and(eq(orders.status, "awaiting_qc"), liveOrderWhere(), todoOrderScope()))
       .orderBy(sql`${orders.dueAt} asc nulls last`, asc(orders.createdAt));
     return rows.map((r) => ({
       id: r.id,

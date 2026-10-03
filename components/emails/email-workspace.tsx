@@ -15,6 +15,7 @@ import {
   markEmailSentManually,
   linkReplyToOrder,
   archiveReply,
+  markOrderRepliesHandled,
   searchOrdersForLink,
   ignoreSenderFromMessage,
   removeIgnoredSender,
@@ -252,6 +253,7 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
 }
 
 function WaitingCard({ item }: { item: TodayItem }) {
+  const { run, pending } = useActionRunner();
   return (
     <div className="flex items-center gap-3 px-4 py-3">
       <span className="min-w-0 flex-1">
@@ -259,6 +261,10 @@ function WaitingCard({ item }: { item: TodayItem }) {
         <span className="block truncate text-xs text-slate">{item.orderNumber} · {item.shop}</span>
       </span>
       <span className="shrink-0 text-xs tabular-nums text-slate">{item.age}</span>
+      {/* Already answered outside AlphaOS: clears the row, keeps the mail. */}
+      <Button type="button" size="sm" variant="ghost" className="min-h-11 shrink-0 sm:min-h-9" loading={pending} onClick={() => run(() => markOrderRepliesHandled(item.orderId))}>
+        Done
+      </Button>
       <Link href={item.action.href} className="inline-flex min-h-11 shrink-0 items-center rounded-input bg-pigment px-3 text-sm font-medium text-white sm:min-h-9">Reply</Link>
     </div>
   );
@@ -301,6 +307,11 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
           </Button>
         ) : (
           <Button type="button" size="sm" onClick={() => setOpen(true)}>Find the order</Button>
+        )}
+        {!reply.noise && (
+          <Button type="button" size="sm" variant="ghost" loading={pending} onClick={() => run(() => archiveReply(reply.messageId, "Already handled"))}>
+            Done
+          </Button>
         )}
       </div>
       <button type="button" onClick={() => setOpen((o) => !o)} className="-my-3 flex w-full items-center gap-3 py-3 text-left" aria-expanded={open}>

@@ -15,6 +15,7 @@ import {
   discardDraft,
   linkReplyToOrder,
   markEmailSentManually,
+  markOrderRepliesHandled,
   searchOrdersForLink,
   updateDraftBody,
   type OutboxActionResult,
@@ -26,6 +27,7 @@ export {
   discardDraft,
   linkReplyToOrder,
   markEmailSentManually,
+  markOrderRepliesHandled,
   searchOrdersForLink,
   updateDraftBody,
 };

@@ -12,6 +12,7 @@ import {
   shops,
 } from "@/lib/db/schema";
 import { loadShellData } from "@/lib/shell/context";
+import { todoOrderScope } from "@/lib/orders/todo-scope";
 import { defaultPrintProvider } from "@/lib/print/mapping";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { EmptyState, Page, PageHeader } from "@/components/ui";
@@ -86,6 +87,7 @@ export default async function PrintQueuePage() {
         and(
           eq(orders.businessId, selected.id),
           isNull(orders.archivedAt),
+          todoOrderScope(),
           inArray(orders.status, ["approved", "printing"]),
         ),
       )

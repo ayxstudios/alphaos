@@ -36,6 +36,7 @@ const LABELS: Record<string, string> = {
   "email.marked_sent_manually": "Email marked sent",
   "asset.uploaded": "File uploaded",
   "message.received": "Message received",
+  "message.handled": "Marked as answered",
   "message.reply_classified": "Reply read",
   "message.reply_classification_decided": "Reply decided",
   "print.manual_started": "Print started by hand",
