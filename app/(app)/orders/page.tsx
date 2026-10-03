@@ -390,7 +390,7 @@ export default async function OrdersPage({
   const session = await auth();
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
-  if (user.role === "designer") redirect("/board");
+  if (user.role === "designer" || user.role === "helper") redirect("/board");
 
   const [{ selected }, params, cookieStore] = await Promise.all([
     loadShellData(user),
@@ -418,7 +418,10 @@ export default async function OrdersPage({
   const businessFilter = eq(orders.businessId, selected.id);
   const liveFilter = liveOrderWhere();
 
-  const countRow = await withUserContext(user, async (tx) => {
+  // Every independent read starts together (separate pooled connections) and is
+  // awaited once at the end: the view counts, the filter lists and the email
+  // badge no longer queue behind the order rows (docs/PERF.md, 2026-10-01).
+  const countP = withUserContext(user, async (tx) => {
     const countSel = Object.fromEntries(
       VIEWS.map((view) => [view.key, sql<number>`count(*) filter (where ${viewWhere(view.key)})::int`]),
     ) as Record<ViewKey, SQL<number>>;
@@ -427,6 +430,24 @@ export default async function OrdersPage({
     for (const view of VIEWS) counts[view.key] = Number(row?.[view.key] ?? 0);
     return counts;
   });
+  const filterP = withUserContext(user, async (tx) => {
+    const [shopsForFilter, designersForFilter] = await Promise.all([
+      tx
+        .select({ id: shops.id, name: shops.name, platform: shops.platform })
+        .from(shops)
+        .where(eq(shops.businessId, selected.id))
+        .orderBy(asc(shops.name)),
+      tx
+        .select({ id: users.id, name: users.name, email: users.email })
+        .from(users)
+        .where(and(eq(users.role, "designer"), eq(users.active, true)))
+        .orderBy(asc(users.name)),
+    ]);
+    return { shops: shopsForFilter, designers: designersForFilter };
+  });
+  const emailP = getEmailNeedsActionCounts(user, { businessId: selected.id });
+  // If an earlier await throws, these must not become unhandled rejections.
+  for (const side of [countP, filterP, emailP]) side.catch(() => {});
 
   // No ?view in the URL: the saved view (cookie), else Overdue when there is
   // any, else Active. Rendered in place: a redirect here used to cost a
@@ -435,8 +456,9 @@ export default async function OrdersPage({
   // brought in line on the client with history.replaceState, no reload. A
   // search from the top bar (/orders?q=...) looks through every open order.
   const cookieView = requestedView ? null : validView(cookieStore.get(ORDERS_VIEW_COOKIE)?.value);
-  const selectedView: ViewKey =
-    requestedView ?? (q ? "active" : cookieView ?? (countRow.overdue > 0 ? "overdue" : "active"));
+  // Only the "no view named anywhere" case has to wait for the counts.
+  const knownView = requestedView ?? (q ? "active" : cookieView);
+  const selectedView: ViewKey = knownView ?? ((await countP).overdue > 0 ? "overdue" : "active");
 
   // Most imported Etsy orders have no customers row yet: the list shows the
   // buyer name from the receipt (customerName below), so search it too.
@@ -470,7 +492,7 @@ export default async function OrdersPage({
 
   const where = whereParts.length ? and(...whereParts) : undefined;
 
-  const [{ total }, rows, filterData] = await withUserContext(user, async (tx) => {
+  const rowsP = withUserContext(user, async (tx) => {
     const [count] = await tx
       .select({ total: sql<number>`count(distinct ${orders.id})::int` })
       .from(orders)
@@ -523,55 +545,60 @@ export default async function OrdersPage({
       .offset(offset);
 
     const ids = orderRows.map((order) => order.id);
-    const itemRows = ids.length
-      ? await tx
-          .select({
-            orderId: orderItems.orderId,
-            title: orderItems.title,
-            figureCount: orderItems.figureCount,
-            rawVariations: orderItems.rawVariations,
-            style: orderItems.style,
-            productType: orderItems.productType,
-          })
-          .from(orderItems)
-          .where(inArray(orderItems.orderId, ids))
-      : [];
-    const qcRows = ids.length
-      ? await tx
-          .select({
-            orderId: qcChecks.orderId,
-            result: qcChecks.result,
-            reason: qcChecks.reason,
-            createdAt: qcChecks.createdAt,
-          })
-          .from(qcChecks)
-          .where(inArray(qcChecks.orderId, ids))
-          .orderBy(desc(qcChecks.createdAt))
-      : [];
-    const printRows = ids.length
-      ? await tx
-          .select({
-            orderId: printJobs.orderId,
-            provider: printJobs.provider,
-            status: printJobs.status,
-            trackingNumber: printJobs.trackingNumber,
-            createdAt: printJobs.createdAt,
-          })
-          .from(printJobs)
-          .where(inArray(printJobs.orderId, ids))
-          .orderBy(desc(printJobs.createdAt))
-      : [];
-    const activityRows = ids.length
-      ? await tx
-          .select({
-            orderId: activityLog.orderId,
-            toState: activityLog.toState,
-            createdAt: activityLog.createdAt,
-          })
-          .from(activityLog)
-          .where(inArray(activityLog.orderId, ids))
-          .orderBy(desc(activityLog.createdAt))
-      : [];
+    // The four enrichment reads are independent: started together, and the
+    // two history tables keep only the rows that are read (the newest QC per
+    // order; the newest activity per order and state) instead of every row.
+    const [itemRows, qcRows, printRows, activityRows] = await Promise.all([
+      ids.length
+        ? tx
+            .select({
+              orderId: orderItems.orderId,
+              title: orderItems.title,
+              figureCount: orderItems.figureCount,
+              rawVariations: orderItems.rawVariations,
+              style: orderItems.style,
+              productType: orderItems.productType,
+            })
+            .from(orderItems)
+            .where(inArray(orderItems.orderId, ids))
+        : [],
+      ids.length
+        ? tx
+            .selectDistinctOn([qcChecks.orderId], {
+              orderId: qcChecks.orderId,
+              result: qcChecks.result,
+              reason: qcChecks.reason,
+              createdAt: qcChecks.createdAt,
+            })
+            .from(qcChecks)
+            .where(inArray(qcChecks.orderId, ids))
+            .orderBy(qcChecks.orderId, desc(qcChecks.createdAt))
+        : [],
+      ids.length
+        ? tx
+            .select({
+              orderId: printJobs.orderId,
+              provider: printJobs.provider,
+              status: printJobs.status,
+              trackingNumber: printJobs.trackingNumber,
+              createdAt: printJobs.createdAt,
+            })
+            .from(printJobs)
+            .where(inArray(printJobs.orderId, ids))
+            .orderBy(desc(printJobs.createdAt))
+        : [],
+      ids.length
+        ? tx
+            .selectDistinctOn([activityLog.orderId, activityLog.toState], {
+              orderId: activityLog.orderId,
+              toState: activityLog.toState,
+              createdAt: activityLog.createdAt,
+            })
+            .from(activityLog)
+            .where(inArray(activityLog.orderId, ids))
+            .orderBy(activityLog.orderId, activityLog.toState, desc(activityLog.createdAt))
+        : [],
+    ]);
 
     const itemMap = new Map<string, typeof itemRows>();
     for (const item of itemRows) itemMap.set(item.orderId, [...(itemMap.get(item.orderId) ?? []), item]);
@@ -697,23 +724,14 @@ export default async function OrdersPage({
       };
     });
 
-    const shopsForFilter = await tx
-      .select({ id: shops.id, name: shops.name, platform: shops.platform })
-      .from(shops)
-      .where(eq(shops.businessId, selected.id))
-      .orderBy(asc(shops.name));
-    const designersForFilter = await tx
-      .select({ id: users.id, name: users.name, email: users.email })
-      .from(users)
-      .where(and(eq(users.role, "designer"), eq(users.active, true)))
-      .orderBy(asc(users.name));
-
-    return [
-      { total, page, offset, totalPages },
-      normalizedRows,
-      { shops: shopsForFilter, designers: designersForFilter },
-    ] as const;
+    return [{ total, page, offset, totalPages }, normalizedRows] as const;
   });
+  const [[{ total }, rows], countRow, filterData, emailNeedsAction] = await Promise.all([
+    rowsP,
+    countP,
+    filterP,
+    emailP,
+  ]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(Math.max(requestedPage, 1), totalPages);
@@ -726,7 +744,6 @@ export default async function OrdersPage({
   }
   currentParams.set("view", selectedView);
 
-  const emailNeedsAction = await getEmailNeedsActionCounts(user, { businessId: selected.id });
   const emailAttention = emailNeedsAction.unmatched + emailNeedsAction.failed;
 
   // Filters that are set right now (the chips + the count on the button).
@@ -886,11 +903,11 @@ export default async function OrdersPage({
           {emailAttention > 0 && (
             <Link
               href="/emails"
-              className="ml-auto inline-flex h-11 items-center gap-2 rounded-full px-3 text-sm text-slate transition-colors hover:text-ink"
+              className="inline-flex h-11 w-full items-center gap-2 rounded-full px-3 text-sm text-slate transition-colors hover:text-ink sm:ml-auto sm:w-auto"
             >
               <Mail size={15} className="text-rose" />
               <span>
-                {plural(emailAttention, "email needs", "emails need")} a reply
+                {plural(emailAttention, "email")} not linked to an order
               </span>
               <ArrowRight size={14} />
             </Link>

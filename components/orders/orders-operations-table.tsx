@@ -822,8 +822,8 @@ export function OrdersOperationsTable({
                     </span>
                   </div>
                   {row.reviewReason && <p className="mt-1 line-clamp-2 text-sm leading-snug text-amber">{row.reviewReason}</p>}
-                  <div className="mt-1.5 flex items-center justify-between gap-3">
-                    <p className="min-w-0 text-xs text-slate [overflow-wrap:anywhere]">
+                  <div className="mt-1.5 flex flex-col items-stretch gap-2">
+                    <p className="min-w-0 text-xs leading-snug text-slate">
                       {row.source} · {row.assignee}
                       {row.stageTimer.remainingMs != null && (
                         <>
@@ -839,7 +839,7 @@ export function OrdersOperationsTable({
                         href={row.action.href}
                         prefetch={false}
                         aria-label={`${row.action.label}, order ${row.orderNumber}`}
-                        className="relative z-10 -my-2 inline-flex h-9 max-w-[55%] shrink-0 items-center gap-1 rounded-input bg-pigment px-3 text-xs font-medium text-surface shadow-sm hover:opacity-90 before:absolute before:-inset-y-1 before:inset-x-0"
+                        className="relative z-10 inline-flex h-11 max-w-full shrink-0 items-center gap-1 self-end rounded-input bg-pigment px-3.5 text-xs font-medium text-surface shadow-sm hover:opacity-90"
                       >
                         <span className="truncate">{row.action.label}</span>
                         <ArrowRight size={13} className="shrink-0" />

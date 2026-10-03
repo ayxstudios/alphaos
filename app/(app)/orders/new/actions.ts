@@ -12,6 +12,7 @@ import { runAutoAssign } from "@/lib/orders/assign";
 import { parseFigureCount } from "@/lib/orders/manual-input";
 import { normalizeOrderNumber } from "@/lib/orders/reconcile";
 import { shopStyleChoices } from "@/lib/designers/styles";
+import { withSizeOption } from "@/lib/orders/size-option";
 import { referenceUploadProblem } from "@/lib/uploads/verify";
 import { completeOrderDetailsCore, emailProblem, splitName, styleAllowed } from "@/lib/orders/complete-details";
 import {
@@ -33,6 +34,8 @@ export type NewOrderInput = {
   style?: string | null;
   productTitle?: string | null;
   productType: "digital" | "physical";
+  /** Print size / canvas, saved as a Size option on the item. */
+  size?: string;
   notes?: string;
   dueAt?: string; // ISO (date)
   r2Keys?: string[];
@@ -219,6 +222,7 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
           // A style the VA picked by hand is a hand-set, not a fallback default.
           styleLocked: !!input.style?.trim(),
         productType: input.productType,
+        options: withSizeOption(null, input.size),
       });
 
       const assetRows = [
@@ -289,6 +293,7 @@ export async function completeOrderDetails(input: {
   style?: string | null;
   productTitle?: string | null;
   productType: "digital" | "physical";
+  size?: string;
   notes?: string;
   dueAt?: string;
   customerName?: string;
@@ -315,6 +320,7 @@ export async function completeOrderDetails(input: {
       customerEmail: input.customerEmail,
       r2Keys: input.r2Keys,
       photoUrls: input.photoUrls,
+      size: input.size,
     };
     const res = await completeOrderDetailsCore(user, fields, (fn) => withUserContext(user, fn));
     if (!res.ok) return res;

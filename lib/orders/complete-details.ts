@@ -7,6 +7,7 @@ import { parseFigureCount } from "@/lib/orders/manual-input";
 import { runTransition, type OrderStatus } from "@/lib/orders/transitions";
 import { shopStyleChoices } from "@/lib/designers/styles";
 import { referenceUploadProblem } from "@/lib/uploads/verify";
+import { withSizeOption } from "@/lib/orders/size-option";
 
 /**
  * The core of "complete an imported awaiting_details order", shared by the VA
@@ -32,6 +33,8 @@ export type CompleteDetailsInput = {
   customerEmail?: string;
   r2Keys?: string[];
   photoUrls?: string[];
+  /** Print size / canvas, saved as a Size option on the item (undefined = leave options alone). */
+  size?: string;
 };
 
 export type CompleteDetailsActor = { id: string; role: "admin" | "va" | "designer" | "system" };
@@ -148,7 +151,7 @@ export async function completeOrderDetailsCore(
     }
 
     const [existingItem] = await tx
-      .select({ id: orderItems.id })
+      .select({ id: orderItems.id, options: orderItems.options })
       .from(orderItems)
       .where(eq(orderItems.orderId, order.id))
       .for("update")
@@ -164,6 +167,9 @@ export async function completeOrderDetailsCore(
       // as chosen (not "Defaulted ... please confirm") and a re-resolve keeps it.
       styleLocked: input.styleLocked ?? !!input.style?.trim(),
       productType: input.productType,
+      // Only touch options when the form carried a size, so an imported
+      // order's other options are never lost.
+      ...(input.size !== undefined ? { options: withSizeOption(existingItem?.options, input.size) } : {}),
     };
     if (existingItem) {
       await tx.update(orderItems).set(itemValues).where(eq(orderItems.id, existingItem.id));

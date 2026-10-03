@@ -11,6 +11,7 @@ import { Page, PageHeader } from "@/components/ui";
 import { ComposeButton } from "@/components/emails/compose-button";
 import { EmailWorkspace } from "@/components/emails/email-workspace";
 import { MailHistory, MailHistoryFallback } from "@/components/emails/mail-history";
+import { getTodayQueue } from "@/lib/orders/today-queue";
 import { cleanSearchTerm } from "@/lib/search";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +27,7 @@ export default async function EmailsPage({ searchParams }: { searchParams: Searc
   const session = await auth();
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
-  if (user.role === "designer") redirect("/board");
+  if (user.role === "designer" || user.role === "helper") redirect("/board");
 
   const params = await searchParams;
   const q = cleanSearchTerm(params.q);
@@ -36,7 +37,7 @@ export default async function EmailsPage({ searchParams }: { searchParams: Searc
   const pageSize = pageSizeRaw === 20 || pageSizeRaw === 100 ? pageSizeRaw : 50;
 
   const { selected } = await loadShellData(user);
-  const [emailConfig, unmatched, outbox, ignoredSenders] = await Promise.all([
+  const [emailConfig, unmatched, outbox, ignoredSenders, queue] = await Promise.all([
     withUserContext(user, async (tx) => {
       const [row] = await tx
         .select({
@@ -51,7 +52,9 @@ export default async function EmailsPage({ searchParams }: { searchParams: Searc
     getUnmatchedReplies(user, { businessId: selected.id, includeSuppressed: false }),
     getOutbox(user, { businessId: selected.id }),
     getIgnoredSenders(user, { businessId: selected.id }),
+    getTodayQueue(user, selected.id).catch(() => null),
   ]);
+  const waiting = (queue?.items ?? []).filter((i) => i.kind === "reply");
   const historyOpts = { businessId: selected.id, q, includeSuppressed, page, pageSize };
 
   return (
@@ -74,9 +77,10 @@ export default async function EmailsPage({ searchParams }: { searchParams: Searc
         businessId={selected.id}
         sendingEnabled={emailConfig.emailSendingEnabled}
         unmatched={unmatched}
+        waiting={waiting}
         outbox={outbox}
         history={
-          // Its own boundary: "Needs you" paints while the 50-row history
+          // Its own boundary: "Reply needed" paints while the 50-row history
           // query is still running (the page used to wait for all of it).
           <Suspense fallback={<MailHistoryFallback />}>
             <MailHistorySection user={user} {...historyOpts} />

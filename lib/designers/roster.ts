@@ -2,7 +2,7 @@ import { cache } from "react";
 import { and, asc, eq, gte, inArray, sql } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
-import { assignments, designerProfiles, orders, users } from "@/lib/db/schema";
+import { assignments, designerBusinesses, designerProfiles, orders, users } from "@/lib/db/schema";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { asChannel, type PreferredChannel } from "@/lib/designers/profile";
 
@@ -19,15 +19,18 @@ export type RailDesigner = {
  * cache() keyed on primitives so the layout and any page in the same request
  * share one result (two queries), keeping every navigation cheap.
  */
-export function getRailDesigners(user: RequestUser): Promise<RailDesigner[]> {
-  return railDesignersCached(user.id, user.role);
+export function getRailDesigners(user: RequestUser, businessId?: string): Promise<RailDesigner[]> {
+  return railDesignersCached(user.id, user.role, businessId ?? "");
 }
 
+// businessId "" = every designer; otherwise only the designers who work for
+// that business (designer_businesses), so the Boards page never lists another
+// shop's designers (Yousif 2026-10-01).
 const railDesignersCached = cache(
-  async (userId: string, role: RequestUser["role"]): Promise<RailDesigner[]> => {
+  async (userId: string, role: RequestUser["role"], businessId: string): Promise<RailDesigner[]> => {
     const user: RequestUser = { id: userId, role };
     return withUserContext(user, async (tx) => {
-      const roster = await tx
+      const base = tx
         .select({
           userId: designerProfiles.userId,
           name: users.name,
@@ -37,7 +40,14 @@ const railDesignersCached = cache(
         .innerJoin(
           users,
           and(eq(users.id, designerProfiles.userId), eq(users.active, true), eq(users.role, "designer")),
-        )
+        );
+      const roster = await (businessId
+        ? base.innerJoin(
+            designerBusinesses,
+            and(eq(designerBusinesses.userId, designerProfiles.userId), eq(designerBusinesses.businessId, businessId)),
+          )
+        : base
+      )
         .where(eq(designerProfiles.isAgent, false))
         .orderBy(asc(designerProfiles.rank), asc(users.name));
 

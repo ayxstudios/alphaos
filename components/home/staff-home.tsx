@@ -7,6 +7,7 @@ import { getStaffHome, type StaffHome } from "@/lib/home/staff";
 import { pctDelta } from "@/lib/home/shared";
 import { AttentionList } from "./attention-list";
 import { FoldSection } from "./fold-section";
+import { VaHome } from "./va-home";
 import { DayLine, HomeSection, RowLabel, StatTile } from "./primitives";
 
 /**
@@ -17,11 +18,12 @@ import { DayLine, HomeSection, RowLabel, StatTile } from "./primitives";
  */
 export async function StaffHome({ user, businessId, role }: { user: RequestUser; businessId: string; role: "admin" | "va" }) {
   const h = await getStaffHome(user, businessId);
+  if (role === "va") return <VaHome h={h} />;
   const doneCount = h.stages.find((s) => s.key === "done")?.n ?? 0;
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
       <DayLine>{daySentence(h)}</DayLine>
-      {role === "admin" ? <AdminTiles h={h} /> : <VaTiles h={h} />}
+      <AdminTiles h={h} />
 
       <div className="grid gap-4 sm:gap-5 lg:grid-cols-5">
         <HomeSection title="Do first" description={h.attention.counts.total ? doFirstLine(h.attention.counts) : undefined} action={h.attention.counts.total ? { label: "Full queue", href: "/today" } : undefined} className="lg:col-span-3">
@@ -175,26 +177,13 @@ function AdminTiles({ h }: { h: StaffHome }) {
   );
 }
 
-function VaTiles({ h }: { h: StaffHome }) {
-  const replies = h.attention.byKind.find((k) => k.kind === "reply")?.n ?? 0;
-  const qc = h.attention.byKind.find((k) => k.kind === "qc")?.n ?? 0;
-  return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <StatTile label="Needs you now" value={fmtInt(h.attention.counts.now)} hint="Someone is waiting" tone={h.attention.counts.now === 0 ? "good" : "bad"} href="/today" />
-      <StatTile label="For today" value={fmtInt(h.attention.counts.today)} hint={h.attention.counts.soon ? `${h.attention.counts.soon} for later` : "Nothing for later"} tone={h.attention.counts.today === 0 ? "good" : "warn"} href="/today" />
-      <StatTile label="Replies to send" value={fmtInt(replies)} hint={h.messages.unmatched ? `${h.messages.unmatched} to link to an order` : "All linked to orders"} href="/emails" />
-      <StatTile label="Overdue orders" value={fmtInt(h.overdue)} hint={qc ? `${qc} waiting for QC` : `${h.dueToday} due today`} tone={h.overdue === 0 ? "good" : "bad"} href="/orders?view=overdue" />
-    </div>
-  );
-}
-
 function MailLine({ unmatched, failed }: { unmatched: number; failed: number }) {
   const n = unmatched + failed;
   if (!n) return null;
   return (
     <Link href="/emails" className="flex min-h-11 items-center gap-2 rounded-input bg-canvas px-3 py-2 text-sm text-ink hover:bg-pigment-soft/60">
       <Mail size={16} className="text-pigment" />
-      <span className="min-w-0 truncate">
+      <span className="min-w-0">
         {unmatched ? `${unmatched} message${unmatched === 1 ? "" : "s"} not matched to an order` : ""}
         {unmatched && failed ? ", " : ""}
         {failed ? `${failed} failed send${failed === 1 ? "" : "s"}` : ""}
@@ -211,7 +200,7 @@ function ShopRows({ shops }: { shops: StaffHome["shops"] }) {
       {shops.map((s) => (
         // Phone: the shop name gets its own line so it is never cut short.
         <li key={s.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 text-sm sm:flex">
-          <span className="col-span-2 truncate text-ink sm:w-36 sm:shrink-0" title={s.name}>
+          <span className="col-span-2 truncate text-ink sm:w-48 sm:shrink-0" title={s.name}>
             {s.name}
           </span>
           <span className="h-2 flex-1 overflow-hidden rounded-full" style={{ background: "var(--color-chart-track)" }}>

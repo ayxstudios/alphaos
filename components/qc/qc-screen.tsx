@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Badge, Button, Page, Textarea, useToast } from "@/components/ui";
@@ -16,6 +16,7 @@ import {
 } from "@/app/(app)/qc/actions";
 import { CompareViewer } from "./compare-viewer";
 import { ChecklistPanel } from "./checklist-panel";
+import { OrderSaysPanel } from "./order-says-panel";
 import { VersionStrip } from "./version-strip";
 import { QcHeader } from "./qc-header";
 import { FailDialog } from "./fail-dialog";
@@ -49,6 +50,11 @@ export function QcScreen({
   const [emailBody, setEmailBody] = useState("");
   const [legendOpen, setLegendOpen] = useState(false);
   const [signature, setSignature] = useState("");
+  // "What the customer ordered" starts open on a wide screen, closed on a phone.
+  const saysRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    if (saysRef.current) saysRef.current.open = window.matchMedia("(min-width: 1280px)").matches;
+  }, [ctx.orderId]);
   const signed = signature.length > 0 && normalizeSignature(signature) === normalizeSignature(reviewerName);
 
   // Reset per-order state whenever we land on a new order.
@@ -318,7 +324,7 @@ export function QcScreen({
         </div>
       )}
 
-      <div className="grid grid-cols-1 min-h-[38rem] flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid grid-cols-1 flex-1 gap-3 xl:min-h-[38rem] xl:grid-cols-[minmax(0,1fr)_380px]">
         <CompareViewer
           key={ctx.orderId}
           references={ctx.references}
@@ -326,7 +332,17 @@ export function QcScreen({
           portraitLabel={portraitLabel}
         />
 
-        <aside className="flex min-h-[28rem] flex-col rounded-card bg-surface p-4 shadow-card">
+        <aside className="flex flex-col rounded-card bg-surface p-4 shadow-card xl:min-h-[28rem]">
+          <details ref={saysRef} className="group mb-4">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-input bg-canvas px-3 text-sm font-semibold text-ink [&::-webkit-details-marker]:hidden">
+              What the customer ordered
+              <span className="text-xs font-normal text-pigment group-open:hidden">Show</span>
+              <span className="hidden text-xs font-normal text-pigment group-open:inline">Hide</span>
+            </summary>
+            <div className="mt-2">
+              <OrderSaysPanel says={ctx.orderSays} />
+            </div>
+          </details>
           <div className="min-h-0 flex-1">
               <ChecklistPanel
                 items={items}
@@ -371,6 +387,7 @@ export function QcScreen({
         </aside>
       </div>
 
+      {ctx.versions.length > 1 && (
       <div className="shrink-0">
         <div className="flex items-center justify-between pb-1.5">
           <span className="text-xs font-medium text-slate">Versions</span>
@@ -386,6 +403,7 @@ export function QcScreen({
           onSelect={setSelectedVersionId}
         />
       </div>
+      )}
 
       <FailDialog
         open={failOpen}

@@ -2,12 +2,13 @@ import { and, count, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { cache } from "react";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
-import { activityLog, earnings, orders, printJobs, shops } from "@/lib/db/schema";
+import { activityLog, designerBusinesses, designerProfiles, earnings, orders, printJobs, shops, users } from "@/lib/db/schema";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { currentPeriod } from "@/lib/orders/earnings";
 import { getTodayQueue, type TodayItem, type TodayKind } from "@/lib/orders/today-queue";
 import { getEmailNeedsActionCounts } from "@/lib/email/outbox";
 import { getDesignerRoster } from "@/lib/designers/roster";
+import { listBusinessStyles } from "@/lib/designers/styles";
 import { DUE_STATUSES, OPEN_STATUSES, dayBucket, dayKey, fillDays, lastDays, sinceDays, stageCounts, type StageKey } from "./shared";
 
 export type DaySeries = { labels: string[]; values: number[] };
@@ -38,6 +39,8 @@ export type StaffHome = {
   shops: { id: string; name: string; platform: string; open: number; overdue: number }[];
   print: { label: string; n: number; color: "c5" | "c2" | "c3" | "c4" }[];
   messages: { unmatched: number; failed: number };
+  /** Styles of this business no active attached designer draws (Alpha can't route these alone). */
+  styleGaps: string[];
   /** Owner-only. Null for a VA. */
   money: { designerPayMonth: number; designerPayOwed: number } | null;
 };
@@ -73,10 +76,11 @@ const load = cache(async (userId: string, role: RequestUser["role"], businessId:
   // Money page never disagree about an earning made near midnight.
   const payPeriod = currentPeriod(now);
 
-  const [queue, mail, roster, db] = await Promise.all([
+  const [queue, mail, roster, styleGaps, db] = await Promise.all([
     getTodayQueue(user, businessId, now),
     getEmailNeedsActionCounts(user, { businessId }).catch(() => ({ unmatched: 0, failed: 0 })),
     getDesignerRoster(user).catch(() => []),
+    getStyleGaps(user, businessId).catch(() => []),
     withUserContext(user, async (tx) => {
       const live = and(eq(orders.businessId, businessId), liveOrderWhere());
       const placedAt = sql`coalesce(${orders.placedAt}, ${orders.createdAt})`;
@@ -207,9 +211,38 @@ const load = cache(async (userId: string, role: RequestUser["role"], businessId:
     shops: db.shopRows.map((s) => ({ id: s.id, name: s.name, platform: s.platform, open: Number(s.open), overdue: Number(s.overdue) })),
     print: printGroups,
     messages: { unmatched: mail.unmatched, failed: mail.failed },
+    styleGaps,
     money: role === "admin" ? { designerPayMonth: Number(db.money?.month ?? 0), designerPayOwed: Number(db.money?.owed ?? 0) } : null,
   };
 });
+
+/**
+ * Portrait styles of this business that NO active designer attached to it
+ * draws — exactly the orders Alpha cannot route to a board on its own. Shown
+ * on the VA home (the Portrait Styles tab is admin-only since 2026-10-01), so
+ * a VA only ever sees /styles when their answer is actually needed.
+ */
+async function getStyleGaps(user: RequestUser, businessId: string): Promise<string[]> {
+  return withUserContext(user, async (tx) => {
+    const [styleRows, designerRows] = await Promise.all([
+      listBusinessStyles(tx, businessId),
+      tx
+        .select({ styles: designerProfiles.styles })
+        .from(designerProfiles)
+        .innerJoin(
+          users,
+          and(eq(users.id, designerProfiles.userId), eq(users.active, true), eq(users.role, "designer")),
+        )
+        .innerJoin(
+          designerBusinesses,
+          and(eq(designerBusinesses.userId, designerProfiles.userId), eq(designerBusinesses.businessId, businessId)),
+        ),
+    ]);
+    const covered = new Set<string>();
+    for (const d of designerRows) for (const s of d.styles ?? []) covered.add(s.trim().toLowerCase());
+    return styleRows.map((s) => s.name).filter((name) => !covered.has(name.trim().toLowerCase()));
+  });
+}
 
 /** Home numbers for an admin or VA in one business. One transaction, parallel queries, request-cached. */
 export function getStaffHome(user: RequestUser, businessId: string): Promise<StaffHome> {

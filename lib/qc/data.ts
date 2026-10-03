@@ -15,6 +15,9 @@ import {
 import type { OrderStatus } from "@/lib/orders/transitions";
 import { resolveChecklist, type ChecklistSnapshot } from "./checklist";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
+import { currentMatchForProduct } from "@/lib/orders/style-learning";
+import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
+import type { ProductOption } from "@/lib/db/schema";
 
 export type QcImage = {
   id: string;
@@ -30,6 +33,23 @@ export type QcVersion = {
   createdAt: string; // ISO
 };
 
+/** What was ordered, verbatim from the order data, for the QC "Order says" panel. */
+export type QcOrderSays = {
+  items: {
+    title: string | null;
+    productType: string;
+    figureCount: number | null;
+    style: string | null;
+    options: ProductOption[];
+  }[];
+  /** The checkout personalization text (Etsy receipts), verbatim. */
+  personalization: string | null;
+  /** The buyer's own note on the receipt, verbatim. */
+  buyerNote: string | null;
+  /** Designer notes / customer request on the order, verbatim. */
+  notes: string | null;
+};
+
 export type QcContext = {
   orderId: string;
   orderNumber: string;
@@ -40,6 +60,9 @@ export type QcContext = {
   figureCount: number;
   figuresResolved: boolean;
   style: string | null;
+  /** True when the style is a fallback guess nobody confirmed (order page: "Guessed X"). */
+  styleGuessed: boolean;
+  orderSays: QcOrderSays;
   designerName: string | null;
   /** When the order entered awaiting_qc (ISO), for the "time in QC" clock. */
   enteredQcAt: string | null;
@@ -86,6 +109,8 @@ export async function getQcContext(
         shopId: orders.shopId,
         customerId: orders.customerId,
         dueAt: orders.dueAt,
+        notes: orders.notes,
+        rawImport: orders.rawImport,
       })
       .from(orders)
       .where(eq(orders.id, orderId));
@@ -101,7 +126,15 @@ export async function getQcContext(
 
     // Figure count + style.
     const items = await tx
-      .select({ figureCount: orderItems.figureCount, style: orderItems.style })
+      .select({
+        figureCount: orderItems.figureCount,
+        style: orderItems.style,
+        styleLocked: orderItems.styleLocked,
+        title: orderItems.title,
+        sku: orderItems.sku,
+        productType: orderItems.productType,
+        options: orderItems.options,
+      })
       .from(orderItems)
       .where(eq(orderItems.orderId, orderId));
     let figureCount = 0;
@@ -112,6 +145,29 @@ export async function getQcContext(
       if (it.figureCount == null) figuresResolved = false;
       if (it.style && !style) style = it.style;
     }
+
+    // Same rule as the order page's style bar: a style that came from the
+    // fallback (no rule matched) and was never hand-set is a guess.
+    let styleGuessed = false;
+    if (items[0]?.style && !items[0].styleLocked) {
+      const match = await currentMatchForProduct(tx, order.businessId, { title: items[0].title, sku: items[0].sku });
+      styleGuessed = match.via === "default";
+    }
+    const receipt = parseEtsyReceiptReview(order.rawImport);
+    const orderSays: QcOrderSays = {
+      items: items.map((it) => ({
+        title: it.title,
+        productType: it.productType,
+        figureCount: it.figureCount,
+        style: it.style,
+        options: (Array.isArray(it.options) ? it.options : []).filter(
+          (o) => o && String(o.value ?? "").trim() && !String(o.name ?? "").startsWith("_"),
+        ),
+      })),
+      personalization: receipt.combinedPersonalization?.trim() || null,
+      buyerNote: receipt.buyerNote?.trim() || null,
+      notes: order.notes?.trim() || null,
+    };
 
     // Customer (staff-only route).
     let customerName = "-";
@@ -183,6 +239,8 @@ export async function getQcContext(
       figureCount,
       figuresResolved,
       style,
+      styleGuessed,
+      orderSays,
       designerName,
       enteredQcAt: qcEntry ? qcEntry.createdAt.toISOString() : null,
       dueAt: order.dueAt ? order.dueAt.toISOString() : null,
@@ -233,6 +291,10 @@ export type QcQueueRow = {
   shopName: string;
   platform: string;
   designerName: string | null;
+  /** Customer first name for the list row. */
+  customerFirstName: string | null;
+  /** How many reference photos the customer sent. */
+  photoCount: number;
   figureCount: number;
   style: string | null;
   dueAt: string | null;
@@ -255,6 +317,8 @@ export async function getQcQueue(user: RequestUser, businessId: string | null): 
         dueAt: orders.dueAt,
         updatedAt: orders.updatedAt,
         thumbUrl: sql<string | null>`(select ${assets.url} from ${assets} where ${assets.orderId} = ${orders.id} and ${assets.type} in ('submission', 'final') and ${assets.deletedAt} is null and ${assets.url} is not null order by ${assets.createdAt} desc limit 1)`,
+        photoCount: sql<number>`(select count(*) from ${assets} where ${assets.orderId} = ${orders.id} and ${assets.type} = 'reference' and ${assets.deletedAt} is null)::int`,
+        customerFirstName: customers.firstName,
         shopName: shops.name,
         platform: shops.platform,
         designerName: users.name,
@@ -263,6 +327,7 @@ export async function getQcQueue(user: RequestUser, businessId: string | null): 
       })
       .from(orders)
       .innerJoin(shops, eq(shops.id, orders.shopId))
+      .leftJoin(customers, eq(customers.id, orders.customerId))
       .leftJoin(assignments, and(eq(assignments.orderId, orders.id), eq(assignments.active, true)))
       .leftJoin(users, eq(users.id, assignments.designerId))
       .where(bizFilter ? and(eq(orders.status, "awaiting_qc"), liveOrderWhere(), bizFilter) : and(eq(orders.status, "awaiting_qc"), liveOrderWhere()))
@@ -275,6 +340,8 @@ export async function getQcQueue(user: RequestUser, businessId: string | null): 
       shopName: r.shopName,
       platform: r.platform,
       designerName: r.designerName ?? null,
+      customerFirstName: r.customerFirstName?.trim() || null,
+      photoCount: Number(r.photoCount ?? 0),
       figureCount: Number(r.figures ?? 0),
       style: r.style ?? null,
       dueAt: r.dueAt ? r.dueAt.toISOString() : null,

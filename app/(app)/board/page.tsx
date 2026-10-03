@@ -6,34 +6,18 @@ import { auth } from "@/lib/auth";
 import type { RequestUser } from "@/lib/db";
 import { getDesignerBoard, type BoardCard, type DesignerBoard as BoardData } from "@/lib/orders/board-data";
 import { getRailDesigners } from "@/lib/designers/roster";
+import { loadShellData } from "@/lib/shell/context";
 import { DesignerBoard } from "@/components/board/designer-board";
-import { DesignerPicker } from "@/components/board/designer-picker";
-import { DesignerRail } from "@/components/board/designer-rail";
-import { Badge, DataPanel, Disclosure, EmptyState, Page, PageHeader } from "@/components/ui";
+import { BoardSwitcher } from "@/components/board/board-switcher";
+import { EarningsHistory } from "@/components/board/earnings-history";
+import { ShareBoard } from "@/components/board/share-board";
+import { DataPanel, EmptyState, Page, PageHeader } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
 import { Calendar, Columns, Search } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
 import BoardLoading from "./loading";
-import { formatAt } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
-
-function money(value: string | null): string {
-  return value == null ? "Needs rate" : `$${Number(value).toFixed(2)}`;
-}
-
-/** The day an earning was made ("23 Sept"): the time of day adds nothing here. */
-function shortDay(value: string): string {
-  return formatAt(value, { day: "numeric", month: "short" });
-}
-
-/** Earning states in a designer's words. "Blocked" means pay waits on a rate being set. */
-const EARNING_STATUS: Record<string, string> = {
-  pending: "Pending",
-  paid: "Paid",
-  blocked: "On hold",
-  voided: "Voided",
-};
 
 /** A card matches a designer's search on its number, title, first name, style or options. */
 function cardMatches(card: BoardCard, needle: string): boolean {
@@ -61,7 +45,7 @@ export default async function BoardPage({
   const user = { id: session.user.id, role: session.user.role };
   const sp = await searchParams;
   const designerParam = typeof sp.designer === "string" ? sp.designer : undefined;
-  const isStaff = user.role !== "designer";
+  const isStaff = user.role === "admin" || user.role === "va";
   // Designer search (top bar) lands here: filter their own cards. Staff search
   // goes to /orders, so a stray ?q= on a staff board is ignored.
   const q = !isStaff && typeof sp.q === "string" ? sp.q.trim().slice(0, 100) : "";
@@ -70,29 +54,34 @@ export default async function BoardPage({
 
   // Designers can only ever see their own board; staff pick one from the
   // right-hand rail (app shell) or the mobile dropdown below.
-  const targetId = isStaff ? designerParam : user.id;
+  // A teammate (helper) works their designer's board: same view, no pay.
+  const targetId = isStaff ? designerParam : user.role === "helper" ? (session.user.helperFor ?? undefined) : user.id;
 
-  // `force-dynamic` + a Suspense boundary keyed on the designer id: Next only
+  // Staff: the boundary is keyed once (the BoardSwitcher keeps its own cache
+  // and switches designers on the client, so a refresh must not remount it).
+  // Designer: `force-dynamic` + a Suspense boundary keyed on the designer id: Next only
   // re-streams loading.tsx when the SEGMENT changes, not when just the
   // `?designer=` search param changes on this same route — so without this,
   // clicking a different designer in the rail leaves the old board sitting
   // there for however long the query takes, looking frozen. Keying the
   // boundary on targetId forces a fresh Suspense fallback on every switch.
   return (
-    <Suspense key={`${targetId ?? "none"}:${q}`} fallback={<BoardLoading />}>
-      <BoardContent user={user} isStaff={isStaff} targetId={targetId} q={q} openId={openId} />
+    <Suspense key={isStaff ? "staff" : `${targetId ?? "none"}:${q}`} fallback={<BoardLoading />}>
+      <BoardContent user={user} helperFor={session.user.helperFor ?? null} isStaff={isStaff} targetId={targetId} q={q} openId={openId} />
     </Suspense>
   );
 }
 
 async function BoardContent({
   user,
+  helperFor,
   isStaff,
   targetId,
   q,
   openId,
 }: {
   user: RequestUser;
+  helperFor: string | null;
   isStaff: boolean;
   targetId?: string;
   q: string;
@@ -100,22 +89,50 @@ async function BoardContent({
 }) {
   // Staff land on a board, never on a picker: with no ?designer= the first
   // designer in the rail (rank order) is opened. The rail switches.
-  const designers = isStaff ? await getRailDesigners(user) : [];
-  const resolvedId = targetId ?? (isStaff ? designers[0]?.id : undefined);
-  const board = resolvedId ? await getDesignerBoard(user, resolvedId) : null;
+  // Staff only see the selected business's designers and, on each board,
+  // only that business's orders (Yousif 2026-10-01). A ?designer= link from
+  // another business falls back to this business's first designer.
+  const selectedBusiness = isStaff ? (await loadShellData(user)).selected : undefined;
+  const businessId = selectedBusiness?.id || undefined;
+  // "AI Studio (Northlight Portraits)": inside that business the suffix only
+  // says what the page header already says, and it truncated in the rail.
+  const suffix = selectedBusiness?.name ? ` (${selectedBusiness.name})` : "";
+  const designers = (isStaff ? await getRailDesigners(user, businessId) : []).map((d) => ({
+    ...d,
+    name: suffix && d.name.endsWith(suffix) ? d.name.slice(0, -suffix.length) : d.name,
+  }));
+  const resolvedId = isStaff
+    ? (designers.find((d) => d.id === targetId) ?? designers[0])?.id
+    : targetId;
+  const board = resolvedId ? await getDesignerBoard(user, resolvedId, businessId, { helperFor }) : null;
   targetId = resolvedId;
 
-  const pickerDesigners = designers.map((d) => ({ id: d.id, name: d.name }));
+  // Staff: one client component owns the header, the rail and the board, so
+  // picking a designer is a client-side switch from a cache (docs/PERF.md).
+  if (isStaff) {
+    return (
+      <BoardSwitcher
+        key={businessId ?? "all"}
+        designers={designers}
+        initialId={resolvedId}
+        initialBoard={board}
+        viewerRole={user.role === "admin" ? "admin" : "va"}
+        openId={openId}
+      />
+    );
+  }
+
   const count = (cols: BoardData["columns"]) => Object.values(cols).reduce((n, list) => n + list.length, 0);
   const columns = board ? (q ? filterColumns(board.columns, q) : board.columns) : null;
   const matched = columns ? count(columns) : 0;
+  const isHelper = user.role === "helper";
 
   return (
     <Page className="max-w-none">
       <PageHeader
-        title={isStaff ? "Boards" : "My Board"}
-        tourId={isStaff ? "page:designers" : "page:board"}
-        description={isStaff ? undefined : "Soonest deadline first."}
+        title="My Board"
+        tourId="page:board"
+        description="Soonest deadline first."
         actions={
           // A column below `sm` (align-items:stretch gives each row a real,
           // definite width — PageHeader's actions slot is flex-shrink-0, so
@@ -123,7 +140,8 @@ async function BoardContent({
           // overflows a 390px phone instead of shrinking). Row + wrap once
           // there's room.
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-            {!isStaff && (
+            {!isHelper && <ShareBoard />}
+            {!isHelper && (
               <Link
                 href="/me"
                 className={cn(
@@ -135,13 +153,7 @@ async function BoardContent({
                 My Week
               </Link>
             )}
-            {isStaff && (
-              // Mobile / narrow screens: the right rail is hidden, so keep a dropdown.
-              <div className="lg:hidden">
-                <DesignerPicker designers={pickerDesigners} current={targetId} />
-              </div>
-            )}
-            {board && (
+            {board && !isHelper && (
               <div className="flex items-center gap-4 rounded-card bg-surface px-4 py-2 text-sm shadow-card">
                 <span className="flex items-baseline gap-1.5">
                   <span className="text-xs text-slate">Today</span>
@@ -159,9 +171,6 @@ async function BoardContent({
       />
 
       <div className="flex gap-4">
-        {/* Left-hand designer switcher (staff only). */}
-        {isStaff && <DesignerRail designers={designers} current={targetId} />}
-
         <div className="min-w-0 flex-1">
           {board && columns ? (
             <div className="flex flex-col gap-4">
@@ -184,50 +193,8 @@ async function BoardContent({
                   </Link>
                 </div>
               )}
-              <DesignerBoard initial={columns} viewerRole={user.role} timeZone={board.timeZone} openId={openId} />
-              <Disclosure
-                summary="Earnings history"
-                hint={board.earningHistory.length ? `${board.earningHistory.length} order${board.earningHistory.length === 1 ? "" : "s"}` : "nothing yet"}
-              >
-                {board.earningHistory.length === 0 ? (
-                  <p className="py-1 text-sm text-slate">Pay for an order shows here once it is complete.</p>
-                ) : (
-                  // Two lines per order at every size: what it was on the
-                  // left, what it pays and where the payment is on the right.
-                  // The whole row is the link, so it is an easy tap on a phone.
-                  <div className="-mx-4 divide-y divide-line/70">
-                    {board.earningHistory.map((earning) => (
-                      <Link
-                        key={earning.id}
-                        href={`/orders/${earning.orderId}`}
-                        className={cn("flex items-center justify-between gap-3 px-4 py-3 text-sm hover:bg-canvas/60", focusRing)}
-                      >
-                        <div className="min-w-0">
-                          <p className="font-medium text-ink">{earning.orderNumber}</p>
-                          <p className="text-xs text-slate">
-                            {[
-                              earning.style,
-                              `${earning.figureCount} figure${earning.figureCount === 1 ? "" : "s"}`,
-                              earning.rate ? `$${Number(earning.rate).toFixed(2)} each` : "Mixed or missing rate",
-                            ]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </p>
-                        </div>
-                        <div className="flex shrink-0 flex-col items-end gap-1">
-                          <span className="font-semibold tabular-nums text-ink">{money(earning.amount)}</span>
-                          <span className="flex items-center gap-2">
-                            <Badge variant={earning.status === "blocked" ? "warning" : earning.status === "voided" ? "danger" : earning.status === "paid" ? "success" : "neutral"}>
-                              {EARNING_STATUS[earning.status] ?? earning.status}
-                            </Badge>
-                            <span className="text-xs text-slate">{shortDay(earning.createdAt)}</span>
-                          </span>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </Disclosure>
+              <DesignerBoard initial={columns} viewerRole="designer" timeZone={board.timeZone} openId={openId} />
+              {!isHelper && <EarningsHistory history={board.earningHistory} />}
             </div>
           ) : (
             <DataPanel>

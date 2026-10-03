@@ -3,13 +3,19 @@
  * legitimately — seeds set up cross-tenant data no request-context user could.
  *
  * Idempotent: truncates the application tables, then inserts a fixed fixture:
- *   - 2 businesses (PixArt + Lumina, a second test brand)
- *   - 1 admin, 2 VAs, 3 designers (d1 spans both businesses; d2 -> PixArt,
- *     d3 -> Lumina), designer capacities 5 / 8 / 3
- *   - 4 shops (PixArt Etsy + Shopify, Lumina Etsy + Shopify) w/ encrypted creds
+ *   - 2 businesses (PixArt + Lumina by default; override with SEED_BUSINESS_A_*
+ *     / SEED_BUSINESS_B_* for a fictional demo, see docs/DEMO.md)
+ *   - 1 admin, 2 VAs, 3 designers (d1 spans both businesses; d2 -> business A,
+ *     d3 -> business B), designer capacities 5 / 8 / 3 (override the 6 users
+ *     with SEED_USERS_JSON)
+ *   - 4 shops (business A Etsy + Shopify, business B Etsy + Shopify) w/
+ *     encrypted mock creds
  *   - 11 customers, 20 orders across all statuses (some overdue, some due soon),
  *     order_items with figure counts 1-3, and active assignments giving every
  *     designer work (d1=6, d2=4, d3=4).
+ *
+ * Password for every seeded user defaults to "alphaos123"; override with
+ * SEED_PASSWORD.
  */
 import { randomUUID } from "node:crypto";
 
@@ -25,7 +31,70 @@ import { hashPassword } from "../lib/auth/password";
 import { applyLocalNeonProxy } from "../lib/db/local-proxy";
 
 // Dev-only password shared by every seeded user (printed at the end).
-const DEV_PASSWORD = "alphaos123";
+// Overridable so a demo run (docs/DEMO.md) can use its own login password.
+const DEV_PASSWORD = process.env.SEED_PASSWORD ?? "alphaos123";
+
+// ---------------------------------------------------------------------------
+// Overridable brand + user identity (docs/DEMO.md): a demo run seeds this
+// fixture under fictional names instead of PixArt/Lumina. Everything else
+// about the fixture (statuses, counts, designer capacities) stays identical
+// so seed-history.ts and seed-qc.ts still line up.
+// ---------------------------------------------------------------------------
+function slugWord(slug: string): string {
+  return slug.replace(/[^a-z0-9]/gi, "").toLowerCase();
+}
+type Brand = {
+  name: string;
+  slug: string;
+  gmailAddress: string;
+  etsyShopName: string;
+  etsyShopId: string;
+  shopifyShopName: string;
+  shopifyDomain: string;
+};
+function deriveBrand(name: string, slug: string, mailboxLocal: string, etsyShopId: string): Brand {
+  return {
+    name,
+    slug,
+    gmailAddress: `${mailboxLocal}@${slugWord(slug)}.com`,
+    etsyShopName: `${name} Etsy`,
+    etsyShopId,
+    shopifyShopName: `${name} Shopify`,
+    shopifyDomain: `${slug}.myshopify.com`,
+  };
+}
+const BIZ_A = deriveBrand(
+  process.env.SEED_BUSINESS_A_NAME ?? "PixArt",
+  process.env.SEED_BUSINESS_A_SLUG ?? "pixart",
+  "orders",
+  "31415926",
+);
+const BIZ_B = deriveBrand(
+  process.env.SEED_BUSINESS_B_NAME ?? "Lumina",
+  process.env.SEED_BUSINESS_B_SLUG ?? "lumina",
+  "hello",
+  "27182818",
+);
+
+type SeedUserSpec = { email: string; name: string; role: "admin" | "va" | "designer" };
+// Fixed order: admin, va1, va2, d1 (both businesses), d2 (PixArt/A only), d3 (Lumina/B only).
+const DEFAULT_SEED_USERS: SeedUserSpec[] = [
+  { email: "admin@aystudios.io", name: "Admin", role: "admin" },
+  { email: "va1@aystudios.io", name: "Vic VA", role: "va" },
+  { email: "va2@aystudios.io", name: "Val VA", role: "va" },
+  { email: "d1@aystudios.io", name: "Dana Designer", role: "designer" },
+  { email: "d2@aystudios.io", name: "Deb Designer", role: "designer" },
+  { email: "d3@aystudios.io", name: "Dex Designer", role: "designer" },
+];
+function loadSeedUsers(): SeedUserSpec[] {
+  if (!process.env.SEED_USERS_JSON) return DEFAULT_SEED_USERS;
+  const parsed = JSON.parse(process.env.SEED_USERS_JSON) as unknown;
+  if (!Array.isArray(parsed) || parsed.length !== 6) {
+    throw new Error("SEED_USERS_JSON must be an array of exactly 6 users: [admin, va1, va2, d1, d2, d3]");
+  }
+  return parsed as SeedUserSpec[];
+}
+const SEED_USERS = loadSeedUsers();
 
 config({ path: ".env.local" });
 neonConfig.webSocketConstructor = ws;
@@ -82,10 +151,10 @@ async function main() {
   await db.insert(schema.businesses).values([
     {
       id: pixart,
-      name: "PixArt",
-      slug: "pixart",
-      gmailCredentials: gmailCreds("orders@pixartcreatives.com"),
-      gmailAddress: "orders@pixartcreatives.com",
+      name: BIZ_A.name,
+      slug: BIZ_A.slug,
+      gmailCredentials: gmailCreds(BIZ_A.gmailAddress),
+      gmailAddress: BIZ_A.gmailAddress,
       gmailHistoryId: "1000",
       emailSendingEnabled: true,
       stageEmailAutoSend: true,
@@ -94,10 +163,10 @@ async function main() {
     },
     {
       id: lumina,
-      name: "Lumina",
-      slug: "lumina",
-      gmailCredentials: gmailCreds("hello@luminaportraits.com"),
-      gmailAddress: "hello@luminaportraits.com",
+      name: BIZ_B.name,
+      slug: BIZ_B.slug,
+      gmailCredentials: gmailCreds(BIZ_B.gmailAddress),
+      gmailAddress: BIZ_B.gmailAddress,
       gmailHistoryId: "1000",
       emailSendingEnabled: true,
       stageEmailAutoSend: true,
@@ -113,14 +182,15 @@ async function main() {
   const d1 = randomUUID();
   const d2 = randomUUID();
   const d3 = randomUUID();
+  const [uAdmin, uVa1, uVa2, uD1, uD2, uD3] = SEED_USERS;
   const passwordHash = await hashPassword(DEV_PASSWORD);
   await db.insert(schema.users).values([
-    { id: admin, name: "Admin", email: "admin@aystudios.io", role: "admin", passwordHash },
-    { id: va1, name: "Vic VA", email: "va1@aystudios.io", role: "va", passwordHash },
-    { id: va2, name: "Val VA", email: "va2@aystudios.io", role: "va", passwordHash },
-    { id: d1, name: "Dana Designer", email: "d1@aystudios.io", role: "designer", passwordHash },
-    { id: d2, name: "Deb Designer", email: "d2@aystudios.io", role: "designer", passwordHash },
-    { id: d3, name: "Dex Designer", email: "d3@aystudios.io", role: "designer", passwordHash },
+    { id: admin, name: uAdmin.name, email: uAdmin.email, role: "admin", passwordHash },
+    { id: va1, name: uVa1.name, email: uVa1.email, role: "va", passwordHash },
+    { id: va2, name: uVa2.name, email: uVa2.email, role: "va", passwordHash },
+    { id: d1, name: uD1.name, email: uD1.email, role: "designer", passwordHash },
+    { id: d2, name: uD2.name, email: uD2.email, role: "designer", passwordHash },
+    { id: d3, name: uD3.name, email: uD3.email, role: "designer", passwordHash },
   ]);
 
   // Portrait styles per business (Settings > Portrait Styles): what a
@@ -209,10 +279,10 @@ async function main() {
     backfillCutoffAt: new Date(Date.now() - 7 * 24 * HOUR).toISOString(),
   };
   await db.insert(schema.shops).values([
-    { id: s1, businessId: pixart, platform: "etsy", name: "PixArt Etsy", externalShopId: "31415926", credentials: etsyCreds("31415926"), integrationConfig: etsyConfig },
-    { id: s2, businessId: pixart, platform: "shopify", name: "PixArt Shopify", externalShopId: "pixart-creatives.myshopify.com", credentials: shopifyCreds("pixart-creatives.myshopify.com"), integrationConfig: shopifyConfig },
-    { id: s3, businessId: lumina, platform: "etsy", name: "Lumina Etsy", externalShopId: "27182818", credentials: etsyCreds("27182818"), integrationConfig: etsyConfig },
-    { id: s4, businessId: lumina, platform: "shopify", name: "Lumina Shopify", externalShopId: "lumina-portraits.myshopify.com", credentials: shopifyCreds("lumina-portraits.myshopify.com"), integrationConfig: shopifyConfig },
+    { id: s1, businessId: pixart, platform: "etsy", name: BIZ_A.etsyShopName, externalShopId: BIZ_A.etsyShopId, credentials: etsyCreds(BIZ_A.etsyShopId), integrationConfig: etsyConfig },
+    { id: s2, businessId: pixart, platform: "shopify", name: BIZ_A.shopifyShopName, externalShopId: BIZ_A.shopifyDomain, credentials: shopifyCreds(BIZ_A.shopifyDomain), integrationConfig: shopifyConfig },
+    { id: s3, businessId: lumina, platform: "etsy", name: BIZ_B.etsyShopName, externalShopId: BIZ_B.etsyShopId, credentials: etsyCreds(BIZ_B.etsyShopId), integrationConfig: etsyConfig },
+    { id: s4, businessId: lumina, platform: "shopify", name: BIZ_B.shopifyShopName, externalShopId: BIZ_B.shopifyDomain, credentials: shopifyCreds(BIZ_B.shopifyDomain), integrationConfig: shopifyConfig },
   ]);
 
   // ---- customers ---------------------------------------------------------
@@ -339,12 +409,12 @@ async function main() {
   // Login credentials for testing each role (dev only).
   console.log("\nLogin credentials (password is the same for all):");
   const logins = [
-    ["admin@aystudios.io", "admin"],
-    ["va1@aystudios.io", "va"],
-    ["va2@aystudios.io", "va"],
-    ["d1@aystudios.io", "designer (both businesses)"],
-    ["d2@aystudios.io", "designer (PixArt)"],
-    ["d3@aystudios.io", "designer (Lumina)"],
+    [uAdmin.email, "admin"],
+    [uVa1.email, "va"],
+    [uVa2.email, "va"],
+    [uD1.email, "designer (both businesses)"],
+    [uD2.email, `designer (${BIZ_A.name})`],
+    [uD3.email, `designer (${BIZ_B.name})`],
   ];
   for (const [email, role] of logins) {
     console.log(`  ${email.padEnd(22)} ${DEV_PASSWORD}   ${role}`);

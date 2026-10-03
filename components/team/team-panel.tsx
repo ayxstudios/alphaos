@@ -15,7 +15,7 @@ import { ChevronDown } from "@/components/ui/icons";
 
 type Filter = "staff" | "designers" | "inactive";
 
-const ROLE_LABEL: Record<TeamMember["role"], string> = { admin: "Admin", va: "VA", designer: "Designer" };
+const ROLE_LABEL: Record<TeamMember["role"], string> = { admin: "Admin", va: "VA", designer: "Designer", helper: "Teammate" };
 
 /** Phone tap targets are 44px; desktop keeps the standard 40px controls. */
 const TAP = "min-h-11 sm:min-h-0";

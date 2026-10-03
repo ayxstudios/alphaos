@@ -27,12 +27,8 @@ import {
   Sliders,
   type IconProps,
   Wallet,
+  BookOpen,
 } from "@/components/ui/icons";
-
-// Next 15.5 Link: full prefetch (page data, not only the skeleton) on pointer
-// hover or touch start. The prop exists at runtime but is missing from the
-// public next/link types, hence the spread (docs/PERF.md).
-const HOVER_PREFETCH = { unstable_dynamicOnHover: true } as object;
 
 type NavItem = { label: string; href: string; icon: ComponentType<IconProps> };
 
@@ -65,9 +61,11 @@ const ADMIN_MORE: NavItem[] = [
   { label: "Customers", href: "/customers", icon: Users },
 ];
 
+// No Portrait Styles for VAs (Yousif 2026-10-01): Alpha matches styles to
+// designers itself; when it can't, the question shows up on the VA home with a
+// link straight to /styles (the page itself stays reachable for that case).
 const VA_MORE: NavItem[] = [
   { label: "Designers", href: "/designers", icon: Palette },
-  { label: "Portrait Styles", href: "/styles", icon: Brush },
   { label: "Customers", href: "/customers", icon: Users },
 ];
 
@@ -77,6 +75,27 @@ const DESIGNER_NAV: NavItem[] = [
   { label: "My Week", href: "/me", icon: Calendar },
 ];
 const DESIGNER_MORE: NavItem[] = [];
+
+// A designer's teammate: the board and the guide, nothing else (never pay).
+const HELPER_NAV: NavItem[] = [
+  { label: "Board", href: "/board", icon: Columns },
+  { label: "Help", href: "/help", icon: BookOpen },
+];
+
+// VAs read the QC and orders pages by Yousif's names (2026-10-01).
+const VA_LABELS: Partial<Record<NavKey, string>> = { qc: "Awaiting QC", orders: "All Orders Overview" };
+
+function navFor(role: Role, agentMode = false): NavItem[] {
+  if (role === "helper") return HELPER_NAV;
+  if (role === "designer") return DESIGNER_NAV;
+  const keys = primaryNavKeys(role === "admin" ? "admin" : "va", agentMode);
+  return keys.map((k) => (role === "va" && VA_LABELS[k] ? { ...ITEMS[k], label: VA_LABELS[k]! } : ITEMS[k]));
+}
+
+/** The role's main menu pages, for the idle prefetcher (components/shell/idle-prefetch.tsx). */
+export function mainNavHrefs(role: Role, agentMode = false): string[] {
+  return navFor(role, agentMode).map((n) => n.href);
+}
 
 type SidebarProps = {
   role: Role;
@@ -97,14 +116,14 @@ export function Sidebar({
   onNavigate,
 }: SidebarProps) {
   const pathname = usePathname();
-  const nav = role === "designer" ? DESIGNER_NAV : primaryNavKeys(role, agentMode).map((k) => ITEMS[k]);
+  const nav = navFor(role, agentMode);
   const more =
-    role === "designer"
+    role === "helper" || role === "designer"
       ? DESIGNER_MORE
       : role === "admin"
         ? [...adminExtraKeys(agentMode).map((k) => ITEMS[k]), ...ADMIN_MORE]
         : VA_MORE;
-  const homeHref = "/dashboard";
+  const homeHref = role === "helper" ? "/board" : "/dashboard";
 
   function renderItem(item: NavItem) {
     const active = pathname === item.href || pathname.startsWith(item.href + "/");
@@ -113,10 +132,10 @@ export function Sidebar({
       <Link
         key={item.href}
         href={item.href}
-        // In view: the page skeleton is prefetched. Pointer over it (or a
-        // touch starting on it): the page data is fetched too, so the click
-        // lands on a ready page (docs/PERF.md).
-        {...HOVER_PREFETCH}
+        // Full prefetch (page data, not only the skeleton) as soon as the link
+        // is in view, kept warm by idle-prefetch.tsx, so the click paints from
+        // the router cache with no network (docs/PERF.md).
+        prefetch={true}
         onClick={onNavigate}
         aria-current={active ? "page" : undefined}
         data-tour={`nav:${item.href}`}

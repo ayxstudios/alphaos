@@ -10,7 +10,7 @@ export type GuideAnswer = { q: string; a: string };
 
 const CUSTOMER_REPLIED: GuideAnswer = {
   q: "A customer replied, what do I do?",
-  a: "Replies that match an order show on that order. Anything under Needs you in Messages has no order yet: open it, link it to the right order, then answer from the order. If they are answering their proof, record whether they approved it or want changes.",
+  a: "Replies that match an order show on that order. Anything under Reply needed in Messages has no order yet: open it, link it to the right order, then answer from the order. If they are answering their proof, record whether they approved it or want changes.",
 };
 
 const NEEDS_DETAILS: GuideAnswer = {
@@ -79,4 +79,6 @@ export const GUIDE_ANSWERS: Record<Role, GuideAnswer[]> = {
   va: [CUSTOMER_REPLIED, NEEDS_DETAILS, PASS_FAIL, UPLOAD_STAFF, AWAITING_APPROVAL, LATE, PRINT],
   admin: [CUSTOMER_REPLIED, NEEDS_DETAILS, PASS_FAIL, UPLOAD_STAFF, AWAITING_APPROVAL, LATE, PRINT, ROSTER],
   designer: DESIGNER,
+  // A teammate never sees pay, so the earnings answer is dropped.
+  helper: DESIGNER.filter((a) => !a.q.includes("earned")),
 };

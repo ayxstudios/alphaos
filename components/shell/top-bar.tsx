@@ -40,7 +40,18 @@ const ROLE_LABEL: Record<Role, string> = {
   admin: "Admin",
   va: "VA",
   designer: "Designer",
+  helper: "Teammate",
 };
+
+/** "Northlight Portraits" -> "NP": the phone top bar has room for two letters, not a name. */
+function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const s = words
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("");
+  return (s || name.slice(0, 2)).toUpperCase();
+}
 
 export function TopBar({
   user,
@@ -68,7 +79,8 @@ export function TopBar({
 
   // Designers cannot open /orders (it redirects to their board), so their
   // search looks through their own cards on /board instead.
-  const designer = user.role === "designer";
+  const helper = user.role === "helper";
+  const designer = user.role === "designer" || helper;
   const searchPath = designer ? "/board" : "/orders";
   const searchLabel = designer ? "Search my cards" : "Find order number or buyer";
 
@@ -99,57 +111,74 @@ export function TopBar({
         {/* One workspace (a designer in one business): nothing to switch, and
             on a phone the button could only show "Lu...". The page names
             the business; a laptop keeps it as a label. */}
-        <div className={cn("min-w-0", options.length <= 1 && "max-sm:hidden")}>
-          <Popover
-            align="start"
-            ariaLabel="Switch workspace"
-            triggerClassName={cn(
-              "inline-flex h-11 max-w-[min(13rem,100%)] sm:h-10 items-center gap-1 rounded-input border border-line bg-surface px-2 text-sm font-medium text-ink sm:gap-2 sm:px-2.5",
-              "transition-colors duration-150 ease-standard motion-hover hover:bg-canvas",
-              pending && "opacity-60",
+        {/* sm:shrink-0: at 1280px the search box was squeezing the business name to "Northlight Portr…". */}
+        {!helper && (
+          <div
+            className={cn(
+              "min-w-0 sm:shrink-0",
+              options.length <= 1 && "max-sm:hidden",
             )}
-            trigger={
-              <>
-                <Building size={16} className="hidden shrink-0 text-pigment sm:block" />
-                <span className="min-w-0 truncate sm:min-w-[3.5rem]">{selected.name}</span>
-                <ChevronDown size={15} className="shrink-0 text-slate" />
-              </>
-            }
           >
-            {(close) => (
-              <div className="flex flex-col">
-                <p className="px-2 py-1.5 text-xs font-medium text-slate">
-                  Workspace
-                </p>
-                {options.map((o) => {
-                  const active = o.id === selected.id;
-                  return (
-                    <button
-                      key={o.id}
-                      type="button"
-                      role="menuitem"
-                      onClick={() => choose(o.id, close)}
-                      className={cn(
-                        "flex min-h-11 items-center justify-between gap-3 rounded-input px-2 py-1.5 text-left text-sm lg:min-h-9",
-                        "transition-colors motion-hover hover:bg-canvas",
-                        focusRing,
-                        active ? "text-pigment" : "text-ink",
-                      )}
-                    >
-                      <span className="truncate">{o.name}</span>
-                      {active && <Check size={15} className="shrink-0" />}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </Popover>
-        </div>
+            <Popover
+              align="start"
+              ariaLabel="Switch workspace"
+              triggerClassName={cn(
+                "inline-flex h-11 max-w-[min(13rem,100%)] sm:h-10 items-center gap-1 rounded-input border border-line bg-surface px-2 text-sm font-medium text-ink sm:gap-2 sm:px-2.5",
+                "transition-colors duration-150 ease-standard motion-hover hover:bg-canvas",
+                pending && "opacity-60",
+              )}
+              trigger={
+                <>
+                  <Building
+                    size={16}
+                    className="hidden shrink-0 text-pigment sm:block"
+                  />
+                  {/* A phone gets the initials: at 360px the full name showed two letters and a dot. */}
+                  <span className="sm:hidden" aria-label={selected.name}>
+                    {initials(selected.name)}
+                  </span>
+                  <span className="hidden min-w-0 truncate sm:inline sm:min-w-[3.5rem]">
+                    {selected.name}
+                  </span>
+                  <ChevronDown size={15} className="shrink-0 text-slate" />
+                </>
+              }
+            >
+              {(close) => (
+                <div className="flex flex-col">
+                  <p className="px-2 py-1.5 text-xs font-medium text-slate">
+                    Workspace
+                  </p>
+                  {options.map((o) => {
+                    const active = o.id === selected.id;
+                    return (
+                      <button
+                        key={o.id}
+                        type="button"
+                        role="menuitem"
+                        onClick={() => choose(o.id, close)}
+                        className={cn(
+                          "flex min-h-11 items-center justify-between gap-3 rounded-input px-2 py-1.5 text-left text-sm lg:min-h-9",
+                          "transition-colors motion-hover hover:bg-canvas",
+                          focusRing,
+                          active ? "text-pigment" : "text-ink",
+                        )}
+                      >
+                        <span className="truncate">{o.name}</span>
+                        {active && <Check size={15} className="shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </Popover>
+          </div>
+        )}
 
         <form
           role="search"
           onSubmit={submitSearch}
-          className="relative hidden w-full max-w-md sm:block"
+          className="relative hidden w-full min-w-0 max-w-md sm:block"
         >
           <Search
             size={16}
@@ -187,19 +216,23 @@ export function TopBar({
           </button>
         )}
         {/* Alpha as a proper tab at the top (owner 2026-09-09), not just an icon. */}
-        <button
-          type="button"
-          aria-label="Open Alpha AI"
-          onClick={() => window.dispatchEvent(new CustomEvent("alphaos:chat-open"))}
-          className={cn(
-            "inline-flex h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-input border border-pigment/20 bg-pigment-soft px-2.5 text-sm font-semibold text-pigment sm:px-3 lg:h-9",
-            "transition-colors motion-hover hover:bg-pigment hover:text-surface",
-            focusRing,
-          )}
-        >
-          <Bot size={18} />
-          <span className="hidden sm:inline">Alpha AI</span>
-        </button>
+        {!helper && (
+          <button
+            type="button"
+            aria-label="Open Alpha AI"
+            onClick={() =>
+              window.dispatchEvent(new CustomEvent("alphaos:chat-open"))
+            }
+            className={cn(
+              "inline-flex h-11 min-w-11 shrink-0 items-center justify-center gap-2 rounded-input border border-pigment/20 bg-pigment-soft px-2.5 text-sm font-semibold text-pigment sm:px-3 lg:h-9",
+              "transition-colors motion-hover hover:bg-pigment hover:text-surface",
+              focusRing,
+            )}
+          >
+            <Bot size={18} />
+            <span className="hidden sm:inline">Alpha AI</span>
+          </button>
+        )}
         {/* Help: the guided tour (it points, you click), or the one-page guide. */}
         <div data-tour="help">
           <Popover
@@ -217,7 +250,11 @@ export function TopBar({
                   role="menuitem"
                   onClick={() => {
                     close();
-                    window.dispatchEvent(new CustomEvent(TOUR_START_EVENT, { detail: { mode: "try" } }));
+                    window.dispatchEvent(
+                      new CustomEvent(TOUR_START_EVENT, {
+                        detail: { mode: "try" },
+                      }),
+                    );
                   }}
                   className={cn(
                     "flex min-h-11 items-center gap-2 rounded-input px-2 text-left text-sm text-ink lg:min-h-9",
@@ -293,16 +330,21 @@ export function TopBar({
                         // Only an in-app path: never another origin ("//x",
                         // "https://x") or a javascript: URL, whatever wrote the row.
                         const href = notification.href;
-                        if (href && /^\/(?![/\\])/.test(href)) router.push(href);
+                        if (href && /^\/(?![/\\])/.test(href))
+                          router.push(href);
                       }}
                       className={cn(
                         "min-h-11 rounded-input px-2 py-2 text-left transition-colors hover:bg-canvas lg:min-h-0",
                         focusRing,
                       )}
                     >
-                      <p className="text-sm font-medium text-ink">{notification.title}</p>
+                      <p className="text-sm font-medium text-ink">
+                        {notification.title}
+                      </p>
                       {notification.body && (
-                        <p className="mt-0.5 line-clamp-2 text-xs text-slate">{notification.body}</p>
+                        <p className="mt-0.5 line-clamp-2 text-xs text-slate">
+                          {notification.body}
+                        </p>
                       )}
                     </button>
                   ))}

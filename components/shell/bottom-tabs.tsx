@@ -6,7 +6,7 @@ import { PrefetchKind } from "next/dist/client/components/router-reducer/router-
 
 import { cn } from "@/lib/utils";
 import { focusRing } from "@/components/ui/styles";
-import { Grid, CheckCircle, ListChecks, Package, Mail, Columns, Calendar, Menu, type IconProps } from "@/components/ui/icons";
+import { Grid, CheckCircle, ListChecks, Package, Mail, Columns, Calendar, Eye, Menu, BookOpen, type IconProps } from "@/components/ui/icons";
 import type { ComponentType } from "react";
 import type { Role } from "@/lib/auth/config";
 import { tabNavKeys } from "@/lib/agent/nav";
@@ -30,10 +30,22 @@ const ADMIN_VA_TABS: Record<"home" | "today" | "day" | "orders" | "messages", Ta
   messages: { label: "Messages", href: "/emails", icon: Mail },
 };
 
+const VA_TABS: Tab[] = [
+  { label: "Home", href: "/dashboard", icon: Grid },
+  { label: "Awaiting QC", href: "/qc", icon: Eye },
+  { label: "Messages", href: "/emails", icon: Mail },
+  { label: "Boards", href: "/board", icon: Columns },
+];
+
 const DESIGNER_TABS: Tab[] = [
   { label: "Home", href: "/dashboard", icon: Grid },
   { label: "My Board", href: "/board", icon: Columns },
   { label: "My Week", href: "/me", icon: Calendar },
+];
+
+const HELPER_TABS: Tab[] = [
+  { label: "Board", href: "/board", icon: Columns },
+  { label: "Help", href: "/help", icon: BookOpen },
 ];
 
 /**
@@ -47,7 +59,13 @@ export function BottomTabs({ role, agentMode = false, onMore }: { role: Role; ag
   const pathname = usePathname();
   const router = useRouter();
   const tabs =
-    role === "designer" ? DESIGNER_TABS : tabNavKeys(agentMode).map((k) => ADMIN_VA_TABS[k as keyof typeof ADMIN_VA_TABS]);
+    role === "helper"
+      ? HELPER_TABS
+      : role === "designer"
+        ? DESIGNER_TABS
+        : role === "va"
+          ? VA_TABS
+          : tabNavKeys(agentMode).map((k) => ADMIN_VA_TABS[k as keyof typeof ADMIN_VA_TABS]);
   return (
     <nav
       aria-label="Primary"

@@ -187,13 +187,6 @@ const ADMIN_AGENT_STEPS: TourStep[] = [
 /** VA tour when the Day queue is off (the older Today and QC screens). */
 const VA_STEPS: TourStep[] = [
   {
-    id: "today",
-    title: "Today",
-    path: "/today",
-    acts: [],
-    nav: { kind: "nav", say: "Today lists your work. Tap Today." },
-  },
-  {
     id: "search",
     title: "Find an order",
     path: "/orders",
@@ -205,7 +198,7 @@ const VA_STEPS: TourStep[] = [
         say: "Find any order. Type a name, press Enter.",
       },
     ],
-    nav: { kind: "nav", say: "Every order is here. Tap Orders." },
+    nav: { kind: "nav", say: "All Orders Overview holds every order from every shop. Open it to find the one you need." },
   },
   {
     id: "needs-details",
@@ -399,6 +392,8 @@ export const TOUR_STEPS: Record<Role, TourStep[]> = {
   admin: ADMIN_STEPS,
   va: VA_STEPS,
   designer: DESIGNER_STEPS,
+  // A teammate works the same board but never sees pay: no My Week step.
+  helper: DESIGNER_STEPS.filter((s) => s.id !== "week"),
 };
 
 /** The tour for a role. With the Day queue on, staff get the Day and Overview tours. */

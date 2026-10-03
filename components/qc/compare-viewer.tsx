@@ -35,6 +35,8 @@ export function CompareViewer({
 }) {
   const [t, setT] = useState<Transform>(IDENTITY);
   const [refIndex, setRefIndex] = useState(0);
+  // Phone only: tap "Enlarge" on a pane to see it full screen.
+  const [enlarged, setEnlarged] = useState<{ label: string; image: string } | null>(null);
   const dragging = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(
     null,
   );
@@ -85,9 +87,76 @@ export function CompareViewer({
   }, []);
 
   const zoomed = t.scale > 1;
+  const many = references.length > 1;
+
+  // Left / right arrows flip through the customer's photos (never while typing).
+  useEffect(() => {
+    if (!many) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable)) return;
+      e.preventDefault();
+      const step = e.key === "ArrowRight" ? 1 : -1;
+      setRefIndex((i) => (i + step + references.length) % references.length);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [many, references.length]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
+      {/* Every photo the customer sent, up top where it cannot be missed. */}
+      {many && (
+        <div
+          className="rounded-card border border-pigment/25 bg-pigment-soft/60 p-2.5"
+          data-testid="customer-photo-strip"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pb-2">
+            <p className="text-sm font-semibold text-ink">
+              Customer sent {references.length} photos
+            </p>
+            <p className="text-sm text-slate">
+              Showing photo {refIndex + 1} of {references.length}
+              <span className="hidden sm:inline"> · use ← → to switch</span>
+            </p>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-0.5" role="group" aria-label="Customer photos">
+            {references.map((r, i) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => setRefIndex(i)}
+                aria-label={`Customer photo ${i + 1} of ${references.length}`}
+                aria-pressed={i === refIndex}
+                className={cn(
+                  "relative size-16 shrink-0 overflow-hidden rounded-input border-2 bg-surface transition-all motion-hover sm:size-[4.5rem]",
+                  i === refIndex
+                    ? "border-pigment ring-2 ring-pigment/40"
+                    : "border-transparent opacity-70 hover:opacity-100",
+                )}
+              >
+                {r.url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={r.url} alt="" className="size-full object-cover" />
+                ) : (
+                  <span className="flex size-full items-center justify-center text-xs text-slate">?</span>
+                )}
+                <span
+                  className={cn(
+                    "absolute bottom-0.5 left-0.5 rounded-chip px-1.5 text-xs font-semibold leading-5",
+                    i === refIndex ? "bg-pigment text-surface" : "bg-ink/70 text-surface",
+                  )}
+                >
+                  {i + 1}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-xs text-slate">
@@ -121,9 +190,9 @@ export function CompareViewer({
       </div>
 
       {/* Panes */}
-      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-2">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 md:grid-cols-2">
         <Pane
-          label="Customer photo"
+          label={many ? `Customer photo ${refIndex + 1} of ${references.length}` : "Customer photo"}
           image={reference}
           transform={t}
           zoomed={zoomed}
@@ -133,6 +202,7 @@ export function CompareViewer({
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
           onDoubleClick={reset}
+          onEnlarge={setEnlarged}
         />
         <Pane
           label={portraitLabel}
@@ -145,37 +215,23 @@ export function CompareViewer({
           onPointerUp={endDrag}
           onPointerCancel={endDrag}
           onDoubleClick={reset}
+          onEnlarge={setEnlarged}
         />
       </div>
 
-      {/* Reference thumbnail rail — switch which photo the left pane shows. */}
-      {references.length > 1 && (
-        <div className="flex items-center gap-2 overflow-x-auto">
-          <span className="shrink-0 text-xs text-slate">
-            {references.length} customer photos:
-          </span>
-          {references.map((r, i) => (
-            <button
-              key={r.id}
-              type="button"
-              onClick={() => setRefIndex(i)}
-              aria-label={`Customer photo ${i + 1}`}
-              aria-pressed={i === refIndex}
-              className={cn(
-                "size-12 shrink-0 overflow-hidden rounded-input border transition-colors motion-hover",
-                i === refIndex ? "border-pigment ring-2 ring-pigment" : "border-line hover:border-slate/50",
-              )}
-            >
-              {r.url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={r.url} alt="" className="size-full object-cover" />
-              ) : (
-                <span className="flex size-full items-center justify-center text-xs text-slate">
-                  ?
-                </span>
-              )}
-            </button>
-          ))}
+      {enlarged && (
+        <div
+          role="dialog"
+          aria-label={`${enlarged.label} enlarged`}
+          className="fixed inset-0 z-50 flex flex-col bg-ink/90 p-3 md:hidden"
+          onClick={() => setEnlarged(null)}
+        >
+          <div className="flex items-center justify-between pb-2 text-sm text-white">
+            <span>{enlarged.label}</span>
+            <Button size="sm" variant="secondary" onClick={() => setEnlarged(null)}>Close</Button>
+          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={enlarged.image} alt={enlarged.label} className="min-h-0 flex-1 object-contain" />
         </div>
       )}
     </div>
@@ -188,6 +244,7 @@ function Pane({
   transform,
   zoomed,
   onZoom,
+  onEnlarge,
   ...handlers
 }: {
   label: string;
@@ -196,6 +253,7 @@ function Pane({
   zoomed: boolean;
   /** Zoom toward a point given in pane-centre-relative coordinates. */
   onZoom: (cx: number, cy: number, factor: number) => void;
+  onEnlarge: (v: { label: string; image: string }) => void;
 } & Pick<
   React.HTMLAttributes<HTMLDivElement>,
   "onPointerDown" | "onPointerMove" | "onPointerUp" | "onPointerCancel" | "onDoubleClick"
@@ -219,15 +277,24 @@ function Pane({
   }, [onZoom]);
 
   return (
-    <div className="flex min-h-[20rem] flex-col overflow-hidden rounded-card bg-surface shadow-card">
+    <div className="flex h-[22rem] flex-col overflow-hidden md:h-[clamp(24rem,calc(100dvh-26rem),44rem)] rounded-card bg-surface shadow-card">
       <div className="flex items-center justify-between border-b border-line/70 px-3 py-1.5">
-        <span className="text-xs font-medium text-slate">{label}</span>
+        <span className="min-w-0 break-words text-sm font-semibold leading-tight text-ink">{label}</span>
+        {image && (
+          <button
+            type="button"
+            onClick={() => onEnlarge({ label, image })}
+            className="-my-1.5 inline-flex min-h-11 shrink-0 items-center pl-2 text-sm font-medium text-pigment md:hidden"
+          >
+            Enlarge
+          </button>
+        )}
       </div>
       <div
         ref={surfaceRef}
         {...handlers}
         className={cn(
-          "relative min-h-0 flex-1 touch-none select-none overflow-hidden bg-canvas",
+          "relative min-h-0 flex-1 touch-pan-y select-none md:touch-none overflow-hidden bg-canvas",
           zoomed ? "cursor-grab active:cursor-grabbing" : "cursor-zoom-in",
         )}
       >

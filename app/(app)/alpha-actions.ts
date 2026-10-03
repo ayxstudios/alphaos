@@ -15,10 +15,13 @@ export type AskAlphaResult =
   | { ok: true; answer: string; escalated: boolean; connected: boolean }
   | { ok: false; message: string };
 
-async function requireUser(): Promise<(RequestUser & { name: string }) | null> {
+async function requireUser(): Promise<(Omit<RequestUser, "role"> & { role: "admin" | "va" | "designer"; name: string }) | null> {
   const session = await auth();
   if (!session?.user) return null;
-  return { id: session.user.id, role: session.user.role, name: session.user.name ?? "Someone" };
+  // A designer's teammate has no Alpha (its designer snapshot carries pay).
+  const role = session.user.role;
+  if (role === "helper") return null;
+  return { id: session.user.id, role, name: session.user.name ?? "Someone" };
 }
 
 /**

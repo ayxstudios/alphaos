@@ -54,12 +54,13 @@ export function AttentionList({ items, total, allHref = "/today" }: { items: Tod
             <span className={cn("hidden w-20 shrink-0 rounded-chip px-2 py-0.5 text-center text-xs font-medium sm:block", KIND_TONE[it.kind])}>{KIND_SHORT[it.kind]}</span>
             {/* The whole row opens the order: on a phone the action button is hidden. */}
             <Link href={it.action.href} prefetch={false} className={cn("-my-2.5 min-w-0 flex-1 rounded-input py-2.5", focusRing)}>
-              <div className="flex min-w-0 items-center gap-2 text-xs text-slate">
-                <ShopBadge platform={it.platform} name={it.shop} className="min-w-0 text-xs" />
+              {/* Phone: the shop badge gets its own line so the shop name is never cut short. */}
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate">
+                <ShopBadge platform={it.platform} name={it.shop} className="min-w-0 basis-full text-xs sm:basis-auto" />
                 <span className="shrink-0 font-semibold text-ink">{it.orderNumber}</span>
                 <span className="ml-auto shrink-0 whitespace-nowrap tabular-nums">{it.age}</span>
               </div>
-              <p className="truncate text-sm text-ink">{it.todo}</p>
+              <p className="line-clamp-2 text-sm text-ink">{it.todo}</p>
             </Link>
             <Link
               href={it.action.href}

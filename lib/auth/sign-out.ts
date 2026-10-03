@@ -1,7 +1,7 @@
 import type { Role } from "./config";
 import { revokeSessions } from "@/lib/team/manage";
 
-const ROLES = new Set<string>(["admin", "va", "designer"]);
+const ROLES = new Set<string>(["admin", "va", "designer", "helper"]);
 
 /**
  * Auth.js `events.signOut` (lib/auth/index.ts). The app's own sign-out

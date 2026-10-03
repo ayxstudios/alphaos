@@ -1,11 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
-import { withUserContext, type RequestUser } from "@/lib/db";
-import { activityLog, assets, orders } from "@/lib/db/schema";
+import { actingDesignerId, isDesignerLike } from "@/lib/auth/roles";
+import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
+import { activityLog, assets, assignments, orders } from "@/lib/db/schema";
 import {
   transition,
   runTransition,
@@ -86,11 +87,32 @@ export type CardUploadSaveResult =
   | { ok: true; detail: CardDetail }
   | { ok: false; message: string };
 
-function requireSignedIn(): Promise<RequestUser | { error: string }> {
+type CardActor = RequestUser & { helperFor?: string | null };
+
+function requireSignedIn(): Promise<CardActor | { error: string }> {
   return auth().then((session) => {
     if (!session?.user) return { error: "Not signed in" };
-    return { id: session.user.id, role: session.user.role };
+    return { id: session.user.id, role: session.user.role, helperFor: session.user.helperFor ?? null };
   });
+}
+
+/**
+ * A designer, or a helper working for one, may only touch orders actively
+ * assigned to the designer they act as (a helper acts as `helperFor`). RLS
+ * (migration 0042) enforces the same line; this is the explicit second check
+ * for the upload paths. Staff pass through. The audit rows keep the person's
+ * own id.
+ */
+async function assertActsOnOrder(tx: Tx, user: CardActor, orderId: string): Promise<void> {
+  if (!isDesignerLike(user.role)) return;
+  const designerId = actingDesignerId(user);
+  if (!designerId) throw new Error("Order not found");
+  const [owned] = await tx
+    .select({ id: assignments.id })
+    .from(assignments)
+    .where(and(eq(assignments.orderId, orderId), eq(assignments.designerId, designerId), eq(assignments.active, true)))
+    .limit(1);
+  if (!owned) throw new Error("Order not found");
 }
 
 function validAssetType(type: string): type is CardAssetType {
@@ -139,10 +161,15 @@ export async function presignCardAssetUploads(input: {
       .limit(1),
   );
   if (!order) return { ok: false, message: "Order not found" };
-  if (user.role === "designer" && input.type !== "submission") {
+  try {
+    await withUserContext(user, (tx) => assertActsOnOrder(tx, user, input.orderId));
+  } catch {
+    return { ok: false, message: "Order not found" };
+  }
+  if (isDesignerLike(user.role) && input.type !== "submission") {
     return { ok: false, message: "Designers can only upload finished portraits." };
   }
-  if (user.role === "designer" && order.status !== "in_design") {
+  if (isDesignerLike(user.role) && order.status !== "in_design") {
     return { ok: false, message: "Finished portraits can only be uploaded while the card is in design." };
   }
 
@@ -189,11 +216,12 @@ export async function saveCardAssetUploads(input: {
         .for("update")
         .limit(1);
       if (!order) throw new Error("Order not found");
+      await assertActsOnOrder(tx, user, order.id);
       assertKeysBelongTo(r2Keys, `${order.businessId}/${order.id}/${input.type}/`);
-      if (user.role === "designer" && input.type !== "submission") {
+      if (isDesignerLike(user.role) && input.type !== "submission") {
         throw new Error("Designers can only upload finished portraits");
       }
-      if (user.role === "designer" && order.status !== "in_design") {
+      if (isDesignerLike(user.role) && order.status !== "in_design") {
         throw new Error("Finished portraits can only be uploaded while the card is in design");
       }
 
@@ -219,7 +247,7 @@ export async function saveCardAssetUploads(input: {
         metadata: { type: input.type, count: r2Keys.length },
       });
 
-      if (user.role !== "designer" && input.type === "reference" && order.status === "awaiting_photos") {
+      if (!isDesignerLike(user.role) && input.type === "reference" && order.status === "awaiting_photos") {
         await runTransition(tx, user, {
           orderId: order.id,
           to: "ready_to_assign",

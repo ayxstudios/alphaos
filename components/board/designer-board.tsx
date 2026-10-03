@@ -80,6 +80,8 @@ export function DesignerBoard({
 }) {
   const router = useRouter();
   const toast = useToast();
+  // Staff boards read as Trello: slim cards, self-scrolling columns.
+  const compact = viewerRole !== "designer";
   const [cols, setCols] = useState<Cols>(initial);
   const [active, setActive] = useState<BoardCard | null>(null);
   // A card named in the URL (?open=, from a deadline on Home or My Week)
@@ -257,7 +259,16 @@ export function DesignerBoard({
           />
         </div>
       )}
-      <div className={cn("min-h-[calc(100vh-13rem)] gap-4 overflow-x-auto pb-4", viewerRole === "designer" ? "hidden lg:flex" : "flex")}>
+      {/* Staff (VA/admin) get the Trello treatment: a board that fills the
+          screen, columns that scroll INSIDE themselves (the page never grows
+          with a 50-order column) and slim cards. Designers keep their card. */}
+      <div
+        className={cn(
+          "gap-4 overflow-x-auto pb-4",
+          compact ? "h-[calc(100dvh-13rem)] min-h-[24rem] items-start gap-3" : "min-h-[calc(100vh-13rem)]",
+          viewerRole === "designer" ? "hidden lg:flex" : "flex",
+        )}
+      >
         {COLUMNS.map((col) => (
           <BoardColumn
             key={col.key}
@@ -267,10 +278,11 @@ export function DesignerBoard({
             droppable={DROP_TARGETS.has(col.key)}
             draggable={DRAG_SOURCES.has(col.key)}
             onOpen={setOpenCard}
+            compact={compact}
           />
         ))}
       </div>
-      <DragOverlay>{active ? <OrderCard card={active} overlay /> : null}</DragOverlay>
+      <DragOverlay>{active ? <OrderCard card={active} overlay compact={compact} /> : null}</DragOverlay>
       {openCard && (
         <CardModal
           card={openCard}

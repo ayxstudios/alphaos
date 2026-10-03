@@ -19,7 +19,7 @@ export default async function DesignersPage() {
   if (!session?.user) redirect("/login");
   const user = { id: session.user.id, role: session.user.role };
   // Staff-only surface; designers have no business here.
-  if (user.role === "designer") redirect("/board");
+  if (user.role === "designer" || user.role === "helper") redirect("/board");
 
   const { selected, options } = await loadShellData(user);
   const isAdmin = user.role === "admin";
@@ -36,11 +36,13 @@ export default async function DesignersPage() {
         tourId="page:roster"
         description="New orders go to the first designer on this list who draws the style and is under their daily limit."
         actions={
-          isAdmin && designers.length > 0 ? (
+          designers.length > 0 ? (
             <div className="flex flex-wrap items-center gap-3">
-              <Link href="/designers/capacity" className="inline-flex min-h-11 items-center text-sm font-medium text-pigment hover:underline lg:min-h-9">
-                Capacity
-              </Link>
+              {isAdmin && (
+                <Link href="/designers/capacity" className="inline-flex min-h-11 items-center text-sm font-medium text-pigment hover:underline lg:min-h-9">
+                  Capacity
+                </Link>
+              )}
               <AddDesigner businesses={options} variant="secondary" />
             </div>
           ) : undefined
@@ -52,12 +54,8 @@ export default async function DesignersPage() {
           <EmptyState
             icon={Users}
             headline="No designers yet"
-            body={
-              isAdmin
-                ? "Add a designer and their board, with the finished-portrait upload, appears right away."
-                : "Ask an admin to add designers; they appear here to rank and configure."
-            }
-            action={isAdmin ? <AddDesigner businesses={options} /> : undefined}
+            body="Add a designer and their board, with the finished-portrait upload, appears right away."
+            action={<AddDesigner businesses={options} />}
           />
         </DataPanel>
       ) : (

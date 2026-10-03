@@ -140,7 +140,7 @@ export function DayLine({ children }: { children: React.ReactNode }) {
 
 /** The quiet label that separates the hero row from the context charts. */
 export function RowLabel({ children }: { children: React.ReactNode }) {
-  return <p className="mt-1 text-xs font-medium text-slate/80">{children}</p>;
+  return <p className="mt-1 text-xs font-medium text-slate">{children}</p>;
 }
 
 export function TileSkeleton({ n = 4 }: { n?: number }) {

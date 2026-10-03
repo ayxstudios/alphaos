@@ -4,8 +4,9 @@
  * The history seed only writes finished lifecycles, so nothing ever sits in
  * awaiting_qc and the QC page reads "Nothing waiting". This script moves a
  * handful of live orders per business into awaiting_qc with a real submitted
- * portrait (picsum placeholder, like every other demo photo), an active
- * designer assignment and the activity-log entry the QC clock reads.
+ * portrait (an image from public/demo/manifest.json matching the order's
+ * style when scripts/demo/images.ts finds one, else a picsum placeholder),
+ * an active designer assignment and the activity-log entry the QC clock reads.
  *
  * Idempotent: a business that already has >= TARGET orders awaiting QC with a
  * submission is left alone; orders it touched are tagged rawImport.qcSeeded.
@@ -19,6 +20,7 @@ import { drizzle } from "drizzle-orm/neon-serverless";
 import ws from "ws";
 
 import * as schema from "../lib/db/schema";
+import { demoArtUrl } from "./demo/images";
 
 neonConfig.webSocketConstructor = ws;
 const pool = new Pool({ connectionString: process.env.DIRECT_URL! });
@@ -120,6 +122,12 @@ async function addSubmission(orderId: string, businessId: string, designerPool: 
     .limit(1);
   const who = asn?.designerId ?? designerId;
   const startedAt = new Date(submittedAt.getTime() - 20 * HOUR);
+  const [item] = await db
+    .select({ style: schema.orderItems.style })
+    .from(schema.orderItems)
+    .where(eq(schema.orderItems.orderId, orderId))
+    .limit(1);
+  const submissionUrl = demoArtUrl(orderId, item?.style) ?? `https://picsum.photos/seed/qc-${hash(orderId)}/900/900`;
   if (!asn) {
     await db.insert(schema.assignments).values({
       id: `qc-asn-${orderId}`,
@@ -138,7 +146,7 @@ async function addSubmission(orderId: string, businessId: string, designerPool: 
     orderId,
     type: "submission",
     storage: "cdn",
-    url: `https://picsum.photos/seed/qc-${hash(orderId)}/900/900`,
+    url: submissionUrl,
     uploadedBy: who,
     createdAt: submittedAt,
   }).onConflictDoNothing();

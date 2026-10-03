@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { Bars, Meter, StackedBar, fmtInt, fmtMoney } from "@/components/charts";
+import { Meter, StackedBar, fmtInt, fmtMoney } from "@/components/charts";
 import { focusRing } from "@/components/ui/styles";
 import { ArrowRight, Calendar, Columns } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
@@ -10,7 +10,7 @@ import { DEFAULT_TIMEZONE } from "@/lib/designers/quiet-hours";
 import { formatDeadline } from "@/lib/time";
 import { pctDelta } from "@/lib/home/shared";
 import { FoldSection } from "./fold-section";
-import { DayLine, HomeSection, RowLabel, StatTile } from "./primitives";
+import { DayLine, HomeSection, StatTile } from "./primitives";
 
 /**
  * A designer's home: their own numbers only. What is due first, how the
@@ -125,22 +125,6 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
         </FoldSection>
       </div>
 
-      <RowLabel>The bigger picture</RowLabel>
-      <FoldSection
-        id="figures"
-        quiet
-        title="Figures delivered"
-        description="Last 14 days"
-        summary={`${fmtInt(h.figures.values.reduce((a, b) => a + b, 0))} figures in 14 days, ${h.week.ordersDoneThisWeek} order${h.week.ordersDoneThisWeek === 1 ? "" : "s"} done this week`}
-        action={{ label: "My Week", href: "/me" }}
-      >
-        <Bars series={[{ name: "Figures", color: "c2", values: h.figures.values }]} labels={h.figures.labels} height={180} ariaLabel="Figures delivered per day" />
-        <p className="text-sm text-slate">
-          {h.week.ordersDoneThisWeek} order{h.week.ordersDoneThisWeek === 1 ? "" : "s"} done this week
-          {h.week.onTimeRate !== null ? `, ${Math.round(h.week.onTimeRate * 100)}% on time` : ""}
-          {h.week.revisionsThisWeek ? `, ${h.week.revisionsThisWeek} revision${h.week.revisionsThisWeek === 1 ? "" : "s"}` : ""}.
-        </p>
-      </FoldSection>
     </div>
   );
 }

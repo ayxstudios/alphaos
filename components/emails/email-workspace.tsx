@@ -21,6 +21,7 @@ import {
   type OutboxActionResult,
 } from "@/app/(app)/emails/actions";
 import { formatAt } from "@/lib/time";
+import type { TodayItem } from "@/lib/orders/today-queue";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -52,6 +53,7 @@ export function EmailWorkspace({
   businessId,
   sendingEnabled,
   unmatched,
+  waiting,
   outbox,
   history,
   ignoredSenders,
@@ -59,6 +61,8 @@ export function EmailWorkspace({
   businessId: string;
   sendingEnabled: boolean;
   unmatched: UnmatchedReply[];
+  /** Customers who wrote about an order and are waiting on us (Today queue). */
+  waiting: TodayItem[];
   outbox: OutboxItem[];
   history: ReactNode;
   ignoredSenders: IgnoredSender[];
@@ -67,7 +71,7 @@ export function EmailWorkspace({
   const failed = outboxRows.filter((m) => m.status === "failed");
   const pendingOutbox = outboxRows.filter((m) => m.status !== "failed");
   // Notifications and marketing mail (lib/email/noise.ts) never count as
-  // "Needs you": they wait, folded, in their own section below.
+  // "Reply needed": they wait, folded, in their own section below.
   const unmatchedRows = uniqueBy(unmatched, (r) => r.messageId);
   const people = unmatchedRows.filter((r) => !r.noise);
   const notices = unmatchedRows.filter((r) => r.noise);
@@ -85,14 +89,15 @@ export function EmailWorkspace({
       {/* The hero: what a person has to deal with. */}
       <section className="rounded-card bg-surface shadow-card">
         <div className="flex items-center gap-2 px-4 py-3" data-tour="page:messages">
-          <h2 className="text-base font-semibold text-ink">Needs you</h2>
-          {people.length + failed.length > 0 && <Badge variant="warning">{people.length + failed.length}</Badge>}
+          <h2 className="text-base font-semibold text-ink">Reply needed</h2>
+          {waiting.length + people.length + failed.length > 0 && <Badge variant="warning">{waiting.length + people.length + failed.length}</Badge>}
         </div>
         <div className="divide-y divide-line/70 border-t border-line/70">
-          {people.length === 0 && failed.length === 0 ? (
+          {waiting.length === 0 && people.length === 0 && failed.length === 0 ? (
             <p className="px-4 py-6 text-center text-sm text-slate">All caught up. Nothing needs a reply.</p>
           ) : (
             <>
+              {waiting.map((w) => <WaitingCard key={w.id} item={w} />)}
               {people.map((reply) => <ReplyCard key={`reply-${reply.messageId}`} reply={reply} businessId={businessId} />)}
               {failed.map((item) => <DraftCard key={`failed-${item.messageId}`} item={item} sendingEnabled={sendingEnabled} />)}
             </>
@@ -126,7 +131,7 @@ export function EmailWorkspace({
       </Disclosure>
 
       {/* All mail: streamed in its own Suspense boundary (app/(app)/emails/page.tsx),
-          so "Needs you" paints before the 50-row history query returns. */}
+          so "Reply needed" paints before the 50-row history query returns. */}
       {history}
 
       {ignoredSenders.length > 0 && (
@@ -188,6 +193,7 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
         {item.skippedReason && <Badge variant="warning" dot>Skipped</Badge>}
         {item.orderFinished && <Badge variant="warning" dot>Order {item.orderFinished}</Badge>}
         <span className="min-w-0 truncate text-sm font-medium text-ink">{item.subject || "(no subject)"}</span>
+        <span className="block w-full truncate text-xs font-medium text-amber">{draftAction(item, queued)}</span>
         <span className="w-full text-xs text-slate sm:ml-auto sm:w-auto">
           {[item.customerName ?? item.toAddress ?? "No address", item.orderNumber, fmtDateTime(item.createdAt)].filter(Boolean).join(" · ")}
         </span>
@@ -245,6 +251,19 @@ function DraftCard({ item, sendingEnabled }: { item: OutboxItem; sendingEnabled:
   );
 }
 
+function WaitingCard({ item }: { item: TodayItem }) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3">
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium text-ink">{item.todo}</span>
+        <span className="block truncate text-xs text-slate">{item.orderNumber} · {item.shop}</span>
+      </span>
+      <span className="shrink-0 text-xs tabular-nums text-slate">{item.age}</span>
+      <Link href={item.action.href} className="inline-flex min-h-11 shrink-0 items-center rounded-input bg-pigment px-3 text-sm font-medium text-white sm:min-h-9">Reply</Link>
+    </div>
+  );
+}
+
 function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: string }) {
   const { run, pending } = useActionRunner();
   const [open, setOpen] = useState(false);
@@ -252,6 +271,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
   const [results, setResults] = useState<{ orderId: string; orderNumber: string; customerName: string | null }[]>([]);
   const [searching, startSearch] = useTransition();
   const [reason, setReason] = useState("");
+  const [confirmIgnore, setConfirmIgnore] = useState(false);
   // Nobody waits on a notification, so it never gets the "waiting" dot.
   const stale = !reply.noise && reply.ageMs > DAY_MS;
 
@@ -286,6 +306,9 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
       <button type="button" onClick={() => setOpen((o) => !o)} className="-my-3 flex w-full items-center gap-3 py-3 text-left" aria-expanded={open}>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-ink">{reply.subject || "(no subject)"}</span>
+          {!reply.noise && (
+            <span className="block truncate text-xs font-medium text-amber">{replyAction(reply)}</span>
+          )}
           <span className="block truncate text-xs text-slate">
             {reply.fromAddress ?? "unknown sender"}
             {reply.noise ? ` · ${reply.noise}` : ""}
@@ -326,12 +349,37 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
           <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
             <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason, e.g. not a customer" aria-label="Why archive it" className="h-11 w-full sm:h-8 sm:w-56" />
             <Button type="button" size="sm" variant="ghost" disabled={!reason.trim() || pending} onClick={() => run(() => archiveReply(reply.messageId, reason))}>Archive</Button>
-            <Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => run(() => ignoreSenderFromMessage(reply.messageId))}>Ignore sender</Button>
+            {!confirmIgnore ? (
+              <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmIgnore(true)}>Ignore sender</Button>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Confirm ignore sender">
+                <span className="text-sm text-ink">Ignore this sender? Their mail stops showing here.</span>
+                <Button type="button" size="sm" variant="danger" loading={pending} onClick={() => run(() => ignoreSenderFromMessage(reply.messageId))}>Confirm</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmIgnore(false)}>Cancel</Button>
+              </div>
+            )}
           </div>
         </div>
       )}
     </div>
   );
+}
+
+/** One plain line for a drafted or failed email: what exactly the person reading has to do. */
+function draftAction(item: OutboxItem, queued: boolean): string {
+  if (item.status === "failed") return "Sending failed, open and tap Retry send";
+  if (item.skippedReason) return "Skipped, open to read why and send or discard";
+  if (item.orderFinished) return `Order already ${item.orderFinished}, open and send or discard`;
+  if (queued) return "Sending soon, open to stop it if it is wrong";
+  return "Drafted for you, open to approve and send";
+}
+
+/** One plain line: what exactly the person reading has to do. */
+function replyAction(reply: UnmatchedReply): string {
+  if (reply.suggestion) return `Link to ${reply.suggestion.orderNumber}, then answer ${reply.suggestion.customerName}`;
+  if (/photo|picture|image|attach/i.test(`${reply.subject} ${reply.body}`)) return "Photo received, confirm it is usable";
+  if (/proof|approve|changes?|revision/i.test(`${reply.subject} ${reply.body}`)) return "Answering a proof, record approved or changes";
+  return "Customer replied, needs an answer";
 }
 
 function IgnoredSenderRow({ sender }: { sender: IgnoredSender }) {

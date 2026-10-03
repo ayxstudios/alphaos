@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
   check,
   index,
@@ -46,7 +47,7 @@ const createdAt = () =>
 // Enums
 // ---------------------------------------------------------------------------
 
-export const userRole = pgEnum("user_role", ["admin", "va", "designer"]);
+export const userRole = pgEnum("user_role", ["admin", "va", "designer", "helper"]);
 export const platform = pgEnum("platform", ["etsy", "shopify"]);
 export const orderSource = pgEnum("order_source", ["etsy", "shopify", "manual", "legacy", "trello"]);
 export const orderStatus = pgEnum("order_status", [
@@ -171,6 +172,10 @@ export const users = pgTable("user", {
   // Sessions signed in before this are refused (sign-out, password reset).
   // Read on every request by lib/auth/session-check.ts. Null = never revoked.
   sessionsValidAfter: timestamp("sessions_valid_after", { withTimezone: true, mode: "date" }),
+  // Helpers only (role 'helper'): the designer whose board they work. A helper
+  // acts as that designer on fulfilment (migration 0042 RLS) and never sees pay.
+  // Null for everyone else.
+  helperFor: text("helper_for").references((): AnyPgColumn => users.id, { onDelete: "set null" }),
 });
 
 // Database-backed login throttling (no Redis). Keyed by lowercased email so it

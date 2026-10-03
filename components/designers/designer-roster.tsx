@@ -15,6 +15,7 @@ import {
   setContact,
   type ContactPatch,
 } from "@/app/(app)/designers/actions";
+import { DesignerRowActions } from "@/components/designers/designer-row-actions";
 import type { DesignerRow } from "@/lib/designers/roster";
 import { TIMEZONE_OPTIONS } from "@/lib/designers/quiet-hours";
 
@@ -198,7 +199,7 @@ function Row({
         className={cn("flex min-w-0 items-center gap-2.5 rounded-input", focusRing)}
       >
         <Avatar name={d.name} size="sm" />
-        <span className="truncate text-sm font-medium text-ink hover:text-pigment">{d.name}</span>
+        <span className="min-w-0 break-words text-sm font-medium text-ink hover:text-pigment">{d.name}</span>
       </Link>
 
       {/* Styles */}
@@ -259,19 +260,22 @@ function Row({
       </div>
     </div>
 
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className={cn(
-          "flex h-11 w-fit items-center gap-1.5 rounded-input px-1 text-xs font-medium text-slate hover:text-ink lg:h-8",
-          focusRing,
-        )}
-        aria-expanded={expanded}
-      >
-        <ChevronDown size={13} className={cn("transition-transform motion-hover", expanded && "rotate-180")} />
-        Contact &amp; limits
-        {contactSet && <span className="size-1.5 rounded-full bg-sage" aria-hidden />}
-      </button>
+      <div className="flex flex-wrap items-center gap-x-3">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className={cn(
+            "flex h-11 w-fit items-center gap-1.5 rounded-input px-1 text-xs font-medium text-slate hover:text-ink lg:h-8",
+            focusRing,
+          )}
+          aria-expanded={expanded}
+        >
+          <ChevronDown size={13} className={cn("transition-transform motion-hover", expanded && "rotate-180")} />
+          Contact &amp; limits
+          {contactSet && <span className="size-1.5 rounded-full bg-sage" aria-hidden />}
+        </button>
+        {canEdit && <DesignerRowActions userId={d.userId} name={d.name} />}
+      </div>
 
       {expanded && (
         <ContactPanel designer={d} canEdit={canEdit} onSave={onContact} onMaxActiveOrders={onMaxActiveOrders} />

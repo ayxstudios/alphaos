@@ -575,12 +575,30 @@ async function main() {
   const vaIds = users.filter((u) => u.role === "va").map((u) => u.id);
   const admin = users.find((u) => u.role === "admin")!;
 
+  // Identify d1/d2/d3 by their designerBusinesses shape rather than a
+  // hardcoded email, since scripts/seed.ts's user identity is overridable
+  // (docs/DEMO.md): d1 spans both businesses, d2 is business A's only
+  // designer, d3 is business B's only designer (see scripts/seed.ts).
+  const bizCountByDesigner = new Map<string, number>();
+  const bizByDesigner = new Map<string, Set<string>>();
+  for (const row of designerBiz) {
+    bizCountByDesigner.set(row.userId, (bizCountByDesigner.get(row.userId) ?? 0) + 1);
+    if (!bizByDesigner.has(row.userId)) bizByDesigner.set(row.userId, new Set());
+    bizByDesigner.get(row.userId)!.add(row.businessId);
+  }
+  const d1Id = [...bizCountByDesigner.entries()].find(([, n]) => n === 2)?.[0];
+  const d2Id = [...bizByDesigner.entries()].find(([id, b]) => id !== d1Id && b.has(businesses[0].id))?.[0];
+  const d3Id = [...bizByDesigner.entries()].find(([id, b]) => id !== d1Id && b.has(businesses[1].id))?.[0];
+  if (!d1Id || !d2Id || !d3Id) {
+    throw new Error("seed-history: could not identify d1/d2/d3 designers from designerBusinesses; run scripts/seed.ts first");
+  }
+
   // Ensure every seeded designer profile has a real per-figure rate (only
   // touches rows that are actually null; the base fixture already sets one).
   await db
     .update(schema.designerProfiles)
-    .set({ perFigureRate: sql`(case when ${schema.designerProfiles.userId} = ${byEmail.get("d1@aystudios.io")?.id} then '18.00' when ${schema.designerProfiles.userId} = ${byEmail.get("d2@aystudios.io")?.id} then '16.50' else '20.00' end)::numeric` })
-    .where(and(inArray(schema.designerProfiles.userId, [byEmail.get("d1@aystudios.io")!.id, byEmail.get("d2@aystudios.io")!.id, byEmail.get("d3@aystudios.io")!.id]), sql`${schema.designerProfiles.perFigureRate} is null`));
+    .set({ perFigureRate: sql`(case when ${schema.designerProfiles.userId} = ${d1Id} then '18.00' when ${schema.designerProfiles.userId} = ${d2Id} then '16.50' else '20.00' end)::numeric` })
+    .where(and(inArray(schema.designerProfiles.userId, [d1Id, d2Id, d3Id]), sql`${schema.designerProfiles.perFigureRate} is null`));
   void designerProfiles;
 
   const rateByBusinessStyle = new Map<string, number>();

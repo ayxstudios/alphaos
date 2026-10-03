@@ -31,9 +31,11 @@ export function isAgentMode(flags: AgentFlags | null | undefined): boolean {
 }
 
 const ADMIN_OFF: NavKey[] = ["home", "today", "orders", "qc", "messages", "boards", "print", "money", "settings"];
-const VA_OFF: NavKey[] = ["home", "today", "orders", "qc", "messages", "boards", "print"];
+// VA menu as Yousif set it on 2026-10-01; agent mode only adds Exceptions
+// (what the agent hands to a human). VAs QC and approve print drafts.
+const VA_OFF: NavKey[] = ["home", "qc", "messages", "boards", "print", "orders"];
 const ADMIN_ON: NavKey[] = ["home", "day", "overview", "exceptions", "orders", "messages", "boards", "print", "money", "settings"];
-const VA_ON: NavKey[] = ["home", "day", "overview", "exceptions", "orders", "messages", "boards", "print"];
+const VA_ON: NavKey[] = ["home", "qc", "exceptions", "messages", "boards", "print", "orders"];
 
 /** Ordered primary nav keys for a staff role. Designers have their own fixed nav. */
 export function primaryNavKeys(role: NavRole, agentMode: boolean): NavKey[] {

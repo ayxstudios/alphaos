@@ -49,6 +49,7 @@ export type ExistingOrder = {
   suggestedStyle?: string;
   styleOptions: string[];
   savedProductType: "physical" | "digital" | null;
+  savedSize?: string;
   savedNotes: string;
   photoCount: number;
   rawImport: unknown;
@@ -124,6 +125,7 @@ export function NewOrderForm({
   const [figureCount, setFigureCount] = useState(initial?.figureCount ?? "");
   const [style, setStyle] = useState(initial?.style ?? "");
   const [productTitle, setProductTitle] = useState(initial?.productTitle ?? "");
+  const [size, setSize] = useState(existing?.savedSize ?? "");
   const [productType, setProductType] = useState<"physical" | "digital">(initial?.productType ?? "physical");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const shop = shops.find((s) => s.id === shopId);
@@ -221,6 +223,7 @@ export function NewOrderForm({
     setFigureCount("");
     setStyle("");
     setProductTitle("");
+    setSize("");
     setNotes("");
     setPhotos([]);
     setUrlInput("");
@@ -247,6 +250,7 @@ export function NewOrderForm({
           style: style || undefined,
           productTitle: productTitle || undefined,
           productType,
+          size,
           notes: notes || undefined,
           dueAt: dueAt || undefined,
           customerName: customerName || undefined,
@@ -273,6 +277,7 @@ export function NewOrderForm({
         style: style || undefined,
         productTitle: productTitle || undefined,
         productType,
+        size: size || undefined,
         notes: notes || undefined,
         dueAt: dueAt || undefined,
         r2Keys,
@@ -469,6 +474,20 @@ export function NewOrderForm({
               ))}
             </Select>
             <Input label="Product / category" value={productTitle} onChange={(e) => setProductTitle(e.target.value)} autoComplete="off" />
+            <Input
+              label="Size / canvas"
+              value={size}
+              onChange={(e) => setSize(e.target.value)}
+              list="order-size-suggestions"
+              placeholder="e.g. 16x20 in canvas"
+              hint="Saved with the order, so QC and print see it"
+              autoComplete="off"
+            />
+            <datalist id="order-size-suggestions">
+              {["8x10 in", "12x16 in", "16x20 in", "18x24 in", "24x36 in", "A4", "A3", "Digital file"].map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
             <Select label="Fulfilment" value={productType} onChange={(e) => setProductType(e.target.value as "physical" | "digital")}>
               <option value="physical">Physical</option>
               <option value="digital">Digital</option>

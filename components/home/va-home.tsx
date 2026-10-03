@@ -1,0 +1,84 @@
+import Link from "next/link";
+
+import { ArrowRight } from "@/components/ui/icons";
+import { cn } from "@/lib/utils";
+import { focusRing } from "@/components/ui/styles";
+import type { StaffHome } from "@/lib/home/staff";
+import type { TodayKind } from "@/lib/orders/today-queue";
+import { fmtInt } from "@/components/charts";
+
+type Tile = { label: string; kind: TodayKind; href: string; hint: string };
+
+// Exactly three things a VA acts on. Counts come from the Today queue kinds:
+// "qc" (finished portrait waiting for a check), "reply" (a customer wrote and
+// nobody answered) and "print" (approved physical order not yet sent to print,
+// which is the one a person has to press OK on).
+const TILES: Tile[] = [
+  { label: "Awaiting QC", kind: "qc", href: "/qc", hint: "Portraits to check against the customer photos" },
+  { label: "Need a VA reply", kind: "reply", href: "/emails", hint: "Customers waiting on an answer" },
+  { label: "Awaiting print approval", kind: "print", href: "/queue/print", hint: "Print jobs waiting for your OK" },
+];
+
+/**
+ * VA home: three large tiles, plus one card that only appears when Alpha
+ * cannot tell which designer draws a style (the Portrait Styles tab is
+ * admin-only, so this is the one moment a VA is pointed at /styles).
+ */
+export function VaHome({ h }: { h: StaffHome }) {
+  return (
+    <div className="flex flex-col gap-4 sm:gap-5">
+      {h.styleGaps.length > 0 && (
+        <Link
+          href="/styles"
+          className={cn(
+            "flex min-w-0 flex-col gap-1 rounded-card border border-amber/30 bg-surface p-4 shadow-card transition-[transform,box-shadow] duration-150 hover:-translate-y-0.5 hover:shadow-md sm:flex-row sm:items-center sm:justify-between sm:gap-3",
+            focusRing,
+          )}
+        >
+          <div className="min-w-0">
+            <span className="flex items-center gap-2 text-sm font-medium text-ink">
+              <span className="size-2 shrink-0 rounded-full bg-amber" />
+              Who draws {h.styleGaps.length === 1 ? "this style" : "these styles"}?
+            </span>
+            <p className="mt-1 truncate text-sm text-slate" title={h.styleGaps.join(", ")}>
+              No designer is set for {h.styleGaps.join(", ")} — orders in {h.styleGaps.length === 1 ? "it" : "them"} can&apos;t be assigned.
+            </p>
+          </div>
+          <span className="flex shrink-0 items-center gap-1 text-sm font-medium text-pigment">
+            Pick the designer <ArrowRight size={14} />
+          </span>
+        </Link>
+      )}
+      <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
+      {TILES.map((t) => {
+        let n = h.attention.byKind.find((k) => k.kind === t.kind)?.n ?? 0;
+        // Same total as the Messages page: customers waiting on an order, plus
+        // unmatched replies and failed sends (it lists all three).
+        if (t.kind === "reply") n += h.messages.unmatched + h.messages.failed;
+        return (
+          <Link
+            key={t.kind}
+            href={t.href}
+            className={cn(
+              "group flex min-h-44 min-w-0 flex-col gap-5 rounded-card bg-surface p-6 shadow-card transition-[transform,box-shadow] duration-150 hover:-translate-y-0.5 hover:shadow-md",
+              focusRing,
+            )}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2 text-sm font-medium text-slate">
+                <span className={cn("size-2 rounded-full", n === 0 ? "bg-sage" : "bg-amber")} />
+                {t.label}
+              </span>
+              <ArrowRight size={16} className="shrink-0 text-slate opacity-60 transition-opacity group-hover:opacity-100" />
+            </div>
+            <div>
+              <div className="font-display text-5xl font-semibold tabular-nums leading-none text-ink sm:text-6xl">{fmtInt(n)}</div>
+              <p className="mt-3 text-base text-ink">{t.hint}</p>
+            </div>
+          </Link>
+        );
+      })}
+      </div>
+    </div>
+  );
+}

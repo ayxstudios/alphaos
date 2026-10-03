@@ -44,14 +44,16 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_BUILD_ID: BUILD_ID,
   },
   experimental: {
-    // Client router cache (docs/PERF.md). A page visited in the last 30 s
-    // (back, forward, or a second click) shows at once from memory instead of
-    // a new server round trip; a page prefetched on hover stays usable for 30 s
-    // (Next's floor, down from 5 min so hover data is never old). Any server
-    // action that changes data still refreshes what it touched.
+    // Client router cache (docs/PERF.md). A page visited or prefetched in the
+    // last 3 minutes paints at once from memory with no network (back,
+    // forward, a second click, or a sidebar click after the shell has been
+    // idle: components/shell/idle-prefetch.tsx re-warms every main page every
+    // 2.5 minutes and when the window regains focus, so it never runs out under
+    // a user who is working). Any server action that changes data still
+    // refreshes what it touched, and a card move calls router.refresh().
     staleTimes: {
-      dynamic: 30,
-      static: 30,
+      dynamic: 180,
+      static: 180,
     },
   },
   async headers() {

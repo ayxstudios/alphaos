@@ -46,7 +46,7 @@ export function PageHeader({
     <div className="flex flex-wrap items-end justify-between gap-3" data-tour={tourId}>
       <div className="min-w-0">
         {eyebrow && (
-          <div className="mb-1 text-xs font-medium text-slate/80">{eyebrow}</div>
+          <div className="mb-1 text-xs font-medium text-slate">{eyebrow}</div>
         )}
         <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">
           {title}

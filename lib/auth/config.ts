@@ -1,6 +1,6 @@
 import type { NextAuthConfig } from "next-auth";
 
-export type Role = "admin" | "va" | "designer";
+export type Role = "admin" | "va" | "designer" | "helper";
 
 /**
  * Edge-safe Auth.js config: only the JWT/session callbacks that carry
@@ -24,6 +24,8 @@ export const authConfig = {
       if (user) {
         token.id = user.id;
         token.role = (user as { role?: Role }).role ?? "designer";
+        // Helpers only: the designer whose board they work (null for everyone else).
+        token.helperFor = (user as { helperFor?: string | null }).helperFor ?? null;
         // When this sign-in happened: the first-run tour's "Later" waits for the next one.
         token.signedInAt = Date.now();
       }
@@ -33,6 +35,7 @@ export const authConfig = {
       if (session.user) {
         session.user.id = (token.id as string) ?? session.user.id;
         session.user.role = (token.role as Role) ?? "designer";
+        session.user.helperFor = typeof token.helperFor === "string" ? token.helperFor : null;
         session.user.signedInAt = typeof token.signedInAt === "number" ? token.signedInAt : 0;
       }
       return session;

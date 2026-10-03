@@ -30,8 +30,8 @@ async function main() {
   check("agent mode: any one on = true", isAgentMode({ agentInboxEnabled: true }) && isAgentMode({ agentAssignEnabled: true }));
   const off = primaryNavKeys("va", false);
   const on = primaryNavKeys("va", true);
-  check("VA flags off = today+qc, no day/overview/exceptions", off.includes("today") && off.includes("qc") && !off.some((k) => ["day", "overview", "exceptions"].includes(k)));
-  check("VA flags on = day+overview+exceptions, no today/qc", on.includes("day") && on.includes("overview") && on.includes("exceptions") && !on.includes("today") && !on.includes("qc"));
+  check("VA flags off = Yousif's VA menu (qc, no today/day/overview/exceptions)", off.join() === "home,qc,messages,boards,print,orders");
+  check("VA flags on = same menu plus exceptions", on.join() === "home,qc,exceptions,messages,boards,print,orders");
   const aOn = primaryNavKeys("admin", true);
   const aOff = primaryNavKeys("admin", false);
   check("admin on/off follows the same rule, keeps settings", !aOn.includes("today") && aOn.includes("day") && aOff.includes("today") && aOn.includes("settings") && aOff.includes("settings"));

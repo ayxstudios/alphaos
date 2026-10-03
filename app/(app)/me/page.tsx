@@ -13,6 +13,7 @@ export default async function MyWeekPage() {
   const user = { id: session.user.id, role: session.user.role };
   // Staff have no "self" designer week — they look at a specific designer
   // from the Designers page instead.
+  if (user.role === "helper") redirect("/board");
   if (user.role !== "designer") redirect("/designers");
 
   const week = await getMyWeek(user);

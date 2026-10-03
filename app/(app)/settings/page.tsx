@@ -535,9 +535,9 @@ export default async function SettingsPage({
                 Internal tool, own shops only. Questions about this application:{" "}
                 <a
                   className="-my-[12px] inline-flex min-h-[44px] items-center underline"
-                  href="mailto:admin@aystudios.io"
+                  href={`mailto:${process.env.SUPPORT_EMAIL ?? "admin@aystudios.io"}`}
                 >
-                  admin@aystudios.io
+                  {process.env.SUPPORT_EMAIL ?? "admin@aystudios.io"}
                 </a>
               </p>
             </div>

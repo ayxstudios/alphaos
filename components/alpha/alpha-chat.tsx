@@ -20,6 +20,7 @@ const SUGGESTIONS: Record<Role, string[]> = {
   admin: ["What needs my attention today?", "How loaded are the designers?", "Anything overdue?"],
   va: ["What should I do first?", "Who is waiting on a reply?", "Anything stuck in QC?"],
   designer: ["What is due first?", "What did I earn this week?", "Any revisions for me?"],
+  helper: ["What is due first?", "Any revisions?"],
 };
 
 function sanitizeKey(input: string): string {

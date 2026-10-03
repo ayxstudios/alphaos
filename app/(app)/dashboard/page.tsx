@@ -19,6 +19,7 @@ export const dynamic = "force-dynamic";
 export default async function HomePage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
+  if (session.user.role === "helper") redirect("/board");
   const user = { id: session.user.id, role: session.user.role };
   const { selected, displayName } = await loadShellData(user);
   const first = (displayName ?? session.user.name ?? "there").split(/\s+/)[0];
@@ -26,18 +27,26 @@ export default async function HomePage() {
   return (
     <Page className="max-w-6xl">
       <div className="flex flex-col gap-1">
-        <p className="text-xs font-medium text-slate/80">{selected.name}</p>
+        <p className="text-xs font-medium text-slate">{selected.name}</p>
         <h1 className="font-display text-2xl font-semibold tracking-tight text-ink">
           {greetingFor()}, {first}.
         </h1>
       </div>
       <Suspense
         fallback={
+          user.role === "va" ? (
+            <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-3">
+              <SectionSkeleton h={176} />
+              <SectionSkeleton h={176} />
+              <SectionSkeleton h={176} />
+            </div>
+          ) : (
           <div className="flex flex-col gap-5">
             <TileSkeleton />
             <SectionSkeleton h={260} />
             <SectionSkeleton h={260} />
           </div>
+          )
         }
       >
         {user.role === "designer" ? <DesignerHome user={user} /> : <StaffHome user={user} businessId={selected.id} role={user.role} />}

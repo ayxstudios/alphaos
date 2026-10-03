@@ -12,6 +12,7 @@ export function DraggableCard({
   disabled = false,
   onOpen,
   eager = false,
+  compact = false,
 }: {
   card: BoardCard;
   from: string;
@@ -19,6 +20,8 @@ export function DraggableCard({
   onOpen?: (card: BoardCard) => void;
   /** First few cards in a column: load the cover photo eagerly instead of lazily. */
   eager?: boolean;
+  /** Staff boards: the slim Trello-style card (see OrderCard). */
+  compact?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: card.orderId,
@@ -69,7 +72,7 @@ export function DraggableCard({
           : "cursor-grab touch-none active:cursor-grabbing"
       }
     >
-      <OrderCard card={card} dragging={isDragging} eager={eager} />
+      <OrderCard card={card} dragging={isDragging} eager={eager} compact={compact} />
     </div>
   );
 }
