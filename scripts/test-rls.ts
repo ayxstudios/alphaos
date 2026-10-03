@@ -357,12 +357,13 @@ async function tightenedR2(admin: string, va1: string, d1: string, d2: string) {
     );
     const otherWrite = await attempt(() =>
       withUserContext(asVa, (tx) =>
-        tx.update(schema.users).set({ name: "Tampered" }).where(eq(schema.users.id, d1)).returning({ id: schema.users.id }),
+        // VAs manage designers since 0048 (Yousif 2026-10-01); an admin row stays out of reach.
+        tx.update(schema.users).set({ name: "Tampered" }).where(eq(schema.users.id, admin)).returning({ id: schema.users.id }),
       ),
     );
     const noContextRead = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.id, d2));
     const [after] = await db.select({ role: schema.users.role, name: schema.users.name }).from(schema.users).where(eq(schema.users.id, d2));
-    const [d1After] = await db.select({ name: schema.users.name }).from(schema.users).where(eq(schema.users.id, d1));
+    const [d1After] = await db.select({ name: schema.users.name }).from(schema.users).where(eq(schema.users.id, admin));
     const pass =
       !roleWrite.ok &&
       after?.role === "designer" &&
@@ -374,7 +375,7 @@ async function tightenedR2(admin: string, va1: string, d1: string, d2: string) {
     report(
       "user: a designer cannot change their own role; own-row writes and no-context sign-in reads still work",
       pass,
-      `role write ${roleWrite.ok ? "ALLOWED" : "rejected"}; own write ${ownWrite.ok ? ownWrite.value.length + " row" : "rejected: " + ownWrite.msg}; VA edit of another user ${otherWrite.ok ? otherWrite.value.length + " rows" : "rejected"}; raw read ${noContextRead.length}`,
+      `role write ${roleWrite.ok ? "ALLOWED" : "rejected"}; own write ${ownWrite.ok ? ownWrite.value.length + " row" : "rejected: " + ownWrite.msg}; VA edit of an admin ${otherWrite.ok ? otherWrite.value.length + " rows" : "rejected"}; raw read ${noContextRead.length}`,
     );
   }
 

@@ -15,7 +15,7 @@ FROM (
   SELECT id, row_number() OVER (PARTITION BY order_id, template_key ORDER BY (status = 'sent') DESC, created_at, id) AS rn
   FROM "messages"
   WHERE direction = 'outbound' AND order_id IS NOT NULL AND dedupe_key IS NULL
-    AND template_key IN ('in_design', 'printing', 'order_received', 'photo_request')
+    AND template_key::text IN ('in_design', 'printing', 'order_received', 'photo_request')
 ) x
 WHERE m.id = x.id AND x.rn = 1;
 --> statement-breakpoint

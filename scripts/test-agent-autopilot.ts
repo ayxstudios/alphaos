@@ -79,6 +79,9 @@ async function main() {
       .where(and(eq(shops.businessId, businessId), eq(shops.platform, "etsy"))),
   );
   if (!etsyShop) throw new Error("demo business has no Etsy shop");
+  const [shopBefore] = await withSystemContext((tx) =>
+    tx.select({ cfg: shops.integrationConfig }).from(shops).where(eq(shops.id, etsyShop.id)),
+  );
 
   try {
     // ---- setup -------------------------------------------------------------
@@ -165,7 +168,34 @@ async function main() {
         figureCountSource: "unresolved",
         productType: "digital",
       });
-      return { mismatch: mismatch.id, etsy: etsy.id };
+      // Add-on-only order (PixArt's "Print & Ship") that reached the design queue:
+      // the shop lists it as non-portrait, so no designer may get it.
+      await tx
+        .update(shops)
+        .set({ integrationConfig: { ...((shopBefore?.cfg ?? {}) as Record<string, unknown>), nonPortraitTitles: ["Print & Ship"] } })
+        .where(eq(shops.id, etsyShop.id));
+      const [addon] = await tx
+        .insert(orders)
+        .values({
+          businessId,
+          shopId: etsyShop.id,
+          customerId: cust.id,
+          platformOrderId: `${PREFIX}addon-${stamp}`,
+          platformOrderName: `${PREFIX}addon-${stamp}`,
+          status: "ready_to_assign",
+          source: "manual",
+          uploadToken: randomUUID(),
+        })
+        .returning({ id: orders.id });
+      await tx.insert(orderItems).values({
+        businessId,
+        orderId: addon.id,
+        title: "Print & Ship - Get Your Portrait Printed & Shipped",
+        figureCount: 1,
+        figureCountSource: "manual",
+        productType: "physical",
+      });
+      return { mismatch: mismatch.id, etsy: etsy.id, addon: addon.id };
     });
 
     await setFlags(businessId, true);
@@ -243,10 +273,19 @@ async function main() {
     // no-eligible path (counted; an exception only once it waited 4h), or is
     // an importer-flagged needs_review order the agent leaves to a human.
     const leftover = afterReal.unassigned;
-    const explained = r.noEligibleDesigner + r.skippedNeedsReview;
+    const explained = r.noEligibleDesigner + r.skippedNeedsReview + r.addonOnly;
     check("tick 1: unassigned ready_to_assign orders assigned or explained",
       r.assigned + leftover.length === unassignedBefore.length && leftover.length === explained,
       JSON.stringify({ before: unassignedBefore.length, assigned: r.assigned, leftover: leftover.length, noEligible: r.noEligibleDesigner, needsReview: r.skippedNeedsReview }));
+
+    const addonState = await withSystemContext(async (tx) => ({
+      active: await tx.select({ id: assignments.id }).from(assignments).where(and(eq(assignments.orderId, ids.addon), eq(assignments.active, true))),
+      exc: await tx.select({ kind: exceptions.kind, status: exceptions.status }).from(exceptions).where(eq(exceptions.orderId, ids.addon)),
+    }));
+    check("add-on only: no designer assigned", addonState.active.length === 0 && r.addonOnly >= 1, JSON.stringify({ addonOnly: r.addonOnly }));
+    check("add-on only: one open addon_only exception for a person",
+      addonState.exc.length === 1 && addonState.exc[0].kind === "addon_only" && addonState.exc[0].status === "open",
+      JSON.stringify(addonState.exc));
 
     // Replies auto-send by default (agentConfig.autoSendReplies), so the one
     // photo_shortfall email is 'sent'; with auto-send off it stays a 'draft'.
@@ -308,6 +347,7 @@ async function main() {
     );
   } finally {
     await setFlags(businessId, false);
+    await withSystemContext((tx) => tx.update(shops).set({ integrationConfig: shopBefore?.cfg ?? {} }).where(eq(shops.id, etsyShop.id)));
     const [flags] = await withSystemContext((tx) =>
       tx
         .select({ intake: businesses.agentIntakeEnabled, assign: businesses.agentAssignEnabled })

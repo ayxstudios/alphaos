@@ -26,6 +26,7 @@ const KIND_LABELS: Record<string, string> = {
   legacy_order: "Order not in AlphaOS",
   new_product: "New product",
   ai_designer_failed: "AI portrait failed",
+  addon_only: "Add-on only",
 };
 
 /** The one thing to do, as a short imperative; `to` is where the primary button goes. */
@@ -41,6 +42,7 @@ const TODO: Record<string, { line: string; button?: string; to?: "order" | "mess
   legacy_order: { line: "Check Trello, then confirm the order below." },
   new_product: { line: "Pick who draws this new product." },
   ai_designer_failed: { line: "Check the AI portrait, or give it to a designer.", button: "Open order", to: "order" },
+  addon_only: { line: "Match it to the buyer's portrait order, then print or close it.", button: "Open order", to: "order" },
 };
 
 function kindLabel(kind: string): string {

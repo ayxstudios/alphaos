@@ -38,6 +38,7 @@ import { queuePhotoRequest, queuePhotoShortfall } from "@/lib/email/dispatch";
 import { shopStyleChoices } from "@/lib/designers/styles";
 import type { EtsyIntegrationConfig, EtsyTransaction } from "@/lib/integrations/etsy/types";
 import { runAutoAssign } from "@/lib/orders/assign";
+import { classifyOrder, type ClassifyConfig } from "@/lib/integrations/classify";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { agentOrderScope } from "./scope";
 import { completeOrderDetailsCore } from "@/lib/orders/complete-details";
@@ -77,6 +78,8 @@ const REOPEN_AFTER_HOURS: Record<ExceptionKind, number | null> = {
   // Raised by the intake area (./legacy-intake.ts); one card per legacy order / product.
   legacy_order: 0,
   new_product: 0,
+  // An add-on-only order (Print & Ship, a rush upgrade) that reached the design queue.
+  addon_only: null,
 };
 
 export type AgentOrderError = { orderId: string; message: string };
@@ -100,6 +103,8 @@ export type AgentBusinessReport = {
   assignChecked: number;
   assigned: number;
   noEligibleDesigner: number;
+  /** Add-on-only orders (no portrait to draw) left for a person instead of a designer. */
+  addonOnly: number;
   /** Left to a human: the importer flagged them (missing email, conflicts). */
   skippedNeedsReview: number;
   /** Not-yet-started orders moved off an over-capacity or away designer. */
@@ -212,6 +217,7 @@ export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTi
       assignChecked: 0,
       assigned: 0,
       noEligibleDesigner: 0,
+      addonOnly: 0,
       skippedNeedsReview: 0,
       rebalanced: 0,
       inbox: inboxCounts(emptyInboxReport()),
@@ -707,10 +713,12 @@ async function assignStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
           updatedAt: orders.updatedAt,
           platformOrderId: orders.platformOrderId,
           platformOrderName: orders.platformOrderName,
+          shopConfig: shops.integrationConfig,
         })
         .from(orders)
+        .leftJoin(shops, eq(shops.id, orders.shopId))
         .where(eq(orders.id, id))
-        .for("update");
+        .for("update", { of: orders });
       if (!order || order.status !== "ready_to_assign") return;
       const [active] = await tx
         .select({ id: assignments.id })
@@ -722,6 +730,21 @@ async function assignStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
       // The importer held these back on purpose (no email, conflicts, unresolved figures).
       if (order.needsReview) {
         bump((r) => (r.skippedNeedsReview += 1));
+        return;
+      }
+      // Add-on-only orders (Print & Ship, rush upgrades) have nothing to draw.
+      // Imports before the shop's non-portrait list existed landed here anyway,
+      // so check again and hand them to a person rather than a designer.
+      const lines = await tx
+        .select({ sku: orderItems.sku, title: orderItems.title })
+        .from(orderItems)
+        .where(eq(orderItems.orderId, order.id));
+      const cfg = (order.shopConfig ?? null) as ClassifyConfig | null;
+      if (classifyOrder({ sourceName: null, lines, config: cfg }) === "fulfillment_only") {
+        bump((r) => (r.addonOnly += 1));
+        await raise(tx, bump, ctx.now, order, "addon_only",
+          `Order #${orderLabel(order)} is an add-on only (${lines.map((l) => l.title).filter(Boolean).join(", ") || "no title"}): match it to the portrait order and fulfil it`,
+          { titles: lines.map((l) => l.title) });
         return;
       }
 

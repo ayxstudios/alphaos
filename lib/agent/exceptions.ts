@@ -12,7 +12,8 @@ export type ExceptionKind =
   | "unmatched_reply"
   | "email_send_failed"
   | "legacy_order"
-  | "new_product";
+  | "new_product"
+  | "addon_only";
 
 export type OpenExceptionInput = {
   businessId: string;
