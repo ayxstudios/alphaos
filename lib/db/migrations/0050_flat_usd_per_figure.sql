@@ -11,7 +11,10 @@
 --      elements blocked for a missing figure count are left as they were.
 --   2. rows blocked only for a missing rate / missing style become 'pending'.
 --   3. every 'pending' row gets rate 5.00 and amount figure_count x 5.00.
--- Idempotent: running it twice changes nothing the second time.
+-- Idempotent: running it twice changes nothing the second time. Status is
+-- compared as text: on a fresh database the whole migration chain runs in one
+-- transaction, and 'blocked' (added in 0020) cannot be used as an enum literal
+-- in the same transaction that added it.
 ALTER TABLE "styles" ALTER COLUMN "per_figure_rate" SET DEFAULT 5.00;--> statement-breakpoint
 UPDATE "styles" SET "per_figure_rate" = 5.00 WHERE "per_figure_rate" IS DISTINCT FROM 5.00;--> statement-breakpoint
 
@@ -30,13 +33,13 @@ SET "breakdown" = (
   ), '[]'::jsonb)
   FROM jsonb_array_elements(e."breakdown") WITH ORDINALITY AS t(el, ord)
 )
-WHERE e."status" IN ('pending', 'blocked')
+WHERE e."status"::text IN ('pending', 'blocked')
   AND e."breakdown" IS NOT NULL
   AND jsonb_typeof(e."breakdown") = 'array';--> statement-breakpoint
 
 UPDATE "earnings"
 SET "status" = 'pending', "blocked_reason" = NULL
-WHERE "status" = 'blocked'
+WHERE "status"::text = 'blocked'
   AND "blocked_reason" IS NOT NULL
   AND ("blocked_reason" ILIKE '%per-figure rate%' OR "blocked_reason" ILIKE '%missing portrait style%')
   AND "blocked_reason" NOT ILIKE '%figure count%'
@@ -46,5 +49,5 @@ WHERE "status" = 'blocked'
 
 UPDATE "earnings"
 SET "rate" = 5.00, "amount" = ("figure_count" * 5.00)::numeric(10,2)
-WHERE "status" = 'pending'
+WHERE "status"::text = 'pending'
   AND ("rate" IS DISTINCT FROM 5.00 OR "amount" IS DISTINCT FROM ("figure_count" * 5.00)::numeric(10,2));
