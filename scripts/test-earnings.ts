@@ -17,7 +17,7 @@ import {
   styles,
   users,
 } from "../lib/db/schema";
-import { calculateOrderEarning, PER_FIGURE_RATE_USD, recalculateBlockedEarning } from "../lib/orders/earnings";
+import { calculateOrderEarning, recalculateBlockedEarning } from "../lib/orders/earnings";
 import { transition, OrderTransitionError } from "../lib/orders/transitions";
 import { DEFAULT_CHECKLIST } from "../lib/qc/checklist";
 
@@ -225,12 +225,6 @@ async function main() {
     rows = await earningRows(fulfillmentOrderId);
     report("fulfillment_only order creates no earning", rows.length === 0, `rows=${rows.length}`);
 
-    report(
-      "the flat rate is $5.00 USD per figure",
-      PER_FIGURE_RATE_USD === 5,
-      `PER_FIGURE_RATE_USD=${PER_FIGURE_RATE_USD}`,
-    );
-
     const noRateStyleName = `No Rate Payout Test ${Date.now()}`;
     await createStyle(ctx.businessId, noRateStyleName, null);
     const noRateOrderId = await createOrder({
@@ -244,14 +238,12 @@ async function main() {
     await transition(va, { orderId: noRateOrderId, to: "complete", expectedFrom: "approved" });
     rows = await earningRows(noRateOrderId);
     report(
-      "style with no rate pays the $5.00 default (pending, not blocked)",
+      "style with no rate blocks the earning (no default pay)",
       rows.length === 1 &&
-        rows[0].status === "pending" &&
-        rows[0].blockedReason == null &&
-        rows[0].rate === "5.00" &&
-        rows[0].amount === "15.00" &&
-        rows[0].breakdown?.[0]?.rate === "5.00" &&
-        rows[0].breakdown?.[0]?.amount === "15.00",
+        rows[0].status === "blocked" &&
+        rows[0].rate == null &&
+        rows[0].amount == null &&
+        /per-figure rate/i.test(rows[0].blockedReason ?? ""),
       `status=${rows[0]?.status}, rate=${rows[0]?.rate}, amount=${rows[0]?.amount}, reason=${rows[0]?.blockedReason}`,
     );
 
@@ -266,8 +258,8 @@ async function main() {
     await transition(va, { orderId: unknownStyleOrderId, to: "complete", expectedFrom: "approved" });
     rows = await earningRows(unknownStyleOrderId);
     report(
-      "style with no styles row pays the $5.00 default",
-      rows.length === 1 && rows[0].status === "pending" && rows[0].rate === "5.00" && rows[0].amount === "10.00",
+      "style with no styles row blocks the earning",
+      rows.length === 1 && rows[0].status === "blocked" && rows[0].amount == null && /per-figure rate/i.test(rows[0].blockedReason ?? ""),
       `status=${rows[0]?.status}, rate=${rows[0]?.rate}, amount=${rows[0]?.amount}, reason=${rows[0]?.blockedReason}`,
     );
 
@@ -282,8 +274,8 @@ async function main() {
     await transition(va, { orderId: noStyleOrderId, to: "complete", expectedFrom: "approved" });
     rows = await earningRows(noStyleOrderId);
     report(
-      "item with no style pays the $5.00 default",
-      rows.length === 1 && rows[0].status === "pending" && rows[0].amount === "5.00",
+      "item with no style blocks the earning",
+      rows.length === 1 && rows[0].status === "blocked" && rows[0].amount == null && /missing portrait style/i.test(rows[0].blockedReason ?? ""),
       `status=${rows[0]?.status}, amount=${rows[0]?.amount}, reason=${rows[0]?.blockedReason}`,
     );
 
@@ -304,8 +296,8 @@ async function main() {
       `status=${noFigures.status}, amount=${noFigures.amount}, reason=${noFigures.blockedReason}`,
     );
 
-    // A legacy earning blocked for a missing style rate (made before the flat
-    // rate) resolves to $5.00 per figure with no rate to set first.
+    // An earning blocked for a missing style rate stays held until the style
+    // gets its rate, then resolves at that rate (the setStyleRate path).
     const legacyOrderId = await createOrder({
       businessId: ctx.businessId,
       shopId: ctx.shopId,
@@ -332,11 +324,23 @@ async function main() {
         .returning({ id: earnings.id });
       return row.id;
     });
+    const stillBlocked = await withSystemContext((tx) => recalculateBlockedEarning(tx, legacyId, ctx.businessId));
+    report(
+      "rate-blocked earning stays blocked while the style has no rate",
+      !stillBlocked.ok,
+      `resolved=${stillBlocked.ok}`,
+    );
+    await withSystemContext((tx) =>
+      tx
+        .update(styles)
+        .set({ perFigureRate: "7.00" })
+        .where(and(eq(styles.businessId, ctx.businessId), eq(styles.name, noRateStyleName))),
+    );
     const resolved = await withSystemContext((tx) => recalculateBlockedEarning(tx, legacyId, ctx.businessId));
     rows = await earningRows(legacyOrderId);
     report(
-      "legacy rate-blocked earning resolves at $5.00/fig",
-      resolved.ok && rows[0].status === "pending" && rows[0].rate === "5.00" && rows[0].amount === "20.00",
+      "setting the style's rate resolves the blocked earning at that rate",
+      resolved.ok && rows[0].status === "pending" && rows[0].rate === "7.00" && rows[0].amount === "28.00",
       `resolved=${resolved.ok}, status=${rows[0]?.status}, rate=${rows[0]?.rate}, amount=${rows[0]?.amount}`,
     );
 

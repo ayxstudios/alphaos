@@ -6,7 +6,8 @@ import { and, asc, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
 import { loadShellData } from "@/lib/shell/context";
-import { styles, designerProfiles, designerBusinesses, users, ignoredProducts } from "@/lib/db/schema";
+import { styles, designerProfiles, designerBusinesses, users, ignoredProducts, earnings } from "@/lib/db/schema";
+import { recalculateBlockedEarning } from "@/lib/orders/earnings";
 import { setStyleAiDesigner } from "@/lib/agent/ai-designer";
 import { AI_FRAMEWORKS } from "@/lib/agent/ai-frameworks";
 import {
@@ -126,9 +127,17 @@ export async function setStyleRate(id: string, rateRaw: string): Promise<ActionR
   const perFigureRate = parseRate(rateRaw);
   if (!perFigureRate) return { ok: false, message: "Enter a positive per-figure rate" };
   const businessId = await currentBusinessId(user);
-  await withUserContext(user, (tx) =>
-    tx.update(styles).set({ perFigureRate }).where(and(eq(styles.id, id), eq(styles.businessId, businessId))),
-  );
+  await withUserContext(user, async (tx) => {
+    await tx.update(styles).set({ perFigureRate }).where(and(eq(styles.id, id), eq(styles.businessId, businessId)));
+    // A rate releases pay held for this style: recalc every blocked earning.
+    // Ones blocked for another reason (another unpriced style, no figure
+    // count) just stay blocked; recalculateBlockedEarning refuses them.
+    const blocked = await tx
+      .select({ id: earnings.id })
+      .from(earnings)
+      .where(and(eq(earnings.businessId, businessId), eq(earnings.status, "blocked")));
+    for (const row of blocked) await recalculateBlockedEarning(tx, row.id, businessId);
+  });
   revalidatePath("/styles");
   revalidatePath("/payouts");
   return { ok: true };

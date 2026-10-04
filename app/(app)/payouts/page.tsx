@@ -15,7 +15,7 @@ import {
   VoidEarningForm,
 } from "@/components/payouts/payout-actions";
 import { formatAt } from "@/lib/time";
-import { formatUsd, formatUsdPerFigure, PER_FIGURE_RATE_USD, USD_LABEL } from "@/lib/money";
+import { formatUsd, formatUsdPerFigure, USD_LABEL } from "@/lib/money";
 import { invoiceHref } from "@/lib/invoice";
 
 export const dynamic = "force-dynamic";
@@ -289,7 +289,7 @@ export default async function PayoutsPage({
               ))}
             </div>
             <p className="border-t border-line/60 px-4 py-2.5 text-xs text-slate">
-              Amounts in {USD_LABEL}. Every figure pays {formatUsdPerFigure(PER_FIGURE_RATE_USD)} unless its style sets another rate. Rate changes only affect future earnings, or blocked ones you resolve by hand.
+              Amounts in {USD_LABEL}. Every figure pays its style&apos;s per-figure rate; a style with no rate yet holds its pay as blocked, and setting the rate releases it. Rate changes never touch earnings already paid.
             </p>
           </>
         )}

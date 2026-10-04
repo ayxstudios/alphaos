@@ -4,9 +4,6 @@
  */
 export const USD_LABEL = "USD";
 
-/** Flat pay for one figure, in USD. A style's own per_figure_rate overrides it. */
-export const PER_FIGURE_RATE_USD = 5.0;
-
 const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
 /** 5 -> "$5.00", "12.5" -> "$12.50". */

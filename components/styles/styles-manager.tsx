@@ -17,7 +17,7 @@ import {
   type ActionResult,
 } from "@/app/(app)/styles/actions";
 import { AI_FRAMEWORKS, DEFAULT_AI_FRAMEWORK } from "@/lib/agent/ai-frameworks";
-import { PER_FIGURE_RATE_USD, USD_LABEL, formatUsdPerFigure } from "@/lib/money";
+import { USD_LABEL } from "@/lib/money";
 
 export type StyleVM = {
   id: string;
@@ -46,7 +46,7 @@ export function StylesManager({
   const router = useRouter();
   const toast = useToast();
   const [name, setName] = useState("");
-  const [rate, setRate] = useState(PER_FIGURE_RATE_USD.toFixed(2));
+  const [rate, setRate] = useState("");
   const [pending, start] = useTransition();
 
   function run(action: () => Promise<ActionResult>, ok?: string) {
@@ -69,7 +69,7 @@ export function StylesManager({
       const res = await createStyle(n, r);
       if (res.ok) {
         setName("");
-        setRate(PER_FIGURE_RATE_USD.toFixed(2));
+        setRate("");
       }
       return res;
     }, "Style added");
@@ -80,7 +80,7 @@ export function StylesManager({
       {/* Add a new style */}
       <div className="rounded-card border border-line bg-surface p-4 shadow-sm">
         <p className="text-sm font-semibold text-ink">Add a style</p>
-        <p className="mt-0.5 text-sm text-slate">A name and a rate per figure in {USD_LABEL}. Every figure pays {formatUsdPerFigure(PER_FIGURE_RATE_USD)} unless you set another rate.</p>
+        <p className="mt-0.5 text-sm text-slate">A name and a rate per figure in {USD_LABEL}, e.g. Watercolor at 5.00. Pay for a style only counts once its rate is set.</p>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
           <Input
             value={name}
@@ -238,7 +238,6 @@ function StyleCard({
                 }
               }}
               inputMode="decimal"
-              placeholder={PER_FIGURE_RATE_USD.toFixed(2)}
               aria-label={`${style.name} rate per figure in ${USD_LABEL}`}
               className="h-9"
             />
@@ -246,8 +245,8 @@ function StyleCard({
         </label>
         {/* After the rate, so every card's name and rate line up. */}
         {style.isDefault && <Badge variant="info" dot>Default</Badge>}
-        {/* No rate of its own = the flat default, not an error. */}
-        {!style.perFigureRate && <Badge variant="neutral">Default {formatUsdPerFigure(PER_FIGURE_RATE_USD)}</Badge>}
+        {/* No rate = pay for this style is held until the owner prices it. */}
+        {!style.perFigureRate && <Badge variant="warning">Rate needed</Badge>}
         <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
           <Button type="button" variant="secondary" size="sm" onClick={() => setAssignOpen(true)}>
             Designers · {style.designerIds.length}
