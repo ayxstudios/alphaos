@@ -21,6 +21,8 @@ const PROTECTED = [
   /^\/designers(\/|$)/,
   /^\/styles(\/|$)/,
   /^\/payouts(\/|$)/,
+  // Designer pay invoice: a designer sees only their own (the page enforces it).
+  /^\/invoice(\/|$)/,
   /^\/health(\/|$)/,
   /^\/help(\/|$)/,
   /^\/me(\/|$)/,
@@ -40,6 +42,7 @@ const DESIGNER_ALLOWED = [
   /^\/dashboard(\/|$)/,
   /^\/board(\/|$)/,
   /^\/me(\/|$)/,
+  /^\/invoice(\/|$)/,
   /^\/help(\/|$)/,
   /^\/orders\/(?!new\/?$)[^/]+\/?$/,
 ];
