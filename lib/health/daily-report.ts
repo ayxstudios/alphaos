@@ -1135,11 +1135,11 @@ function buildLinks(input: {
       detail: "Not linked to an order for over a day",
     },
     {
-      label: "Pay waiting on a rate",
+      label: "Pay on hold",
       count: input.blockedEarnings,
       href: "/payouts",
       tone: input.blockedEarnings > 0 ? "warning" : "success",
-      detail: "A style needs a rate before it can be paid",
+      detail: "An order needs a figure count before it can be paid",
     },
     {
       label: "New orders stuck",

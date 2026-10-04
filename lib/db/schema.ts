@@ -455,9 +455,10 @@ export const styles = pgTable(
     titleMatches: text("title_matches").array().notNull().default(sql`'{}'::text[]`),
     // Exact product SKUs mapped to this style — the precise "learned" product key.
     skuMatches: text("sku_matches").array().notNull().default(sql`'{}'::text[]`),
-    // Pay rate for one figure in this style. Nullable so missing config creates
-    // a blocked earning rather than silently paying zero.
-    perFigureRate: numeric("per_figure_rate", { precision: 10, scale: 2 }),
+    // Pay rate for one figure in this style, in USD. Defaults to the flat
+    // $5.00 (lib/money.ts PER_FIGURE_RATE_USD); a NULL also pays $5.00, so a
+    // missing rate never blocks pay. Kept per style as an override.
+    perFigureRate: numeric("per_figure_rate", { precision: 10, scale: 2 }).default("5.00"),
     isDefault: boolean("is_default").notNull().default(false),
     // Orders for this style go to the AI Studio agent designer instead of a
     // human. aiFramework names the agent's drawing recipe (e.g. pixart-disney-pet).

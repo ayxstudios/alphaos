@@ -17,7 +17,7 @@ import {
   styles,
   users,
 } from "../lib/db/schema";
-import { recalculateBlockedEarning } from "../lib/orders/earnings";
+import { calculateOrderEarning, PER_FIGURE_RATE_USD, recalculateBlockedEarning } from "../lib/orders/earnings";
 import { transition, OrderTransitionError } from "../lib/orders/transitions";
 import { DEFAULT_CHECKLIST } from "../lib/qc/checklist";
 
@@ -89,8 +89,9 @@ async function createOrder(input: {
         businessId: input.businessId,
         orderId: id,
         title: "Temporary payout test item",
-        figureCount: input.figureCount ?? 1,
-        figureCountSource: input.figureCount == null ? "unresolved" : "manual",
+        // undefined = 1 figure; an explicit null = an unresolved figure count.
+        figureCount: input.figureCount === undefined ? 1 : input.figureCount,
+        figureCountSource: input.figureCount === null ? "unresolved" : "manual",
         productType: "digital",
         style: input.style ?? null,
       });
@@ -224,30 +225,119 @@ async function main() {
     rows = await earningRows(fulfillmentOrderId);
     report("fulfillment_only order creates no earning", rows.length === 0, `rows=${rows.length}`);
 
-    const blockedStyleName = `Blocked Payout Test ${Date.now()}`;
-    const blockedStyleId = await createStyle(ctx.businessId, blockedStyleName, null);
-    const blockedOrderId = await createOrder({
+    report(
+      "the flat rate is $5.00 USD per figure",
+      PER_FIGURE_RATE_USD === 5,
+      `PER_FIGURE_RATE_USD=${PER_FIGURE_RATE_USD}`,
+    );
+
+    const noRateStyleName = `No Rate Payout Test ${Date.now()}`;
+    await createStyle(ctx.businessId, noRateStyleName, null);
+    const noRateOrderId = await createOrder({
       businessId: ctx.businessId,
       shopId: ctx.shopId,
       designerId: ctx.d1,
       status: "approved",
-      style: blockedStyleName,
+      style: noRateStyleName,
       figureCount: 3,
     });
-    await transition(va, { orderId: blockedOrderId, to: "complete", expectedFrom: "approved" });
-    rows = await earningRows(blockedOrderId);
+    await transition(va, { orderId: noRateOrderId, to: "complete", expectedFrom: "approved" });
+    rows = await earningRows(noRateOrderId);
     report(
-      "missing style rate creates a blocked earning instead of blocking completion",
-      rows.length === 1 && rows[0].status === "blocked" && rows[0].amount == null,
+      "style with no rate pays the $5.00 default (pending, not blocked)",
+      rows.length === 1 &&
+        rows[0].status === "pending" &&
+        rows[0].blockedReason == null &&
+        rows[0].rate === "5.00" &&
+        rows[0].amount === "15.00" &&
+        rows[0].breakdown?.[0]?.rate === "5.00" &&
+        rows[0].breakdown?.[0]?.amount === "15.00",
+      `status=${rows[0]?.status}, rate=${rows[0]?.rate}, amount=${rows[0]?.amount}, reason=${rows[0]?.blockedReason}`,
+    );
+
+    const unknownStyleOrderId = await createOrder({
+      businessId: ctx.businessId,
+      shopId: ctx.shopId,
+      designerId: ctx.d1,
+      status: "approved",
+      style: `No Such Style ${Date.now()}`,
+      figureCount: 2,
+    });
+    await transition(va, { orderId: unknownStyleOrderId, to: "complete", expectedFrom: "approved" });
+    rows = await earningRows(unknownStyleOrderId);
+    report(
+      "style with no styles row pays the $5.00 default",
+      rows.length === 1 && rows[0].status === "pending" && rows[0].rate === "5.00" && rows[0].amount === "10.00",
+      `status=${rows[0]?.status}, rate=${rows[0]?.rate}, amount=${rows[0]?.amount}, reason=${rows[0]?.blockedReason}`,
+    );
+
+    const noStyleOrderId = await createOrder({
+      businessId: ctx.businessId,
+      shopId: ctx.shopId,
+      designerId: ctx.d1,
+      status: "approved",
+      style: null,
+      figureCount: 1,
+    });
+    await transition(va, { orderId: noStyleOrderId, to: "complete", expectedFrom: "approved" });
+    rows = await earningRows(noStyleOrderId);
+    report(
+      "item with no style pays the $5.00 default",
+      rows.length === 1 && rows[0].status === "pending" && rows[0].amount === "5.00",
       `status=${rows[0]?.status}, amount=${rows[0]?.amount}, reason=${rows[0]?.blockedReason}`,
     );
-    await withSystemContext((tx) => tx.update(styles).set({ perFigureRate: "4.00" }).where(eq(styles.id, blockedStyleId)));
-    const resolved = await withSystemContext((tx) => recalculateBlockedEarning(tx, rows[0].id, ctx.businessId));
-    rows = await earningRows(blockedOrderId);
+
+    // Completion itself refuses an unresolved figure count, so check the
+    // calculator directly: a missing figure count is the one thing that blocks.
+    const noFiguresOrderId = await createOrder({
+      businessId: ctx.businessId,
+      shopId: ctx.shopId,
+      designerId: ctx.d1,
+      status: "approved",
+      style: styleName,
+      figureCount: null,
+    });
+    const noFigures = await withSystemContext((tx) => calculateOrderEarning(tx, noFiguresOrderId, ctx.businessId));
     report(
-      "blocked earning resolves after rate is configured",
-      resolved.ok && rows[0].status === "pending" && rows[0].amount === "12.00",
-      `resolved=${resolved.ok}, status=${rows[0]?.status}, amount=${rows[0]?.amount}`,
+      "missing figure count still blocks the earning",
+      noFigures.status === "blocked" && noFigures.amount == null && /figure count/i.test(noFigures.blockedReason ?? ""),
+      `status=${noFigures.status}, amount=${noFigures.amount}, reason=${noFigures.blockedReason}`,
+    );
+
+    // A legacy earning blocked for a missing style rate (made before the flat
+    // rate) resolves to $5.00 per figure with no rate to set first.
+    const legacyOrderId = await createOrder({
+      businessId: ctx.businessId,
+      shopId: ctx.shopId,
+      designerId: ctx.d1,
+      status: "approved",
+      style: noRateStyleName,
+      figureCount: 4,
+    });
+    const legacyId = await withSystemContext(async (tx) => {
+      const [row] = await tx
+        .insert(earnings)
+        .values({
+          businessId: ctx.businessId,
+          designerId: ctx.d1,
+          orderId: legacyOrderId,
+          figureCount: 4,
+          rate: null,
+          amount: null,
+          breakdown: [],
+          period: new Date().toISOString().slice(0, 7),
+          status: "blocked",
+          blockedReason: `Style "${noRateStyleName}" needs a per-figure rate.`,
+        })
+        .returning({ id: earnings.id });
+      return row.id;
+    });
+    const resolved = await withSystemContext((tx) => recalculateBlockedEarning(tx, legacyId, ctx.businessId));
+    rows = await earningRows(legacyOrderId);
+    report(
+      "legacy rate-blocked earning resolves at $5.00/fig",
+      resolved.ok && rows[0].status === "pending" && rows[0].rate === "5.00" && rows[0].amount === "20.00",
+      `resolved=${resolved.ok}, status=${rows[0]?.status}, rate=${rows[0]?.rate}, amount=${rows[0]?.amount}`,
     );
 
     const noItemOrderId = await createOrder({

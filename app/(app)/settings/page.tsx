@@ -370,7 +370,6 @@ export default async function SettingsPage({
     tx
       .select({
         total: sql<number>`count(*)::int`,
-        missingRates: sql<number>`count(*) filter (where ${styles.perFigureRate} is null)::int`,
       })
       .from(styles)
       .where(eq(styles.businessId, selected.id)),
@@ -420,7 +419,9 @@ export default async function SettingsPage({
   const cutoffHref = firstMissingCutoff?.platform === "shopify" ? "/settings?section=shopify" : "/settings?section=etsy";
   const shopsConnected = allShopCards.length > 0 && allShopCards.every((shop) => shop.connected);
   const cutoffsSet = allShopCards.length > 0 && allShopCards.every((shop) => shop.cutoffSet);
-  const stylesReady = Number(styleStats?.total ?? 0) > 0 && Number(styleStats?.missingRates ?? 0) === 0;
+  // A style with no rate of its own pays the flat $5.00/fig, so a missing rate
+  // is not a setup gap any more: having styles at all is "configured".
+  const stylesReady = Number(styleStats?.total ?? 0) > 0;
   const checklistItems: SetupChecklistItem[] = [
     {
       key: "shops",
@@ -452,7 +453,7 @@ export default async function SettingsPage({
       ok: stylesReady,
       detail: `${styleStats?.total ?? 0} style${Number(styleStats?.total ?? 0) === 1 ? "" : "s"}`,
       href: "/styles",
-      action: Number(styleStats?.total ?? 0) ? "Set missing rates" : "Add styles",
+      action: "Add styles",
     },
     {
       key: "cutoff",

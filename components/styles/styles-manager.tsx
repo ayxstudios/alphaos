@@ -17,6 +17,7 @@ import {
   type ActionResult,
 } from "@/app/(app)/styles/actions";
 import { AI_FRAMEWORKS, DEFAULT_AI_FRAMEWORK } from "@/lib/agent/ai-frameworks";
+import { PER_FIGURE_RATE_USD, USD_LABEL, formatUsdPerFigure } from "@/lib/money";
 
 export type StyleVM = {
   id: string;
@@ -45,7 +46,7 @@ export function StylesManager({
   const router = useRouter();
   const toast = useToast();
   const [name, setName] = useState("");
-  const [rate, setRate] = useState("");
+  const [rate, setRate] = useState(PER_FIGURE_RATE_USD.toFixed(2));
   const [pending, start] = useTransition();
 
   function run(action: () => Promise<ActionResult>, ok?: string) {
@@ -68,7 +69,7 @@ export function StylesManager({
       const res = await createStyle(n, r);
       if (res.ok) {
         setName("");
-        setRate("");
+        setRate(PER_FIGURE_RATE_USD.toFixed(2));
       }
       return res;
     }, "Style added");
@@ -79,7 +80,7 @@ export function StylesManager({
       {/* Add a new style */}
       <div className="rounded-card border border-line bg-surface p-4 shadow-sm">
         <p className="text-sm font-semibold text-ink">Add a style</p>
-        <p className="mt-0.5 text-sm text-slate">A name and a rate per figure, e.g. Watercolor at 5.00.</p>
+        <p className="mt-0.5 text-sm text-slate">A name and a rate per figure in {USD_LABEL}. Every figure pays {formatUsdPerFigure(PER_FIGURE_RATE_USD)} unless you set another rate.</p>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
           <Input
             value={name}
@@ -103,7 +104,7 @@ export function StylesManager({
                 add();
               }
             }}
-            placeholder="Rate per figure"
+            placeholder={`Rate per figure (${USD_LABEL})`}
             inputMode="decimal"
             className="sm:max-w-40"
             aria-label="New style rate per figure"
@@ -224,7 +225,7 @@ function StyleCard({
           />
         </div>
         <label className="flex items-center gap-2 text-xs font-medium text-slate">
-          Per figure
+          Per figure ({USD_LABEL})
           <span className="w-28">
             <Input
               value={rateDraft}
@@ -237,14 +238,16 @@ function StyleCard({
                 }
               }}
               inputMode="decimal"
-              aria-label={`${style.name} rate per figure`}
+              placeholder={PER_FIGURE_RATE_USD.toFixed(2)}
+              aria-label={`${style.name} rate per figure in ${USD_LABEL}`}
               className="h-9"
             />
           </span>
         </label>
         {/* After the rate, so every card's name and rate line up. */}
         {style.isDefault && <Badge variant="info" dot>Default</Badge>}
-        {!style.perFigureRate && <Badge variant="warning">Rate missing</Badge>}
+        {/* No rate of its own = the flat default, not an error. */}
+        {!style.perFigureRate && <Badge variant="neutral">Default {formatUsdPerFigure(PER_FIGURE_RATE_USD)}</Badge>}
         <div className="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
           <Button type="button" variant="secondary" size="sm" onClick={() => setAssignOpen(true)}>
             Designers · {style.designerIds.length}

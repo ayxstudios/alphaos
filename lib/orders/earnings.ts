@@ -8,6 +8,12 @@ import {
   styles,
   type EarningBreakdown,
 } from "@/lib/db/schema";
+import { PER_FIGURE_RATE_USD } from "@/lib/money";
+
+export { PER_FIGURE_RATE_USD };
+
+/** The flat USD rate in cents: what a figure pays when its style sets no rate of its own. */
+const DEFAULT_RATE_CENTS = Math.round(PER_FIGURE_RATE_USD * 100);
 
 export type EarningCalculation = {
   figureCount: number;
@@ -83,13 +89,13 @@ export async function calculateOrderEarning(
     let blockedReason: string | undefined;
     let cents: number | null = null;
 
+    // Only a missing figure count blocks pay. A missing style, an unknown
+    // style or a style with no rate of its own pays the flat USD rate.
     if (item.figureCount == null) {
       blockedReason = "Missing figure count.";
-    } else if (!item.style?.trim()) {
-      blockedReason = "Missing portrait style.";
     } else {
-      cents = ratesByStyle.get(item.style.trim().toLowerCase()) ?? null;
-      if (cents == null) blockedReason = `Style "${item.style}" needs a per-figure rate.`;
+      const styleKey = item.style?.trim().toLowerCase();
+      cents = (styleKey ? ratesByStyle.get(styleKey) : null) ?? DEFAULT_RATE_CENTS;
     }
 
     if (blockedReason) {
