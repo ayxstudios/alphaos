@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
 import { earnings, orders, users, type EarningBreakdown } from "@/lib/db/schema";
 import { loadShellData } from "@/lib/shell/context";
+import { formatUsd, USD_LABEL } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
 
@@ -22,8 +23,8 @@ function breakdownText(breakdown: EarningBreakdown[] | null): string {
   if (!breakdown?.length) return "";
   return breakdown
     .map((row) => {
-      const rate = row.rate ? `$${Number(row.rate).toFixed(2)}` : "needs rate";
-      const amount = row.amount ? `$${Number(row.amount).toFixed(2)}` : "blocked";
+      const rate = row.rate ? `${formatUsd(row.rate)}/fig` : "on hold";
+      const amount = row.amount ? formatUsd(row.amount) : "blocked";
       return `${row.figureCount} x ${row.style ?? "Unspecified"} @ ${rate} = ${amount}`;
     })
     .join("; ");
@@ -79,6 +80,7 @@ export async function GET(request: Request) {
     "figure_count",
     "rate",
     "amount",
+    "currency",
     "status",
     "blocked_reason",
     "breakdown",
@@ -98,6 +100,7 @@ export async function GET(request: Request) {
         row.figureCount,
         row.rate,
         row.amount,
+        USD_LABEL,
         row.status,
         row.blockedReason,
         breakdownText(row.breakdown ?? null),

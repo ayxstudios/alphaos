@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { activityLog, earnings } from "@/lib/db/schema";
 import { recalculateBlockedEarning } from "@/lib/orders/earnings";
+import { formatUsd, USD_LABEL } from "@/lib/money";
 
 export type ActionResult = { ok: true; message: string } | { ok: false; message: string };
 
@@ -35,7 +36,7 @@ export async function resolveBlockedEarningAction(earningId: string, businessId:
       action: "earning.resolved",
       metadata: { amount: result.amount },
     });
-    return { ok: true as const, message: `Resolved at $${Number(result.amount).toFixed(2)}` };
+    return { ok: true as const, message: `Resolved at ${formatUsd(result.amount)} ${USD_LABEL}` };
   });
 
   revalidatePath("/payouts");

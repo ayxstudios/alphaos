@@ -1,6 +1,7 @@
 import Link from "next/link";
 
-import { Bars, HBars, Meter, StackedBar, fmtInt, fmtMoney } from "@/components/charts";
+import { Bars, HBars, Meter, StackedBar, fmtInt } from "@/components/charts";
+import { formatUsd, USD_LABEL } from "@/lib/money";
 import { Mail, Truck } from "@/components/ui/icons";
 import type { RequestUser } from "@/lib/db";
 import { getStaffHome, type StaffHome } from "@/lib/home/staff";
@@ -169,8 +170,9 @@ function AdminTiles({ h }: { h: StaffHome }) {
       />
       <StatTile
         label="Designer pay"
-        value={fmtMoney(h.money?.designerPayMonth ?? 0)}
-        hint={`${fmtMoney(h.money?.designerPayOwed ?? 0)} still to pay`}
+        value={formatUsd(h.money?.designerPayMonth ?? 0)}
+        unit={USD_LABEL}
+        hint={`${formatUsd(h.money?.designerPayOwed ?? 0)} still to pay`}
         href="/payouts"
       />
     </div>

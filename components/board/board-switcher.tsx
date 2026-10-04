@@ -8,6 +8,7 @@ import { DesignerPicker } from "@/components/board/designer-picker";
 import { DesignerRail } from "@/components/board/designer-rail";
 import { BoardColumnsSkeleton } from "@/components/board/board-skeleton";
 import { EarningsHistory } from "@/components/board/earnings-history";
+import { EarningsPill } from "@/components/board/earnings-pill";
 import { Button, DataPanel, EmptyState, Page, PageHeader } from "@/components/ui";
 import { Columns } from "@/components/ui/icons";
 import type { RailDesigner } from "@/lib/designers/roster";
@@ -175,18 +176,8 @@ export function BoardSwitcher({
             <div className="lg:hidden">
               <DesignerPicker designers={pickerDesigners} current={selected} onSelect={select} />
             </div>
-            {board && (
-              <div className="flex items-center gap-4 rounded-card bg-surface px-4 py-2 text-sm shadow-card">
-                <span className="flex items-baseline gap-1.5">
-                  <span className="text-xs text-slate">Today</span>
-                  <span className="font-semibold tabular-nums text-ink">${board.dailyEarnings.toFixed(2)}</span>
-                </span>
-                <span className="h-4 w-px bg-line" aria-hidden="true" />
-                <span className="flex items-baseline gap-1.5">
-                  <span className="text-xs text-slate">This month</span>
-                  <span className="font-semibold tabular-nums text-ink">${board.periodEarnings.toFixed(2)}</span>
-                </span>
-              </div>
+            {board && selected && (
+              <EarningsPill designerId={selected} today={board.dailyEarnings} month={board.periodEarnings} />
             )}
           </div>
         }

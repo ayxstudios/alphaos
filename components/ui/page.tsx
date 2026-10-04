@@ -1,4 +1,7 @@
+import Link from "next/link";
+
 import { cn } from "@/lib/utils";
+import { focusRing } from "./styles";
 
 /**
  * Page primitives. The "calm" rule (owner 2026-09-10): a page opens on its
@@ -96,28 +99,48 @@ const TONE_DOT = {
 
 /**
  * A number that matters. Tone is a small dot, never a coloured border, so a
- * row of four reads as one calm group.
+ * row of four reads as one calm group. `unit` is a small muted suffix (e.g.
+ * "USD"); `href` makes the whole card a link with the same lift as the Home
+ * KPI tiles.
  */
 export function StatCard({
   label,
   value,
   detail,
+  unit,
+  href,
   tone = "neutral",
 }: {
   label: string;
   value: React.ReactNode;
   detail?: React.ReactNode;
+  unit?: React.ReactNode;
+  href?: string;
   tone?: keyof typeof TONE_DOT;
 }) {
-  return (
-    <div className="rounded-card bg-surface p-4 shadow-card">
+  const body = (
+    <>
       <div className="flex items-center gap-1.5 text-xs font-medium text-slate">
         {tone !== "neutral" && <span className={cn("size-1.5 rounded-full", TONE_DOT[tone])} />}
         {label}
       </div>
-      <div className="mt-1.5 font-display text-2xl font-semibold tabular-nums text-ink">{value}</div>
+      <div className="mt-1.5 flex items-baseline gap-1.5">
+        <span className="font-display text-2xl font-semibold tabular-nums text-ink">{value}</span>
+        {unit && <span className="text-xs font-medium text-slate">{unit}</span>}
+      </div>
       {detail && <div className="mt-1 text-xs text-slate">{detail}</div>}
-    </div>
+    </>
+  );
+  const cls = "rounded-card bg-surface p-4 shadow-card";
+  return href ? (
+    <Link
+      href={href}
+      className={cn(cls, "block transition-[transform,box-shadow] duration-150 hover:-translate-y-0.5 hover:shadow-md", focusRing)}
+    >
+      {body}
+    </Link>
+  ) : (
+    <div className={cls}>{body}</div>
   );
 }
 

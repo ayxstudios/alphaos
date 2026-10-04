@@ -1,6 +1,7 @@
 import Link from "next/link";
 
-import { Meter, StackedBar, fmtInt, fmtMoney } from "@/components/charts";
+import { Meter, StackedBar, fmtInt } from "@/components/charts";
+import { formatUsd, USD_LABEL } from "@/lib/money";
 import { focusRing } from "@/components/ui/styles";
 import { ArrowRight, Calendar, Columns } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
@@ -26,7 +27,7 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
   const sentence = [
     h.overdue ? `${h.overdue} order${h.overdue === 1 ? " is" : "s are"} late` : h.dueToday ? `${h.dueToday} due today` : "Nothing due today",
     `${active} on your board`,
-    `${fmtMoney(h.week.earningsThisWeek)} earned this week`,
+    `${formatUsd(h.week.earningsThisWeek)} earned this week`,
   ].join(", ") + ".";
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
@@ -48,7 +49,7 @@ export async function DesignerHome({ user }: { user: RequestUser }) {
           hint={h.figuresPrev7d > 0 ? undefined : "Delivered"}
           spark={{ points: h.figures.values, labels: h.figures.labels, color: "c2" }}
         />
-        <StatTile label="Earned this week" value={fmtMoney(h.week.earningsThisWeek)} hint={`${fmtMoney(h.week.earningsThisMonth)} this month`} tone="good" href="/me" />
+        <StatTile label="Earned this week" value={formatUsd(h.week.earningsThisWeek)} unit={USD_LABEL} hint={`${formatUsd(h.week.earningsThisMonth)} this month`} tone="good" href="/me" />
       </div>
 
       <div className="grid gap-4 sm:gap-5 lg:grid-cols-5">

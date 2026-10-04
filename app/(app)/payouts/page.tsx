@@ -15,6 +15,8 @@ import {
   VoidEarningForm,
 } from "@/components/payouts/payout-actions";
 import { formatAt } from "@/lib/time";
+import { formatUsd, formatUsdPerFigure, PER_FIGURE_RATE_USD, USD_LABEL } from "@/lib/money";
+import { invoiceHref } from "@/lib/invoice";
 
 export const dynamic = "force-dynamic";
 
@@ -42,8 +44,8 @@ function currentPeriod(): string {
 }
 
 function money(value: string | number | null): string {
-  if (value == null) return "Needs rate";
-  return `$${Number(value).toFixed(2)}`;
+  if (value == null) return "On hold";
+  return formatUsd(value);
 }
 
 function formatDate(date: Date | null): string {
@@ -63,8 +65,8 @@ function details(breakdown: EarningBreakdown[] | null): string {
       const style = row.style ? styleLabel(row.style) : "No style";
       const figures = `${row.figureCount} figure${row.figureCount === 1 ? "" : "s"}`;
       return row.rate
-        ? `${figures}, ${style}, $${Number(row.rate).toFixed(2)} each`
-        : `${figures}, ${style}, needs a rate`;
+        ? `${figures}, ${style}, ${formatUsdPerFigure(row.rate)}`
+        : `${figures}, ${style}, on hold`;
     })
     .join("; ");
 }
@@ -198,7 +200,7 @@ export default async function PayoutsPage({
         <DataPanel>
           <div className="flex items-center gap-2 border-b border-line/60 px-4 py-3">
             <AlertTriangle size={16} className="text-amber" />
-            <h2 className="text-sm font-semibold text-ink">Needs a rate before it can be paid</h2>
+            <h2 className="text-sm font-semibold text-ink">On hold before it can be paid</h2>
             <Badge variant="warning">{blocked.length}</Badge>
           </div>
           <div className="divide-y divide-line/60">
@@ -224,10 +226,10 @@ export default async function PayoutsPage({
           <EmptyState icon={Wallet} headline="No earnings this month" body="Pick another month to look back." />
         ) : (
           <>
-            <div className="hidden grid-cols-[minmax(0,1.4fr)_1fr_1fr_5rem_13rem] gap-4 border-b border-line/60 px-4 py-2.5 text-xs font-medium text-slate md:grid">
+            <div className="hidden grid-cols-[minmax(0,1.4fr)_1fr_1fr_5rem_20rem] gap-4 border-b border-line/60 px-4 py-2.5 text-xs font-medium text-slate md:grid">
               <span>Designer</span>
-              <span>To pay</span>
-              <span>Paid</span>
+              <span>To pay ({USD_LABEL})</span>
+              <span>Paid ({USD_LABEL})</span>
               <span>Blocked</span>
               <span className="text-right">Actions</span>
             </div>
@@ -235,19 +237,19 @@ export default async function PayoutsPage({
               {summaries.map((summary) => (
                 <div
                   key={summary.designerId}
-                  className="grid grid-cols-2 gap-x-4 gap-y-2 px-4 py-3.5 text-sm md:grid-cols-[minmax(0,1.4fr)_1fr_1fr_5rem_13rem] md:items-center"
+                  className="grid grid-cols-2 gap-x-4 gap-y-2 px-4 py-3.5 text-sm md:grid-cols-[minmax(0,1.4fr)_1fr_1fr_5rem_20rem] md:items-center"
                 >
                   <div className="col-span-2 min-w-0 md:col-span-1">
                     <p className="truncate font-medium text-ink">{summary.name}</p>
                     <p className="truncate text-xs text-slate">{summary.email}</p>
                   </div>
                   <p>
-                    <span className="block text-xs text-slate md:hidden">To pay</span>
+                    <span className="block text-xs text-slate md:hidden">To pay ({USD_LABEL})</span>
                     <span className="font-medium tabular-nums text-ink">{money(summary.pendingTotal)}</span>
                     <span className="text-slate"> · {summary.pendingCount} order{summary.pendingCount === 1 ? "" : "s"}</span>
                   </p>
                   <p>
-                    <span className="block text-xs text-slate md:hidden">Paid</span>
+                    <span className="block text-xs text-slate md:hidden">Paid ({USD_LABEL})</span>
                     <span className="tabular-nums text-ink">{money(summary.paidTotal)}</span>
                     <span className="text-slate"> · {summary.paidCount} order{summary.paidCount === 1 ? "" : "s"}</span>
                   </p>
@@ -255,7 +257,7 @@ export default async function PayoutsPage({
                     <span className="block text-xs font-normal text-slate md:hidden">Blocked</span>
                     {summary.blockedCount}
                   </p>
-                  <div className="col-span-2 flex justify-end gap-2 md:col-span-1">
+                  <div className="col-span-2 flex flex-wrap justify-end gap-2 md:col-span-1">
                     <Link
                       href={`/payouts?business=${businessId}&period=${period}&designer=${summary.designerId}`}
                       className={cn(
@@ -264,6 +266,12 @@ export default async function PayoutsPage({
                       )}
                     >
                       View orders
+                    </Link>
+                    <Link
+                      href={invoiceHref(summary.designerId, period)}
+                      className="inline-flex h-11 items-center justify-center rounded-input px-3 text-sm font-medium text-ink transition-colors hover:bg-pigment-soft sm:h-8"
+                    >
+                      View invoice
                     </Link>
                     {/* Nothing pending, nothing to pay: no Mark paid button. */}
                     {summary.pendingCount > 0 && (
@@ -281,7 +289,7 @@ export default async function PayoutsPage({
               ))}
             </div>
             <p className="border-t border-line/60 px-4 py-2.5 text-xs text-slate">
-              Rate changes only affect future earnings, or blocked ones you resolve by hand.
+              Amounts in {USD_LABEL}. Every figure pays {formatUsdPerFigure(PER_FIGURE_RATE_USD)} unless its style sets another rate. Rate changes only affect future earnings, or blocked ones you resolve by hand.
             </p>
           </>
         )}
@@ -289,10 +297,11 @@ export default async function PayoutsPage({
 
       {selectedDesigner && (
         <DataPanel>
-          <div className="border-b border-line/60 px-4 py-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line/60 px-4 py-3">
             <h2 className="text-sm font-semibold text-ink">
               Orders for {summaries.find((s) => s.designerId === selectedDesigner)?.name ?? "this designer"}
             </h2>
+            <span className="text-xs text-slate">Amounts in {USD_LABEL}</span>
           </div>
           <div className="divide-y divide-line/60">
             {detailRows.map((row) => (

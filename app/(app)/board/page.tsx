@@ -10,6 +10,7 @@ import { loadShellData } from "@/lib/shell/context";
 import { DesignerBoard } from "@/components/board/designer-board";
 import { BoardSwitcher } from "@/components/board/board-switcher";
 import { EarningsHistory } from "@/components/board/earnings-history";
+import { EarningsPill } from "@/components/board/earnings-pill";
 import { ShareBoard } from "@/components/board/share-board";
 import { DataPanel, EmptyState, Page, PageHeader } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
@@ -153,18 +154,8 @@ async function BoardContent({
                 My Week
               </Link>
             )}
-            {board && !isHelper && (
-              <div className="flex items-center gap-4 rounded-card bg-surface px-4 py-2 text-sm shadow-card">
-                <span className="flex items-baseline gap-1.5">
-                  <span className="text-xs text-slate">Today</span>
-                  <span className="font-semibold tabular-nums text-ink">${board.dailyEarnings.toFixed(2)}</span>
-                </span>
-                <span className="h-4 w-px bg-line" aria-hidden="true" />
-                <span className="flex items-baseline gap-1.5">
-                  <span className="text-xs text-slate">This month</span>
-                  <span className="font-semibold tabular-nums text-ink">${board.periodEarnings.toFixed(2)}</span>
-                </span>
-              </div>
+            {board && !isHelper && targetId && (
+              <EarningsPill designerId={targetId} today={board.dailyEarnings} month={board.periodEarnings} />
             )}
           </div>
         }

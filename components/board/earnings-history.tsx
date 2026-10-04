@@ -5,9 +5,10 @@ import { focusRing } from "@/components/ui/styles";
 import { cn } from "@/lib/utils";
 import { formatAt } from "@/lib/time";
 import type { DesignerBoard as BoardData } from "@/lib/orders/board-data";
+import { formatUsd, formatUsdPerFigure, USD_LABEL } from "@/lib/money";
 
 function money(value: string | null): string {
-  return value == null ? "Needs rate" : `$${Number(value).toFixed(2)}`;
+  return value == null ? "On hold" : formatUsd(value);
 }
 
 /** The day an earning was made ("23 Sept"): the time of day adds nothing here. */
@@ -15,7 +16,7 @@ function shortDay(value: string): string {
   return formatAt(value, { day: "numeric", month: "short" });
 }
 
-/** Earning states in a designer's words. "Blocked" means pay waits on a rate being set. */
+/** Earning states in a designer's words. "Blocked" means pay waits on a figure count. */
 const EARNING_STATUS: Record<string, string> = {
   pending: "Pending",
   paid: "Paid",
@@ -28,7 +29,7 @@ export function EarningsHistory({ history }: { history: BoardData["earningHistor
   return (
     <Disclosure
       summary="Earnings history"
-      hint={history.length ? `${history.length} order${history.length === 1 ? "" : "s"}` : "nothing yet"}
+      hint={history.length ? `${history.length} order${history.length === 1 ? "" : "s"} · amounts in ${USD_LABEL}` : "nothing yet"}
     >
       {history.length === 0 ? (
         <p className="py-1 text-sm text-slate">Pay for an order shows here once it is complete.</p>
@@ -49,7 +50,7 @@ export function EarningsHistory({ history }: { history: BoardData["earningHistor
                   {[
                     earning.style,
                     `${earning.figureCount} figure${earning.figureCount === 1 ? "" : "s"}`,
-                    earning.rate ? `$${Number(earning.rate).toFixed(2)} each` : "Mixed or missing rate",
+                    earning.rate ? formatUsdPerFigure(earning.rate) : earning.status === "blocked" ? null : "Mixed rates",
                   ]
                     .filter(Boolean)
                     .join(" · ")}

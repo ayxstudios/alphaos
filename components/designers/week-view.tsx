@@ -2,16 +2,14 @@ import Link from "next/link";
 
 import { DataPanel, EmptyState, StatCard } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
-import { Calendar } from "@/components/ui/icons";
+import { ArrowRight, Calendar } from "@/components/ui/icons";
 import { Countdown } from "@/components/board/countdown";
 import { designerStateLabel } from "@/components/board/card-meta";
 import { cn } from "@/lib/utils";
 import type { OrderStatus } from "@/lib/orders/transitions";
 import type { DesignerWeek } from "@/lib/designers/my-week";
-
-function money(n: number): string {
-  return `$${n.toFixed(2)}`;
-}
+import { formatUsd, USD_LABEL } from "@/lib/money";
+import { invoiceHref } from "@/lib/invoice";
 
 /** Contact channels by their proper names ("WhatsApp", not "Whatsapp"). */
 const CHANNEL: Record<string, string> = { whatsapp: "WhatsApp", email: "Email", sms: "SMS", telegram: "Telegram" };
@@ -34,15 +32,25 @@ export function DesignerWeekView({ week, self = false }: { week: DesignerWeek; s
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3">
-        <StatCard label="Earned this week" value={money(week.earningsThisWeek)} tone="success" />
-        <StatCard label="Earned today" value={money(week.earningsToday)} tone="info" />
+        <StatCard label="Earned this week" value={formatUsd(week.earningsThisWeek)} unit={USD_LABEL} tone="success" />
+        <StatCard label="Earned today" value={formatUsd(week.earningsToday)} unit={USD_LABEL} tone="info" href={invoiceHref(week.designerId)} />
         <StatCard label="Orders done this week" value={week.ordersDoneThisWeek} />
         <StatCard label="On-time this week" value={pct(week.onTimeRate)} tone={week.onTimeRate != null && week.onTimeRate < 0.8 ? "warning" : "neutral"} />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <StatCard label="Revisions this week" value={week.revisionsThisWeek} tone={week.revisionsThisWeek > 0 ? "warning" : "neutral"} />
-        <StatCard label="Earned this month" value={money(week.earningsThisMonth)} />
+        <StatCard
+          label="Earned this month"
+          value={formatUsd(week.earningsThisMonth)}
+          unit={USD_LABEL}
+          href={invoiceHref(week.designerId)}
+          detail={
+            <span className="inline-flex items-center gap-1 font-medium text-pigment">
+              View invoice <ArrowRight size={12} />
+            </span>
+          }
+        />
       </div>
 
       <DataPanel>
