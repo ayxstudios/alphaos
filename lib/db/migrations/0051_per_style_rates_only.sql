@@ -40,18 +40,36 @@ WHERE e."status"::text = 'pending'
   AND e."breakdown" IS NOT NULL
   AND jsonb_typeof(e."breakdown") = 'array';--> statement-breakpoint
 
--- Re-block pending rows that now contain an unpriced figure.
-UPDATE "earnings" e
-SET "status" = 'blocked', "rate" = NULL, "amount" = NULL,
-    "blocked_reason" = (
-      SELECT string_agg(DISTINCT el->>'blockedReason', ' ')
-      FROM jsonb_array_elements(e."breakdown") el
-      WHERE coalesce(el->>'blockedReason', '') <> ''
-    )
-WHERE e."status"::text = 'pending'
-  AND e."breakdown" IS NOT NULL
-  AND jsonb_typeof(e."breakdown") = 'array'
-  AND EXISTS (
-    SELECT 1 FROM jsonb_array_elements(e."breakdown") el
-    WHERE coalesce(el->>'blockedReason', '') <> ''
-  );
+-- Re-block pending rows that now contain an unpriced figure. Wrapped in a
+-- guard so the 'blocked' enum literal is only ever planned when such rows
+-- exist: on a fresh database the whole chain runs in one transaction and
+-- the new enum value from 0020 cannot be used, but there are no earnings
+-- rows there either, so the guarded UPDATE is never reached.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM "earnings" e
+    WHERE e."status"::text = 'pending'
+      AND e."breakdown" IS NOT NULL
+      AND jsonb_typeof(e."breakdown") = 'array'
+      AND EXISTS (
+        SELECT 1 FROM jsonb_array_elements(e."breakdown") el
+        WHERE coalesce(el->>'blockedReason', '') <> ''
+      )
+  ) THEN
+    UPDATE "earnings" e
+    SET "status" = 'blocked', "rate" = NULL, "amount" = NULL,
+        "blocked_reason" = (
+          SELECT string_agg(DISTINCT el->>'blockedReason', ' ')
+          FROM jsonb_array_elements(e."breakdown") el
+          WHERE coalesce(el->>'blockedReason', '') <> ''
+        )
+    WHERE e."status"::text = 'pending'
+      AND e."breakdown" IS NOT NULL
+      AND jsonb_typeof(e."breakdown") = 'array'
+      AND EXISTS (
+        SELECT 1 FROM jsonb_array_elements(e."breakdown") el
+        WHERE coalesce(el->>'blockedReason', '') <> ''
+      );
+  END IF;
+END $$;
