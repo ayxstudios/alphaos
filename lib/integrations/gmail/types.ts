@@ -26,6 +26,9 @@ export type GmailCredentials = {
   // The mailbox we send from (e.g. orders@business.com). Mirrored to the
   // non-secret businesses.gmail_address column for display.
   address?: string;
+  // Customer-visible From display name (e.g. "PixArt Creatives"). Optional;
+  // without it the From header is the bare address.
+  fromName?: string;
   status?: "connected" | "needs_reauth";
   connectedAt?: string; // ISO
 };

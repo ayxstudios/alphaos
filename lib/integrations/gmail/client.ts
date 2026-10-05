@@ -66,7 +66,7 @@ export class GmailClient {
     email: Omit<OutgoingEmail, "from">,
     opts?: { threadId?: string },
   ): Promise<GmailSendResponse> {
-    const from = this.creds.address ? formatFromHeader(this.senderName, this.creds.address) : "me";
+    const from = this.creds.address ? formatFromHeader(this.creds.fromName ?? this.senderName, this.creds.address) : "me";
     if (email.attachments?.length) {
       const mime = buildMimeMessage({ ...email, from });
       if (mime.byteLength > GMAIL_MAX_RFC822_BYTES) {
