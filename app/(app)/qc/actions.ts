@@ -31,7 +31,7 @@ import {
   type OrderStatus,
 } from "@/lib/orders/transitions";
 import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
-import { getQcFailContext, getQcSignoffNames } from "@/lib/qc/data";
+import { getQcFailContext } from "@/lib/qc/data";
 import { qcPassEmailInFlight } from "@/lib/qc/send-guard";
 import { holdForOwnerReview, ownerReviewRequired } from "@/lib/agent/ai-designer";
 import { generateProofToken } from "@/lib/proofs/tokens";
@@ -365,23 +365,20 @@ export async function confirmQcPassAndSend(input: {
  */
 /**
  * Everything the board's drag-to-fail dialog needs before it can open:
- * the order's checklist (from its shop) and the QC team's sign-off names.
+ * the order's checklist (from its shop).
  */
 export async function loadBoardFailContext(orderId: string): Promise<
-  | { ok: true; checklist: ChecklistSnapshot; teamNames: string[] }
+  | { ok: true; checklist: ChecklistSnapshot }
   | { ok: false; code: string; message: string }
 > {
   const auth = await requireVa();
   if ("error" in auth) return auth.error;
-  const [ctx, teamNames] = await Promise.all([
-    getQcFailContext(auth, orderId),
-    getQcSignoffNames(auth),
-  ]);
+  const ctx = await getQcFailContext(auth, orderId);
   if (!ctx) return { ok: false, code: "not_found", message: "Order not found." };
   if (ctx.status !== "awaiting_qc") {
     return { ok: false, code: "stale", message: "This order is no longer awaiting QC." };
   }
-  return { ok: true, checklist: ctx.checklist, teamNames };
+  return { ok: true, checklist: ctx.checklist };
 }
 
 export async function submitQcFail(input: {

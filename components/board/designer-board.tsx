@@ -95,7 +95,6 @@ export function DesignerBoard({
   const [qcFail, setQcFail] = useState<{
     card: BoardCard;
     checklist: ChecklistSnapshot;
-    teamNames: string[];
   } | null>(null);
   const [qcFailPending, setQcFailPending] = useState(false);
   // A card named in the URL (?open=, from a deadline on Home or My Week)
@@ -228,7 +227,7 @@ export function DesignerBoard({
         if (res.code === "stale") router.refresh();
         return;
       }
-      setQcFail({ card: found.card, checklist: res.checklist, teamNames: res.teamNames });
+      setQcFail({ card: found.card, checklist: res.checklist });
       return;
     }
     if (!canDrop(found.col, to)) return;
@@ -366,7 +365,7 @@ export function DesignerBoard({
           items={qcFail.checklist.items}
           initialFailedKeys={[]}
           submitting={qcFailPending}
-          teamNames={qcFail.teamNames}
+          withSignature
           onSubmit={failFromBoard}
         />
       )}

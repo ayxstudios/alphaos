@@ -12,25 +12,24 @@ import { focusRing } from "@/components/ui/styles";
  * to spot paste: predictive/swipe keyboards and IMEs commit whole words as one
  * change event, and the old "one character at a time" guard silently threw the
  * VAs' typing away, leaving Pass/Fail locked forever on their tablets.
- * Pass and Fail stay locked until what was typed matches a QC teammate's name
- * (the VAs share logins, owner 2026-10-05, so any team member's name signs).
+ * ANY typed name signs (owner 2026-10-06: "anyone's name can work, it's only
+ * for us to backlog really") — the name is a backlog trail, not a gate, so
+ * there is no team-list check; the typed name is recorded as the signer.
  * Owner 2026-09-09: "a kind of signature where it adds a level of
  * psychological accountability".
  */
-export function normalizeSignature(s: string): string {
-  return s.trim().replace(/\s+/g, " ").toLowerCase();
+export function signatureName(s: string): string {
+  return s.trim().replace(/\s+/g, " ");
 }
 
 export function SignatureInput({
   value,
   onChange,
-  teamNames,
   disabled = false,
   idleHint = "Type your name to unlock Pass and Fail.",
 }: {
   value: string;
   onChange: (next: string) => void;
-  teamNames: string[];
   disabled?: boolean;
   idleHint?: string;
 }) {
@@ -38,17 +37,10 @@ export function SignatureInput({
   // is the same on the server and in the browser (Math.random here was a
   // hydration mismatch on every QC page).
   const autofillGuard = useId().replace(/[^a-z0-9]/gi, "");
-  const matchedName =
-    value.length > 0
-      ? teamNames.find((n) => normalizeSignature(value) === normalizeSignature(n))
-      : undefined;
-  const matches = Boolean(matchedName);
-  // Mid-typing is not a mistake: only warn once what's typed can no longer
-  // become a team member's name (not a prefix of any of them).
-  const offTrack =
-    !matches &&
-    value.trim().length > 0 &&
-    !teamNames.some((n) => normalizeSignature(n).startsWith(normalizeSignature(value)));
+  const matchedName = signatureName(value);
+  // Two characters is the floor so a stray tap can't sign; beyond that any
+  // name unlocks (the signature is for the backlog, not a gate).
+  const matches = matchedName.length >= 2;
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -83,11 +75,7 @@ export function SignatureInput({
       />
       {matches ? (
         <p id="qc-signature-hint" className="text-xs text-sage">
-          Signed as {matchedName?.trim()}.
-        </p>
-      ) : offTrack ? (
-        <p id="qc-signature-hint" className="text-xs text-rose" role="alert">
-          That name isn&apos;t on the QC team list. Type a team member&apos;s name as it appears on their account.
+          Signed as {matchedName}.
         </p>
       ) : (
         <p id="qc-signature-hint" className="text-xs text-slate">

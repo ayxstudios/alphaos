@@ -21,19 +21,16 @@ import { VersionStrip } from "./version-strip";
 import { QcHeader } from "./qc-header";
 import { FailDialog } from "./fail-dialog";
 import { ShortcutLegend, LegendToggle } from "./shortcut-legend";
-import { SignatureInput, normalizeSignature } from "./signature-input";
+import { SignatureInput, signatureName } from "./signature-input";
 
 const LEGEND_KEY = "qc-legend-dismissed";
 
 export function QcScreen({
   ctx,
   queueIds,
-  teamNames,
 }: {
   ctx: QcContext;
   queueIds: string[];
-  /** Names the sign-off accepts: every active VA/admin (shared team logins). */
-  teamNames: string[];
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -56,8 +53,9 @@ export function QcScreen({
   useEffect(() => {
     if (saysRef.current) saysRef.current.open = window.matchMedia("(min-width: 1280px)").matches;
   }, [ctx.orderId]);
-  const signed =
-    signature.length > 0 && teamNames.some((n) => normalizeSignature(signature) === normalizeSignature(n));
+  // Any typed name signs (owner 2026-10-06: the signature is a backlog trail,
+  // not a gate); two characters keeps a stray tap from unlocking.
+  const signed = signatureName(signature).length >= 2;
 
   // Reset per-order state whenever we land on a new order.
   useEffect(() => {
@@ -362,7 +360,7 @@ export function QcScreen({
                 {nextStep}
               </p>
             )}
-            <SignatureInput value={signature} onChange={setSignature} teamNames={teamNames} disabled={!ctx.isReviewable || pending} />
+            <SignatureInput value={signature} onChange={setSignature} disabled={!ctx.isReviewable || pending} />
             <div className="flex gap-2">
               <Button
                 variant={failedCount > 0 ? "danger" : "secondary"}
