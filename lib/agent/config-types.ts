@@ -44,6 +44,12 @@ export type AgentConfigInput = {
    */
   agentFrom?: string | null;
   /**
+   * Start date for the staff to-do lists (lib/orders/todo-scope.ts). Older
+   * orders/mail drop off Home, Today, QC and print queues but stay in All
+   * Orders. Unset = falls back to agentFrom; both unset = no cutoff.
+   */
+  todoFrom?: string | null;
+  /**
    * Hard ceiling on automatic (no human tap) customer emails per business per
    * rolling hour. Past it, mail stays queued and an exception is opened, so a
    * bug can never turn into a bulk send. Human-approved sends are not counted
