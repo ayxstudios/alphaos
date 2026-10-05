@@ -105,9 +105,9 @@ export type DesignerRow = {
  * the list reads exactly as the auto-assigner walks it. Staff-only (RLS lets
  * admin/va read all designer profiles).
  */
-export async function getDesignerRoster(user: RequestUser): Promise<DesignerRow[]> {
+export async function getDesignerRoster(user: RequestUser, businessId?: string): Promise<DesignerRow[]> {
   return withUserContext(user, async (tx) => {
-    const roster = await tx
+    const base = tx
       .select({
         userId: designerProfiles.userId,
         name: users.name,
@@ -125,7 +125,15 @@ export async function getDesignerRoster(user: RequestUser): Promise<DesignerRow[
       .innerJoin(
         users,
         and(eq(users.id, designerProfiles.userId), eq(users.active, true), eq(users.role, "designer")),
-      )
+      );
+    // Only the selected business's designers (designer_businesses), like the rail.
+    const roster = await (businessId
+      ? base.innerJoin(
+          designerBusinesses,
+          and(eq(designerBusinesses.userId, designerProfiles.userId), eq(designerBusinesses.businessId, businessId)),
+        )
+      : base
+    )
       .where(eq(designerProfiles.isAgent, false))
       .orderBy(asc(designerProfiles.rank), asc(users.name));
 

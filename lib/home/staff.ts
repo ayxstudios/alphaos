@@ -79,7 +79,7 @@ const load = cache(async (userId: string, role: RequestUser["role"], businessId:
   const [queue, mail, roster, styleGaps, db] = await Promise.all([
     getTodayQueue(user, businessId, now),
     getEmailNeedsActionCounts(user, { businessId }).catch(() => ({ unmatched: 0, failed: 0 })),
-    getDesignerRoster(user).catch(() => []),
+    getDesignerRoster(user, businessId).catch(() => []),
     getStyleGaps(user, businessId).catch(() => []),
     withUserContext(user, async (tx) => {
       const live = and(eq(orders.businessId, businessId), liveOrderWhere());

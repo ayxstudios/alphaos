@@ -81,3 +81,5 @@ Production untouched.
 - Migration 0042 applied to DEMO db only (Neon project alphaos-demo, host ep-cool-tree-a7513mu9, owner conn); journal now 50 rows, user.helper_for + enum 'helper' present.
 - Demo deploy alphaos-gh8sdrbe0-almacorpvision aliased to alphaos-demo.vercel.app. Prettier fix committed 842200e.
 - QA (laptop + phone) in /tmp/alphaos-qa-req5e549: warmed board switch 50-280ms laptop, no skeleton; All Orders 240-420ms client nav; helper sees Board+Help only, pay routes redirect to /board, card open + drag there and back OK. Production untouched.
+
+2026-10-06: fix/designers-business-scope. Designers page and staff Home roster listed every business's designers (getDesignerRoster had no business filter; rail and order-page picker were already scoped). getDesignerRoster now takes the selected businessId and joins designer_businesses; no schema/RLS change. Perfetta workspace shows only Perfetta designers, PixArt only PixArt.

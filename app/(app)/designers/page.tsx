@@ -24,7 +24,7 @@ export default async function DesignersPage() {
   const { selected, options } = await loadShellData(user);
   const isAdmin = user.role === "admin";
   const [designers, styleCatalog, team] = await Promise.all([
-    getDesignerRoster(user),
+    getDesignerRoster(user, selected.id),
     getStyleCatalog(user, selected.id),
     isAdmin ? listTeam(user) : Promise.resolve([]),
   ]);
