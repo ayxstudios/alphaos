@@ -73,32 +73,11 @@ export async function reconcileManualOrder(
 
   // Item options from the import, preserve-not-overwrite: a manual order with
   // no items at all gets the import's rows; one whose first item has no options
-  // gets just the options/raw variations filled in. VA-set fields never change.
+  // gets just the options/raw variations filled in; a transaction with no row
+  // at all gets one added (2026-10-06: a two-pet receipt showed only Bubba,
+  // Tigger's line was never written). VA-set fields never change.
   if (args.importItems?.length) {
-    const [existingItem] = await tx
-      .select({ id: orderItems.id, options: orderItems.options })
-      .from(orderItems)
-      .where(eq(orderItems.orderId, manual.id))
-      .for("update")
-      .limit(1);
-    if (!existingItem) {
-      await tx.insert(orderItems).values(
-        args.importItems.map((item) => ({
-          businessId: args.businessId,
-          orderId: manual.id,
-          sku: item.sku,
-          title: item.title,
-          options: item.options.length ? item.options : null,
-          rawVariations: item.rawVariations,
-          productType: item.productType,
-        })),
-      );
-    } else if (!existingItem.options?.length && args.importItems[0].options.length) {
-      await tx
-        .update(orderItems)
-        .set({ options: args.importItems[0].options, rawVariations: args.importItems[0].rawVariations })
-        .where(eq(orderItems.id, existingItem.id));
-    }
+    await mergeImportItems(tx, { businessId: args.businessId, orderId: manual.id, importItems: args.importItems });
   }
 
   // Add the import's reference photos only if the VA attached none.
@@ -130,4 +109,76 @@ export async function reconcileManualOrder(
   });
 
   return { reconciled: true, orderId: manual.id };
+}
+
+/** Import-built item row shape shared by the Etsy/Shopify connectors. */
+export type ImportItem = {
+  sku: string | null;
+  title: string | null;
+  options: ProductOption[];
+  rawVariations: unknown;
+  productType: "physical" | "digital";
+};
+
+const optionsKey = (options: ProductOption[] | null | undefined) =>
+  JSON.stringify((options ?? []).map((o) => [o.name, o.value]));
+
+/**
+ * Merge import-built item rows into an order, preserve-not-overwrite:
+ * - no rows at all -> insert every import item;
+ * - a row whose options already match an import item claims it (nothing changes);
+ * - a row with no options consumes one unclaimed item and gets its options filled;
+ * - leftover import items get rows added ONLY while the order has fewer rows
+ *   than the receipt has transactions (2026-10-06: a two-pet Etsy receipt had
+ *   one row, so Tigger's line never showed), so a VA-reshaped item list is
+ *   never duplicated.
+ */
+export async function mergeImportItems(
+  tx: Tx,
+  args: { businessId: string; orderId: string; importItems: ImportItem[] },
+): Promise<{ inserted: number; filled: number }> {
+  const existing = await tx
+    .select({ id: orderItems.id, options: orderItems.options })
+    .from(orderItems)
+    .where(eq(orderItems.orderId, args.orderId))
+    .for("update");
+
+  const toRow = (item: ImportItem) => ({
+    businessId: args.businessId,
+    orderId: args.orderId,
+    sku: item.sku,
+    title: item.title,
+    options: item.options.length ? item.options : null,
+    rawVariations: item.rawVariations,
+    productType: item.productType,
+  });
+
+  if (!existing.length) {
+    await tx.insert(orderItems).values(args.importItems.map(toRow));
+    return { inserted: args.importItems.length, filled: 0 };
+  }
+
+  const unclaimed = [...args.importItems];
+  for (const row of existing) {
+    if (!row.options?.length) continue;
+    const i = unclaimed.findIndex((item) => optionsKey(item.options) === optionsKey(row.options));
+    if (i >= 0) unclaimed.splice(i, 1);
+  }
+  let filled = 0;
+  for (const row of existing) {
+    if (row.options?.length) continue;
+    const item = unclaimed.shift();
+    if (!item) break;
+    if (item.options.length) {
+      await tx
+        .update(orderItems)
+        .set({ options: item.options, rawVariations: item.rawVariations })
+        .where(eq(orderItems.id, row.id));
+      filled++;
+    }
+  }
+  const room = Math.max(0, args.importItems.length - existing.length);
+  const toInsert = unclaimed.slice(0, room);
+  if (toInsert.length) await tx.insert(orderItems).values(toInsert.map(toRow));
+  return { inserted: toInsert.length, filled };
 }

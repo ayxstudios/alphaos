@@ -1,4 +1,24 @@
-import { resolveProductType } from "../figures";
+import { resolveProductType, titleProductType, type ProductTypeResolution } from "../figures";
+
+/**
+ * One transaction's digital/physical call, strongest signal first: an option
+ * value the buyer chose, then Etsy's is_digital=true (a download listing),
+ * then the listing title ("Digital Prints" is digital, "Canvas" is physical).
+ * is_digital=false alone is weak (it only means "not a download listing"),
+ * so it is the last resort; null = the signals conflict or say nothing.
+ */
+function transactionFulfillment(
+  kind: ProductTypeResolution,
+  isDigital: boolean | null,
+  title: string | null,
+): "physical" | "digital" | null {
+  if (kind.conflict) return null;
+  if (kind.source === "option") return kind.productType;
+  if (isDigital === true) return "digital";
+  const fromTitle = titleProductType(title);
+  if (fromTitle) return fromTitle;
+  return isDigital == null ? null : kind.productType;
+}
 
 export type EtsyVariationPair = {
   label: string;
@@ -173,8 +193,7 @@ export function parseEtsyReceiptReview(rawImport: unknown): EtsyReceiptReview {
       variations.map((v) => ({ name: v.label, value: v.value })),
       isDigital === true,
     );
-    const fulfillment =
-      kind.conflict || (kind.source === "platform" && isDigital == null) ? null : kind.productType;
+    const fulfillment = transactionFulfillment(kind, isDigital, title);
     const personalization =
       variations.find((v) => v.label.toLowerCase() === "personalization")?.value ?? null;
     const figureCount = extractFigureCount(variations);
@@ -261,8 +280,7 @@ export function etsyImportItems(rawImport: unknown): EtsyImportItem[] {
       variations.map((v) => ({ name: v.label, value: v.value })),
       isDigital === true,
     );
-    const fulfillment =
-      kind.conflict || (kind.source === "platform" && isDigital == null) ? null : kind.productType;
+    const fulfillment = transactionFulfillment(kind, isDigital, asString(rawTx.title));
     return [{
       sku: asString(rawTx.sku),
       title: asString(rawTx.title),

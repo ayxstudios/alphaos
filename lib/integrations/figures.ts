@@ -357,3 +357,30 @@ export function resolveProductType(
   }
   return { productType: platformType, source: "platform", conflict: false, note: flag };
 }
+
+// Phrases in a LISTING TITLE where a print/file word is itself digital
+// ("Digital Prints", "Printable Wall Art", "Instant Download"). These are
+// stripped before the physical scan so "Digital Prints" never reads as a
+// shipped print (2026-10-06: PixArt's digital pet portraits imported as
+// physical because Etsy's is_digital only marks download listings and the
+// title's "Prints" hit PHYSICAL_VALUE).
+const DIGITAL_TITLE_PHRASE =
+  /\b(digital\s+(?:print|prints|file|files|download|downloads|art|portrait|portraits|copy|version|delivery)|printable(?:\s+[a-z]+)?|instant\s+download)\b/gi;
+
+/**
+ * What a listing/transaction title says about the format, or null when it
+ * says nothing (or names both and must not be guessed). Weaker than an
+ * option value the buyer chose, stronger than Etsy's is_digital=false
+ * (which only means "not a download listing", not "ships").
+ */
+export function titleProductType(title: string | null | undefined): "digital" | "physical" | null {
+  const t = String(title ?? "").trim();
+  if (!t) return null;
+  const digital = DIGITAL_VALUE.test(t) || DIGITAL_TITLE_PHRASE.test(t);
+  DIGITAL_TITLE_PHRASE.lastIndex = 0;
+  const physical = PHYSICAL_VALUE.test(t.replace(DIGITAL_TITLE_PHRASE, " "));
+  if (digital && physical) return null;
+  if (digital) return "digital";
+  if (physical) return "physical";
+  return null;
+}
