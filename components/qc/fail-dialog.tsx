@@ -8,11 +8,16 @@ import { Button, Textarea } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
 import { X } from "@/components/ui/icons";
 import type { ChecklistItem } from "@/lib/qc/checklist";
+import { SignatureInput, normalizeSignature } from "./signature-input";
 
 /**
  * Fail flow: pick which items failed (at least one) and write a mandatory reason.
  * Unticked items are pre-selected as failures — the VA confirms or adjusts. On
  * submit the reason + failed items go back to the designer.
+ *
+ * On the QC screen the sign-off lives outside this dialog, so `teamNames` is
+ * omitted. The board's drag-to-fail has no sign-off of its own, so it passes
+ * `teamNames` and the dialog carries the signature too.
  */
 export function FailDialog({
   open,
@@ -21,17 +26,20 @@ export function FailDialog({
   initialFailedKeys,
   submitting,
   onSubmit,
+  teamNames,
 }: {
   open: boolean;
   onClose: () => void;
   items: ChecklistItem[];
   initialFailedKeys: number[];
   submitting: boolean;
-  onSubmit: (failedKeys: number[], reason: string) => void;
+  onSubmit: (failedKeys: number[], reason: string, signature: string) => void;
+  teamNames?: string[];
 }) {
   const [mounted, setMounted] = useState(false);
   const [failed, setFailed] = useState<Set<number>>(new Set());
   const [reason, setReason] = useState("");
+  const [signature, setSignature] = useState("");
   const [touched, setTouched] = useState(false);
   const reasonRef = useRef<HTMLTextAreaElement>(null);
 
@@ -42,6 +50,7 @@ export function FailDialog({
     if (open) {
       setFailed(new Set(initialFailedKeys));
       setReason("");
+      setSignature("");
       setTouched(false);
       const raf = requestAnimationFrame(() => reasonRef.current?.focus());
       return () => cancelAnimationFrame(raf);
@@ -69,12 +78,16 @@ export function FailDialog({
   }
 
   const reasonTrimmed = reason.trim();
-  const canSubmit = failed.size > 0 && reasonTrimmed.length > 0 && !submitting;
+  const signed =
+    !teamNames ||
+    (signature.length > 0 &&
+      teamNames.some((n) => normalizeSignature(signature) === normalizeSignature(n)));
+  const canSubmit = failed.size > 0 && reasonTrimmed.length > 0 && signed && !submitting;
 
   function submit() {
     setTouched(true);
     if (!canSubmit) return;
-    onSubmit([...failed], reasonTrimmed);
+    onSubmit([...failed], reasonTrimmed, signature);
   }
 
   return createPortal(
@@ -155,6 +168,16 @@ export function FailDialog({
             error={touched && !reasonTrimmed ? "A reason is required." : undefined}
             rows={4}
           />
+
+          {teamNames && (
+            <SignatureInput
+              value={signature}
+              onChange={setSignature}
+              teamNames={teamNames}
+              disabled={submitting}
+              idleHint="Type your name to unlock Fail."
+            />
+          )}
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-line p-4">

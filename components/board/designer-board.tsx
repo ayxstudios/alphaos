@@ -19,6 +19,9 @@ import { BoardColumn } from "./board-column";
 import { CardModal } from "./card-modal";
 import { MobileDesignerBoard } from "./mobile-board";
 import { moveOrder } from "@/app/(app)/board/actions";
+import { loadBoardFailContext, submitQcFail } from "@/app/(app)/qc/actions";
+import { FailDialog } from "@/components/qc/fail-dialog";
+import type { ChecklistSnapshot } from "@/lib/qc/checklist";
 import type { BoardCard, DesignerBoard as BoardData } from "@/lib/orders/board-data";
 import { COMPLETE_COLUMN_WINDOW_DAYS } from "@/lib/orders/board-constants";
 import type { OrderStatus } from "@/lib/orders/transitions";
@@ -38,6 +41,9 @@ const COLUMN_TO_STATUS: Record<ColKey, OrderStatus> = {
 };
 const DRAG_SOURCES = new Set<ColKey>(["myQueue", "inDesign", "failedQc", "awaitingQc", "revisions"]);
 const DROP_TARGETS = new Set<ColKey>(["myQueue", "inDesign", "awaitingQc"]);
+// Staff can also drop an Awaiting QC card on Failed QC: that drag opens the
+// fail dialog (what's wrong + note + sign-off) instead of a bare move.
+const STAFF_DROP_TARGETS = new Set<ColKey>([...DROP_TARGETS, "failedQc"]);
 
 /**
  * Whether a drop is a real move. A Failed QC or Revisions card is already in
@@ -84,6 +90,14 @@ export function DesignerBoard({
   const compact = viewerRole !== "designer";
   const [cols, setCols] = useState<Cols>(initial);
   const [active, setActive] = useState<BoardCard | null>(null);
+  // A VA/admin dragged an Awaiting QC card to Failed QC: the fail dialog
+  // (what's wrong + note + sign-off) opens right on the board.
+  const [qcFail, setQcFail] = useState<{
+    card: BoardCard;
+    checklist: ChecklistSnapshot;
+    teamNames: string[];
+  } | null>(null);
+  const [qcFailPending, setQcFailPending] = useState(false);
   // A card named in the URL (?open=, from a deadline on Home or My Week)
   // opens straight away.
   const [openCard, setOpenCard] = useState<BoardCard | null>(() =>
@@ -194,20 +208,57 @@ export function DesignerBoard({
     const found = locate(String(e.active.id));
     const to = e.over ? (String(e.over.id) as ColKey) : null;
     if (!found) return;
-    // The one move people keep reaching for that the board refuses on
-    // purpose: sending an Awaiting QC card back to design. That is a QC
-    // fail and it must carry the checker's signed note, so it says so
-    // instead of silently snapping back.
+    // Sending an Awaiting QC card back to design is a QC fail, and a fail
+    // always carries what's wrong, a note and a sign-off. For a VA or admin
+    // the drag opens the fail dialog right here (owner 2026-10-06: they
+    // shouldn't be forced through the QC screen to fail a card); a designer
+    // is pointed at QC, since failing their own work is not their call.
     if (found.col === "awaitingQc" && (to === "inDesign" || to === "failedQc" || to === "revisions")) {
-      toast({
-        variant: "warning",
-        title: "Use the QC screen for that",
-        description: `Open ${found.card.orderNumber} in Awaiting QC and press Fail. Your note goes to the designer with it.`,
-      });
+      if (viewerRole === "designer") {
+        toast({
+          variant: "warning",
+          title: "Use the QC screen for that",
+          description: `Open ${found.card.orderNumber} in Awaiting QC and press Fail. Your note goes to the designer with it.`,
+        });
+        return;
+      }
+      const res = await loadBoardFailContext(found.card.orderId);
+      if (!res.ok) {
+        toast({ variant: "warning", title: "Can't fail this card", description: res.message });
+        if (res.code === "stale") router.refresh();
+        return;
+      }
+      setQcFail({ card: found.card, checklist: res.checklist, teamNames: res.teamNames });
       return;
     }
     if (!canDrop(found.col, to)) return;
     await moveTo(found.card, found.col, to);
+  }
+
+  /** The board fail dialog's submit: same server action as the QC screen's Fail. */
+  async function failFromBoard(failedKeys: number[], reason: string, signature: string) {
+    if (!qcFail) return;
+    setQcFailPending(true);
+    const res = await submitQcFail({
+      orderId: qcFail.card.orderId,
+      expectedFrom: "awaiting_qc",
+      checklist: qcFail.checklist,
+      failedKeys,
+      reason,
+      signature,
+    });
+    setQcFailPending(false);
+    if (!res.ok) {
+      toast({ variant: "warning", title: "Fail didn't go through", description: res.message });
+      if (res.code === "stale") {
+        setQcFail(null);
+        router.refresh();
+      }
+      return;
+    }
+    toast({ variant: "success", title: `${qcFail.card.orderNumber} sent back to the designer` });
+    setQcFail(null);
+    router.refresh();
   }
 
   /** Submit for QC from inside the card modal (same path as the board button). */
@@ -288,7 +339,7 @@ export function DesignerBoard({
             id={col.key}
             title={col.title}
             cards={cols[col.key]}
-            droppable={DROP_TARGETS.has(col.key)}
+            droppable={(viewerRole === "designer" ? DROP_TARGETS : STAFF_DROP_TARGETS).has(col.key)}
             draggable={DRAG_SOURCES.has(col.key)}
             onOpen={setOpenCard}
             compact={compact}
@@ -304,6 +355,19 @@ export function DesignerBoard({
           onClose={closeCard}
           onSubmitForQc={viewerRole === "designer" ? () => submitFromModal(openCard) : undefined}
           onStart={viewerRole === "designer" ? () => startFromModal(openCard) : undefined}
+        />
+      )}
+      {qcFail && (
+        <FailDialog
+          open
+          onClose={() => {
+            if (!qcFailPending) setQcFail(null);
+          }}
+          items={qcFail.checklist.items}
+          initialFailedKeys={[]}
+          submitting={qcFailPending}
+          teamNames={qcFail.teamNames}
+          onSubmit={failFromBoard}
         />
       )}
     </DndContext>

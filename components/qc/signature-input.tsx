@@ -1,15 +1,17 @@
 "use client";
 
-import { useId, useRef } from "react";
+import { useId } from "react";
 
 import { cn } from "@/lib/utils";
 import { focusRing } from "@/components/ui/styles";
 
 /**
  * The QC signature. The reviewer types their own name, by hand, every time:
- * nothing is prefilled from the account, paste and drop are refused, browser
- * autofill is turned off, and any change that is not a single keystroke
- * (autocomplete, a paste that slipped past the event, a drag) is thrown away.
+ * nothing is prefilled from the account, paste and drop are refused, and
+ * browser autofill is turned off. Keystroke-counting is deliberately NOT used
+ * to spot paste: predictive/swipe keyboards and IMEs commit whole words as one
+ * change event, and the old "one character at a time" guard silently threw the
+ * VAs' typing away, leaving Pass/Fail locked forever on their tablets.
  * Pass and Fail stay locked until what was typed matches a QC teammate's name
  * (the VAs share logins, owner 2026-10-05, so any team member's name signs).
  * Owner 2026-09-09: "a kind of signature where it adds a level of
@@ -24,13 +26,14 @@ export function SignatureInput({
   onChange,
   teamNames,
   disabled = false,
+  idleHint = "Type your name to unlock Pass and Fail.",
 }: {
   value: string;
   onChange: (next: string) => void;
   teamNames: string[];
   disabled?: boolean;
+  idleHint?: string;
 }) {
-  const last = useRef(value);
   // A per-mount name keeps password managers from offering a saved value; useId
   // is the same on the server and in the browser (Math.random here was a
   // hydration mismatch on every QC page).
@@ -40,6 +43,12 @@ export function SignatureInput({
       ? teamNames.find((n) => normalizeSignature(value) === normalizeSignature(n))
       : undefined;
   const matches = Boolean(matchedName);
+  // Mid-typing is not a mistake: only warn once what's typed can no longer
+  // become a team member's name (not a prefix of any of them).
+  const offTrack =
+    !matches &&
+    value.trim().length > 0 &&
+    !teamNames.some((n) => normalizeSignature(n).startsWith(normalizeSignature(value)));
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -65,19 +74,7 @@ export function SignatureInput({
         onDrop={(e) => e.preventDefault()}
         onDragOver={(e) => e.preventDefault()}
         onContextMenu={(e) => e.preventDefault()}
-        onChange={(e) => {
-          const next = e.currentTarget.value;
-          const prev = last.current;
-          // Accept one typed character, a deletion, or a clear. Anything that
-          // adds more than one character at once did not come from the keys.
-          const grew = next.length - prev.length;
-          if (grew > 1) {
-            e.currentTarget.value = prev;
-            return;
-          }
-          last.current = next;
-          onChange(next);
-        }}
+        onChange={(e) => onChange(e.currentTarget.value)}
         className={cn(
           "h-10 w-full rounded-input border bg-surface px-3 font-display text-base italic text-ink placeholder:not-italic placeholder:text-slate/70",
           matches ? "border-sage/40" : "border-line",
@@ -88,9 +85,13 @@ export function SignatureInput({
         <p id="qc-signature-hint" className="text-xs text-sage">
           Signed as {matchedName?.trim()}.
         </p>
+      ) : offTrack ? (
+        <p id="qc-signature-hint" className="text-xs text-rose" role="alert">
+          That name isn&apos;t on the QC team list. Type a team member&apos;s name as it appears on their account.
+        </p>
       ) : (
         <p id="qc-signature-hint" className="text-xs text-slate">
-          Type your name to unlock Pass and Fail.
+          {idleHint}
         </p>
       )}
     </div>

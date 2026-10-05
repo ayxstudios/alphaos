@@ -301,6 +301,37 @@ export async function getQcSignoffNames(user: RequestUser): Promise<string[]> {
   });
 }
 
+/**
+ * Just the order's status and its shop's checklist — what the board's
+ * drag-to-fail dialog needs, without the full QC context (no asset presigning).
+ */
+export async function getQcFailContext(
+  user: RequestUser,
+  orderId: string,
+): Promise<{ status: OrderStatus; checklist: ChecklistSnapshot } | null> {
+  return withUserContext(user, async (tx) => {
+    const [order] = await tx
+      .select({ status: orders.status, shopId: orders.shopId })
+      .from(orders)
+      .where(eq(orders.id, orderId));
+    if (!order) return null;
+    const [shop] = await tx
+      .select({
+        checklistVersion: shops.checklistVersion,
+        integrationConfig: shops.integrationConfig,
+      })
+      .from(shops)
+      .where(eq(shops.id, order.shopId));
+    return {
+      status: order.status,
+      checklist: resolveChecklist({
+        checklistVersion: shop?.checklistVersion ?? 1,
+        integrationConfig: shop?.integrationConfig ?? null,
+      }),
+    };
+  });
+}
+
 export type QcQueueRow = {
   id: string;
   businessId: string;
