@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 
 import type { Tx } from "@/lib/db";
-import { orders, assets, activityLog } from "@/lib/db/schema";
+import { orders, orderItems, assets, activityLog, type ProductOption } from "@/lib/db/schema";
 
 /**
  * Reconciliation of a VA-entered manual order with its later platform import.
@@ -30,6 +30,14 @@ export async function reconcileManualOrder(
     customerId: string | null; // import's customer, to fill a gap
     photoUrls: string[]; // import's reference photos, to fill a gap
     rawImport?: unknown; // raw platform payload, to fill a gap (e.g. Etsy receipt)
+    /** Import-built item rows (buyer-chosen options etc.), to fill a gap only. */
+    importItems?: {
+      sku: string | null;
+      title: string | null;
+      options: ProductOption[];
+      rawVariations: unknown;
+      productType: "physical" | "digital";
+    }[];
   },
 ): Promise<{ reconciled: boolean; orderId?: string }> {
   if (!args.orderNumber) return { reconciled: false };
@@ -62,6 +70,36 @@ export async function reconcileManualOrder(
       updatedAt: new Date(),
     })
     .where(eq(orders.id, manual.id));
+
+  // Item options from the import, preserve-not-overwrite: a manual order with
+  // no items at all gets the import's rows; one whose first item has no options
+  // gets just the options/raw variations filled in. VA-set fields never change.
+  if (args.importItems?.length) {
+    const [existingItem] = await tx
+      .select({ id: orderItems.id, options: orderItems.options })
+      .from(orderItems)
+      .where(eq(orderItems.orderId, manual.id))
+      .for("update")
+      .limit(1);
+    if (!existingItem) {
+      await tx.insert(orderItems).values(
+        args.importItems.map((item) => ({
+          businessId: args.businessId,
+          orderId: manual.id,
+          sku: item.sku,
+          title: item.title,
+          options: item.options.length ? item.options : null,
+          rawVariations: item.rawVariations,
+          productType: item.productType,
+        })),
+      );
+    } else if (!existingItem.options?.length && args.importItems[0].options.length) {
+      await tx
+        .update(orderItems)
+        .set({ options: args.importItems[0].options, rawVariations: args.importItems[0].rawVariations })
+        .where(eq(orderItems.id, existingItem.id));
+    }
+  }
 
   // Add the import's reference photos only if the VA attached none.
   if (args.photoUrls.length) {

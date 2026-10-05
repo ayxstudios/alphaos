@@ -416,7 +416,7 @@ type QcOutcome = {
   checklist: ChecklistSnapshot;
   itemResults: ItemResults;
   reason: string | null;
-  /** The name the reviewer typed at sign-off; must match their account name. */
+  /** The name the reviewer typed at sign-off; must match a QC teammate's name. */
   signature: string | null;
 };
 
@@ -426,18 +426,26 @@ function normalizeSignature(s: string): string {
 
 /**
  * The sign-off signature (owner 2026-09-09): a person passes or fails QC only
- * by typing their own name, so the check carries a name they wrote, not one
- * the account stamped. Verified here, server side, against the actor's name.
+ * by typing their name, so the check carries a name they wrote, not one the
+ * account stamped. The VAs work as a team and share logins (owner 2026-10-05),
+ * so the typed name may be ANY active VA's or admin's name, not just the
+ * signed-in account's; the typed name is what gets recorded as the signer.
  * System actors (none today) are exempt.
  */
 async function assertSignature(tx: Tx, actor: Actor, metadata?: Record<string, unknown>): Promise<string | null> {
   if (actor.role === "system") return null;
   const typed = typeof metadata?.signature === "string" ? metadata.signature.trim().replace(/\s+/g, " ") : "";
   if (!typed) throw new PreconditionError("Sign your name first.");
-  const [who] = await tx.select({ name: users.name, email: users.email }).from(users).where(eq(users.id, actor.id)).limit(1);
-  const expected = (who?.name || "").trim() || (who?.email || "").split("@")[0];
-  if (!expected || normalizeSignature(typed) !== normalizeSignature(expected)) {
-    throw new PreconditionError(`Sign with the name on your account: ${expected || "unknown"}.`);
+  const team = await tx
+    .select({ name: users.name, email: users.email })
+    .from(users)
+    .where(and(eq(users.active, true), inArray(users.role, ["va", "admin"])));
+  const matched = team.some((who) => {
+    const expected = (who.name || "").trim() || (who.email || "").split("@")[0];
+    return expected && normalizeSignature(typed) === normalizeSignature(expected);
+  });
+  if (!matched) {
+    throw new PreconditionError("Sign with a team member's name as it appears on their account.");
   }
   return typed;
 }

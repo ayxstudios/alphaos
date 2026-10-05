@@ -10,7 +10,8 @@ import { focusRing } from "@/components/ui/styles";
  * nothing is prefilled from the account, paste and drop are refused, browser
  * autofill is turned off, and any change that is not a single keystroke
  * (autocomplete, a paste that slipped past the event, a drag) is thrown away.
- * Pass and Fail stay locked until what was typed matches the signed-in name.
+ * Pass and Fail stay locked until what was typed matches a QC teammate's name
+ * (the VAs share logins, owner 2026-10-05, so any team member's name signs).
  * Owner 2026-09-09: "a kind of signature where it adds a level of
  * psychological accountability".
  */
@@ -21,12 +22,12 @@ export function normalizeSignature(s: string): string {
 export function SignatureInput({
   value,
   onChange,
-  expectedName,
+  teamNames,
   disabled = false,
 }: {
   value: string;
   onChange: (next: string) => void;
-  expectedName: string;
+  teamNames: string[];
   disabled?: boolean;
 }) {
   const last = useRef(value);
@@ -34,7 +35,11 @@ export function SignatureInput({
   // is the same on the server and in the browser (Math.random here was a
   // hydration mismatch on every QC page).
   const autofillGuard = useId().replace(/[^a-z0-9]/gi, "");
-  const matches = value.length > 0 && normalizeSignature(value) === normalizeSignature(expectedName);
+  const matchedName =
+    value.length > 0
+      ? teamNames.find((n) => normalizeSignature(value) === normalizeSignature(n))
+      : undefined;
+  const matches = Boolean(matchedName);
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -81,11 +86,11 @@ export function SignatureInput({
       />
       {matches ? (
         <p id="qc-signature-hint" className="text-xs text-sage">
-          Signed as {expectedName.trim()}.
+          Signed as {matchedName?.trim()}.
         </p>
       ) : (
         <p id="qc-signature-hint" className="text-xs text-slate">
-          Type your name, {expectedName.trim()}, to unlock Pass and Fail.
+          Type your name to unlock Pass and Fail.
         </p>
       )}
     </div>

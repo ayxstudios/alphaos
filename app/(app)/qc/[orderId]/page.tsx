@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
 import { loadShellData } from "@/lib/shell/context";
-import { getQcContext, getQcQueueIds } from "@/lib/qc/data";
+import { getQcContext, getQcQueueIds, getQcSignoffNames } from "@/lib/qc/data";
 import { QcScreen } from "@/components/qc/qc-screen";
 
 export const dynamic = "force-dynamic";
@@ -19,20 +19,15 @@ export default async function QcPage({
   if (user.role === "designer" || user.role === "helper") redirect("/board");
 
   const { orderId } = await params;
-  const { selected, displayName } = await loadShellData(user);
+  const { selected } = await loadShellData(user);
 
-  const [ctx, queueIds] = await Promise.all([
+  const [ctx, queueIds, teamNames] = await Promise.all([
     getQcContext(user, orderId),
     getQcQueueIds(user, selected.id),
+    getQcSignoffNames(user),
   ]);
 
   if (!ctx) notFound();
 
-  return (
-    <QcScreen
-      ctx={ctx}
-      queueIds={queueIds}
-      reviewerName={displayName ?? session.user.name ?? session.user.email ?? "Current user"}
-    />
-  );
+  return <QcScreen ctx={ctx} queueIds={queueIds} teamNames={teamNames} />;
 }

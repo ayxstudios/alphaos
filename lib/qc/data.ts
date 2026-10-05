@@ -283,6 +283,24 @@ export async function getQcQueueIds(
   });
 }
 
+/**
+ * Names the QC sign-off accepts: every active VA and admin. The VAs work as a
+ * team and share logins (owner 2026-10-05), so any teammate's name signs, and
+ * the typed name is what gets recorded. Mirrors assertSignature in
+ * lib/orders/transitions.ts.
+ */
+export async function getQcSignoffNames(user: RequestUser): Promise<string[]> {
+  return withUserContext(user, async (tx) => {
+    const rows = await tx
+      .select({ name: users.name, email: users.email })
+      .from(users)
+      .where(and(eq(users.active, true), inArray(users.role, ["va", "admin"])));
+    return rows
+      .map((r) => (r.name || "").trim() || (r.email || "").split("@")[0])
+      .filter(Boolean);
+  });
+}
+
 export type QcQueueRow = {
   id: string;
   businessId: string;

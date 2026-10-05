@@ -233,6 +233,46 @@ export function parseEtsyReceiptReview(rawImport: unknown): EtsyReceiptReview {
   };
 }
 
+/**
+ * One order_items row per receipt transaction, built at import so the buyer's
+ * chosen variations (Background, Size, Personalization…) land on the card
+ * instead of staying buried in raw_import. Deliberately carries NO figure
+ * count or style — those stay a VA/autopilot resolution, matching the
+ * header-only import philosophy. productType falls back to "physical" when
+ * Etsy's is_digital and the variations disagree (same default the VA form
+ * uses); the VA's completion overwrites it.
+ */
+export type EtsyImportItem = {
+  sku: string | null;
+  title: string | null;
+  options: { name: string; value: string }[];
+  rawVariations: EtsyVariationPair[];
+  productType: "physical" | "digital";
+};
+
+export function etsyImportItems(rawImport: unknown): EtsyImportItem[] {
+  if (!isRecord(rawImport)) return [];
+  const rawTransactions = Array.isArray(rawImport.transactions) ? rawImport.transactions : [];
+  return rawTransactions.flatMap((rawTx) => {
+    if (!isRecord(rawTx)) return [];
+    const variations = parseVariations(rawTx.variations);
+    const isDigital = typeof rawTx.is_digital === "boolean" ? rawTx.is_digital : null;
+    const kind = resolveProductType(
+      variations.map((v) => ({ name: v.label, value: v.value })),
+      isDigital === true,
+    );
+    const fulfillment =
+      kind.conflict || (kind.source === "platform" && isDigital == null) ? null : kind.productType;
+    return [{
+      sku: asString(rawTx.sku),
+      title: asString(rawTx.title),
+      options: variations.map((v) => ({ name: v.label, value: v.value })),
+      rawVariations: variations,
+      productType: fulfillment ?? "physical",
+    }];
+  });
+}
+
 export function reviewDefaults(
   review: EtsyReceiptReview,
   saved: SavedOrderDetails = {},

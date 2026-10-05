@@ -4,12 +4,13 @@ import { and, eq, sql } from "drizzle-orm";
 
 import { withSystemContext } from "@/lib/db";
 import { getShopCredentials, setShopCredentials } from "@/lib/db/credentials";
-import { shops, orders, customers, activityLog } from "@/lib/db/schema";
+import { shops, orders, orderItems, customers, activityLog } from "@/lib/db/schema";
 import { queueStageEmail } from "@/lib/email/dispatch";
 import { reconcileManualOrder } from "@/lib/orders/reconcile";
 import { isBeforeBackfillCutoff } from "@/lib/orders/archive";
 import { normalizeEtsyReceiptAddress, upsertOrderShippingAddress } from "@/lib/shipping/address";
 import { failJobRun, finishJobRun, JOB_NAMES, startJobRun } from "@/lib/jobs/ledger";
+import { etsyImportItems } from "./receipt-review";
 import { EtsyClient } from "./client";
 import { ReauthRequiredError } from "./errors";
 import type {
@@ -246,13 +247,16 @@ export async function syncShopReceipts(
 /**
  * Import ONE Etsy receipt as an order HEADER only — deliberately minimal.
  *
- * Etsy's job is "never miss an order". Figure count, style, product type, and
- * line-item detail live in personalization / notes that need a human to read, so
- * we do NOT resolve them here: no order_items, no figure/style resolution, no
- * needs_review (nothing was attempted), no customer email. The full receipt is
- * stored in raw_import so a VA can read it, and the order lands in
- * `awaiting_details` for a VA to complete via the manual form. (The Etsy resolver
- * code is kept, just unused, in case we automate later.)
+ * Etsy's job is "never miss an order". Figure count and style live in
+ * personalization / notes that need a human to read, so we do NOT resolve them
+ * here: no figure/style resolution, no needs_review (nothing was attempted), no
+ * customer email. The full receipt is stored in raw_import, and the order lands
+ * in `awaiting_details` for a VA to complete via the manual form.
+ *
+ * One thing IS carried over per transaction (Yousif 2026-10-05, same rule as
+ * Shopify line-item properties): a bare order_items row with the buyer's chosen
+ * variations as options (Background, Size, Personalization…), sku and title, so
+ * the card and complete form show them without digging in raw_import.
  *
  * Idempotent (ON CONFLICT on shop_id+platform_order_id); reconciles onto a
  * VA-entered manual order when one already exists (fills blanks, never overwrites).
@@ -300,6 +304,7 @@ async function importReceipt(args: {
       customerId,
       photoUrls: [], // Etsy has no photos at import
       rawImport: receipt,
+      importItems: etsyImportItems(receipt),
     });
     if (rec.reconciled) {
       await upsertOrderShippingAddress(tx, {
@@ -335,6 +340,21 @@ async function importReceipt(args: {
 
     if (!inserted.length) return "skipped";
     const orderId = inserted[0].id;
+
+    const importItems = etsyImportItems(receipt);
+    if (importItems.length) {
+      await tx.insert(orderItems).values(
+        importItems.map((item) => ({
+          businessId,
+          orderId,
+          sku: item.sku,
+          title: item.title,
+          options: item.options.length ? item.options : null,
+          rawVariations: item.rawVariations,
+          productType: item.productType,
+        })),
+      );
+    }
 
     await upsertOrderShippingAddress(tx, {
       businessId,

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 
 import {
+  etsyImportItems,
   inferProductCategory,
   missingReviewFields,
   parseEtsyReceiptReview,
@@ -141,5 +142,54 @@ assert.deepEqual(missingReviewFields({ customerEmail: "", style: "", photoCount:
   "Reference photos",
 ]);
 assert.deepEqual(missingReviewFields({ customerEmail: "a@example.com", style: "Pixar", photoCount: 1 }), []);
+
+// etsyImportItems: one item row per transaction, buyer variations as options,
+// digital/physical from the same rule the review uses, physical on conflict.
+const importItems = etsyImportItems({
+  receipt_id: 3,
+  transactions: [
+    {
+      transaction_id: 11,
+      title: "Custom Cartoon Pet Portrait",
+      sku: "PET-CARTOON",
+      quantity: 1,
+      is_digital: false,
+      variations: [
+        { formatted_name: "Background:", formatted_value: "Snow" },
+        { formatted_name: "Personalization", formatted_value: "Ammut" },
+      ],
+    },
+    {
+      transaction_id: 12,
+      title: "Digital add-on",
+      sku: null,
+      quantity: 1,
+      is_digital: true,
+      variations: [],
+    },
+  ],
+});
+assert.equal(importItems.length, 2);
+assert.equal(importItems[0].title, "Custom Cartoon Pet Portrait");
+assert.equal(importItems[0].sku, "PET-CARTOON");
+assert.deepEqual(importItems[0].options, [
+  { name: "Background", value: "Snow" },
+  { name: "Personalization", value: "Ammut" },
+]);
+assert.equal(importItems[0].productType, "physical");
+assert.equal(importItems[1].productType, "digital");
+assert.deepEqual(importItems[1].options, []);
+// A conflicted listing (download flagged digital but a Canvas option) defaults
+// physical, matching reviewDefaults' fallback; malformed input yields nothing.
+const conflicted = etsyImportItems({
+  transactions: [{
+    is_digital: true,
+    variations: [{ formatted_name: "Print on", formatted_value: "Canvas" }],
+  }],
+});
+assert.equal(conflicted.length, 1);
+assert.equal(conflicted[0].productType, "physical");
+assert.deepEqual(etsyImportItems(null), []);
+assert.deepEqual(etsyImportItems({ transactions: [null, 4] }), []);
 
 console.log("test-etsy-review passed");
