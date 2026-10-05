@@ -193,7 +193,20 @@ export function DesignerBoard({
     setActive(null);
     const found = locate(String(e.active.id));
     const to = e.over ? (String(e.over.id) as ColKey) : null;
-    if (!found || !canDrop(found.col, to)) return;
+    if (!found) return;
+    // The one move people keep reaching for that the board refuses on
+    // purpose: sending an Awaiting QC card back to design. That is a QC
+    // fail and it must carry the checker's signed note, so it says so
+    // instead of silently snapping back.
+    if (found.col === "awaitingQc" && (to === "inDesign" || to === "failedQc" || to === "revisions")) {
+      toast({
+        variant: "warning",
+        title: "Use the QC screen for that",
+        description: `Open ${found.card.orderNumber} in Awaiting QC and press Fail. Your note goes to the designer with it.`,
+      });
+      return;
+    }
+    if (!canDrop(found.col, to)) return;
     await moveTo(found.card, found.col, to);
   }
 

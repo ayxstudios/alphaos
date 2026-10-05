@@ -107,6 +107,16 @@ export function resolverInput(li: NormalizedLineItem): NormalizedVariation[] {
 }
 
 /**
+ * What staff see as the item's options (QC "Order says", board cards, the
+ * order page): the variant axes PLUS the buyer's line-item properties — pet
+ * name, background and the like live in properties, not selectedOptions. The
+ * synthetic "Variant" row stays out; it only repeats the axes.
+ */
+export function displayOptions(li: NormalizedLineItem): NormalizedVariation[] {
+  return [...li.selectedOptions, ...li.properties];
+}
+
+/**
  * Digital vs physical for one line: option values and the variant title first
  * ("Print On: Digital File Only"), then the requiresShipping flag. Conflicting
  * signals come back with conflict = true and send the order to review.
@@ -477,7 +487,7 @@ export async function importShopifyOrder(args: {
               sku: i.li.sku,
               title: i.li.title,
               variation: summarizeOptions(i.li),
-              options: i.li.selectedOptions,
+              options: displayOptions(i.li),
               figureCount: i.count,
               figureCountSource: i.source,
               rawVariations: i.input,

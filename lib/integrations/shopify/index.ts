@@ -20,6 +20,7 @@ export {
   fetchShopifyOrder,
   resolveWebhookOrder,
   resolverInput,
+  displayOptions,
   lineProductType,
   isAddOnLine,
   type SyncSummary,

@@ -84,9 +84,9 @@ export function SignatureInput({
           Signed as {expectedName.trim()}.
         </p>
       ) : (
-        <span id="qc-signature-hint" className="sr-only">
+        <p id="qc-signature-hint" className="text-xs text-slate">
           Type your name, {expectedName.trim()}, to unlock Pass and Fail.
-        </span>
+        </p>
       )}
     </div>
   );
