@@ -640,8 +640,11 @@ function jobLabel(jobName: string) {
 
 async function loadJobRunHealth(tx: Tx, scope: HealthScope, now: Date): Promise<JobRunHealth[]> {
   const aggregateSpecs: JobSpec[] = [
+    { jobName: JOB_NAMES.cronAgent, label: "Alpha agent (orders, inbox, print)", expectedIntervalMs: 15 * MINUTE },
     { jobName: JOB_NAMES.cronSync, label: "Shop sync", expectedIntervalMs: 15 * MINUTE },
     { jobName: JOB_NAMES.cronGmailPoll, label: "Email check", expectedIntervalMs: 15 * MINUTE },
+    { jobName: JOB_NAMES.cronReminders, label: "Customer reminders", expectedIntervalMs: 15 * MINUTE },
+    { jobName: JOB_NAMES.cronPrintReconcile, label: "Print status check", expectedIntervalMs: 15 * MINUTE },
     { jobName: JOB_NAMES.cronNotifications, label: "Reminder check", expectedIntervalMs: 15 * MINUTE },
     { jobName: JOB_NAMES.cronRetention, label: "Cleanup job", expectedIntervalMs: DAY },
     { jobName: JOB_NAMES.cronDailyHealth, label: "Daily summary", expectedIntervalMs: DAY },
