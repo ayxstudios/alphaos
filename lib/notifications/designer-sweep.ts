@@ -1,6 +1,11 @@
 /**
  * Designer lane of the SLA sweep: nudge a designer 24 h after assignment with
- * no submission uploaded, and reassign at 48 h to the next eligible designer.
+ * no submission uploaded, and flag the order to the VAs at 48 h.
+ *
+ * AUTO-REASSIGNMENT IS OFF (owner, 2026-10-07): a late order stays with its
+ * designer even with nothing submitted — people work outside the app and a
+ * silent move throws their work away. At 48 h the VAs get one attention line
+ * and a human decides; the sweep never moves an assignment itself.
  *
  * Behind `ALPHA_ACTIONS_ENABLED` (default off): candidates are always computed
  * and logged so ops can size the effect before flipping it on; only when the
@@ -20,13 +25,11 @@ import { and, eq, inArray, lte } from "drizzle-orm";
 
 import type { Tx } from "@/lib/db";
 import { liveOrderWhere } from "@/lib/orders/archive";
-import { findNextEligibleDesigner, createAssignment } from "@/lib/orders/assign";
 import {
   sendDesignerNudge,
-  sendDesignerReassigned,
   sendVaAttention,
 } from "@/lib/notifications/designer-events";
-import { assets, assignments, activityLog, designerProfiles, notificationFires, orderItems, orders } from "@/lib/db/schema";
+import { assets, assignments, designerProfiles, notificationFires, orders } from "@/lib/db/schema";
 import { ALERT_TYPES } from "./types";
 
 const HOUR = 60 * 60 * 1000;
@@ -207,87 +210,29 @@ export async function runDesignerLaneSweep(
       result.skippedDuplicate++;
       continue;
     }
-    const [item] = await tx
-      .select({ style: orderItems.style })
-      .from(orderItems)
-      .where(eq(orderItems.orderId, row.orderId))
-      .limit(1);
-
-    const nextDesignerId = await findNextEligibleDesigner(tx, {
-      businessId: row.businessId,
-      style: item?.style ?? null,
-      excludeDesignerId: row.designerId,
-    });
-
-    if (!nextDesignerId) {
-      const claimed = await claimFire(tx, {
-        businessId: row.businessId,
-        alertType: ALERT_TYPES.designerReassignBlocked,
-        subjectId: row.assignmentId,
-      });
-      if (claimed) {
-        await sendVaAttention(tx, {
-          businessId: row.businessId,
-          orderId: row.orderId,
-          text:
-            `Order ${row.orderNumber ?? row.fallbackNumber} has had no portrait uploaded for 48 hours ` +
-            `and no other eligible designer was found to move it to. Please reassign it by hand.`,
-          payload: { assignmentId: row.assignmentId, currentDesignerId: row.designerId },
-        });
-        result.reassignBlockedNoEligible++;
-      } else {
-        result.skippedDuplicate++;
-      }
-      continue;
-    }
-
+    // Alert only: the order STAYS with its designer (owner, 2026-10-07).
+    // One attention line to the VAs per assignment; a human reassigns if
+    // they choose to. Claimed under the old reassigned-48h key so anything
+    // already acted on never fires twice.
     const claimed = await claimFire(tx, {
       businessId: row.businessId,
       alertType: ALERT_TYPES.designerReassigned48h,
       subjectId: row.assignmentId,
-      metadata: { fromDesignerId: row.designerId, toDesignerId: nextDesignerId },
+      metadata: { fromDesignerId: row.designerId, alertOnly: true },
     });
     if (!claimed) {
       result.skippedDuplicate++;
       continue;
     }
-
-    const reason = "No portrait was uploaded within 48 hours of assignment.";
-    await tx.insert(activityLog).values({
-      businessId: row.businessId,
-      orderId: row.orderId,
-      actorId: null,
-      action: "order.reassigned",
-      metadata: {
-        via: "sla_sweep_48h",
-        reason,
-        fromDesignerId: row.designerId,
-        toDesignerId: nextDesignerId,
-      },
-    });
-
-    // createAssignment deactivates the old row, inserts the new one, and
-    // sends the new designer their full designer.brief.
-    await createAssignment(tx, {
-      orderId: row.orderId,
-      businessId: row.businessId,
-      designerId: nextDesignerId,
-      assignedBy: null,
-      reason: "Reassigned automatically after 48 hours with no submission.",
-    });
-    await sendDesignerReassigned(tx, {
-      orderId: row.orderId,
-      fromDesignerId: row.designerId,
-      toDesignerId: nextDesignerId,
-      reason,
-    });
     await sendVaAttention(tx, {
       businessId: row.businessId,
       orderId: row.orderId,
-      text: `Order ${row.orderNumber ?? row.fallbackNumber} was automatically reassigned after 48 hours with no submission.`,
-      payload: { assignmentId: row.assignmentId, fromDesignerId: row.designerId, toDesignerId: nextDesignerId },
+      text:
+        `Order ${row.orderNumber ?? row.fallbackNumber} has had no portrait uploaded for 48 hours. ` +
+        `It stays with its designer; reassign it by hand if needed.`,
+      payload: { assignmentId: row.assignmentId, currentDesignerId: row.designerId },
     });
-    result.reassigned++;
+    result.reassignBlockedNoEligible++;
   }
 
   return result;

@@ -11,7 +11,6 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { withSystemContext, type RequestUser } from "../lib/db";
 import {
   alphaEvents,
-  activityLog,
   assets,
   assignments,
   designerBusinesses,
@@ -147,46 +146,33 @@ async function main() {
       `designer.nudge events=${nudgeEventsAfterSecond.length}, second-run skippedDuplicate=${second.skippedDuplicate}`,
     );
 
-    // --- 2. Reassign at 48h with no submission ----------------------------
-    const reassignOrder = await createOrder({
+    // --- 2. At 48h with no submission: alert only, NEVER a move ----------
+    // (Owner, 2026-10-07: a late order stays with its designer; the VAs get
+    // one attention line and a human decides.)
+    const lateOrder = await createOrder({
       businessId: ctx.businessId,
       shopId: ctx.shopId,
       designerId: ctx.d1,
       assignedAt: new Date(now.getTime() - 49 * HOUR),
     });
 
-    const reassignRun = await withSystemContext((tx) => runDesignerLaneSweep(tx, now, { enabled: true }));
-    const newDesigner = await activeAssignment(reassignOrder);
-    const reassignedEvents = await alphaEventsFor(reassignOrder, "designer.reassigned");
-    const briefEvents = await alphaEventsFor(reassignOrder, "designer.brief");
-    const vaEvents = await alphaEventsFor(reassignOrder, "va.attention");
-    const [logRow] = await withSystemContext((tx) =>
-      tx
-        .select({ action: activityLog.action, metadata: activityLog.metadata })
-        .from(activityLog)
-        .where(and(eq(activityLog.orderId, reassignOrder), eq(activityLog.action, "order.reassigned")))
-        .orderBy(desc(activityLog.createdAt))
-        .limit(1),
-    );
+    const lateRun = await withSystemContext((tx) => runDesignerLaneSweep(tx, now, { enabled: true }));
+    const stillOwner = await activeAssignment(lateOrder);
+    const reassignedEvents = await alphaEventsFor(lateOrder, "designer.reassigned");
+    const vaEvents = await alphaEventsFor(lateOrder, "va.attention");
     report(
-      "reassigns to the next eligible designer at 48h",
-      reassignRun.reassigned >= 1 && newDesigner !== null && newDesigner !== ctx.d1,
-      `reassigned=${reassignRun.reassigned}, newDesigner=${newDesigner}`,
+      "a 48h-late order stays with its designer (no auto-reassign)",
+      lateRun.reassigned === 0 && stillOwner === ctx.d1 && reassignedEvents.length === 0,
+      `reassigned=${lateRun.reassigned}, stillOwner=${stillOwner === ctx.d1}, designer.reassigned events=${reassignedEvents.length}`,
     );
+    report("va.attention sent once at 48h", vaEvents.length >= 1, `va.attention events=${vaEvents.length}`);
+    const lateRunAgain = await withSystemContext((tx) => runDesignerLaneSweep(tx, now, { enabled: true }));
+    const vaEventsAgain = await alphaEventsFor(lateOrder, "va.attention");
     report(
-      "reassignment leaves an activity_log row with a reason",
-      !!logRow && typeof (logRow.metadata as Record<string, unknown> | null)?.reason === "string",
-      `activityLog row=${JSON.stringify(logRow)}`,
+      "48h alert is idempotent (fires exactly once)",
+      vaEventsAgain.length === vaEvents.length && lateRunAgain.reassigned === 0,
+      `va.attention events=${vaEventsAgain.length}`,
     );
-    report(
-      "designer.reassigned sent to both designers",
-      reassignedEvents.length >= 2 &&
-        reassignedEvents.some((e) => e.toUserId === ctx.d1) &&
-        reassignedEvents.some((e) => e.toUserId === newDesigner),
-      `designer.reassigned events=${reassignedEvents.length}`,
-    );
-    report("designer.brief sent to the new designer", briefEvents.length >= 1, `designer.brief events=${briefEvents.length}`);
-    report("va.attention sent on reassignment", vaEvents.length >= 1, `va.attention events=${vaEvents.length}`);
 
     // --- 3. Never reassign an order with a submission awaiting QC --------
     const protectedOrder = await createOrder({
@@ -208,9 +194,6 @@ async function main() {
     );
 
     // --- 4. QC fail sends designer.qc_feedback ----------------------------
-    // (createAssignment — used by both auto-assign and the sweep reassign
-    // above — already proved designer.brief fires on assignment via the
-    // reassignment case: briefEvents.length >= 1.)
     const qcOrder = await createOrder({
       businessId: ctx.businessId,
       shopId: ctx.shopId,
