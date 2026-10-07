@@ -13,7 +13,8 @@ import {
 } from "@dnd-kit/core";
 
 import { cn } from "@/lib/utils";
-import { useToast } from "@/components/ui";
+import { Button, useToast } from "@/components/ui";
+import { Brush, Camera, Check } from "@/components/ui/icons";
 import { OrderCard } from "./order-card";
 import { BoardColumn } from "./board-column";
 import { CardModal } from "./card-modal";
@@ -274,6 +275,65 @@ export function DesignerBoard({
     return moveTo(found.card, found.col, "inDesign");
   }
 
+  // Desktop designer board: the same one-next-step buttons the phone board
+  // has, right on the card (a designer shouldn't need to know the upload
+  // lives inside the card, or that dragging to Awaiting QC submits).
+  const [cardBusy, setCardBusy] = useState<string | null>(null);
+  async function runCardAction(card: BoardCard, action: () => Promise<unknown>) {
+    if (cardBusy) return;
+    setCardBusy(card.orderId);
+    try {
+      await action();
+    } finally {
+      setCardBusy(null);
+    }
+  }
+  function designerAction(col: ColKey) {
+    if (viewerRole !== "designer") return undefined;
+    return function actionFor(card: BoardCard) {
+      if (col === "myQueue") {
+        return (
+          <Button
+            type="button"
+            size="sm"
+            className="w-full"
+            loading={cardBusy === card.orderId}
+            onClick={() => void runCardAction(card, () => moveTo(card, "myQueue", "inDesign"))}
+          >
+            <Brush size={15} />
+            Start
+          </Button>
+        );
+      }
+      if (col !== "inDesign" && col !== "failedQc" && col !== "revisions") return null;
+      return card.readyForQc ? (
+        <Button
+          type="button"
+          size="sm"
+          className="w-full"
+          loading={cardBusy === card.orderId}
+          onClick={() => void runCardAction(card, () => moveTo(card, col, "awaitingQc"))}
+        >
+          <Check size={15} />
+          Submit for QC
+        </Button>
+      ) : (
+        // No version to review yet (or none since it came back): the next
+        // step is adding one, which lives in the card that opens.
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="w-full"
+          onClick={() => setOpenCard(card)}
+        >
+          <Camera size={15} />
+          {col === "inDesign" ? "Add the portrait" : "Add a new version"}
+        </Button>
+      );
+    };
+  }
+
   // What a screen reader hears while a card is dragged: the order number and
   // the column's name (dnd-kit's defaults read out the order's database id and
   // the column key, and describe keyboard dragging this board does not offer).
@@ -342,6 +402,7 @@ export function DesignerBoard({
             draggable={DRAG_SOURCES.has(col.key)}
             onOpen={setOpenCard}
             compact={compact}
+            action={designerAction(col.key)}
           />
         ))}
       </div>

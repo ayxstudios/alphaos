@@ -13,6 +13,7 @@ export function DraggableCard({
   onOpen,
   eager = false,
   compact = false,
+  action,
 }: {
   card: BoardCard;
   from: string;
@@ -22,6 +23,8 @@ export function DraggableCard({
   eager?: boolean;
   /** Staff boards: the slim Trello-style card (see OrderCard). */
   compact?: boolean;
+  /** The designer's one next step (Start / add portrait / Submit for QC), under the card. */
+  action?: React.ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: card.orderId,
@@ -73,6 +76,17 @@ export function DraggableCard({
       }
     >
       <OrderCard card={card} dragging={isDragging} eager={eager} compact={compact} />
+      {/* Pressing the button must never open the card or start a drag. */}
+      {action && (
+        <div
+          className="mt-2"
+          onPointerDownCapture={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          {action}
+        </div>
+      )}
     </div>
   );
 }

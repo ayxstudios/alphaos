@@ -18,6 +18,7 @@ export function BoardColumn({
   draggable,
   onOpen,
   compact = false,
+  action,
 }: {
   id: string;
   title: string;
@@ -31,6 +32,8 @@ export function BoardColumn({
    * column), slim cards, narrower width. Designers keep the original column.
    */
   compact?: boolean;
+  /** Designer boards: the card's one next-step button, rendered under it. */
+  action?: (card: BoardCard) => React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id, disabled: !droppable });
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -76,6 +79,7 @@ export function BoardColumn({
             onOpen={onOpen}
             eager={vi.index < 4}
             compact={compact}
+            action={action?.(cards[vi.index])}
           />
         </div>
       ))}
@@ -91,6 +95,7 @@ export function BoardColumn({
           onOpen={onOpen}
           eager={i < 4}
           compact={compact}
+          action={action?.(c)}
         />
       ))}
       {cards.length === 0 && (
