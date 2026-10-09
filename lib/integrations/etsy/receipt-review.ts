@@ -1,3 +1,4 @@
+import { decodeHtmlEntities } from "./html-entities";
 import { resolveProductType, titleProductType, type ProductTypeResolution } from "../figures";
 
 /**
@@ -99,7 +100,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function asString(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+  // Etsy sends titles/variations/notes HTML-encoded; decode for display.
+  return typeof value === "string" && value.trim() ? decodeHtmlEntities(value.trim()) : null;
 }
 
 function asNumber(value: unknown): number | null {
