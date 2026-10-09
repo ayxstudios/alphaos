@@ -38,7 +38,7 @@ import { queuePhotoRequest, queuePhotoShortfall } from "@/lib/email/dispatch";
 import { shopStyleChoices } from "@/lib/designers/styles";
 import type { EtsyIntegrationConfig, EtsyTransaction } from "@/lib/integrations/etsy/types";
 import { runAutoAssign } from "@/lib/orders/assign";
-import { classifyOrder, type ClassifyConfig } from "@/lib/integrations/classify";
+import { classifyOrder, isNonPortraitLine, type ClassifyConfig } from "@/lib/integrations/classify";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { agentOrderScope } from "./scope";
 import { completeOrderDetailsCore } from "@/lib/orders/complete-details";
@@ -421,8 +421,10 @@ async function intakeStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
         : [];
 
       // The product this order is for, checked against the business catalog.
+      // Add-on lines (Print & Ship, rush upgrades) are never the product: skip them,
+      // or an add-on listed first on a mixed order opens a bogus "New product" card.
       const firstTx = (order.rawImport as { transactions?: { title?: string | null; sku?: string | null }[] } | null)
-        ?.transactions?.[0];
+        ?.transactions?.find((t) => !isNonPortraitLine(t, shop?.config as ClassifyConfig | null));
       const listingTitle = firstTx?.title?.trim() || null;
       const catalog = listingTitle
         ? await findCatalogStyle(tx, order.businessId, { title: listingTitle, sku: firstTx?.sku })
