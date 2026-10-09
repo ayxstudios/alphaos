@@ -17,6 +17,7 @@
     "mock:pipeline": "tsx scripts/mock-pipeline.ts",
     "create-user": "tsx scripts/create-user.ts",
     "test:db": "tsx scripts/test-db.ts",
+    "test:style-quota": "tsx scripts/test-style-quota.ts",
     "test:rls": "tsx scripts/test-rls.ts",
     "test:transitions": "tsx scripts/test-transitions.ts",
     "test:shopify-figures": "tsx scripts/test-shopify-figures.ts",

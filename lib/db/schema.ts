@@ -388,6 +388,17 @@ export const shops = pgTable(
 // People
 // ---------------------------------------------------------------------------
 
+// One per-style daily quota group on a designer profile (style_daily_limits).
+export type StyleDailyLimit = {
+  businessId: string;
+  /** Style names (matched case-insensitively) the quota covers as ONE pool. */
+  styles: string[];
+  /** Max orders per day across the group's styles in that business. */
+  limit: number;
+  /** Lower = served first among quota-holding designers for these styles. */
+  priority: number;
+};
+
 export const designerProfiles = pgTable("designer_profiles", {
   userId: text("user_id")
     .primaryKey()
@@ -411,6 +422,13 @@ export const designerProfiles = pgTable("designer_profiles", {
   quietStart: text("quiet_start"),
   quietEnd: text("quiet_end"),
   maxActiveOrders: integer("max_active_orders").notNull().default(0),
+  // Per-style daily quota groups (agent-owned routing). Each group caps how
+  // many orders per day this designer takes for the named styles within one
+  // business, and `priority` (lower first) orders quota-holding designers
+  // ahead of unquota'd ones for those styles — e.g. CPS house/venue: Jerome
+  // {limit 1, priority 1}, Reza {limit 3, priority 2}, Slamet no group (takes
+  // the rest). Null/absent = no per-style quotas, ranker behaves as before.
+  styleDailyLimits: jsonb("style_daily_limits").$type<StyleDailyLimit[] | null>(),
   // The business's "AI Studio" agent designer. Never ranked, never counted in
   // human capacity, never sent a brief; work reaches it through the agent
   // jobs API (lib/agent/ai-designer.ts).

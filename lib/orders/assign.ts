@@ -82,6 +82,13 @@ export type Candidate = {
   onTimeRate30d: number; // 0..1
   /** 0 = no cap on work in flight (designer_profiles.max_active_orders). */
   maxActiveOrders: number;
+  /**
+   * The designer's per-style daily quota group matching this order's style +
+   * business (designer_profiles.style_daily_limits), with how many of today's
+   * assignments already fell in the group. Null = no quota for this style:
+   * eligible as before, but ordered after quota-holding designers.
+   */
+  styleQuota?: { limit: number; priority: number; usedToday: number } | null;
 };
 
 export type RankedCandidate = Candidate & {
@@ -121,12 +128,20 @@ export function rankCandidates(
       (c) =>
         c.ordersAssignedToday < c.dailyCapacity &&
         (c.maxActiveOrders === 0 || c.wipCount < c.maxActiveOrders) &&
+        // Under the per-style daily quota, when one covers this style.
+        (!c.styleQuota || c.styleQuota.usedToday < c.styleQuota.limit) &&
         // Strict: a styled order goes only to a matching designer.
         (style === null || c.styleMatch),
     );
 
+  // Designers holding a per-style quota for this style are served first, in
+  // quota priority order (CPS house/venue: Jerome's 1, then Reza's 3, then
+  // the unquota'd rest). With no quotas in play every key is equal and the
+  // ordering is unchanged.
+  const quotaPriority = (c: RankedCandidate) => c.styleQuota?.priority ?? Number.MAX_SAFE_INTEGER;
   eligible.sort(
     (a, b) =>
+      quotaPriority(a) - quotaPriority(b) ||
       a.rank - b.rank ||
       b.remainingCapacity - a.remainingCapacity ||
       a.wipCount - b.wipCount ||
@@ -153,6 +168,7 @@ export async function loadRankedCandidates(
       styles: designerProfiles.styles,
       rank: designerProfiles.rank,
       maxActiveOrders: designerProfiles.maxActiveOrders,
+      styleDailyLimits: designerProfiles.styleDailyLimits,
     })
     .from(designerBusinesses)
     .innerJoin(
@@ -200,6 +216,50 @@ export async function loadRankedCandidates(
     wip.set(r.designerId, Number(r.n));
   }
 
+  // Per-style daily quota usage: for each designer whose style_daily_limits
+  // holds a group covering this order's style in this business, count today's
+  // assignments (this business only) whose order style falls inside the group.
+  const styleKey = input.style?.trim().toLowerCase() || null;
+  const groupFor = (limits: (typeof roster)[number]["styleDailyLimits"]) =>
+    styleKey
+      ? (limits ?? []).find(
+          (g) =>
+            g.businessId === input.businessId &&
+            g.styles.some((s) => s.trim().toLowerCase() === styleKey),
+        ) ?? null
+      : null;
+  const quotaFor = new Map<string, { limit: number; priority: number; usedToday: number }>();
+  const holders = roster.filter((r) => groupFor(r.styleDailyLimits));
+  if (holders.length) {
+    const todayByStyle = await tx
+      .select({
+        designerId: assignments.designerId,
+        style: orderItems.style,
+        n: sql<number>`count(distinct ${assignments.id})::int`,
+      })
+      .from(assignments)
+      .innerJoin(orderItems, eq(orderItems.orderId, assignments.orderId))
+      .where(
+        and(
+          inArray(
+            assignments.designerId,
+            holders.map((h) => h.designerId),
+          ),
+          eq(assignments.businessId, input.businessId),
+          gte(assignments.assignedAt, sql`date_trunc('day', now())`),
+        ),
+      )
+      .groupBy(assignments.designerId, orderItems.style);
+    for (const h of holders) {
+      const group = groupFor(h.styleDailyLimits)!;
+      const names = new Set(group.styles.map((s) => s.trim().toLowerCase()));
+      const used = todayByStyle
+        .filter((r) => r.designerId === h.designerId && names.has(r.style?.trim().toLowerCase() ?? ""))
+        .reduce((sum, r) => sum + Number(r.n), 0);
+      quotaFor.set(h.designerId, { limit: group.limit, priority: group.priority, usedToday: used });
+    }
+  }
+
   // 30-day on-time rate (earnings.created_at ~= completion time)
   const onTime = new Map<string, number>();
   for (const r of await tx
@@ -224,6 +284,7 @@ export async function loadRankedCandidates(
     wipCount: wip.get(r.designerId) ?? 0,
     onTimeRate30d: onTime.get(r.designerId) ?? 1,
     maxActiveOrders: r.maxActiveOrders,
+    styleQuota: quotaFor.get(r.designerId) ?? null,
   }));
 
   return rankCandidates(candidates, { style: input.style });
