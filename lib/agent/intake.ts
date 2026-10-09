@@ -4,6 +4,7 @@
 // when every field that form needs comes from a rule, never a guess.
 
 import { resolveFigureCount, resolveStyle } from "@/lib/integrations/etsy/figures";
+import { applyStyleFigureDefault } from "@/lib/integrations/figures";
 import type { EtsyIntegrationConfig, EtsyTransaction } from "@/lib/integrations/etsy/types";
 import { parseEtsyReceiptReview, reviewDefaults } from "@/lib/integrations/etsy/receipt-review";
 import { parseFigureCount } from "@/lib/orders/manual-input";
@@ -86,10 +87,25 @@ export function parseIntake(ctx: IntakeContext): IntakeParse {
     missing.push(`quantity (${tx.quantity} of the same listing)`);
   }
 
-  // Figure count: only a rule (shop rule or the built-in named-option rule).
-  const fig = tx
-    ? resolveFigureCount(tx.variations ?? [], ctx.shopConfig)
-    : { count: null, source: "unresolved" as const, note: "no line item" };
+  // Style: the shop's rules, and only a style the shop actually offers.
+  const styleRes = tx
+    ? resolveStyle(tx.variations ?? [], ctx.shopConfig, tx.title)
+    : { style: null, source: "unresolved" as const, note: "no line item" };
+  const want = (styleRes.style ?? ctx.catalogStyle ?? "").trim().toLowerCase();
+  const style = want ? (ctx.styleOptions.find((s) => s.trim().toLowerCase() === want) ?? null) : null;
+  if (!ctx.styleOptions.length) missing.push("style (this shop has no styles configured)");
+  else if (!want) missing.push(`style (${styleRes.note})`);
+  else if (!style) missing.push(`style ("${styleRes.style ?? ctx.catalogStyle}" is not one of this shop's styles)`);
+
+  // Figure count: only a rule (shop rule, the built-in named-option rule, or
+  // the shop's fixed per-style default for subject-less styles).
+  const fig = applyStyleFigureDefault(
+    tx
+      ? resolveFigureCount(tx.variations ?? [], ctx.shopConfig)
+      : { count: null, source: "unresolved" as const, note: "no line item" },
+    style ?? styleRes.style ?? ctx.catalogStyle,
+    ctx.shopConfig,
+  );
   let figureCount: number | null = null;
   if (fig.source === "shop_rule" && fig.count != null) {
     const parsed = parseFigureCount(fig.count);
@@ -105,16 +121,6 @@ export function parseIntake(ctx: IntakeContext): IntakeParse {
   if (figureCount != null && stated.some((n) => n !== figureCount)) {
     missing.push(`figure count (options say ${figureCount} but the buyer's text mentions ${stated.join(", ")})`);
   }
-
-  // Style: the shop's rules, and only a style the shop actually offers.
-  const styleRes = tx
-    ? resolveStyle(tx.variations ?? [], ctx.shopConfig, tx.title)
-    : { style: null, source: "unresolved" as const, note: "no line item" };
-  const want = (styleRes.style ?? ctx.catalogStyle ?? "").trim().toLowerCase();
-  const style = want ? (ctx.styleOptions.find((s) => s.trim().toLowerCase() === want) ?? null) : null;
-  if (!ctx.styleOptions.length) missing.push("style (this shop has no styles configured)");
-  else if (!want) missing.push(`style (${styleRes.note})`);
-  else if (!style) missing.push(`style ("${styleRes.style ?? ctx.catalogStyle}" is not one of this shop's styles)`);
 
   // Product type: the listing's own digital flag and option values must agree.
   const productType = review.transactions[0]?.fulfillment ?? null;

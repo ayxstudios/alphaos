@@ -18,6 +18,7 @@
     "create-user": "tsx scripts/create-user.ts",
     "test:db": "tsx scripts/test-db.ts",
     "test:style-quota": "tsx scripts/test-style-quota.ts",
+    "test:style-figure-default": "tsx scripts/test-style-figure-default.ts",
     "test:rls": "tsx scripts/test-rls.ts",
     "test:transitions": "tsx scripts/test-transitions.ts",
     "test:shopify-figures": "tsx scripts/test-shopify-figures.ts",

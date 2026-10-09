@@ -5,6 +5,7 @@ import { getShopCredentials } from "@/lib/db/credentials";
 import { orders, orderItems, shops, activityLog, assets, assignments, printJobs } from "@/lib/db/schema";
 import { runAutoAssign } from "./assign";
 import {
+  applyStyleFigureDefault,
   resolveFigureCount,
   resolveProductType,
   type FigureConfig,
@@ -280,14 +281,14 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
         await tx.delete(orderItems).where(eq(orderItems.orderId, o.id));
         for (const li of realLines) {
           const input = resolverInput(li);
-          const fig = resolveFigureCount(input, cfg);
-          if (fig.count != null) summary.itemsResolved++;
-          else summary.stillUnresolved++;
           const locked =
             (li.sku && lockedBySku.has(li.sku)) || (!li.sku && li.title && lockedByTitle.has(li.title));
           const style = locked
             ? (li.sku ? lockedBySku.get(li.sku)! : lockedByTitle.get(li.title!)!)
             : matchStyle(li.title, li.sku, businessStyles);
+          const fig = applyStyleFigureDefault(resolveFigureCount(input, cfg), style, cfg);
+          if (fig.count != null) summary.itemsResolved++;
+          else summary.stillUnresolved++;
           await tx.insert(orderItems).values({
             businessId: o.businessId,
             orderId: o.id,
@@ -314,12 +315,12 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
             summary.addOnsRemoved++;
             continue;
           }
-          const fig = resolveFigureCount(raw, cfg);
-          if (fig.count != null) summary.itemsResolved++;
-          else summary.stillUnresolved++;
           classLines.push({ sku: it.sku, title: it.title });
           // A VA-locked style is left exactly as set; otherwise recompute.
           const style = it.styleLocked ? it.style : matchStyle(it.title, it.sku, businessStyles);
+          const fig = applyStyleFigureDefault(resolveFigureCount(raw, cfg), style, cfg);
+          if (fig.count != null) summary.itemsResolved++;
+          else summary.stillUnresolved++;
           // Offline there is no requiresShipping: the stored type stands in for
           // the platform flag, so only an option value can move it. Rows with no
           // raw variations (VA-entered, Etsy details) never change.

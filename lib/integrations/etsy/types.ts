@@ -40,6 +40,7 @@ export type EtsyIntegrationConfig = {
   nonPortraitTitles?: string[];
   photoRequestEnabled?: boolean; // default true for Etsy
   allowHeuristicFigureCount?: boolean; // default false
+  styleFigureDefaults?: Record<string, number>; // style -> fixed count (see lib/integrations/figures.ts)
   syncCursor?: string; // ISO of the newest created_timestamp imported
   syncingSince?: string; // ISO; concurrency guard
   lastSyncAt?: string; // ISO; last successful sync completion, not the cursor

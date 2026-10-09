@@ -6,7 +6,7 @@ import { withSystemContext } from "@/lib/db";
 import { getShopCredentials } from "@/lib/db/credentials";
 import { shops, orders, orderItems, customers, assets, activityLog } from "@/lib/db/schema";
 import { queuePhotoRequest, queueStageEmail, flushQueued } from "@/lib/email/dispatch";
-import { resolveProductType, type NormalizedVariation, type ProductTypeResolution } from "../figures";
+import { applyStyleFigureDefault, resolveProductType, type NormalizedVariation, type ProductTypeResolution } from "../figures";
 import { ShopifyClient } from "./client";
 import { isShopifyConnected } from "./auth";
 import { resolveFigureCount } from "./figures";
@@ -417,14 +417,29 @@ export async function importShopifyOrder(args: {
   // on an unresolved count (it never pays a designer). A digital-vs-physical
   // conflict always needs a VA: it decides print + ship and the proof email.
   const fulfilmentConflict = items.some((i) => i.kind.conflict);
-  const needsReview =
-    !email || fulfilmentConflict || (klass === "portrait" && items.some((i) => i.source === "unresolved"));
   const dueAt = computeDueAt(order.createdAt, shop.slaConfig);
   const uploadToken = randomUUID();
   const archived = isBeforeBackfillCutoff(order.createdAt, shop.config);
   const archivedAt = archived ? new Date() : null;
 
   return withSystemContext(async (tx) => {
+    // Style is resolved from the business's portrait styles (title rules), shared
+    // across all of the business's shops. A style-keyed figure default can then
+    // rescue items whose listing has no count option (cars, houses) before the
+    // unresolved count sends the order to review.
+    const businessStyles = await listBusinessStyles(tx, shop.businessId);
+    for (const i of items) {
+      const fig = applyStyleFigureDefault(
+        { count: i.count, source: i.source, note: i.note },
+        matchStyle(i.li.title, i.li.sku, businessStyles),
+        shop.config,
+      );
+      i.count = fig.count;
+      i.source = fig.source;
+      i.note = fig.note;
+    }
+    const needsReview =
+      !email || fulfilmentConflict || (klass === "portrait" && items.some((i) => i.source === "unresolved"));
     let customerId: string | null = null;
     if (email) {
       await tx
@@ -472,10 +487,6 @@ export async function importShopifyOrder(args: {
 
     if (!inserted.length) return "skipped";
     const orderId = inserted[0].id;
-
-    // Style is resolved from the business's portrait styles (title rules), shared
-    // across all of the business's shops.
-    const businessStyles = await listBusinessStyles(tx, shop.businessId);
 
     const itemRows = items.length
       ? await tx

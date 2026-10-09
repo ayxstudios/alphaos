@@ -54,6 +54,14 @@ export type FigureConfig = {
   /** Shop-wide fallback style (e.g. a shop that is entirely one style). */
   defaultStyle?: string;
   allowHeuristicFigureCount?: boolean; // default false
+  /**
+   * Per-style fallback count, keyed by the item's RESOLVED style
+   * (case-insensitive). Only for styles whose subject count never varies —
+   * "Car Portrait" -> 1, "Watercolor House" -> 1 — whose listings therefore
+   * carry no count option at all. Applied only when every rule above left the
+   * count unresolved; never set one for a style that pays per figure.
+   */
+  styleFigureDefaults?: Record<string, number>;
 };
 
 /**
@@ -199,6 +207,26 @@ export function resolveFigureCount(
     source: "unresolved",
     note: rules.length ? "no shop or default rule matched any variation" : "no matching default or shop rule",
   };
+}
+
+/**
+ * Fill an unresolved count from the shop's styleFigureDefaults once the item's
+ * style is known. A rule-resolved count always stands; this only rescues items
+ * whose listings have no count option because the style's subject count is
+ * fixed (cars, houses, venues).
+ */
+export function applyStyleFigureDefault(
+  fig: FigureResolution,
+  style: string | null | undefined,
+  config: FigureConfig | null | undefined,
+): FigureResolution {
+  if (fig.count != null || fig.source !== "unresolved") return fig;
+  const wanted = style?.trim().toLowerCase();
+  const defaults = config?.styleFigureDefaults;
+  if (!wanted || !defaults) return fig;
+  const hit = Object.entries(defaults).find(([name]) => name.trim().toLowerCase() === wanted);
+  if (!hit || !Number.isInteger(hit[1]) || hit[1] <= 0) return fig;
+  return { count: hit[1], source: "shop_rule", note: `style default "${hit[0]}" = ${hit[1]}` };
 }
 
 function applyRule(rule: FigureRule, rawValue: string): number | null {
