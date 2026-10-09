@@ -42,6 +42,8 @@ export type EtsyIntegrationConfig = {
   allowHeuristicFigureCount?: boolean; // default false
   styleFigureDefaults?: Record<string, number>; // style -> fixed count (see lib/integrations/figures.ts)
   syncCursor?: string; // ISO of the newest created_timestamp imported
+  /** A receipt walk paused on its time budget: resume from here (minCreated + Etsy offset) on the next run. */
+  resumeWalk?: { minCreated: number; offset: number };
   syncingSince?: string; // ISO; concurrency guard
   lastSyncAt?: string; // ISO; last successful sync completion, not the cursor
   backfillCutoffAt?: string; // ISO; receipts placed before this import archived

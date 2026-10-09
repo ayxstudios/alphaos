@@ -38,8 +38,8 @@ export async function syncAllShops(opts: { budgetMs?: number; trigger?: "cron" |
       .where(
         and(
           eq(shops.active, true),
-          // Onboarded = has an incremental cursor; skip never-synced shops.
-          sql`(${shops.integrationConfig} ->> 'syncCursor') is not null`,
+          // Onboarded = has an incremental cursor, or a first walk paused on its budget; skip never-synced shops.
+          sql`((${shops.integrationConfig} ->> 'syncCursor') is not null or (${shops.integrationConfig} -> 'resumeWalk') is not null)`,
         ),
       )
       .orderBy(sql`(${shops.integrationConfig} ->> 'lastSyncAt') asc nulls first`),
@@ -61,11 +61,13 @@ export async function syncAllShops(opts: { budgetMs?: number; trigger?: "cron" |
     try {
       const summary =
         s.platform === "etsy"
-          ? await syncShopReceipts(s.id, { trigger: opts.trigger ?? "cron" })
+          ? await syncShopReceipts(s.id, { trigger: opts.trigger ?? "cron", budgetMs: budgetMs - (Date.now() - start) })
           : await syncShopOrders(s.id, { trigger: opts.trigger ?? "cron" });
       outcome = summary.skippedRun
         ? `skipped:${summary.skippedRun}`
-        : `imported ${summary.imported}, reconciled ${summary.reconciled ?? 0}, failed ${summary.failed}`;
+        : `imported ${summary.imported}, reconciled ${summary.reconciled ?? 0}, failed ${summary.failed}${
+            "paused" in summary && summary.paused ? ` (paused, resumes at ${summary.paused.nextOffset})` : ""
+          }`;
     } catch (e) {
       outcome = `error:${e instanceof Error ? e.message : String(e)}`;
     }

@@ -24,6 +24,9 @@ const PAGE = 100;
 const STALE_LOCK_MS = 10 * 60 * 1000;
 const OVERLAP_SECS = 60 * 60; // re-scan 1h before the cursor for boundary safety
 const FIRST_WINDOW_SECS = 60 * 24 * 60 * 60; // first sync: last 60 days (match Shopify)
+// A walk stops after the page that crosses this budget and saves resumeWalk, so a big first sync
+// (a 1,600-receipt shop) lands over several runs instead of dying at Vercel's 60 s and restarting from zero.
+const DEFAULT_BUDGET_MS = 40 * 1000;
 const DEFAULT_TURNAROUND_DAYS = 3;
 
 function isNumericShopId(value: string | undefined): value is string {
@@ -37,6 +40,8 @@ export type SyncSummary = {
   failed: number;
   reconciled?: number; // manual orders matched + promoted in place
   skippedRun?: "already_running" | "needs_reauth";
+  /** The walk stopped on its time budget; call again to continue from nextOffset. */
+  paused?: { nextOffset: number };
   errors: { receiptId: number; error: string }[];
 };
 
@@ -68,7 +73,7 @@ export function getShopReceipts(
  */
 export async function syncShopReceipts(
   shopId: string,
-  opts: { mode?: "sync" | "backfill"; trigger?: "cron" | "manual" | "backfill" } = {},
+  opts: { mode?: "sync" | "backfill"; trigger?: "cron" | "manual" | "backfill"; budgetMs?: number } = {},
 ): Promise<SyncSummary> {
   const empty: SyncSummary = { imported: 0, archived: 0, skipped: 0, failed: 0, errors: [] };
 
@@ -140,13 +145,20 @@ export async function syncShopReceipts(
   }
   const summary: SyncSummary = { imported: 0, archived: 0, skipped: 0, failed: 0, errors: [] };
   let maxCreated = cfg.syncCursor ? Number(cfg.syncCursor) : 0;
+  const startedAt = Date.now();
+  const budgetMs = Math.max(5_000, opts.budgetMs ?? DEFAULT_BUDGET_MS);
+  let paused = false;
+  let nextOffset = 0;
 
   try {
-    const minCreated = cfg.syncCursor
-      ? Math.max(0, Number(cfg.syncCursor) - OVERLAP_SECS)
-      : Math.floor(Date.now() / 1000) - FIRST_WINDOW_SECS;
+    const resume = cfg.resumeWalk;
+    const minCreated = resume
+      ? resume.minCreated
+      : cfg.syncCursor
+        ? Math.max(0, Number(cfg.syncCursor) - OVERLAP_SECS)
+        : Math.floor(Date.now() / 1000) - FIRST_WINDOW_SECS;
 
-    for (let offset = 0; ; offset += PAGE) {
+    for (let offset = resume?.offset ?? 0; ; offset += PAGE) {
       const page = await getShopReceipts(client, etsyShopId, { minCreated, limit: PAGE, offset });
       for (const receipt of page.results) {
         try {
@@ -182,23 +194,28 @@ export async function syncShopReceipts(
         }
       }
       if (page.results.length < PAGE) break;
+      if (Date.now() - startedAt > budgetMs) {
+        paused = true;
+        nextOffset = offset + PAGE;
+        break;
+      }
     }
 
-    // Success: advance the cursor, stamp health, and release the lock.
+    // Success: advance the cursor (or save where a budget-paused walk resumes), stamp health, release the lock.
     const lastSyncAt = new Date().toISOString();
+    const nextConfig = paused
+      ? { ...cfg, resumeWalk: { minCreated, offset: nextOffset }, syncingSince: undefined, lastSyncAt }
+      : {
+          ...cfg,
+          resumeWalk: undefined,
+          syncCursor: String(maxCreated || Math.floor(Date.now() / 1000)),
+          syncingSince: undefined,
+          lastSyncAt,
+        };
     await withSystemContext((tx) =>
-      tx
-        .update(shops)
-        .set({
-          integrationConfig: {
-            ...cfg,
-            syncCursor: String(maxCreated || Math.floor(Date.now() / 1000)),
-            syncingSince: undefined,
-            lastSyncAt,
-          },
-        })
-        .where(eq(shops.id, shopId)),
+      tx.update(shops).set({ integrationConfig: nextConfig }).where(eq(shops.id, shopId)),
     );
+    if (paused) summary.paused = { nextOffset };
 
     // Etsy sends no automated customer email (photos come after a VA completes
     // details), so there is nothing to flush here.
@@ -216,7 +233,9 @@ export async function syncShopReceipts(
         reconciled: summary.reconciled ?? 0,
         failed: summary.failed,
         failedReceipts: summary.errors.slice(0, 50),
-        syncCursor: String(maxCreated || Math.floor(Date.now() / 1000)),
+        syncCursor: paused ? (cfg.syncCursor ?? null) : String(maxCreated || Math.floor(Date.now() / 1000)),
+        paused,
+        resumeWalk: paused ? { minCreated, offset: nextOffset } : null,
         lastSyncAt,
       },
     });
