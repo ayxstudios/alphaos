@@ -6,6 +6,9 @@
 #   VERCEL_TOKEN=<vision token> scripts/staging/deploy-preview.sh
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+# A worktree has no .vercel/project.json; without it `vercel deploy` silently
+# creates a brand-new project (SSO-protected, no env) and moves the alias there.
+[ -f .vercel/project.json ] || { echo "no .vercel/project.json here: copy it from the main checkout first" >&2; exit 1; }
 
 : "${STAGING_ENV_FILE:?set STAGING_ENV_FILE}"
 : "${VERCEL_TOKEN:?set VERCEL_TOKEN}"
