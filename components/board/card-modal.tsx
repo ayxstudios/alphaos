@@ -468,22 +468,55 @@ function CardUploadPanel({
       });
       if (!presigned.ok) throw new Error(presigned.message);
 
-      await Promise.all(
-        presigned.uploads.map(async (target, index) => {
-          await uploadToR2(target.uploadUrl, images[index], (loaded, total) => {
-            setProgress((rows) =>
-              rows.map((row, i) =>
-                i === index ? { ...row, loaded, total, status: loaded >= total ? "done" : "uploading" } : row,
-              ),
-            );
-          });
-        }),
-      );
+      // A flaky connection (designers send 5 to 10 MB portraits from home
+      // Wi-Fi) must not cost the whole upload: every file gets three tries,
+      // a stalled transfer is cut off instead of hanging, a refused or stale
+      // link is replaced before the next try, and files go two at a time so
+      // the later links are still fresh when their turn comes.
+      const presignedAt = Date.now();
+      const keys = presigned.uploads.map((target) => target.key);
+      await runLimited(images.length, PARALLEL_UPLOADS, async (index) => {
+        const file = images[index];
+        const onProgress = (loaded: number, total: number) =>
+          setProgress((rows) =>
+            rows.map((row, i) =>
+              i === index ? { ...row, loaded, total, status: loaded >= total ? "done" : "uploading" } : row,
+            ),
+          );
+        let target = presigned.uploads[index];
+        let issuedAt = presignedAt;
+        let lastError: UploadError | null = null;
+        for (let attempt = 1; attempt <= UPLOAD_ATTEMPTS; attempt++) {
+          try {
+            await uploadToR2(target.uploadUrl, file, onProgress);
+            keys[index] = target.key;
+            return;
+          } catch (error) {
+            lastError = error instanceof UploadError ? error : new UploadError(file.name, 0);
+            if (attempt === UPLOAD_ATTEMPTS) break;
+            setProgress((rows) => rows.map((row, i) => (i === index ? { ...row, loaded: 0, status: "queued" } : row)));
+            await sleep(1500 * attempt);
+            if (lastError.status === 403 || Date.now() - issuedAt > PRESIGN_REFRESH_MS) {
+              const again = await presignCardAssetUploads({
+                orderId: card.orderId,
+                type,
+                files: [{ filename: file.name, contentType: file.type, size: file.size }],
+              });
+              if (!again.ok) throw new Error(again.message);
+              target = again.uploads[0];
+              issuedAt = Date.now();
+            }
+          }
+        }
+        throw new Error(
+          `${(lastError ?? new UploadError(file.name, 0)).message} (tried ${UPLOAD_ATTEMPTS} times). Check your internet and try again.`,
+        );
+      });
 
       const saved = await saveCardAssetUploads({
         orderId: card.orderId,
         type,
-        r2Keys: presigned.uploads.map((target) => target.key),
+        r2Keys: keys,
       });
       if (!saved.ok) throw new Error(saved.message);
       onSaved(saved.detail);
@@ -693,6 +726,41 @@ function CardUploadPanel({
   );
 }
 
+const UPLOAD_ATTEMPTS = 3;
+const PARALLEL_UPLOADS = 2;
+const PRESIGN_REFRESH_MS = 4 * 60 * 1000; // presigned PUT links live 5 minutes (lib/storage/r2.ts)
+const UPLOAD_STALL_MS = 45 * 1000; // no bytes moved for this long = the connection is gone
+
+class UploadError extends Error {
+  status: number;
+  constructor(filename: string, status: number) {
+    super(`Upload failed for ${filename}: ${describeUploadFailure(status)}`);
+    this.name = "UploadError";
+    this.status = status;
+  }
+}
+
+/** Status 0 is what the browser reports for a dropped, blocked or stalled connection. */
+function describeUploadFailure(status: number): string {
+  if (status === 0) return "the connection dropped";
+  if (status === 403) return "the upload link was refused";
+  return `storage answered ${status}`;
+}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Run fn(0..count-1) with at most `limit` in flight at once. */
+async function runLimited(count: number, limit: number, fn: (index: number) => Promise<void>): Promise<void> {
+  let next = 0;
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, count)) }, async () => {
+    while (next < count) {
+      const index = next++;
+      await fn(index);
+    }
+  });
+  await Promise.all(workers);
+}
+
 function uploadToR2(
   url: string,
   file: File,
@@ -700,20 +768,43 @@ function uploadToR2(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    let stalled = false;
+    let stallTimer: ReturnType<typeof setTimeout> | undefined;
+    const armStall = () => {
+      if (stallTimer) clearTimeout(stallTimer);
+      stallTimer = setTimeout(() => {
+        stalled = true;
+        xhr.abort();
+      }, UPLOAD_STALL_MS);
+    };
+    const settle = () => {
+      if (stallTimer) clearTimeout(stallTimer);
+    };
     xhr.open("PUT", url);
     xhr.setRequestHeader("Content-Type", file.type);
     xhr.upload.onprogress = (event) => {
+      armStall();
       if (event.lengthComputable) onProgress(event.loaded, event.total);
     };
     xhr.onload = () => {
+      settle();
       if (xhr.status >= 200 && xhr.status < 300) {
         onProgress(file.size, file.size);
         resolve();
       } else {
-        reject(new Error(`Upload failed for ${file.name}`));
+        reject(new UploadError(file.name, xhr.status));
       }
     };
-    xhr.onerror = () => reject(new Error(`Upload failed for ${file.name}`));
+    xhr.onerror = () => {
+      settle();
+      reject(new UploadError(file.name, 0));
+    };
+    xhr.onabort = () => {
+      settle();
+      reject(new UploadError(file.name, 0));
+      void stalled;
+    };
+    armStall();
     xhr.send(file);
   });
 }
