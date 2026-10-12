@@ -9,6 +9,7 @@ import type { TodayBand, TodayItem, TodayKind } from "@/lib/orders/today-queue";
 import { focusRing } from "@/components/ui/styles";
 import { ArrowRight, CheckCircle, ChevronDown } from "@/components/ui/icons";
 import { ShopBadge } from "@/components/ui/shop-badge";
+import { UrgentPill } from "@/components/orders/urgent-pill";
 
 const BAND_META: Record<TodayBand, { title: string; hint: (n: number) => string }> = {
   now: { title: "Now", hint: (n) => `${n} waiting on you` },
@@ -197,6 +198,7 @@ export function TodayQueueList({ groups }: { groups: Record<TodayBand, TodayItem
                             <Link href={`/orders/${item.orderId}`} prefetch={false} className={cn("-my-3.5 shrink-0 py-3.5 text-xs font-semibold tabular-nums text-ink hover:text-pigment md:my-0 md:w-24 md:py-0", focusRing)}>
                               {item.orderNumber}
                             </Link>
+                            {item.urgent && <UrgentPill />}
                             <span className="hidden min-w-0 text-sm text-ink md:inline">{item.todo}</span>
                           </div>
                           <p className="mt-0.5 flex min-w-0 items-start gap-2 md:hidden">

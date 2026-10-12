@@ -87,6 +87,9 @@ export type BoardCard = {
    * offers Submit when it will work.
    */
   readyForQc: boolean;
+  /** Marked URGENT (lib/orders/urgent.ts): pill on the card, sorted first. */
+  urgent: boolean;
+  urgentReason: string | null;
 };
 
 type OrderRow = {
@@ -101,6 +104,8 @@ type OrderRow = {
   revisionCount: number;
   source: "etsy" | "shopify" | "manual" | "legacy" | "trello";
   notes: string | null;
+  urgentAt: Date | null;
+  urgentReason: string | null;
 };
 
 type Tx = Parameters<Parameters<typeof withUserContext>[1]>[0];
@@ -346,6 +351,8 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
     qcFail: qcFail.get(o.id) ?? null,
     customerRevision: customerRevision.get(o.id) ?? null,
     readyForQc: o.status === "in_design" && readyForQc.has(o.id),
+    urgent: !!o.urgentAt,
+    urgentReason: o.urgentAt ? o.urgentReason : null,
   }));
 }
 
@@ -412,6 +419,8 @@ const BOARD_ROW_SELECT = {
   revisionCount: orders.revisionCount,
   source: orders.source,
   notes: orders.notes,
+  urgentAt: orders.urgentAt,
+  urgentReason: orders.urgentReason,
 } as const;
 
 type EarningRow = {
@@ -538,9 +547,11 @@ export async function getDesignerBoard(
     const rows = [...activeRows, ...completeRows];
     const cards = await enrich(user, rows);
     const meta = new Map(rows.map((r) => [r.id, r]));
-    // "Soonest deadline first": every live column is sorted by the date the
-    // viewer is shown (undated cards last). Complete keeps most-recent-first.
+    // "Urgent, then soonest deadline first": every live column puts URGENT
+    // cards on top, then sorts by the date the viewer is shown (undated cards
+    // last). Complete keeps most-recent-first.
     const byDue = (a: BoardCard, b: BoardCard) =>
+      Number(b.urgent) - Number(a.urgent) ||
       (a.dueAt ? Date.parse(a.dueAt) : Infinity) - (b.dueAt ? Date.parse(b.dueAt) : Infinity);
     const pick = (pred: (r: OrderRow) => boolean) => cards.filter((c) => pred(meta.get(c.orderId)!)).sort(byDue);
 

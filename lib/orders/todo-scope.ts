@@ -16,8 +16,10 @@ function todoFromFor(businessId: SQL | typeof orders.businessId | typeof message
     )`;
 }
 
+// An URGENT order (lib/orders/urgent.ts) is on the to-do lists whatever its date:
+// a buyer chasing an old order is today's work.
 export function todoOrderScope(): SQL {
-  return sql`(coalesce(${orders.placedAt}, ${orders.createdAt}) >= ${todoFromFor(orders.businessId)})`;
+  return sql`(${orders.urgentAt} is not null or coalesce(${orders.placedAt}, ${orders.createdAt}) >= ${todoFromFor(orders.businessId)})`;
 }
 
 export function todoMessageScope(): SQL {

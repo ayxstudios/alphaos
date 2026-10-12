@@ -57,6 +57,8 @@ export type TodayItem = {
   age: string;
   ageMs: number;
   action: { label: string; href: string };
+  /** Marked URGENT (lib/orders/urgent.ts): always in Now, on top. */
+  urgent: boolean;
 };
 
 export type TodayQueue = {
@@ -116,6 +118,7 @@ export async function getTodayQueue(user: RequestUser, businessId: string, now =
         createdAt: orders.createdAt,
         updatedAt: orders.updatedAt,
         rawImport: orders.rawImport,
+        urgentAt: orders.urgentAt,
         shopName: shops.name,
         shopPlatform: shops.platform,
         customerFirst: customers.firstName,
@@ -131,7 +134,8 @@ export async function getTodayQueue(user: RequestUser, businessId: string, now =
       .leftJoin(assignments, and(eq(assignments.orderId, orders.id), eq(assignments.active, true)))
       .leftJoin(users, eq(users.id, assignments.designerId))
       .where(and(eq(orders.businessId, businessId), liveOrderWhere(), todoOrderScope(), inArray(orders.status, ACTIVE)))
-      .orderBy(desc(orders.createdAt))
+      // Urgent first so an old order a buyer is chasing never falls past the cap.
+      .orderBy(sql`${orders.urgentAt} is null`, desc(orders.createdAt))
       .limit(500);
 
     const ids = rows.map((r) => r.id);
@@ -202,6 +206,7 @@ export async function getTodayQueue(user: RequestUser, businessId: string, now =
         orderNumber: o.number ?? o.fallbackNumber,
         customerFirst: firstName({ first: o.customerFirst, email: o.customerEmail, rawImport: o.rawImport }),
         status: o.status,
+        urgent: !!o.urgentAt,
       };
       const name = base.customerFirst;
       const stageStart = (o.updatedAt ?? o.createdAt).getTime();
@@ -302,7 +307,10 @@ export async function getTodayQueue(user: RequestUser, businessId: string, now =
     // Bands: Now = a person is waiting on us or something is late; Today = work
     // that is ours and ready; Soon = nudges and housekeeping.
     for (const it of out) {
-      if (it.kind === "reply" || it.kind === "proof_silent" || it.kind === "designer_late" || (it.kind === "details" && it.ageMs > 12 * HOUR) || (it.kind === "tracking" && it.ageMs > 3 * DAY)) it.band = "now";
+      if (it.urgent) {
+        it.band = "now";
+        it.score += 1000;
+      } else if (it.kind === "reply" || it.kind === "proof_silent" || it.kind === "designer_late" || (it.kind === "details" && it.ageMs > 12 * HOUR) || (it.kind === "tracking" && it.ageMs > 3 * DAY)) it.band = "now";
       else if (it.kind === "details" || it.kind === "qc" || it.kind === "tracking" || it.kind === "unassigned" || it.kind === "print" || it.kind === "triage") it.band = "today";
       else it.band = "soon";
     }

@@ -633,6 +633,12 @@ export const orders = pgTable(
     // Trello card id when the order was imported from a Trello board
     // (scripts/import-trello.ts); unique per business so a re-run skips it.
     trelloCardId: text("trello_card_id"),
+    // Urgent (migration 0053): set by a VA/admin or the agent when a buyer is
+    // chasing a stalled or legacy order. Urgent cards sort first everywhere and
+    // the agent works them even when they predate its cutoff (lib/agent/scope).
+    urgentAt: timestamp("urgent_at", { withTimezone: true }),
+    urgentReason: text("urgent_reason"),
+    urgentBy: text("urgent_by"),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()

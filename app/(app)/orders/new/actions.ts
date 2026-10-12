@@ -9,6 +9,7 @@ import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { shops, orders, orderItems, customers, assets, activityLog, users } from "@/lib/db/schema";
 import { runAutoAssign } from "@/lib/orders/assign";
+import { setOrderUrgent } from "@/lib/orders/urgent";
 import { parseFigureCount } from "@/lib/orders/manual-input";
 import { normalizeOrderNumber } from "@/lib/orders/reconcile";
 import { shopStyleChoices } from "@/lib/designers/styles";
@@ -38,6 +39,8 @@ export type NewOrderInput = {
   size?: string;
   notes?: string;
   dueAt?: string; // ISO (date)
+  /** Mark it URGENT on create (lib/orders/urgent.ts). */
+  urgent?: boolean;
   r2Keys?: string[];
   photoUrls?: string[];
 };
@@ -253,6 +256,10 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
         toState: status,
         metadata: { figureCount, style: input.style ?? null, productType: input.productType, photoCount: assetRows.length, orderNumber },
       });
+      // Ticked "Urgent" on the form: same path as the order page button.
+      if (input.urgent) {
+        await setOrderUrgent(tx, { orderId, urgent: true, actorId: user.id, via: "new_order" });
+      }
 
       // Assign immediately when it's ready (falls to Unassigned if none eligible).
       // The result goes back to the form, so the VA sees who got it or that

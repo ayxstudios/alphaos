@@ -5,7 +5,7 @@ import { formatAt } from "@/lib/time";
 import { styleLabel } from "@/lib/utils";
 
 /** Label tones map onto the design tokens — no colour outside the palette. */
-export type LabelTone = "neutral" | "pigment" | "amber" | "rose" | "sage";
+export type LabelTone = "neutral" | "pigment" | "amber" | "rose" | "sage" | "urgent";
 
 export type CardLabel = { text: string; tone: LabelTone };
 
@@ -15,11 +15,15 @@ export const LABEL_CLASS: Record<LabelTone, string> = {
   amber: "bg-amber/10 text-amber",
   rose: "bg-rose/10 text-rose",
   sage: "bg-sage/10 text-sage",
+  // Solid, so URGENT never reads as just another QC-failed pill.
+  urgent: "bg-rose text-surface",
 };
 
 /** The coloured pills shown on the card and in the modal header — one system. */
 export function cardLabels(card: BoardCard): CardLabel[] {
   const labels: CardLabel[] = [];
+  // First and loudest: a buyer is chasing this one.
+  if (card.urgent) labels.push({ text: "Urgent", tone: "urgent" });
   if (card.source === "manual") labels.push({ text: "Manual", tone: "amber" });
   else if (card.source === "etsy") labels.push({ text: "Etsy", tone: "neutral" });
   else if (card.source === "shopify") labels.push({ text: "Shopify", tone: "neutral" });

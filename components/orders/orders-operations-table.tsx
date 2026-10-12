@@ -13,6 +13,7 @@ import { Badge, Button, InfoBubble, useToast, type OrderStatus } from "@/compone
 import { ArrowRight, Check, Columns, X } from "@/components/ui/icons";
 import { formatStageRemaining, type StageTimer } from "@/lib/orders/stage-timers";
 import { cn, plural } from "@/lib/utils";
+import { UrgentPill } from "@/components/orders/urgent-pill";
 import { formatAt } from "@/lib/time";
 
 export type OrdersDashboardRow = {
@@ -42,6 +43,9 @@ export type OrdersDashboardRow = {
   hasPrintJob: boolean;
   trackingNumber: string | null;
   action: { href: string; label: string };
+  /** Marked URGENT (lib/orders/urgent.ts). */
+  urgent: boolean;
+  urgentReason: string | null;
 };
 
 type DesignerOption = { id: string; name: string };
@@ -138,9 +142,12 @@ const ORDER_COLUMNS: ColumnDef[] = [
     priority: "core",
     render: (row) => (
       <div className="min-w-0">
-        <Link href={`/orders/${row.id}`} prefetch={false} className="truncate text-sm font-semibold text-ink hover:text-pigment">
-          {row.orderNumber}
-        </Link>
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <Link href={`/orders/${row.id}`} prefetch={false} className="truncate text-sm font-semibold text-ink hover:text-pigment">
+            {row.orderNumber}
+          </Link>
+          {row.urgent && <UrgentPill reason={row.urgentReason} />}
+        </div>
         <p className="break-words text-xs text-slate">{row.itemTitle}</p>
         {row.itemSummary && <p className="break-words text-xs text-slate">{row.itemSummary}</p>}
       </div>
@@ -804,7 +811,7 @@ export function OrdersOperationsTable({
                   </span>
                 </label>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
                     {/* The link's ::after covers the whole card, so a tap anywhere opens the order. */}
                     <Link
                       href={`/orders/${row.id}`}
@@ -813,7 +820,8 @@ export function OrdersOperationsTable({
                     >
                       {row.orderNumber}
                     </Link>
-                    <Badge variant={statusTone(row)} dot className="shrink-0 whitespace-nowrap">{statusLabel(row)}</Badge>
+                    {row.urgent && <UrgentPill reason={row.urgentReason} className="relative" />}
+                    <Badge variant={statusTone(row)} dot className="ml-auto shrink-0 whitespace-nowrap">{statusLabel(row)}</Badge>
                   </div>
                   <div className="mt-0.5 flex items-center justify-between gap-3 text-sm">
                     <span className="min-w-0 truncate text-ink" data-tour="order:customer">{row.customer}</span>

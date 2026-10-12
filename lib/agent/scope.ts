@@ -7,13 +7,15 @@ import { sql, type SQL } from "drizzle-orm";
 
 import { messages, orders } from "@/lib/db/schema";
 
+// An order marked URGENT (lib/orders/urgent.ts: a buyer is chasing it, legacy
+// or not) is always in scope, so the agent works it whatever its origin.
 export function agentOrderScope(): SQL {
-  return sql`(${orders.source} not in ('legacy', 'trello')
+  return sql`(${orders.urgentAt} is not null or (${orders.source} not in ('legacy', 'trello')
     and ${orders.trelloCardId} is null
     and coalesce(${orders.placedAt}, ${orders.createdAt}) >= coalesce(
       (select (b.agent_config->>'agentFrom')::timestamptz from businesses b where b.id = ${orders.businessId}),
       '-infinity'::timestamptz
-    ))`;
+    )))`;
 }
 
 /**

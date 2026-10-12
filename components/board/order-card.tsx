@@ -42,7 +42,8 @@ export function OrderCard({
 
   if (compact) {
     // Only what a VA acts on makes a pill here; source and style stay in the open card.
-    const urgent: { text: string; tone: "rose" | "pigment" | "amber" }[] = [];
+    const urgent: { text: string; tone: "urgent" | "rose" | "pigment" | "amber" }[] = [];
+    if (card.urgent) urgent.push({ text: "Urgent", tone: "urgent" });
     if (card.qcFail) urgent.push({ text: "QC failed", tone: "rose" });
     if (card.customerRevision) urgent.push({ text: "Revision", tone: "pigment" });
     if (!card.figuresResolved) urgent.push({ text: "Figures ?", tone: "amber" });

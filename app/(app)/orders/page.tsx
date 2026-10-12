@@ -363,8 +363,10 @@ function sortOrder(sort: SortKey, dir: SortDir, view: ViewKey) {
   if (sort === "status") return [direction(orders.status), desc(orders.createdAt)];
   if (sort === "owner") return [blanksLast(users.name), desc(orders.createdAt)];
   if (sort === "ordered") return [blanksLast(orders.placedAt), desc(orders.createdAt)];
-  if (view === "overdue") return [asc(orders.dueAt), desc(orders.createdAt)];
-  return [desc(orders.createdAt)];
+  // The default lists put URGENT orders on top (lib/orders/urgent.ts).
+  const urgentFirst = sql`${orders.urgentAt} is null`;
+  if (view === "overdue") return [urgentFirst, asc(orders.dueAt), desc(orders.createdAt)];
+  return [urgentFirst, desc(orders.createdAt)];
 }
 
 function viewHref(params: URLSearchParams, view: ViewKey) {
@@ -522,6 +524,8 @@ export default async function OrdersPage({
         createdAt: orders.createdAt,
         updatedAt: orders.updatedAt,
         rawImport: orders.rawImport,
+        urgentAt: orders.urgentAt,
+        urgentReason: orders.urgentReason,
         shopName: shops.name,
         shopPlatform: shops.platform,
         customerId: customers.id,
@@ -721,6 +725,8 @@ export default async function OrdersPage({
         hasPrintJob,
         trackingNumber: tracking,
         action,
+        urgent: !!order.urgentAt,
+        urgentReason: order.urgentAt ? order.urgentReason : null,
       };
     });
 

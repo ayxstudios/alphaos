@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 
-import { Button, Input, Textarea, Select, Badge } from "@/components/ui";
+import { Button, Checkbox, Input, Textarea, Select, Badge } from "@/components/ui";
 import { XCircle, Camera, AlertTriangle, CheckCircle, Plus } from "@/components/ui/icons";
 import {
   createManualOrder,
@@ -128,6 +128,7 @@ export function NewOrderForm({
   const [size, setSize] = useState(existing?.savedSize ?? "");
   const [productType, setProductType] = useState<"physical" | "digital">(initial?.productType ?? "physical");
   const [notes, setNotes] = useState(initial?.notes ?? "");
+  const [urgent, setUrgent] = useState(false);
   const shop = shops.find((s) => s.id === shopId);
   const styleOptions = useMemo(() => {
     const source = existing ? existing.styleOptions : (shop?.styles ?? []);
@@ -225,6 +226,7 @@ export function NewOrderForm({
     setProductTitle("");
     setSize("");
     setNotes("");
+    setUrgent(false);
     setPhotos([]);
     setUrlInput("");
     setDup(null);
@@ -280,6 +282,7 @@ export function NewOrderForm({
         size: size || undefined,
         notes: notes || undefined,
         dueAt: dueAt || undefined,
+        urgent,
         r2Keys,
         photoUrls,
       });
@@ -495,6 +498,14 @@ export function NewOrderForm({
             <Input label="Due date" type="date" value={dueAt} onChange={(e) => setDueAt(e.target.value)} />
           </div>
           <Textarea label="Notes for the designer" hint="Special requests, shown on the designer's card" value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
+          {mode === "create" && (
+            <label className="flex min-h-11 cursor-pointer items-center gap-3">
+              <Checkbox checked={urgent} onChange={(e) => setUrgent(e.currentTarget.checked)} data-testid="new-order-urgent" />
+              <span className="text-sm font-medium text-ink">
+                Urgent <span className="font-normal text-slate">(a buyer is chasing it: top of every board and queue)</span>
+              </span>
+            </label>
+          )}
         </Step>
 
         <Step n={mode === "create" ? 4 : 3} title="Reference photos">

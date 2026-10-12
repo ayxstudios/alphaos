@@ -21,6 +21,8 @@ const LABELS: Record<string, string> = {
   "order.created_manual": "Created by hand",
   "order.details_updated": "Details updated",
   "order.tracking_added": "Tracking added",
+  "order.marked_urgent": "Marked urgent",
+  "order.cleared_urgent": "No longer urgent",
   "order.shipping_address_saved": "Shipping address saved",
   "order.reresolved": "Details re-checked",
   "order.reconciled": "Reconciled with the shop",

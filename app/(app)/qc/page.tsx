@@ -9,6 +9,7 @@ import { setBusiness } from "@/app/(app)/actions";
 import { Badge, DataPanel, EmptyState, Page, PageHeader } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
 import { ArrowRight, Eye, CheckCircle } from "@/components/ui/icons";
+import { UrgentPill } from "@/components/orders/urgent-pill";
 import { cn, styleLabel } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -129,6 +130,7 @@ export default async function QcQueuePage() {
                     {r.designerName ?? "Unassigned"}
                   </p>
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                    {r.urgent && <UrgentPill reason={r.urgentReason} />}
                     <span className={cn("text-sm", late ? "font-medium text-rose" : "text-slate")}>
                       {late ? "Late, waiting " : "Waiting "}
                       {formatAge(now - new Date(r.waitingSince).getTime())}

@@ -78,6 +78,8 @@ import { sizedImageUrl } from "@/lib/images";
 import { activityLabel } from "@/lib/orders/activity-label";
 import { PrintShipCard } from "./print-card";
 import { QuickReassign } from "@/components/orders/quick-reassign";
+import { OrderUrgentToggle } from "@/components/orders/order-urgent-toggle";
+import { UrgentPill } from "@/components/orders/urgent-pill";
 import { buildStageTimeline, isRevisionStage, stageWithRound } from "@/lib/orders/stage-timeline";
 
 export const dynamic = "force-dynamic";
@@ -304,6 +306,8 @@ export default async function OrderDetailPage({
         placedAt: orders.placedAt,
         createdAt: orders.createdAt,
         notes: orders.notes,
+        urgentAt: orders.urgentAt,
+        urgentReason: orders.urgentReason,
         rawImport: orders.rawImport,
         customerId: customers.id,
         customerEmail: customers.email,
@@ -587,6 +591,18 @@ export default async function OrderDetailPage({
               <Badge variant="warning" dot>
                 {stageWithRound(order.status, order.revisionCount)}
               </Badge>
+            )}
+            {editable ? (
+              !["complete", "cancelled"].includes(order.status) || order.urgentAt ? (
+                <OrderUrgentToggle
+                  orderId={order.id}
+                  urgent={!!order.urgentAt}
+                  reason={order.urgentReason}
+                  hasDueDate={!!order.dueAt}
+                />
+              ) : null
+            ) : (
+              order.urgentAt && <UrgentPill reason={order.urgentReason} />
             )}
             {order.aiState && (
               <Badge variant="info" dot data-testid="ai-made-badge">

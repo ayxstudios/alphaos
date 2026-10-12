@@ -32,6 +32,7 @@ import {
 import { reassignOrder } from "@/lib/agent/ai-designer";
 import { aiDesignerChoosable } from "@/lib/agent/ai-designer-choice";
 import { addComment } from "@/lib/orders/card-detail";
+import { setOrderUrgent } from "@/lib/orders/urgent";
 import {
   freshShopifyCredentials,
   fulfillShopifyOrderWithTracking,
@@ -351,6 +352,29 @@ export async function addOrderComment(orderId: string, body: string): Promise<Co
   revalidatePath(`/orders/${orderId}`);
   revalidatePath("/orders");
   return { ok: true };
+}
+
+export type UrgentResult = { ok: true; dueAt: string | null } | { ok: false; message: string };
+
+/**
+ * Mark an order URGENT (a buyer is chasing a stalled or legacy order) or clear
+ * it. Admin and VAs only; the order keeps its deadline, or gets one 24 h out
+ * if it had none. Logged on the order's activity.
+ */
+export async function setUrgent(orderId: string, urgent: boolean, reason?: string): Promise<UrgentResult> {
+  const user = await requireStaff();
+  if ("error" in user) return { ok: false, message: user.error };
+  if (!orderId) return { ok: false, message: "Order not found." };
+  const res = await withUserContext(user, (tx) =>
+    setOrderUrgent(tx, { orderId, urgent, reason: reason ?? null, actorId: user.id, via: "app" }),
+  );
+  if (!res.ok) return res;
+  revalidatePath(`/orders/${orderId}`);
+  revalidatePath("/orders");
+  revalidatePath("/board");
+  revalidatePath("/qc");
+  revalidatePath("/today");
+  return { ok: true, dueAt: res.dueAt ? res.dueAt.toISOString() : null };
 }
 
 export async function createOrderRevision(

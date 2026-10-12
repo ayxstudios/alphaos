@@ -258,7 +258,7 @@ export async function getQcContext(
 /**
  * Ordered ids of every order currently awaiting QC — drives J/K navigation and
  * auto-advance to the next order after a decision. Same ordering as the VA
- * "Awaiting QC" queue (soonest SLA first).
+ * "Awaiting QC" queue (urgent first, then soonest SLA).
  */
 export async function getQcQueueIds(
   user: RequestUser,
@@ -277,7 +277,7 @@ export async function getQcQueueIds(
           : and(eq(orders.status, "awaiting_qc"), liveOrderWhere(), todoOrderScope()),
       )
       // NULL due dates sort last, then oldest in QC first.
-      .orderBy(sql`${orders.dueAt} asc nulls last`, asc(orders.createdAt));
+      .orderBy(sql`${orders.urgentAt} is null`, sql`${orders.dueAt} asc nulls last`, asc(orders.createdAt));
 
     return rows.map((r) => r.id);
   });
@@ -349,11 +349,14 @@ export type QcQueueRow = {
   style: string | null;
   dueAt: string | null;
   waitingSince: string;
+  /** Marked URGENT (lib/orders/urgent.ts): pill on the row, sorted first. */
+  urgent: boolean;
+  urgentReason: string | null;
 };
 
 /**
  * The QC queue as a list (the /qc page): every order awaiting QC in the
- * business, soonest due first, with who designed it and what it is.
+ * business, urgent first then soonest due, with who designed it and what it is.
  */
 export async function getQcQueue(user: RequestUser, businessId: string | null): Promise<QcQueueRow[]> {
   return withUserContext(user, async (tx) => {
@@ -366,6 +369,8 @@ export async function getQcQueue(user: RequestUser, businessId: string | null): 
         fallback: orders.platformOrderId,
         dueAt: orders.dueAt,
         updatedAt: orders.updatedAt,
+        urgentAt: orders.urgentAt,
+        urgentReason: orders.urgentReason,
         thumbUrl: sql<string | null>`(select ${assets.url} from ${assets} where ${assets.orderId} = ${orders.id} and ${assets.type} in ('submission', 'final') and ${assets.deletedAt} is null and ${assets.url} is not null order by ${assets.createdAt} desc limit 1)`,
         photoCount: sql<number>`(select count(*) from ${assets} where ${assets.orderId} = ${orders.id} and ${assets.type} = 'reference' and ${assets.deletedAt} is null)::int`,
         customerFirstName: customers.firstName,
@@ -381,7 +386,7 @@ export async function getQcQueue(user: RequestUser, businessId: string | null): 
       .leftJoin(assignments, and(eq(assignments.orderId, orders.id), eq(assignments.active, true)))
       .leftJoin(users, eq(users.id, assignments.designerId))
       .where(bizFilter ? and(eq(orders.status, "awaiting_qc"), liveOrderWhere(), todoOrderScope(), bizFilter) : and(eq(orders.status, "awaiting_qc"), liveOrderWhere(), todoOrderScope()))
-      .orderBy(sql`${orders.dueAt} asc nulls last`, asc(orders.createdAt));
+      .orderBy(sql`${orders.urgentAt} is null`, sql`${orders.dueAt} asc nulls last`, asc(orders.createdAt));
     return rows.map((r) => ({
       id: r.id,
       businessId: r.businessId,
@@ -396,6 +401,8 @@ export async function getQcQueue(user: RequestUser, businessId: string | null): 
       style: r.style ?? null,
       dueAt: r.dueAt ? r.dueAt.toISOString() : null,
       waitingSince: r.updatedAt.toISOString(),
+      urgent: !!r.urgentAt,
+      urgentReason: r.urgentAt ? (r.urgentReason ?? null) : null,
     }));
   });
 }
