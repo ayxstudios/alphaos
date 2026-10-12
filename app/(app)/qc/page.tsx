@@ -138,7 +138,7 @@ export default async function QcQueuePage() {
                   </div>
                   {r.changeHint && (
                     <p className="mt-1 text-sm text-slate sm:text-xs" title={r.changeHint}>
-                      <span className="line-clamp-3 break-words sm:line-clamp-1">{r.changeHint}</span>
+                      <span className="line-clamp-2 break-words sm:line-clamp-1">{r.changeHint}</span>
                     </p>
                   )}
                 </div>
