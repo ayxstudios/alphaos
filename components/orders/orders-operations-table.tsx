@@ -9,6 +9,7 @@ import {
   bulkReassignOrders,
   type BulkActionResult,
 } from "@/app/(app)/orders/actions";
+import { ArchivedBadge } from "@/components/orders/archived-badge";
 import { Badge, Button, InfoBubble, useToast, type OrderStatus } from "@/components/ui";
 import { ArrowRight, Check, Columns, X } from "@/components/ui/icons";
 import { formatStageRemaining, type StageTimer } from "@/lib/orders/stage-timers";
@@ -65,15 +66,6 @@ type ColumnDef = {
   priority: "core" | "wide";
   render: (row: OrdersDashboardRow) => React.ReactNode;
 };
-
-/** The label an archived order carries in every list: grey, so it never reads as work to do. */
-function ArchivedBadge() {
-  return (
-    <Badge variant="neutral" title="Old order, kept for history. Request a revision on it to bring it back." className="shrink-0 whitespace-nowrap">
-      Archived
-    </Badge>
-  );
-}
 
 /** An email that, when it has to wrap, breaks after the @ rather than mid-word. */
 function EmailText({ email }: { email: string }) {

@@ -15,7 +15,7 @@ import {
   type QcResult,
 } from "@/app/(app)/qc/actions";
 import { CompareViewer } from "./compare-viewer";
-import { ChangeRequestsPanel } from "./change-requests-panel";
+import { ChangeRequestsJump, ChangeRequestsPanel } from "./change-requests-panel";
 import { ChecklistPanel } from "./checklist-panel";
 import { OrderSaysPanel } from "./order-says-panel";
 import { VersionStrip } from "./version-strip";
@@ -324,6 +324,8 @@ export function QcScreen({
           </Button>
         </div>
       )}
+
+      <ChangeRequestsJump count={ctx.changeRequests.length + ctx.olderChangeRequests} />
 
       <div className="grid grid-cols-1 flex-1 gap-3 xl:min-h-[38rem] xl:grid-cols-[minmax(0,1fr)_380px]">
         <CompareViewer

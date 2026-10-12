@@ -418,7 +418,7 @@ function draftAction(item: OutboxItem, queued: boolean): string {
 
 /** One plain line: what exactly the person reading has to do. */
 function replyAction(reply: UnmatchedReply): string {
-  if (reply.suggestion) return `Link to ${reply.suggestion.orderNumber}, then answer ${reply.suggestion.customerName}`;
+  if (reply.suggestion) return `Link to ${reply.suggestion.orderNumber}, then answer ${reply.suggestion.customerName === "Customer" ? "the customer" : reply.suggestion.customerName}`;
   if (/photo|picture|image|attach/i.test(`${reply.subject} ${reply.body}`)) return "Photo received, confirm it is usable";
   if (/proof|approve|changes?|revision/i.test(`${reply.subject} ${reply.body}`)) return "Answering a proof, record approved or changes";
   return "Customer replied, needs an answer";

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArchivedBadge } from "@/components/orders/archived-badge";
 import { notFound, redirect } from "next/navigation";
 import { and, asc, desc, eq } from "drizzle-orm";
 
@@ -309,6 +310,7 @@ export default async function OrderDetailPage({
         dueAt: orders.dueAt,
         placedAt: orders.placedAt,
         createdAt: orders.createdAt,
+        archivedAt: orders.archivedAt,
         notes: orders.notes,
         rawImport: orders.rawImport,
         customerId: customers.id,
@@ -598,6 +600,7 @@ export default async function OrderDetailPage({
               status={order.status as OrderStatus}
               label={order.status === "ready_to_assign" && hasDesigner ? "Not started" : undefined}
             />
+            {order.archivedAt && <ArchivedBadge />}
             {isRevisionStage(order.status, order.revisionCount) && (
               <Badge variant="warning" dot>
                 {stageWithRound(order.status, order.revisionCount)}

@@ -137,8 +137,8 @@ export default async function QcQueuePage() {
                     {r.photoCount > 1 && <Badge variant="info">{r.photoCount} photos</Badge>}
                   </div>
                   {r.changeHint && (
-                    <p className="mt-1 truncate text-xs text-slate" title={r.changeHint}>
-                      {r.changeHint}
+                    <p className="mt-1 text-sm text-slate sm:text-xs" title={r.changeHint}>
+                      <span className="line-clamp-3 break-words sm:line-clamp-1">{r.changeHint}</span>
                     </p>
                   )}
                 </div>

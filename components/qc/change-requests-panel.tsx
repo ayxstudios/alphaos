@@ -17,8 +17,25 @@ const CHIP_VARIANT: Partial<Record<QcChangeRequestKind, "danger" | "info">> = {
   proof_revision: "info",
 };
 
+export const CHANGE_REQUESTS_ID = "changes-asked-for";
+
 function when(iso: string): string {
   return formatAt(iso, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+/** Phone only: one 44px tap that jumps past the portrait to the panel. */
+export function ChangeRequestsJump({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <a
+      href={`#${CHANGE_REQUESTS_ID}`}
+      data-testid="change-requests-jump"
+      className="inline-flex min-h-11 items-center justify-between gap-2 rounded-input border border-pigment/20 bg-pigment-soft px-4 text-sm font-semibold text-pigment xl:hidden"
+    >
+      {count} {count === 1 ? "change" : "changes"} asked for
+      <span aria-hidden="true">↓</span>
+    </a>
+  );
 }
 
 /**
@@ -29,9 +46,18 @@ function when(iso: string): string {
 export function ChangeRequestsPanel({ requests, older }: { requests: QcChangeRequest[]; older: number }) {
   if (requests.length === 0) return null;
   return (
-    <section aria-label="Changes asked for" className="mb-4 rounded-input bg-canvas p-3" data-testid="change-requests">
+    <section id={CHANGE_REQUESTS_ID} aria-label="Changes asked for" className="mb-4 scroll-mt-20 rounded-input bg-canvas p-3" data-testid="change-requests">
       <h2 className="font-display text-base font-semibold text-ink">Changes asked for</h2>
-      <ul className="mt-2 flex max-h-64 flex-col gap-3 overflow-y-auto pr-1">
+      {/* Fade edges (background-attachment: local) show there is more to scroll to, only while there is. */}
+      <ul
+        className="mt-2 flex max-h-64 flex-col gap-3 overflow-y-auto pr-1"
+        style={{
+          background:
+            "linear-gradient(var(--color-canvas) 30%, transparent) top / 100% 24px no-repeat local, linear-gradient(transparent, var(--color-canvas) 70%) bottom / 100% 24px no-repeat local, linear-gradient(rgba(0,0,0,.14), transparent) top / 100% 8px no-repeat scroll, linear-gradient(transparent, rgba(0,0,0,.14)) bottom / 100% 8px no-repeat scroll",
+        }}
+        tabIndex={0}
+        aria-label="Changes asked for, newest first"
+      >
         {requests.map((r, i) => {
           const label = KIND_LABEL[r.kind];
           // "Customer email · Customer" would say it twice.
@@ -52,8 +78,8 @@ export function ChangeRequestsPanel({ requests, older }: { requests: QcChangeReq
             </li>
           );
         })}
+        {older > 0 ? <li className="text-xs text-slate">{older} older</li> : null}
       </ul>
-      {older > 0 ? <p className="mt-2 text-xs text-slate">{older} older</p> : null}
     </section>
   );
 }
