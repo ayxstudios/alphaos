@@ -11,7 +11,8 @@ const KIND_LABEL: Record<QcChangeRequestKind, string> = {
   team_note: "Team note",
 };
 
-// Chip colours follow the board: rose for a QC fail, pigment for the customer's own ticks.
+// Chip colours follow the board: rose for a QC fail, pigment for the customer's own ticks. The rose chip keeps its tint and
+// border but reads in ink: rose text on the tint is under 4.5:1 on the panel's canvas.
 const CHIP_VARIANT: Partial<Record<QcChangeRequestKind, "danger" | "info">> = {
   qc_send_back: "danger",
   proof_revision: "info",
@@ -69,7 +70,7 @@ export function ChangeRequestsPanel({ requests, older }: { requests: QcChangeReq
               {r.items.length > 0 ? (
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {r.items.map((item, j) => (
-                    <Badge key={`${item}-${j}`} variant={CHIP_VARIANT[r.kind] ?? "neutral"} className="max-w-full">
+                    <Badge key={`${item}-${j}`} variant={CHIP_VARIANT[r.kind] ?? "neutral"} className={cn("max-w-full", r.kind === "qc_send_back" && "text-ink!")}>
                       {item}
                     </Badge>
                   ))}
