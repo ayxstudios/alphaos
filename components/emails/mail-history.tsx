@@ -53,7 +53,7 @@ export function MailHistory({
           {history.suppressedCount > 0 && (
             <Link
               href={`/emails?showSuppressed=${includeSuppressed ? "0" : "1"}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
-              className="inline-flex h-8 items-center rounded-input px-2 text-xs font-medium text-slate hover:bg-canvas hover:text-ink"
+              className="inline-flex h-11 items-center rounded-input px-2 text-sm font-medium text-slate hover:bg-canvas hover:text-ink sm:h-8 sm:text-xs"
             >
               {includeSuppressed ? "Hide" : "Show"} {history.suppressedCount} suppressed
             </Link>
