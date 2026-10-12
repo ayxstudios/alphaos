@@ -50,7 +50,7 @@ export async function matchOrderBySubject(
 }
 
 /** "Kate Keenan <k@x.com>" -> ["Kate", "Keenan"]; a bare address -> [null, null]. */
-function senderName(fromHeader: string | null | undefined): [string | null, string | null] {
+export function senderName(fromHeader: string | null | undefined): [string | null, string | null] {
   const raw = (fromHeader ?? "").replace(/<[^>]*>/g, "").replace(/["']/g, "").trim();
   if (!raw || raw.includes("@")) return [null, null];
   const parts = raw.split(/\s+/);

@@ -278,8 +278,18 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
   const [searching, startSearch] = useTransition();
   const [reason, setReason] = useState("");
   const [confirmIgnore, setConfirmIgnore] = useState(false);
+  // The sender is not the buyer on that order's receipt: say so, offer Link anyway.
+  const [linkCheck, setLinkCheck] = useState<{ orderId: string; message: string } | null>(null);
   // Nobody waits on a notification, so it never gets the "waiting" dot.
   const stale = !reply.noise && reply.ageMs > DAY_MS;
+
+  function link(orderId: string, confirmBuyerMismatch = false) {
+    setLinkCheck(null);
+    run(
+      () => linkReplyToOrder(reply.messageId, orderId, { confirmBuyerMismatch }),
+      (message) => setLinkCheck({ orderId, message }),
+    );
+  }
 
   function search(term: string) {
     setQ(term);
@@ -302,7 +312,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
         {reply.noise ? (
           <Button type="button" size="sm" loading={pending} onClick={() => run(() => archiveReply(reply.messageId, "notification"))}>Archive</Button>
         ) : reply.suggestion ? (
-          <Button type="button" size="sm" loading={pending} onClick={() => run(() => linkReplyToOrder(reply.messageId, reply.suggestion!.orderId))}>
+          <Button type="button" size="sm" loading={pending} onClick={() => link(reply.suggestion!.orderId)}>
             Link to {reply.suggestion.orderNumber}
           </Button>
         ) : (
@@ -314,6 +324,27 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
           </Button>
         )}
       </div>
+      {linkCheck && (
+        <div
+          role="alert"
+          className="mb-2 flex flex-col gap-3 rounded-input border border-amber/25 bg-amber/10 p-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p className="flex min-w-0 items-start gap-2 text-sm text-ink">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber" />
+            <span className="min-w-0 break-words">{linkCheck.message}</span>
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="w-full shrink-0 sm:w-auto"
+            loading={pending}
+            onClick={() => link(linkCheck.orderId, true)}
+          >
+            Link anyway
+          </Button>
+        </div>
+      )}
       <button type="button" onClick={() => setOpen((o) => !o)} className="-my-3 flex w-full items-center gap-3 py-3 text-left" aria-expanded={open}>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-ink">{reply.subject || "(no subject)"}</span>
@@ -336,7 +367,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
               <span className="text-ink">
                 {reply.suggestion.reason === "sender" ? "Same sender as" : "The subject names"} <strong>{reply.suggestion.orderNumber}</strong> ({reply.suggestion.customerName})
               </span>
-              <Button type="button" size="sm" className="ml-auto" loading={pending} onClick={() => run(() => linkReplyToOrder(reply.messageId, reply.suggestion!.orderId))}>
+              <Button type="button" size="sm" className="ml-auto" loading={pending} onClick={() => link(reply.suggestion!.orderId)}>
                 Link
               </Button>
             </div>
@@ -351,7 +382,7 @@ function ReplyCard({ reply, businessId }: { reply: UnmatchedReply; businessId: s
                   <div key={o.orderId} className="flex items-center gap-2 px-3 py-2 text-sm">
                     <span className="min-w-0 truncate text-ink">{o.orderNumber}</span>
                     {o.customerName && <span className="text-xs text-slate">{o.customerName}</span>}
-                    <Button type="button" size="sm" variant="secondary" className="ml-auto" disabled={pending} onClick={() => run(() => linkReplyToOrder(reply.messageId, o.orderId))}>Link</Button>
+                    <Button type="button" size="sm" variant="secondary" className="ml-auto" disabled={pending} onClick={() => link(o.orderId)}>Link</Button>
                   </div>
                 ))}
               </div>
@@ -415,9 +446,14 @@ export function useActionRunner() {
   const router = useRouter();
   const toast = useToast();
   const [pending, start] = useTransition();
-  function run(action: () => Promise<OutboxActionResult>) {
+  /** `onBuyerMismatch` takes over a buyer_mismatch refusal (no toast), so the card can offer Link anyway. */
+  function run(action: () => Promise<OutboxActionResult>, onBuyerMismatch?: (message: string) => void) {
     start(async () => {
       const res = await action();
+      if (!res.ok && res.code === "buyer_mismatch" && onBuyerMismatch) {
+        onBuyerMismatch(res.message);
+        return;
+      }
       toast({
         variant: res.ok ? "success" : "danger",
         title: res.ok ? res.message ?? "Done" : "Couldn't complete",

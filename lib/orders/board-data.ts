@@ -17,7 +17,7 @@ import {
   designerProfiles,
 } from "@/lib/db/schema";
 import { DEFAULT_TIMEZONE, isValidTimezone, startOfDayInTimezone } from "@/lib/designers/quiet-hours";
-import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
+import { failedLabels } from "@/lib/qc/checklist";
 import { issueLabels } from "@/lib/proofs/issues";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { liveOrderWhere } from "@/lib/orders/archive";
@@ -325,14 +325,6 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
     customerRevision: customerRevision.get(o.id) ?? null,
     readyForQc: o.status === "in_design" && readyForQc.has(o.id),
   }));
-}
-
-/** Labels of items the VA marked failed, from the qc_checks snapshot + results. */
-function failedLabels(snapshot: unknown, results: unknown): string[] {
-  const items = (snapshot as ChecklistSnapshot | null)?.items;
-  if (!Array.isArray(items)) return [];
-  const res = (results ?? {}) as ItemResults;
-  return items.filter((it) => res[it.key] === false).map((it) => it.label);
 }
 
 export type DesignerBoard = {

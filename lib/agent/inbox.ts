@@ -43,6 +43,7 @@ import {
 } from "@/lib/email/reply-classifier";
 import { mergeReplyClassification } from "@/lib/integrations/gmail/inbound";
 import { liveOrderWhere } from "@/lib/orders/archive";
+import { greetingFirstName, receiptBuyerName } from "@/lib/orders/buyer-match";
 import { agentOrderScope } from "./scope";
 import { proofUrl } from "@/lib/urls";
 
@@ -376,6 +377,9 @@ async function handleReply(ctx: Ctx, row: ReplyRow, threshold: number): Promise<
           businessName: businesses.name,
           agentConfig: businesses.agentConfig,
           firstName: customers.firstName,
+          lastName: customers.lastName,
+          source: orders.source,
+          rawImport: orders.rawImport,
         })
         .from(orders)
         .innerJoin(businesses, eq(businesses.id, orders.businessId))
@@ -388,7 +392,12 @@ async function handleReply(ctx: Ctx, row: ReplyRow, threshold: number): Promise<
       try {
         answer = await draftAnswerToQuestion({
           businessName: facts.businessName,
-          firstName: facts.firstName,
+          // Never greet by a customer row that belongs to someone else (see greetingFirstName).
+          firstName: greetingFirstName({
+            customerFirstName: facts.firstName,
+            customerLastName: facts.lastName,
+            receiptBuyer: receiptBuyerName(facts.source, facts.rawImport),
+          }),
           orderNumber: facts.platformOrderName ?? facts.platformOrderId,
           orderStage: stageWords(facts.status),
           question: cleaned,

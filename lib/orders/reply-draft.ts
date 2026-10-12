@@ -8,6 +8,7 @@ import {
   renderTemplate,
 } from "@/lib/email/templates";
 import { proofUrl, uploadUrl } from "@/lib/urls";
+import { greetingFirstName, receiptBuyerName } from "./buyer-match";
 import type { OrderStatus } from "./transitions";
 import { BLANK_TEMPLATE_KEY, type ReplyTemplateChoice } from "./reply-templates";
 
@@ -58,9 +59,12 @@ export async function getReplyDraftContext(user: RequestUser, orderId: string): 
         number: orders.platformOrderName,
         fallbackNumber: orders.platformOrderId,
         status: orders.status,
+        source: orders.source,
+        rawImport: orders.rawImport,
         uploadToken: orders.uploadToken,
         customerEmail: customers.email,
         customerFirst: customers.firstName,
+        customerLast: customers.lastName,
         businessName: businesses.name,
       })
       .from(orders)
@@ -81,7 +85,14 @@ export async function getReplyDraftContext(user: RequestUser, orderId: string): 
       businessId: order.businessId,
       businessName: order.businessName,
       orderNumber: order.number ?? order.fallbackNumber,
-      customerFirst: order.customerFirst?.trim().split(/\s+/)[0] || "there",
+      // The customer's first name, or the receipt buyer's when the linked customer is someone else.
+      customerFirst:
+        greetingFirstName({
+          customerFirstName: order.customerFirst,
+          customerLastName: order.customerLast,
+          receiptBuyer: receiptBuyerName(order.source, order.rawImport),
+        })
+          ?.split(/\s+/)[0] || "there",
       customerEmail: order.customerEmail,
       status: order.status as OrderStatus,
       uploadLink: order.uploadToken ? uploadUrl(order.uploadToken) : null,

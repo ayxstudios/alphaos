@@ -2,10 +2,11 @@ import { and, desc, eq, isNotNull, isNull, ne, sql } from "drizzle-orm";
 
 import { getAgentConfig } from "@/lib/agent/config";
 import { withSystemContext, type Tx } from "@/lib/db";
-import { businesses, customers, exceptions, messages, notifications, proofs, users } from "@/lib/db/schema";
+import { businesses, customers, exceptions, messages, notifications, orders, proofs, users } from "@/lib/db/schema";
 import { GmailClient, GmailNotConnectedError, GmailReauthRequiredError } from "@/lib/integrations/gmail";
 import { header, textToHtml } from "@/lib/integrations/gmail/mime";
 import { loadAssetAttachment } from "@/lib/email/attachments";
+import { greetingFirstName, receiptBuyerName } from "@/lib/orders/buyer-match";
 import { generateProofToken } from "@/lib/proofs/tokens";
 import { proofUrl, uploadUrl } from "@/lib/urls";
 import {
@@ -27,11 +28,20 @@ import {
 
 type EmailContext = { businessName: string; firstName: string; email: string } | null;
 
-/** Read the business name + customer first name/email needed to render a template. */
+/**
+ * Read the business name + customer first name/email needed to render a template.
+ *
+ * Greeting safety net: a customer row keeps the name it was first saved with, so
+ * an order can end up linked to a customer who is not the buyer on its receipt
+ * ("Hi shellie!" sent to someone else). When the receipt names its buyer and the
+ * customer's name is a different person, the greeting uses the buyer's first
+ * name. The address still comes from the customer row.
+ */
 async function readEmailContext(
   tx: Tx,
   businessId: string,
   customerId: string | null,
+  orderId: string,
 ): Promise<EmailContext> {
   if (!customerId) return null;
   const [biz] = await tx
@@ -39,11 +49,21 @@ async function readEmailContext(
     .from(businesses)
     .where(eq(businesses.id, businessId));
   const [cust] = await tx
-    .select({ email: customers.email, firstName: customers.firstName })
+    .select({ email: customers.email, firstName: customers.firstName, lastName: customers.lastName })
     .from(customers)
     .where(eq(customers.id, customerId));
   if (!biz || !cust?.email) return null;
-  return { businessName: biz.name, firstName: cust.firstName ?? "there", email: cust.email };
+  const [ord] = await tx
+    .select({ source: orders.source, rawImport: orders.rawImport })
+    .from(orders)
+    .where(eq(orders.id, orderId));
+  const firstName =
+    greetingFirstName({
+      customerFirstName: cust.firstName,
+      customerLastName: cust.lastName,
+      receiptBuyer: ord ? receiptBuyerName(ord.source, ord.rawImport) : null,
+    }) ?? "there";
+  return { businessName: biz.name, firstName, email: cust.email };
 }
 
 type DraftParams = {
@@ -118,7 +138,7 @@ export async function prepareProofForApproval(
     .values({ businessId: order.businessId, orderId: order.id, token })
     .returning({ id: proofs.id });
 
-  const ctx = await readEmailContext(tx, order.businessId, order.customerId);
+  const ctx = await readEmailContext(tx, order.businessId, order.customerId, order.id);
   if (!ctx) return; // no customer email — VA will handle manually; proof still exists
 
   await insertRendered(tx, {
@@ -150,7 +170,7 @@ export async function queuePhotoRequest(
     uploadToken: string;
   },
 ): Promise<string | null> {
-  const ctx = await readEmailContext(tx, order.businessId, order.customerId);
+  const ctx = await readEmailContext(tx, order.businessId, order.customerId, order.id);
   if (!ctx) return null;
   return insertRendered(tx, {
     businessId: order.businessId,
@@ -173,7 +193,7 @@ export async function draftRevisionReceived(
   tx: Tx,
   order: { id: string; businessId: string; customerId: string | null; platformOrderId: string; platformOrderName: string | null },
 ): Promise<void> {
-  const ctx = await readEmailContext(tx, order.businessId, order.customerId);
+  const ctx = await readEmailContext(tx, order.businessId, order.customerId, order.id);
   if (!ctx) return;
   await insertRendered(tx, {
     businessId: order.businessId,
@@ -204,7 +224,7 @@ export async function queuePhotoReminder(
     uploadToken: string;
   },
 ): Promise<string | null> {
-  const ctx = await readEmailContext(tx, order.businessId, order.customerId);
+  const ctx = await readEmailContext(tx, order.businessId, order.customerId, order.id);
   if (!ctx) return null;
   return insertRendered(tx, {
     businessId: order.businessId,
@@ -236,7 +256,7 @@ export async function queuePhotoShortfall(
   },
   counts: { have: number; need: number },
 ): Promise<string | null> {
-  const ctx = await readEmailContext(tx, order.businessId, order.customerId);
+  const ctx = await readEmailContext(tx, order.businessId, order.customerId, order.id);
   if (!ctx) return null;
   return insertRendered(tx, {
     businessId: order.businessId,
@@ -272,7 +292,7 @@ export async function queueStageEmail(
   /** The nth deliberate repeat of the same moment (a second reminder for one proof); 1 = the first. */
   opts: { repeat?: number } = {},
 ): Promise<string | null> {
-  const ctx = await readEmailContext(tx, order.businessId, order.customerId);
+  const ctx = await readEmailContext(tx, order.businessId, order.customerId, order.id);
   if (!ctx) return null;
   const [biz] = await tx
     .select({ autoSend: businesses.stageEmailAutoSend, agentConfig: businesses.agentConfig })
@@ -314,7 +334,7 @@ export async function draftFreeformReply(
   },
 ): Promise<string | null> {
   const { order, inReplyTo } = input;
-  const ctx = await readEmailContext(tx, order.businessId, order.customerId);
+  const ctx = await readEmailContext(tx, order.businessId, order.customerId, order.id);
   const address = ctx?.email ?? inReplyTo.address?.trim() ?? null;
   if (!address) return null;
   const [row] = await tx

@@ -146,6 +146,9 @@ export function NewOrderForm({
   const [uploading, setUploading] = useState(false);
   const [submitting, startSubmit] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // Set when the server says these customer details are not the order's buyer.
+  // Shown with a Save anyway button; any edit to the name or email clears it.
+  const [buyerMismatch, setBuyerMismatch] = useState<string | null>(null);
   const [flash, setFlash] = useState<string | null>(null);
   const [dup, setDup] = useState<{ orderId: string; status: string; label: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -232,9 +235,10 @@ export function NewOrderForm({
     firstFieldRef.current?.focus();
   }
 
-  function submit() {
+  function submit(confirmBuyerMismatch = false) {
     setError(null);
     setFlash(null);
+    setBuyerMismatch(null);
     if (mode === "create" && !orderNumber.trim() && !customerName.trim() && !customerEmail.trim()) {
       setError("Enter the order number or the customer's name, so the order can be found.");
       firstFieldRef.current?.focus();
@@ -257,6 +261,7 @@ export function NewOrderForm({
           customerEmail: customerEmail || undefined,
           r2Keys,
           photoUrls,
+          confirmBuyerMismatch,
         });
         if (res.ok)
           setFlash(
@@ -264,6 +269,7 @@ export function NewOrderForm({
               ? `Saved. ${res.orderNumber} is ready for a designer.`
               : `Saved. ${res.orderNumber} now waits for the customer's photos.`,
           );
+        else if (res.code === "buyer_mismatch") setBuyerMismatch(res.message);
         else setError(res.message);
         return;
       }
@@ -457,8 +463,25 @@ export function NewOrderForm({
 
         <Step n={mode === "create" ? 2 : 1} title="Customer">
           <div className="grid gap-3 sm:grid-cols-2">
-            <Input label="Name" value={customerName} onChange={(e) => setCustomerName(e.target.value)} autoComplete="off" />
-            <Input label="Email" type="email" value={customerEmail} onChange={(e) => setCustomerEmail(e.target.value)} autoComplete="off" />
+            <Input
+              label="Name"
+              value={customerName}
+              onChange={(e) => {
+                setCustomerName(e.target.value);
+                setBuyerMismatch(null);
+              }}
+              autoComplete="off"
+            />
+            <Input
+              label="Email"
+              type="email"
+              value={customerEmail}
+              onChange={(e) => {
+                setCustomerEmail(e.target.value);
+                setBuyerMismatch(null);
+              }}
+              autoComplete="off"
+            />
           </div>
         </Step>
 
@@ -561,7 +584,7 @@ export function NewOrderForm({
         </Step>
 
         <div className="flex flex-wrap items-center gap-3 border-t border-line/60 pt-4">
-          <Button onClick={submit} loading={submitting} disabled={uploading || !shopId || !!done}>
+          <Button onClick={() => submit()} loading={submitting} disabled={uploading || !shopId || !!done}>
             {mode === "complete" ? completeAction : "Create order"}
           </Button>
           {!done && (mode === "create" || existing?.status === "awaiting_details" || existing?.status === "awaiting_photos") && (
@@ -573,6 +596,26 @@ export function NewOrderForm({
           )}
           {error && <span className="text-sm text-rose">{error}</span>}
         </div>
+        {buyerMismatch && (
+          <div
+            role="alert"
+            className="-mt-2 flex flex-col gap-3 rounded-input border border-amber/25 bg-amber/10 p-3 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <p className="flex min-w-0 items-start gap-2 text-sm text-ink">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber" />
+              <span className="min-w-0 break-words">{buyerMismatch}</span>
+            </p>
+            <Button
+              variant="secondary"
+              className="w-full shrink-0 sm:w-auto"
+              onClick={() => submit(true)}
+              loading={submitting}
+              disabled={uploading}
+            >
+              Save anyway
+            </Button>
+          </div>
+        )}
         {flash && (
           <div className="-mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-input bg-sage/10 px-3 py-2.5 text-sm">
             <span className="flex items-center gap-2 font-medium text-sage">

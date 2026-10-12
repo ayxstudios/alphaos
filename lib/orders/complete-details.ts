@@ -3,6 +3,8 @@ import { and, eq, sql } from "drizzle-orm";
 
 import type { Tx } from "@/lib/db";
 import { shops, orders, orderItems, customers, assets, activityLog } from "@/lib/db/schema";
+import { findBuyerMismatch } from "@/lib/orders/buyer-guard";
+import { receiptBuyerName } from "@/lib/orders/buyer-match";
 import { parseFigureCount } from "@/lib/orders/manual-input";
 import { runTransition, type OrderStatus } from "@/lib/orders/transitions";
 import { shopStyleChoices } from "@/lib/designers/styles";
@@ -35,6 +37,12 @@ export type CompleteDetailsInput = {
   photoUrls?: string[];
   /** Print size / canvas, saved as a Size option on the item (undefined = leave options alone). */
   size?: string;
+  /**
+   * A person saw "this order was bought by X, these details are for Y" and chose
+   * Save anyway. Ignored for the system actor, so the autopilot can never
+   * override the check.
+   */
+  confirmBuyerMismatch?: boolean;
 };
 
 export type CompleteDetailsActor = { id: string; role: "admin" | "va" | "designer" | "helper" | "system" };
@@ -58,7 +66,8 @@ export type CompleteDetailsApplied = {
 
 export type CompleteDetailsResult =
   | { ok: true; orderNumber: string; orderId: string; fromStatus: OrderStatus; toStatus: OrderStatus }
-  | { ok: false; message: string };
+  /** `code` names a refusal a person can override (buyer_mismatch); other refusals have none. */
+  | { ok: false; message: string; code?: "buyer_mismatch" };
 
 /** A typed email that is clearly not one ("not-an-email", "sara@") is refused, not stored. */
 export function emailProblem(value: string | undefined): string | null {
@@ -113,6 +122,8 @@ export async function completeOrderDetailsCore(
         status: orders.status,
         customerId: orders.customerId,
         platformOrderName: orders.platformOrderName,
+        source: orders.source,
+        rawImport: orders.rawImport,
       })
       .from(orders)
       .where(eq(orders.id, input.orderId))
@@ -122,6 +133,36 @@ export async function completeOrderDetailsCore(
       return { ok: false as const, message: `Order is ${order.status}, not ${opts.expectedStatus}` };
     }
     const businessId = order.businessId;
+
+    // The receipt says who bought this order. Attaching someone else's name or
+    // email to it is refused until a person confirms (Save anyway); the system
+    // actor can never confirm, so the autopilot leaves such an order for a VA.
+    const email = input.customerEmail?.trim().toLowerCase() || null;
+    const receiptBuyer = receiptBuyerName(order.source, order.rawImport);
+    const mismatch =
+      email && receiptBuyer
+        ? await findBuyerMismatch(tx, {
+            businessId,
+            orderId: order.id,
+            orderCustomerId: order.customerId,
+            email,
+            typedName: input.customerName,
+            receiptBuyer,
+          })
+        : null;
+    if (mismatch && !(input.confirmBuyerMismatch === true && actor.role !== "system")) {
+      return { ok: false as const, code: "buyer_mismatch" as const, message: mismatch.message };
+    }
+    // Confirmed anyway: the audit row of this save says so.
+    const mismatchMeta = mismatch
+      ? {
+          buyerMismatchConfirmed: true,
+          receiptBuyer: mismatch.receiptBuyer,
+          enteredName: mismatch.enteredName,
+          enteredEmail: mismatch.email,
+        }
+      : {};
+
     const photoProblem = await referenceUploadProblem(r2Keys, `${businessId}/${order.id}/reference/`, photoUrls);
     if (photoProblem) return { ok: false as const, message: photoProblem };
 
@@ -136,7 +177,6 @@ export async function completeOrderDetailsCore(
     // Link or relink the customer whenever the VA supplies an email. Customer
     // uniqueness is per business, so this never merges across tenants.
     let customerId = order.customerId;
-    const email = input.customerEmail?.trim().toLowerCase() || null;
     if (email) {
       const [firstName, lastName] = splitName(input.customerName);
       await tx
@@ -221,7 +261,7 @@ export async function completeOrderDetailsCore(
         orderId: order.id,
         to,
         expectedFrom: "awaiting_details",
-        metadata: { via: opts.via ?? "manual_complete" },
+        metadata: { via: opts.via ?? "manual_complete", ...mismatchMeta },
       });
       toStatus = to;
     } else if (order.status === "awaiting_photos" && hasPhotos) {
@@ -229,7 +269,7 @@ export async function completeOrderDetailsCore(
         orderId: order.id,
         to: "ready_to_assign",
         expectedFrom: "awaiting_photos",
-        metadata: { via: "manual_photo_upload" },
+        metadata: { via: "manual_photo_upload", ...mismatchMeta },
       });
       toStatus = "ready_to_assign";
     } else {
@@ -240,7 +280,7 @@ export async function completeOrderDetailsCore(
         action: "order.details_updated",
         fromState: order.status,
         toState: order.status,
-        metadata: { photoCount, style: input.style ?? null },
+        metadata: { photoCount, style: input.style ?? null, ...mismatchMeta },
       });
     }
 

@@ -16,9 +16,10 @@ export const dynamic = "force-dynamic";
 /**
  * Awaiting QC: the portraits waiting for a check, soonest due first. Each
  * card shows the portrait, who it is for, the style, the designer, how long
- * it has waited, and a photo badge when the customer sent more than one
- * photo. One obvious button per card: Check. When this workspace is clear but
- * another is not, the empty state says so and switches with one tap.
+ * it has waited, a photo badge when the customer sent more than one photo,
+ * and one line on the newest change asked for. One obvious button per card:
+ * Check. When this workspace is clear but another is not, the empty state
+ * says so and switches with one tap.
  */
 export default async function QcQueuePage() {
   const session = await auth();
@@ -135,6 +136,11 @@ export default async function QcQueuePage() {
                     </span>
                     {r.photoCount > 1 && <Badge variant="info">{r.photoCount} photos</Badge>}
                   </div>
+                  {r.changeHint && (
+                    <p className="mt-1 truncate text-xs text-slate" title={r.changeHint}>
+                      {r.changeHint}
+                    </p>
+                  )}
                 </div>
                 <Link
                   href={`/qc/${r.id}`}

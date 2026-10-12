@@ -35,6 +35,8 @@ export type OrdersDashboardRow = {
   itemTitle: string;
   itemSummary: string;
   isOverdue: boolean;
+  /** Old order imported before the shop went live: found by a search, never in a live queue. */
+  archived: boolean;
   needsReview: boolean;
   revisionCount: number;
   latestQcResult: string | null;
@@ -63,6 +65,15 @@ type ColumnDef = {
   priority: "core" | "wide";
   render: (row: OrdersDashboardRow) => React.ReactNode;
 };
+
+/** The label an archived order carries in every list: grey, so it never reads as work to do. */
+function ArchivedBadge() {
+  return (
+    <Badge variant="neutral" title="Old order, kept for history. Create a revision to bring it back." className="shrink-0 whitespace-nowrap">
+      Archived
+    </Badge>
+  );
+}
 
 /** An email that, when it has to wrap, breaks after the @ rather than mid-word. */
 function EmailText({ email }: { email: string }) {
@@ -141,6 +152,11 @@ const ORDER_COLUMNS: ColumnDef[] = [
         <Link href={`/orders/${row.id}`} prefetch={false} className="truncate text-sm font-semibold text-ink hover:text-pigment">
           {row.orderNumber}
         </Link>
+        {row.archived && (
+          <p className="mt-1">
+            <ArchivedBadge />
+          </p>
+        )}
         <p className="break-words text-xs text-slate">{row.itemTitle}</p>
         {row.itemSummary && <p className="break-words text-xs text-slate">{row.itemSummary}</p>}
       </div>
@@ -806,13 +822,16 @@ export function OrdersOperationsTable({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
                     {/* The link's ::after covers the whole card, so a tap anywhere opens the order. */}
-                    <Link
-                      href={`/orders/${row.id}`}
-                      prefetch={false}
-                      className="min-w-0 truncate text-base font-semibold text-ink after:absolute after:inset-0 hover:text-pigment"
-                    >
-                      {row.orderNumber}
-                    </Link>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Link
+                        href={`/orders/${row.id}`}
+                        prefetch={false}
+                        className="min-w-0 truncate text-base font-semibold text-ink after:absolute after:inset-0 hover:text-pigment"
+                      >
+                        {row.orderNumber}
+                      </Link>
+                      {row.archived && <ArchivedBadge />}
+                    </div>
                     <Badge variant={statusTone(row)} dot className="shrink-0 whitespace-nowrap">{statusLabel(row)}</Badge>
                   </div>
                   <div className="mt-0.5 flex items-center justify-between gap-3 text-sm">

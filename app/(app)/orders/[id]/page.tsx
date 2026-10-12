@@ -34,6 +34,7 @@ import {
   type OrderStatus,
 } from "@/components/ui";
 import {
+  AlertTriangle,
   ArrowRight,
   Brush,
   Calendar,
@@ -57,6 +58,7 @@ import {
   type ShopifyProductMedia,
 } from "@/lib/integrations/shopify";
 import { getCardDetail } from "@/lib/orders/card-detail";
+import { buyerMismatchNotice } from "@/lib/orders/buyer-match";
 import { formatAge } from "@/lib/orders/today-queue";
 import { defaultReplyTemplate } from "@/lib/orders/reply-draft";
 import { OrderCommentForm } from "@/components/orders/order-comment-form";
@@ -205,7 +207,11 @@ function nextSuggestedAction(input: {
         ? { kind: "info", label: "Assigned, waiting for the designer to start" }
         : { kind: "assign", label: "Assign a designer" };
     case "in_design":
-      return { kind: "info", label: "Waiting for the designer to finish" };
+      // A revision can bring an order back with nobody on it (a revived
+      // archived order): then the next step is to assign, not to wait.
+      return input.hasDesigner
+        ? { kind: "info", label: "Waiting for the designer to finish" }
+        : { kind: "assign", label: "Assign a designer" };
     case "awaiting_qc":
       return { kind: "link", label: "Ready for a quality check", cta: "Review QC", href: `/qc/${orderId}` };
     case "awaiting_approval":
@@ -501,6 +507,15 @@ export default async function OrderDetailPage({
       })
     : (order.customerFirst || parseEtsyReceiptReview(order.rawImport).buyerName || "").trim().split(/\s+/)[0] ||
       "Customer";
+  // Staff only: the receipt names one buyer, the linked customer is someone else.
+  const buyerNotice = staffView
+    ? buyerMismatchNotice({
+        source: order.source,
+        rawImport: order.rawImport,
+        customerFirstName: order.customerFirst,
+        customerLastName: order.customerLast,
+      })
+    : null;
   const hasDesigner = Boolean(assignment[0]);
   const assignee = assignment[0] ? (assignment[0].name ?? assignment[0].email) : "Unassigned";
   const styles = Array.from(
@@ -693,6 +708,22 @@ export default async function OrderDetailPage({
           <Fact icon={Calendar} label="Due" value={fmtDate(order.dueAt)} />
         </div>
       </DataPanel>
+
+      {buyerNotice && (
+        <div
+          role="note"
+          data-testid="buyer-mismatch-line"
+          className="flex flex-col gap-1 rounded-input border border-amber/25 bg-amber/10 px-4 py-3 text-sm sm:flex-row sm:items-baseline sm:gap-3"
+        >
+          <span className="flex min-w-0 items-start gap-2 font-medium text-amber">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <span className="min-w-0 break-words">
+              {buyerNotice.label}: {buyerNotice.buyer}
+            </span>
+          </span>
+          <span className="min-w-0 text-ink">The customer details may belong to another order. Check before emailing.</span>
+        </div>
+      )}
 
       {styleSetter && (
         <OrderStyleSetter

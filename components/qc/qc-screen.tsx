@@ -15,6 +15,7 @@ import {
   type QcResult,
 } from "@/app/(app)/qc/actions";
 import { CompareViewer } from "./compare-viewer";
+import { ChangeRequestsPanel } from "./change-requests-panel";
 import { ChecklistPanel } from "./checklist-panel";
 import { OrderSaysPanel } from "./order-says-panel";
 import { VersionStrip } from "./version-strip";
@@ -333,6 +334,8 @@ export function QcScreen({
         />
 
         <aside className="flex flex-col rounded-card bg-surface p-4 shadow-card xl:min-h-[28rem]">
+          {/* Outside the closed-on-phone <details> below, so a phone sees it too. */}
+          <ChangeRequestsPanel requests={ctx.changeRequests} older={ctx.olderChangeRequests} />
           <details ref={saysRef} className="group mb-4">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-input bg-canvas px-3 text-sm font-semibold text-ink [&::-webkit-details-marker]:hidden">
               What the customer ordered

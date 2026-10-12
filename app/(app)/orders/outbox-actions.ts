@@ -12,9 +12,13 @@ import type { ItemResults } from "@/lib/qc/checklist";
 import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
 import { classifyProofReply } from "@/lib/email/reply-classifier";
 import { mergeReplyClassification } from "@/lib/integrations/gmail/inbound";
-import { adoptSenderAsCustomer } from "@/lib/email/link-reply";
+import { adoptSenderAsCustomer, senderName } from "@/lib/email/link-reply";
+import { parseEmailAddress } from "@/lib/email/suppression";
+import { findBuyerMismatch } from "@/lib/orders/buyer-guard";
+import { joinCustomerName, receiptBuyerName } from "@/lib/orders/buyer-match";
 
-export type OutboxActionResult = { ok: true; message?: string } | { ok: false; message: string };
+/** `code` "buyer_mismatch": the sender is not the order's buyer; the Messages page offers Link anyway. */
+export type OutboxActionResult = { ok: true; message?: string } | { ok: false; message: string; code?: "buyer_mismatch" };
 
 async function requireStaff(): Promise<RequestUser | null> {
   const session = await auth();
@@ -226,8 +230,17 @@ export async function searchOrdersForLink(
   });
 }
 
-/** Link an unmatched reply to an order: attaches it and drops it on the timeline. */
-export async function linkReplyToOrder(messageId: string, orderId: string): Promise<OutboxActionResult> {
+/**
+ * Link an unmatched reply to an order: attaches it and drops it on the timeline.
+ * When the order has no customer yet, the sender becomes its customer; if the
+ * receipt names a different buyer than that sender, a person must confirm
+ * (`confirmBuyerMismatch`, the Link anyway button) first.
+ */
+export async function linkReplyToOrder(
+  messageId: string,
+  orderId: string,
+  opts?: { confirmBuyerMismatch?: boolean },
+): Promise<OutboxActionResult> {
   const user = await requireStaff();
   if (!user) return { ok: false, message: "Not permitted" };
   const linked = await withUserContext(user, async (tx) => {
@@ -245,10 +258,47 @@ export async function linkReplyToOrder(messageId: string, orderId: string): Prom
       .where(and(eq(messages.id, messageId), eq(messages.direction, "inbound")));
     if (!m) return { ok: false as const, message: "Reply not found" };
     const [o] = await tx
-      .select({ id: orders.id, businessId: orders.businessId, customerId: orders.customerId, status: orders.status })
+      .select({
+        id: orders.id,
+        businessId: orders.businessId,
+        customerId: orders.customerId,
+        status: orders.status,
+        source: orders.source,
+        rawImport: orders.rawImport,
+      })
       .from(orders)
       .where(eq(orders.id, orderId));
     if (!o || o.businessId !== m.businessId) return { ok: false as const, message: "Order not found in this workspace" };
+
+    // The sender is about to become this order's customer. If the receipt names
+    // another buyer, or the sender's address already belongs to someone else, a
+    // person confirms first. An order that already has a customer is not changed.
+    let mismatchMeta: Record<string, unknown> = {};
+    const senderEmail = m.suppressedAt || o.customerId ? null : parseEmailAddress(m.address);
+    const receiptBuyer = receiptBuyerName(o.source, o.rawImport);
+    if (senderEmail && receiptBuyer) {
+      const [first, last] = senderName(m.address);
+      const mismatch = await findBuyerMismatch(tx, {
+        businessId: o.businessId,
+        orderId: o.id,
+        orderCustomerId: o.customerId,
+        email: senderEmail,
+        typedName: joinCustomerName(first, last),
+        receiptBuyer,
+        overrideLabel: "Link anyway",
+      });
+      if (mismatch) {
+        if (opts?.confirmBuyerMismatch !== true) {
+          return { ok: false as const, code: "buyer_mismatch" as const, message: mismatch.message };
+        }
+        mismatchMeta = {
+          buyerMismatchConfirmed: true,
+          receiptBuyer: mismatch.receiptBuyer,
+          enteredName: mismatch.enteredName,
+          enteredEmail: mismatch.email,
+        };
+      }
+    }
 
     // An order with no customer yet (Etsy gives us no buyer email) takes the
     // sender of the reply, so the next photo request or proof can reach them.
@@ -261,7 +311,7 @@ export async function linkReplyToOrder(messageId: string, orderId: string): Prom
       orderId: o.id,
       actorId: user.id,
       action: "message.received",
-      metadata: { channel: "email", subject: m.subject, from: m.address, manuallyLinkedBy: user.id },
+      metadata: { channel: "email", subject: m.subject, from: m.address, manuallyLinkedBy: user.id, ...mismatchMeta },
     });
     return { ok: true as const, message: "Reply linked to order", message_: m, order: o };
   });

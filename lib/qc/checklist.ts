@@ -82,3 +82,11 @@ export function splitChecklistLabel(label: string): { name: string; hint: string
   if (i <= 0) return { name: label, hint: "" };
   return { name: label.slice(0, i).trim(), hint: label.slice(i + 1).trim() };
 }
+
+/** Labels of items the VA marked failed, from the qc_checks snapshot + results. */
+export function failedLabels(snapshot: unknown, results: unknown): string[] {
+  const items = (snapshot as ChecklistSnapshot | null)?.items;
+  if (!Array.isArray(items)) return [];
+  const res = (results ?? {}) as ItemResults;
+  return items.filter((it) => res[it.key] === false).map((it) => it.label);
+}

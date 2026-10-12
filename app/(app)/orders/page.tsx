@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql, type AnyColumn, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, or, sql, type AnyColumn, type SQL } from "drizzle-orm";
 
 import { cleanSearchTerm, likeContains } from "@/lib/search";
 import { auth } from "@/lib/auth";
@@ -478,10 +478,21 @@ export default async function OrdersPage({
         : undefined;
   const dueFilter = dueFilterWhere(due);
   const statusFilter = statusFilterWhere(status);
+  // A search also looks through archived orders: history imported before a
+  // shop's backfill cutoff, kept out of every list so the open queues stay
+  // clean (lib/orders/archive.ts). They join only the two tabs that read as
+  // "everything" (All open, Completed), and not under a due or designer filter,
+  // because an archived order has neither a live due date nor a designer. Each
+  // archived row is labelled, and a revision on it brings it back to life.
+  const searchesArchived = Boolean(q) && !due && !designer && (selectedView === "active" || selectedView === "completed");
+  const scopeFilter = !searchesArchived
+    ? and(liveFilter, viewWhere(selectedView))!
+    : selectedView === "completed"
+      ? viewWhere("completed")
+      : or(and(liveFilter, viewWhere("active")), isNotNull(orders.archivedAt))!;
   const whereParts = [
     businessFilter,
-    liveFilter,
-    viewWhere(selectedView),
+    scopeFilter,
     queryFilter,
     sourceFilter,
     shopFilter,
@@ -517,6 +528,7 @@ export default async function OrdersPage({
         source: orders.source,
         needsReview: orders.needsReview,
         revisionCount: orders.revisionCount,
+        archivedAt: orders.archivedAt,
         dueAt: orders.dueAt,
         placedAt: orders.placedAt,
         createdAt: orders.createdAt,
@@ -617,6 +629,8 @@ export default async function OrdersPage({
       const prints = printMap.get(order.id) ?? [];
       const events = activityMap.get(order.id) ?? [];
       const qc = latestQc.get(order.id) ?? null;
+      // History, not work: an archived row never raises a review, timer, late or next-step flag.
+      const archived = order.archivedAt != null;
       const physical = items.some((item) => item.productType === "physical");
       const tracking = prints.find((print) => print.trackingNumber)?.trackingNumber ?? null;
       const hasPrintJob = prints.length > 0;
@@ -628,7 +642,7 @@ export default async function OrdersPage({
       const unresolvedFigures = items.some((item) => effectiveFigureCount(item) == null);
       const typeConflict = items.some(fulfilmentConflict);
       const needsReview =
-        order.needsReview && (!order.customerEmail || unresolvedFigures || typeConflict);
+        !archived && order.needsReview && (!order.customerEmail || unresolvedFigures || typeConflict);
       const derivedStatus = operationalStatusLabel({
         status: order.status,
         needsReview,
@@ -653,7 +667,7 @@ export default async function OrdersPage({
         status: order.status,
         derivedStatus,
         isPhysical: physical,
-        stageStartedAt: dateIso(stageStartedAt),
+        stageStartedAt: archived ? null : dateIso(stageStartedAt),
       });
       const reviewReason = reviewReasonText({
         derivedStatus,
@@ -664,7 +678,9 @@ export default async function OrdersPage({
         assignee: order.assignee,
       });
       const action =
-        timer.followUpDue
+        archived
+          ? { href: `/orders/${order.id}`, label: "Open" }
+          : timer.followUpDue
           ? { href: `/orders/${order.id}`, label: "Follow up" }
           : derivedStatus === "Needs VA Review"
             ? { href: `/orders/${order.id}`, label: "Review" }
@@ -709,11 +725,14 @@ export default async function OrdersPage({
         ].filter(Boolean).join(" · "),
         // Same rule as the Overdue view: a shipped, delivered, complete or
         // cancelled order is never shown as overdue.
-        isOverdue: Boolean(
-          order.dueAt &&
-            order.dueAt < new Date() &&
-            (DUE_STATUSES as readonly string[]).includes(order.status),
-        ),
+        isOverdue:
+          !archived &&
+          Boolean(
+            order.dueAt &&
+              order.dueAt < new Date() &&
+              (DUE_STATUSES as readonly string[]).includes(order.status),
+          ),
+        archived,
         needsReview,
         revisionCount: order.revisionCount,
         latestQcResult: qc?.result ?? null,
@@ -928,6 +947,11 @@ export default async function OrdersPage({
             ))}
           </div>
         )}
+        {searchesArchived && rows.some((row) => row.archived) && (
+          <p className="text-xs leading-snug text-slate">
+            Archived orders are old orders kept for history. To change one for a customer, open it and use Create revision.
+          </p>
+        )}
       </div>
 
       <TableShell>
@@ -937,7 +961,11 @@ export default async function OrdersPage({
             headline={q ? `No orders match "${q}"` : activeFilters.length ? "No orders match" : "Nothing here right now"}
             body={
               q
-                ? `${selectedView === "active" ? "Only open orders were searched. " : `Only ${selectedViewMeta.label} was searched. `}Check the spelling, or search every order, finished ones too.`
+                ? searchesArchived
+                  ? selectedView === "completed"
+                    ? "Completed and archived orders were searched. Check the spelling, or look in All open."
+                    : "Open and archived orders were searched. Check the spelling, or look in Completed."
+                  : `${selectedView === "active" ? "Only open orders were searched. " : `Only ${selectedViewMeta.label} was searched. `}Check the spelling, or search every order, finished ones too.`
                 : activeFilters.length
                   ? "Try clearing a filter."
                   : `No orders are in ${selectedViewMeta.label} at the moment.`

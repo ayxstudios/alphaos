@@ -1,6 +1,6 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
-import { withUserContext, type RequestUser } from "@/lib/db";
+import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { todoOrderScope } from "@/lib/orders/todo-scope";
 import {
@@ -12,9 +12,19 @@ import {
   shops,
   users,
   activityLog,
+  qcChecks,
+  proofs,
+  messages,
 } from "@/lib/db/schema";
 import type { OrderStatus } from "@/lib/orders/transitions";
 import { resolveChecklist, type ChecklistSnapshot } from "./checklist";
+import {
+  buildChangeRequests,
+  changeRequestHint,
+  emptyChangeRequestSources,
+  type ChangeRequestSources,
+  type QcChangeRequest,
+} from "./change-requests";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { currentMatchForProduct } from "@/lib/orders/style-learning";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
@@ -71,9 +81,135 @@ export type QcContext = {
   references: QcImage[];
   versions: QcVersion[]; // oldest → newest
   checklist: ChecklistSnapshot;
+  /** What was asked to change on this order, newest first (capped). */
+  changeRequests: QcChangeRequest[];
+  /** How many more were asked before the ones in `changeRequests`. */
+  olderChangeRequests: number;
 };
 
 const SUBMISSION_TYPES = ["submission", "final"] as const;
+
+/** Read at most this much of an email body; the reply sits above its quoted history. */
+const EMAIL_BODY_READ_CHARS = 4000;
+
+/**
+ * Every record of a change request for these orders, as the plain rows
+ * buildChangeRequests merges: QC fails, customer proof-page revisions, the
+ * activity log (revision notes, QC send-backs, team comments) and the
+ * customer's own emails. One query per source however many orders, so the
+ * list page costs the same four reads as one order. Staff-only data: RLS
+ * still scopes every read to the caller.
+ */
+async function loadChangeRequestSources(
+  tx: Tx,
+  orderIds: string[],
+): Promise<Map<string, ChangeRequestSources>> {
+  const byOrder = new Map<string, ChangeRequestSources>();
+  if (orderIds.length === 0) return byOrder;
+  const of = (orderId: string): ChangeRequestSources => {
+    let sources = byOrder.get(orderId);
+    if (!sources) byOrder.set(orderId, (sources = emptyChangeRequestSources()));
+    return sources;
+  };
+  const person = (name: string | null, email: string | null) => name?.trim() || email?.split("@")[0] || null;
+
+  const [fails, log, revisions, inbound] = await Promise.all([
+    tx
+      .select({
+        orderId: qcChecks.orderId,
+        createdAt: qcChecks.createdAt,
+        reason: qcChecks.reason,
+        checklistSnapshot: qcChecks.checklistSnapshot,
+        itemResults: qcChecks.itemResults,
+        signature: qcChecks.signature,
+        name: users.name,
+        email: users.email,
+      })
+      .from(qcChecks)
+      .leftJoin(users, eq(users.id, qcChecks.vaId))
+      .where(and(inArray(qcChecks.orderId, orderIds), eq(qcChecks.result, "fail"))),
+    tx
+      .select({
+        orderId: activityLog.orderId,
+        createdAt: activityLog.createdAt,
+        action: activityLog.action,
+        fromState: activityLog.fromState,
+        metadata: activityLog.metadata,
+        name: users.name,
+        email: users.email,
+      })
+      .from(activityLog)
+      .leftJoin(users, eq(users.id, activityLog.actorId))
+      .where(and(inArray(activityLog.orderId, orderIds), inArray(activityLog.action, ["order.in_design", "comment"]))),
+    tx
+      .select({
+        orderId: proofs.orderId,
+        decidedAt: proofs.decidedAt,
+        createdAt: proofs.createdAt,
+        revisionNotes: proofs.revisionNotes,
+        failedItems: proofs.failedItems,
+        annotations: proofs.annotations,
+      })
+      .from(proofs)
+      .where(and(inArray(proofs.orderId, orderIds), eq(proofs.decision, "revision"))),
+    tx
+      .select({
+        id: messages.id,
+        orderId: messages.orderId,
+        createdAt: messages.createdAt,
+        body: sql<string | null>`left(${messages.body}, ${EMAIL_BODY_READ_CHARS})`,
+      })
+      .from(messages)
+      .where(
+        and(
+          inArray(messages.orderId, orderIds),
+          eq(messages.direction, "inbound"),
+          isNull(messages.archivedAt),
+          isNull(messages.suppressedAt),
+          // Customer words only: email replies and Etsy conversation messages
+          // (not Etsy sale / shipped notifications). Same rule as the agent inbox.
+          or(
+            eq(messages.channel, "email"),
+            and(eq(messages.channel, "etsy"), sql`${messages.metadata}->>'kind' = 'message'`),
+          ),
+        ),
+      ),
+  ]);
+
+  for (const r of fails) {
+    of(r.orderId).qcFails.push({
+      at: r.createdAt,
+      // The typed sign-off name is who really checked (the VAs share logins).
+      who: r.signature?.trim() || person(r.name, r.email),
+      reason: r.reason,
+      checklistSnapshot: r.checklistSnapshot,
+      itemResults: r.itemResults,
+    });
+  }
+  for (const r of log) {
+    if (!r.orderId) continue;
+    of(r.orderId).activity.push({
+      at: r.createdAt,
+      who: person(r.name, r.email),
+      action: r.action,
+      fromState: r.fromState,
+      metadata: r.metadata,
+    });
+  }
+  for (const r of revisions) {
+    of(r.orderId).proofs.push({
+      at: r.decidedAt ?? r.createdAt,
+      revisionNotes: r.revisionNotes,
+      failedItems: r.failedItems,
+      annotations: r.annotations,
+    });
+  }
+  for (const r of inbound) {
+    if (!r.orderId) continue;
+    of(r.orderId).emails.push({ id: r.id, at: r.createdAt, body: r.body });
+  }
+  return byOrder;
+}
 
 async function resolveAssetUrl(asset: {
   url: string | null;
@@ -231,6 +367,10 @@ export async function getQcContext(
       createdAt: v.createdAt.toISOString(),
     })));
 
+    // What was asked to change (QC send-backs, the customer's revisions and emails, team notes).
+    const sources = (await loadChangeRequestSources(tx, [order.id])).get(order.id) ?? emptyChangeRequestSources();
+    const { changeRequests, older } = buildChangeRequests(sources);
+
     return {
       orderId: order.id,
       orderNumber: order.platformOrderName ?? order.platformOrderId,
@@ -251,6 +391,8 @@ export async function getQcContext(
         checklistVersion: shop?.checklistVersion ?? 1,
         integrationConfig: shop?.integrationConfig ?? null,
       }),
+      changeRequests,
+      olderChangeRequests: older,
     };
   });
 }
@@ -349,6 +491,8 @@ export type QcQueueRow = {
   style: string | null;
   dueAt: string | null;
   waitingSince: string;
+  /** One line on the newest change request ("Customer: ..." / "Asked: ..."), or null when none. */
+  changeHint: string | null;
 };
 
 /**
@@ -382,6 +526,12 @@ export async function getQcQueue(user: RequestUser, businessId: string | null): 
       .leftJoin(users, eq(users.id, assignments.designerId))
       .where(bizFilter ? and(eq(orders.status, "awaiting_qc"), liveOrderWhere(), todoOrderScope(), bizFilter) : and(eq(orders.status, "awaiting_qc"), liveOrderWhere(), todoOrderScope()))
       .orderBy(sql`${orders.dueAt} asc nulls last`, asc(orders.createdAt));
+
+    // One batched read for every listed order; no per-row queries.
+    const sources = await loadChangeRequestSources(
+      tx,
+      rows.map((r) => r.id),
+    );
     return rows.map((r) => ({
       id: r.id,
       businessId: r.businessId,
@@ -396,6 +546,9 @@ export async function getQcQueue(user: RequestUser, businessId: string | null): 
       style: r.style ?? null,
       dueAt: r.dueAt ? r.dueAt.toISOString() : null,
       waitingSince: r.updatedAt.toISOString(),
+      changeHint: changeRequestHint(
+        buildChangeRequests(sources.get(r.id) ?? emptyChangeRequestSources(), 1).changeRequests[0],
+      ),
     }));
   });
 }

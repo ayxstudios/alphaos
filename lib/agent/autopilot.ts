@@ -440,9 +440,9 @@ async function intakeStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
         orderNotes: order.notes,
       });
 
-      const unparsed = async (missing: string[]) => {
+      const unparsed = async (missing: string[], summary?: string) => {
         const first = missing[0]?.split(" (")[0] ?? "details";
-        await raise(tx, bump, ctx.now, order, "intake_unparsed", `Etsy order #${orderLabel(order)}: could not resolve ${first}`, {
+        await raise(tx, bump, ctx.now, order, "intake_unparsed", summary ?? `Etsy order #${orderLabel(order)}: could not resolve ${first}`, {
           variations: etsyVariations(order.rawImport),
           suggested: {
             figureCount: parse.bestGuess.figureCount,
@@ -517,6 +517,10 @@ async function intakeStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
       );
       if (res.ok) {
         bump((r) => (r.etsyDetailsCompleted += 1));
+      } else if (res.code === "buyer_mismatch") {
+        // The customer on file is not the receipt buyer. The system never passes
+        // confirmBuyerMismatch, so it stays one open exception for a VA to settle.
+        await unparsed([res.message], `Etsy order #${orderLabel(order)}: customer details are not the buyer's`);
       } else {
         await unparsed([res.message]);
       }

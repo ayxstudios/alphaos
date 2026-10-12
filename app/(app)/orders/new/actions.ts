@@ -45,7 +45,8 @@ export type NewOrderInput = {
 export type NewOrderResult =
   /** assignedTo: the designer auto-assign picked; null = none had room; absent = not assignable yet. */
   | { ok: true; orderNumber: string; orderId: string; assignedTo?: string | null }
-  | { ok: false; message: string };
+  /** code "buyer_mismatch": the customer is not the order's buyer; the form offers Save anyway. */
+  | { ok: false; message: string; code?: "buyer_mismatch" };
 
 async function requireVa(): Promise<RequestUser | { error: string }> {
   const session = await auth();
@@ -300,6 +301,8 @@ export async function completeOrderDetails(input: {
   customerEmail?: string;
   r2Keys?: string[];
   photoUrls?: string[];
+  /** Set by the Save anyway button after a buyer_mismatch refusal. */
+  confirmBuyerMismatch?: boolean;
 }): Promise<NewOrderResult> {
   const authed = await requireVa();
   if ("error" in authed) return { ok: false, message: authed.error };
@@ -321,6 +324,7 @@ export async function completeOrderDetails(input: {
       r2Keys: input.r2Keys,
       photoUrls: input.photoUrls,
       size: input.size,
+      confirmBuyerMismatch: input.confirmBuyerMismatch === true,
     };
     const res = await completeOrderDetailsCore(user, fields, (fn) => withUserContext(user, fn));
     if (!res.ok) return res;

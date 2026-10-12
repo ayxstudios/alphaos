@@ -25,6 +25,7 @@ import {
 } from "@/lib/qc/checklist";
 import { onRevisionEdge } from "@/lib/agent/ai-core";
 import { runAutoAssign } from "./assign";
+import { reviveArchivedOrder } from "./archive";
 import { SENT_BACK_FROM } from "./board-constants";
 import { prepareProofForApproval, queueStageEmail } from "@/lib/email/dispatch";
 import { createEarningForCompletion } from "@/lib/orders/earnings";
@@ -210,6 +211,7 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
       customerId: orders.customerId,
       status: orders.status,
       revisionCount: orders.revisionCount,
+      archivedAt: orders.archivedAt,
       platformOrderId: orders.platformOrderId,
       platformOrderName: orders.platformOrderName,
     })
@@ -274,6 +276,18 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
   }
   let aiRevision = false;
   if (edge.revision) {
+    // A revision on an archived legacy order makes it live work again, in this
+    // same transaction, so every entry point (VA, proof page, agent inbox, QC)
+    // revives it the same way: back in every list, with its items rebuilt.
+    if (order.archivedAt) {
+      await reviveArchivedOrder(tx, {
+        orderId,
+        businessId: order.businessId,
+        actorId: actor.role === "system" ? null : actor.id,
+        reason: "revision",
+        canWriteItems: edgeRole !== "designer",
+      });
+    }
     aiRevision = await onRevisionEdge(tx, {
       orderId,
       businessId: order.businessId,
