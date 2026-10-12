@@ -127,28 +127,43 @@ export function CopyField({
     if (timer.current) clearTimeout(timer.current);
   }, []);
 
-  return (
-    <div className={cn("flex gap-2", inline ? "items-center" : "items-start", className)}>
-      <div
-        className={cn(
-          "-mx-1.5 -my-1 min-w-0 rounded-input px-1.5 py-1 transition-colors motion-layout",
-          !inline && "flex-1",
-          lit && "bg-pigment-soft",
-        )}
-      >
-        {children}
-      </div>
-      {text.trim() && (
-        <CopyButton
-          text={text}
-          what={what}
-          onCopied={() => {
-            setLit(true);
-            if (timer.current) clearTimeout(timer.current);
-            timer.current = setTimeout(() => setLit(false), COPIED_MS);
-          }}
-        />
+  const value = (
+    <div
+      className={cn(
+        "-mx-1.5 -my-1 min-w-0 rounded-input px-1.5 py-1 transition-colors motion-layout",
+        lit && "bg-pigment-soft",
       )}
+    >
+      {children}
+    </div>
+  );
+  const button = text.trim() ? (
+    <CopyButton
+      text={text}
+      what={what}
+      // A longer value wraps around the button and then takes the full
+      // width, so a note on a phone is not squeezed into a narrow column.
+      className={inline ? undefined : "float-right mb-1 ml-2"}
+      onCopied={() => {
+        setLit(true);
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(() => setLit(false), COPIED_MS);
+      }}
+    />
+  ) : null;
+
+  if (inline) {
+    return (
+      <div className={cn("flex items-center gap-2", className)}>
+        {value}
+        {button}
+      </div>
+    );
+  }
+  return (
+    <div className={cn("flow-root", className)}>
+      {button}
+      {value}
     </div>
   );
 }
