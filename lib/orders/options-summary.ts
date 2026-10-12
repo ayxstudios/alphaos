@@ -32,6 +32,40 @@ function clip(text: string, max: number): string {
   return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,.;:-]+$/, "")}…`;
 }
 
+// Option names that carry the customer's own text for the art: Etsy's
+// "Personalization", PixArt's "Pet Name(s)", CPS Shopify's
+// "Personalisation/Comments". A font or colour pick for the name, or an upload
+// field, names a name but is not the text itself.
+const PERSONALIZATION_NAME = /personali[sz]|\bnames?\b|\bwording\b|inscription|dedication|engrav|caption|\btext\b/i;
+const NOT_PERSONALIZATION_NAME = /font|colou?r|upload|photo|image|e-?mail|phone/i;
+
+export function isPersonalizationOption(name: string): boolean {
+  const n = name.trim();
+  return !!n && !n.startsWith("_") && PERSONALIZATION_NAME.test(n) && !NOT_PERSONALIZATION_NAME.test(n);
+}
+
+/**
+ * The personalization the customer typed, verbatim, so a designer can copy it
+ * onto the art exactly: line breaks kept, only stray spaces at line ends and
+ * blank edges trimmed. Empty answers are skipped.
+ */
+export function personalizationOf(options: ShopOption[] | null | undefined): ShopOption[] {
+  if (!options?.length) return [];
+  const out: ShopOption[] = [];
+  for (const o of options) {
+    const name = String(o?.name ?? "");
+    if (!isPersonalizationOption(name)) continue;
+    const value = String(o?.value ?? "")
+      .replace(/\r\n?/g, "\n")
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .join("\n")
+      .trim();
+    if (value) out.push({ name: name.trim(), value });
+  }
+  return out;
+}
+
 /** The summary line, or "" when no option says anything worth a line. */
 export function optionsSummary(options: ShopOption[] | null | undefined, max = 90): string {
   if (!options?.length) return "";

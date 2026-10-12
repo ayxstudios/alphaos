@@ -73,21 +73,9 @@ export function optionName(name: string): string {
   return name.replace(/[\s:]+$/, "");
 }
 
-/**
- * The customer's own words on a revision. The stored note repeats the issues
- * they ticked in front of it ("Wrong eye colour. Could the collar be blue?"),
- * and those issues are listed right above the note, so they are dropped here.
- * Null when nothing is left.
- */
-export function revisionNote(reason: string | null, failedItems: string[]): string | null {
-  if (!reason) return null;
-  let text = reason.trim();
-  const prefix = failedItems.join(", ");
-  if (prefix && text.toLowerCase().startsWith(prefix.toLowerCase())) {
-    text = text.slice(prefix.length).replace(/^[\s.,;:]+/, "");
-  }
-  return text || null;
-}
+// The customer's own words on a revision; lives with the revision history so
+// the card's current note and its history read the same rule.
+export { revisionNote } from "@/lib/orders/revision-history";
 
 /**
  * A one-line, human description of a history event (actor rendered separately).

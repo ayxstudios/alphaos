@@ -47,6 +47,7 @@
     "db:local-tour": "scripts/local-db/setup-tour-db.sh",
     "test:due-date": "tsx scripts/test-due-date.ts",
     "test:agent-completeness": "tsx scripts/test-agent-completeness.ts",
+    "test:card-copy": "tsx scripts/test-card-copy.ts",
     "test:agent-autopilot": "tsx scripts/test-agent-autopilot.ts",
     "test:agent-inbox": "tsx scripts/test-agent-inbox.ts",
     "test:legacy-intake": "tsx scripts/test-legacy-intake.ts",

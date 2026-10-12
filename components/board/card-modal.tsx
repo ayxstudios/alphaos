@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 
 import { cn, styleLabel } from "@/lib/utils";
-import { Avatar, Button, Disclosure, StatusChip, useToast } from "@/components/ui";
+import { Avatar, Button, CopyButton, CopyField, Disclosure, StatusChip, useToast } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
 import { AlertTriangle, Brush, Camera, Check, X } from "@/components/ui/icons";
 import { Countdown } from "./countdown";
+import { RevisionHistory } from "./revision-history";
 import {
   cardLabels,
   describeEvent,
@@ -28,6 +29,7 @@ import {
 } from "@/app/(app)/board/actions";
 import type { BoardCard } from "@/lib/orders/board-data";
 import { optionsSummary } from "@/lib/orders/options-summary";
+import { buildRevisionHistory, revisionCopyText } from "@/lib/orders/revision-history";
 import { isWithCustomer, SENT_BACK_FROM } from "@/lib/orders/board-constants";
 import type { CardDetail, CardEvent, CardImage } from "@/lib/orders/card-detail";
 import { formatAt, formatDeadline } from "@/lib/time";
@@ -133,6 +135,7 @@ export function CardModal({
   const chipLabel = designerView ? designerStateLabel(card.status) : undefined;
   // Passed QC or complete: nothing left on the designer's clock.
   const designerDone = designerView && (card.status === "complete" || isWithCustomer(card.status));
+  const history = useMemo(() => buildRevisionHistory(events), [events]);
 
   if (!mounted) return null;
 
@@ -176,7 +179,13 @@ export function CardModal({
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex-1 space-y-5 overflow-y-auto p-5 md:max-h-[85vh]">
             <div className="space-y-1 pr-8">
-              <p className="text-xs font-medium text-slate">Order {card.orderNumber}</p>
+              {/* The order number copies on its own (designers name files and
+                  messages by it), never with the page around it. */}
+              <CopyField text={card.orderNumber} what="order number" inline>
+                <p className="text-xs font-medium text-slate">
+                  Order <span className="select-all text-ink">{card.orderNumber}</span>
+                </p>
+              </CopyField>
               <h2 className="font-display text-xl font-semibold text-ink">
                 {card.title ?? "Custom portrait"}
               </h2>
@@ -226,6 +235,34 @@ export function CardModal({
 
             <Gallery images={detail?.images ?? null} cover={card.thumbnailUrl} />
 
+            {/* What goes ON the art, exactly as the customer typed it, from
+                every item, each with its own Copy button. */}
+            {card.personalization.length > 0 && (
+              <section className="rounded-input bg-canvas px-3 py-2.5" aria-label="Personalization">
+                <p className="text-xs font-medium text-slate">Personalization</p>
+                <ul className="mt-1.5 flex flex-col gap-2">
+                  {card.personalization.map((p, i) => {
+                    const caption = [
+                      p.item ? `Item ${p.item}` : null,
+                      /^personali[sz]ation$/i.test(optionName(p.name)) ? null : optionName(p.name),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ");
+                    return (
+                      <li key={i}>
+                        <CopyField text={p.value} what={caption ? `personalization, ${caption}` : "personalization"}>
+                          {caption && <span className="block text-xs text-slate">{caption}</span>}
+                          <span className="block select-all whitespace-pre-wrap break-words text-base font-medium text-ink [overflow-wrap:anywhere]">
+                            {p.value}
+                          </span>
+                        </CopyField>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            )}
+
             {/* The shop's options as one human line; every option in full,
                 exactly as the customer chose it, is one tap away. */}
             {card.options.length > 0 && (
@@ -260,8 +297,21 @@ export function CardModal({
 
             {card.notes && (
               <Disclosure summary="Notes and special requests" defaultOpen className="bg-amber/5 shadow-none">
-                <p className="whitespace-pre-wrap text-sm text-ink">{card.notes}</p>
+                <CopyField text={card.notes} what="notes and special requests">
+                  <p className="whitespace-pre-wrap break-words text-sm text-ink [overflow-wrap:anywhere]">{card.notes}</p>
+                </CopyField>
               </Disclosure>
+            )}
+
+            {/* Every QC fail and revision so far, newest first: what was asked
+                before stays readable (and copyable) after the next round.
+                Folded while the newest one already shows at the top. */}
+            {detail !== null && (
+              <RevisionHistory
+                notes={history}
+                timeZone={designerView ? timeZone : undefined}
+                defaultOpen={!revision}
+              />
             )}
 
             <Disclosure
@@ -356,7 +406,7 @@ export function CardModal({
             </Meta>
           )}
           <Meta label="Order number">
-            <span className="text-sm text-ink">{card.orderNumber}</span>
+            <span className="select-all text-sm text-ink">{card.orderNumber}</span>
           </Meta>
           <Meta label="Customer">
             <span className="text-sm text-ink">{card.customerName}</span>
@@ -909,6 +959,7 @@ function RevisionBlock({
 }) {
   const qc = kind === "qc";
   const note = revisionNote(reason, failedItems);
+  const copy = revisionCopyText(note, failedItems);
   return (
     <div
       className={cn(
@@ -916,15 +967,18 @@ function RevisionBlock({
         qc ? "border-rose/20 bg-rose/10" : "border-pigment/20 bg-pigment-soft",
       )}
     >
-      <span
-        className={cn(
-          "flex items-center gap-1.5 text-sm font-semibold",
-          qc ? "text-rose" : "text-pigment",
-        )}
-      >
-        <AlertTriangle size={14} className="shrink-0" />
-        {qc ? "QC failed" : "Revision requested"}
-      </span>
+      <div className="flex items-center justify-between gap-2">
+        <span
+          className={cn(
+            "flex items-center gap-1.5 text-sm font-semibold",
+            qc ? "text-rose" : "text-pigment",
+          )}
+        >
+          <AlertTriangle size={14} className="shrink-0" />
+          {qc ? "QC failed" : "Revision requested"}
+        </span>
+        {copy && <CopyButton text={copy} what={qc ? "QC note" : "revision note"} />}
+      </div>
       {/* The person's own words first: they say what to change. The ticked
           checks follow as the detail. */}
       {note && <p className="text-sm text-ink">&ldquo;{note}&rdquo;</p>}

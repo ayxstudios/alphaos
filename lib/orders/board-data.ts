@@ -22,6 +22,7 @@ import { issueLabels } from "@/lib/proofs/issues";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { sizedImageUrl } from "@/lib/images";
+import { personalizationOf } from "@/lib/orders/options-summary";
 import {
   COMPLETE_COLUMN_MAX,
   COMPLETE_COLUMN_WINDOW_DAYS,
@@ -60,6 +61,12 @@ export type BoardCard = {
   /** Product title + variant options for the designer ("what am I making"). */
   title: string | null;
   options: { name: string; value: string }[];
+  /**
+   * The customer's personalization (names, wording for the art), verbatim,
+   * from EVERY item: what a designer copies onto the portrait. `item` is the
+   * 1-based line on an order with more than one item, else null.
+   */
+  personalization: { item: number | null; name: string; value: string }[];
   /** Free-text notes / special requests (manual orders). */
   notes: string | null;
   /** Order origin — 'manual' orders are badged so staff can tell at a glance. */
@@ -215,7 +222,9 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
   const style = new Map<string, string>();
   const title = new Map<string, string>();
   const options = new Map<string, { name: string; value: string }[]>();
+  const itemCount = new Map<string, number>();
   for (const it of items) {
+    itemCount.set(it.orderId, (itemCount.get(it.orderId) ?? 0) + 1);
     fig.set(it.orderId, (fig.get(it.orderId) ?? 0) + (it.figureCount ?? 0));
     if (it.figureCount == null) hasNull.set(it.orderId, true);
     if (it.style && !style.has(it.orderId)) style.set(it.orderId, it.style);
@@ -223,6 +232,18 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
     if (Array.isArray(it.options) && it.options.length && !options.has(it.orderId)) {
       options.set(it.orderId, it.options as { name: string; value: string }[]);
     }
+  }
+
+  // Every item's personalization, not only the first item's (the options
+  // above keep the first item): a two-cat order carries one name per item.
+  const personalization = new Map<string, BoardCard["personalization"]>();
+  const itemNo = new Map<string, number>();
+  for (const it of items) {
+    const n = (itemNo.get(it.orderId) ?? 0) + 1;
+    itemNo.set(it.orderId, n);
+    const item = (itemCount.get(it.orderId) ?? 0) > 1 ? n : null;
+    const lines = personalizationOf(it.options).map((line) => ({ item, ...line }));
+    if (lines.length) personalization.set(it.orderId, [...(personalization.get(it.orderId) ?? []), ...lines]);
   }
 
   // First reference photo per order; CDN urls resolve directly (downsized for
@@ -317,6 +338,7 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
     style: style.get(o.id) ?? null,
     title: title.get(o.id) ?? null,
     options: options.get(o.id) ?? [],
+    personalization: personalization.get(o.id) ?? [],
     notes: o.notes,
     source: o.source,
     customerName: o.customerId ? (name.get(o.customerId) ?? "-") : "-",

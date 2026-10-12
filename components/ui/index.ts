@@ -25,6 +25,7 @@ export { Skeleton } from "./skeleton";
 export { EmptyState } from "./empty-state";
 export { Tooltip } from "./tooltip";
 export { InfoBubble } from "./info-bubble";
+export { CopyButton, CopyField, copyText } from "./copy-button";
 export {
   Page,
   PageHeader,
