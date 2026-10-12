@@ -949,7 +949,7 @@ export default async function OrdersPage({
         )}
         {searchesArchived && rows.some((row) => row.archived) && (
           <p className="text-xs leading-snug text-slate">
-            Archived orders are old orders kept for history. To change one for a customer, open it and use Create revision.
+            Archived orders are old orders kept for history. To change one for a customer, open it and use Request revision under Reassign or request a revision.
           </p>
         )}
       </div>

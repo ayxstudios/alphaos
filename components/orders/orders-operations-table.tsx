@@ -69,7 +69,7 @@ type ColumnDef = {
 /** The label an archived order carries in every list: grey, so it never reads as work to do. */
 function ArchivedBadge() {
   return (
-    <Badge variant="neutral" title="Old order, kept for history. Create a revision to bring it back." className="shrink-0 whitespace-nowrap">
+    <Badge variant="neutral" title="Old order, kept for history. Request a revision on it to bring it back." className="shrink-0 whitespace-nowrap">
       Archived
     </Badge>
   );

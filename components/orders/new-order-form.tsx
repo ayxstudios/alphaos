@@ -153,6 +153,12 @@ export function NewOrderForm({
   const [dup, setDup] = useState<{ orderId: string; status: string; label: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const firstFieldRef = useRef<HTMLInputElement>(null);
+  const mismatchRef = useRef<HTMLDivElement>(null);
+  // On a phone the notice can land under the fixed tab bar; bring it into view.
+  useEffect(() => {
+    if (buyerMismatch) mismatchRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [buyerMismatch]);
+
   // Keyboard-first on a laptop: a new order opens with Order number focused.
   // Not on a phone, where focus would throw the keyboard over the form.
   useEffect(() => {
@@ -598,8 +604,9 @@ export function NewOrderForm({
         </div>
         {buyerMismatch && (
           <div
+            ref={mismatchRef}
             role="alert"
-            className="-mt-2 flex flex-col gap-3 rounded-input border border-amber/25 bg-amber/10 p-3 sm:flex-row sm:items-center sm:justify-between"
+            className="-mt-2 flex scroll-mb-24 flex-col gap-3 rounded-input border border-amber/25 bg-amber/10 p-3 sm:flex-row sm:items-center sm:justify-between"
           >
             <p className="flex min-w-0 items-start gap-2 text-sm text-ink">
               <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber" />
