@@ -65,8 +65,8 @@ export function ChangeRequestsPanel({ requests, older }: { requests: QcChangeReq
           const who = r.who && !label.startsWith(r.who) ? r.who : null;
           return (
             <li key={`${r.at}-${i}`} className={cn("border-l-2 pl-2.5", i === 0 ? "border-pigment" : "border-line")}>
-              <p className="break-words text-xs text-slate">{[label, who, when(r.at)].filter(Boolean).join(" · ")}</p>
-              {r.text ? <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-ink">{r.text}</p> : null}
+              <p className="break-words text-sm text-slate sm:text-xs">{[label, who, when(r.at)].filter(Boolean).join(" · ")}</p>
+              {r.text ? <p className="mt-0.5 whitespace-pre-wrap break-words text-base text-ink sm:text-sm">{r.text}</p> : null}
               {r.items.length > 0 ? (
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {r.items.map((item, j) => (
@@ -79,7 +79,7 @@ export function ChangeRequestsPanel({ requests, older }: { requests: QcChangeReq
             </li>
           );
         })}
-        {older > 0 ? <li className="text-xs text-slate">{older} older</li> : null}
+        {older > 0 ? <li className="text-sm text-slate sm:text-xs">{older} older</li> : null}
       </ul>
     </section>
   );
