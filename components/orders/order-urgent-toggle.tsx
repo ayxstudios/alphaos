@@ -45,9 +45,9 @@ export function OrderUrgentToggle({
     return (
       <span className="inline-flex items-center gap-1.5">
         <UrgentPill reason={reason} className="h-6 px-2 text-sm" />
-        <Button type="button" variant="ghost" size="sm" loading={pending} onClick={() => apply(false)} title="Clear urgent">
+        <Button type="button" variant="ghost" size="sm" className="h-11 sm:h-9" loading={pending} onClick={() => apply(false)} title="Clear urgent">
           <X size={14} />
-          <span className="max-[399px]:sr-only">Clear urgent</span>
+          <span>Clear urgent</span>
         </Button>
       </span>
     );

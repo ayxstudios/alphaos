@@ -348,7 +348,7 @@ function dueFilterWhere(due: string) {
   }
 }
 
-function sortOrder(sort: SortKey, dir: SortDir, view: ViewKey) {
+function sortOrder(sort: SortKey, dir: SortDir, view: ViewKey, picked: boolean) {
   const direction = dir === "asc" ? asc : desc;
   // Blanks (no due date, no designer, no name yet) sort last both ways, so a
   // reversed column starts with real values, never with the empty ones.
@@ -356,6 +356,10 @@ function sortOrder(sort: SortKey, dir: SortDir, view: ViewKey) {
   // The name the row shows: the customer record, else their email, else the
   // Etsy buyer name on the receipt; case does not matter.
   const shownName = sql`lower(coalesce(nullif(trim(concat_ws(' ', ${customers.firstName}, ${customers.lastName})), ''), ${customers.email}, ${orders.rawImport}->>'name'))`;
+  // Until someone picks a column, URGENT orders (lib/orders/urgent.ts) go on top.
+  if (!picked) {
+    return [sql`${orders.urgentAt} is null`, blanksLast(orders.placedAt), desc(orders.createdAt)];
+  }
   if (sort === "due") return [blanksLast(orders.dueAt), desc(orders.createdAt)];
   if (sort === "order") return [direction(orders.platformOrderName), desc(orders.createdAt)];
   if (sort === "customer") return [blanksLast(shownName), desc(orders.createdAt)];
@@ -363,10 +367,8 @@ function sortOrder(sort: SortKey, dir: SortDir, view: ViewKey) {
   if (sort === "status") return [direction(orders.status), desc(orders.createdAt)];
   if (sort === "owner") return [blanksLast(users.name), desc(orders.createdAt)];
   if (sort === "ordered") return [blanksLast(orders.placedAt), desc(orders.createdAt)];
-  // The default lists put URGENT orders on top (lib/orders/urgent.ts).
-  const urgentFirst = sql`${orders.urgentAt} is null`;
-  if (view === "overdue") return [urgentFirst, asc(orders.dueAt), desc(orders.createdAt)];
-  return [urgentFirst, desc(orders.createdAt)];
+  if (view === "overdue") return [asc(orders.dueAt), desc(orders.createdAt)];
+  return [desc(orders.createdAt)];
 }
 
 function viewHref(params: URLSearchParams, view: ViewKey) {
@@ -544,7 +546,7 @@ export default async function OrdersPage({
       )
       .leftJoin(users, eq(users.id, assignments.designerId))
       .where(where)
-      .orderBy(...sortOrder(sort, dir, selectedView))
+      .orderBy(...sortOrder(sort, dir, selectedView, !!params.sort))
       .limit(pageSize)
       .offset(offset);
 
