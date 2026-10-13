@@ -38,6 +38,8 @@ export const AGENT_CONFIG_DEFAULTS: AgentConfig = {
   printDrafts: false,
   emailSignature: null,
   replySignOff: null,
+  designerSlaHours: 24,
+  revisionSlaHours: 24,
 };
 
 function cleanSignature(v: unknown): { text: string; html: string } | null {
@@ -100,6 +102,8 @@ export function getAgentConfig(business: { agentConfig?: unknown } | null | unde
     maxAutoSendsPerHour: num(raw.maxAutoSendsPerHour, 1, 1000, AGENT_CONFIG_DEFAULTS.maxAutoSendsPerHour),
     printDrafts: raw.printDrafts === true,
     emailSignature: cleanSignature(raw.emailSignature),
+    designerSlaHours: num(raw.designerSlaHours, 1, 168, AGENT_CONFIG_DEFAULTS.designerSlaHours),
+    revisionSlaHours: num(raw.revisionSlaHours, 1, 168, AGENT_CONFIG_DEFAULTS.revisionSlaHours),
     replySignOff: typeof raw.replySignOff === "string" && raw.replySignOff.trim() && raw.replySignOff.length <= 200 ? raw.replySignOff : null,
   };
 }

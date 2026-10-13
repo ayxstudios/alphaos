@@ -2,6 +2,7 @@ import { and, eq, gte, inArray, ne, sql } from "drizzle-orm";
 
 import type { Tx } from "@/lib/db";
 import {
+  businesses,
   designerBusinesses,
   designerProfiles,
   users,
@@ -13,8 +14,40 @@ import {
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { sendDesignerBrief } from "@/lib/notifications/designer-events";
 import { findStyle, getAgentDesignerId, markQueuedForAgent } from "@/lib/agent/ai-core";
+import { getAgentConfig } from "@/lib/agent/config";
 
 export const DESIGNER_SLA_HOURS = 24;
+
+/**
+ * The business's designer deadlines (businesses.agent_config designerSlaHours /
+ * revisionSlaHours, default 24 h each). Yousif 2026-10-14: "revisions need to be
+ * done in 24 hours, orders also within 24 hours, Pixart orders can be 48 hours".
+ */
+export async function businessSlaHours(tx: Tx, businessId: string): Promise<{ order: number; revision: number }> {
+  const [b] = await tx
+    .select({ agentConfig: businesses.agentConfig })
+    .from(businesses)
+    .where(eq(businesses.id, businessId))
+    .limit(1);
+  const cfg = getAgentConfig(b ?? null);
+  return { order: cfg.designerSlaHours, revision: cfg.revisionSlaHours };
+}
+
+/**
+ * A revision (QC fail or customer change) gives the designer a fresh deadline:
+ * the active assignment's due_at becomes now + the business's revisionSlaHours.
+ * No active assignment = nothing to do. Returns the new deadline, or null.
+ */
+export async function resetRevisionDeadline(tx: Tx, orderId: string, businessId: string): Promise<Date | null> {
+  const { revision } = await businessSlaHours(tx, businessId);
+  const dueAt = new Date(Date.now() + revision * 60 * 60 * 1000);
+  const rows = await tx
+    .update(assignments)
+    .set({ dueAt })
+    .where(and(eq(assignments.orderId, orderId), eq(assignments.active, true)))
+    .returning({ id: assignments.id });
+  return rows.length ? dueAt : null;
+}
 
 /**
  * The one place an assignment row is created. Deactivates any prior active
@@ -35,7 +68,8 @@ export async function createAssignment(
     reason?: string | null;
   },
 ): Promise<{ assignmentId: string; dueAt: Date }> {
-  const dueAt = new Date(Date.now() + (input.dueAtHours ?? DESIGNER_SLA_HOURS) * 60 * 60 * 1000);
+  const hours = input.dueAtHours ?? (await businessSlaHours(tx, input.businessId)).order;
+  const dueAt = new Date(Date.now() + hours * 60 * 60 * 1000);
 
   await tx
     .update(assignments)

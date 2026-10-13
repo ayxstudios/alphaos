@@ -2,6 +2,14 @@
 // optional; getAgentConfig (./config.ts) fills in the defaults. Kept in its own
 // file so lib/db/schema.ts can import the type without pulling in runtime code.
 export type AgentConfigInput = {
+  /**
+   * Hours a designer gets to draw a new order from the moment it is assigned
+   * (assignments.due_at). Default 24 (Yousif 2026-10-14: orders in 24 h,
+   * PixArt 48 h).
+   */
+  designerSlaHours?: number;
+  /** Hours a designer gets for a revision (QC fail or customer change). Default 24. */
+  revisionSlaHours?: number;
   /** Minimum classifier confidence for the agent to act on a reply by itself. */
   replyConfidenceThreshold?: number;
   /** Hours after the latest proof before the agent drafts a proof reminder. */

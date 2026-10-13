@@ -24,7 +24,7 @@ import {
   type ItemResults,
 } from "@/lib/qc/checklist";
 import { onRevisionEdge } from "@/lib/agent/ai-core";
-import { runAutoAssign } from "./assign";
+import { resetRevisionDeadline, runAutoAssign } from "./assign";
 import { SENT_BACK_FROM } from "./board-constants";
 import { prepareProofForApproval, queueStageEmail } from "@/lib/email/dispatch";
 import { autoResolveOrderFigures } from "@/lib/orders/figure-auto";
@@ -275,6 +275,9 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
   }
   let aiRevision = false;
   if (edge.revision) {
+    // Fresh designer deadline for the revision, set before any brief or QC
+    // feedback reads it (24 h default, businesses.agent_config.revisionSlaHours).
+    await resetRevisionDeadline(tx, orderId, order.businessId);
     aiRevision = await onRevisionEdge(tx, {
       orderId,
       businessId: order.businessId,
