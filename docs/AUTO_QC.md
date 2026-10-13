@@ -45,7 +45,7 @@ Each check result: `pass` | `fail` | `na` (nothing of that kind in the photos, e
 RLS: admin + va read (same pattern as qc_checks); writes only via system context.
 The newest row whose `asset_ids` equals the order's current latest versions is "current";
 an older row means "Auto QC'd an older version, re-check pending".
-Every insert also writes an `activity_log` row, action `auto_qc`, from_state = to_state = current status, metadata {verdict, autoQcId}. No state change.
+Every insert also writes an `activity_log` row, action `qc.auto_checked`, from/to state null (so the card feed never reads it as a move; designers never see it), metadata {verdict, issues, autoQcId}. No state change.
 
 ## API (bearer AGENT_JOBS_TOKEN, `rejectUnlessAgent`)
 

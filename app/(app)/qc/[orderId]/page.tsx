@@ -4,6 +4,8 @@ import { auth } from "@/lib/auth";
 import { loadShellData } from "@/lib/shell/context";
 import { getQcContext, getQcQueueIds } from "@/lib/qc/data";
 import { QcScreen } from "@/components/qc/qc-screen";
+import { withUserContext } from "@/lib/db";
+import { getAutoQcView, latestSlots, slotAssetIds } from "@/lib/qc/auto-qc";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +29,9 @@ export default async function QcPage({
   ]);
 
   if (!ctx) notFound();
+  const autoQc = await withUserContext(user, (tx) =>
+    getAutoQcView(tx, ctx.orderId, slotAssetIds(latestSlots(ctx.versions, ctx.portraits))),
+  );
 
-  return <QcScreen ctx={ctx} queueIds={queueIds} />;
+  return <QcScreen ctx={ctx} queueIds={queueIds} autoQc={autoQc} />;
 }

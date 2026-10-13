@@ -5,6 +5,7 @@ import { activityLog, orders, shops, users } from "@/lib/db/schema";
 import type { CardEvent } from "@/lib/orders/card-detail";
 import { buildRevisionHistory, type RevisionHistoryNote } from "@/lib/orders/revision-history";
 import type { OrderStatus } from "@/lib/orders/transitions";
+import { getAutoQcView, latestSlots, slotAssetIds, type AutoQcView } from "./auto-qc";
 import { getQcContext, getQcQueueIds, type QcContext } from "./data";
 
 /**
@@ -24,6 +25,8 @@ export type ApproveItem = {
   round: number;
   /** Every change request, newest first (customer, team or a failed QC). */
   requests: RevisionHistoryNote[];
+  /** The newest Auto QC on this order (2026-10-14), or null when none yet. */
+  autoQc: AutoQcView | null;
 };
 
 export async function getApproveQueue(user: RequestUser): Promise<string[]> {
@@ -71,7 +74,8 @@ export async function getApproveItem(user: RequestUser, orderId: string): Promis
       metadata: (r.metadata as Record<string, unknown> | null) ?? null,
       createdAt: r.createdAt.toISOString(),
     }));
-    return { o, requests: buildRevisionHistory(events) };
+    const autoQc = await getAutoQcView(tx, orderId, slotAssetIds(latestSlots(ctx.versions, ctx.portraits)));
+    return { o, requests: buildRevisionHistory(events), autoQc };
   });
   const revisionCount = extra.o?.revisionCount ?? 0;
   const isRevision = revisionCount > 0 || extra.requests.length > 0;
@@ -83,5 +87,6 @@ export async function getApproveItem(user: RequestUser, orderId: string): Promis
     isRevision,
     round: Math.max(revisionCount, extra.requests.length, isRevision ? 1 : 0),
     requests: extra.requests,
+    autoQc: extra.autoQc,
   };
 }

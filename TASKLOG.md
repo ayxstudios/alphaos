@@ -93,3 +93,7 @@ Production untouched.
 - Login links take ?next=/approve (safeNext: same-site paths only).
 - Nav: Approve after Home on the VA/admin sidebar and phone tabs.
 - Status: built + committed; next = staging test, land via integrate:alphaos, send links, 9:00 reminder.
+
+## 2026-10-14 Auto QC (Yousif) task/alphaos-reqea8b3
+- Done: migration 0054 auto_qc_checks (tested in a rolled-back tx on prod), lib/qc/auto-qc*.ts, /api/agent-qc/{queue,result}, badge + notes on /approve, /qc cards, /qc/[orderId]; tsc, test:auto-qc, next build green.
+- Next: daemon judge scripts/alphaos-auto-qc.mjs (ai-employee-agent), land under integrate:alphaos, first sweep.

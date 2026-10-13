@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
 import { ownerApprove, ownerReject } from "@/app/(app)/approve/actions";
+import { AutoQcBadge, AutoQcNotes } from "@/components/qc/auto-qc";
 import { useToast } from "@/components/ui";
 import { ArrowRight, Check, X } from "@/components/ui/icons";
 import { focusRing } from "@/components/ui/styles";
@@ -168,6 +169,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
                 {due.text}
               </span>
             ) : null}
+            <AutoQcBadge view={item.autoQc} />
           </div>
           <p className="text-sm text-slate">
             <span className="font-medium text-ink">{ctx.orderNumber}</span>
@@ -289,6 +291,8 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
                 )}
               </div>
             ) : null}
+
+            <AutoQcNotes view={item.autoQc} />
 
             <div className="flex flex-col gap-2">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate">

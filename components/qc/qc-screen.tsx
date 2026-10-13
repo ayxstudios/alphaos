@@ -1,5 +1,7 @@
 "use client";
 
+import { AutoQcBadge, AutoQcNotes } from "@/components/qc/auto-qc";
+import type { AutoQcView } from "@/lib/qc/auto-qc";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
@@ -28,9 +30,12 @@ const LEGEND_KEY = "qc-legend-dismissed";
 export function QcScreen({
   ctx,
   queueIds,
+  autoQc = null,
 }: {
   ctx: QcContext;
   queueIds: string[];
+  /** The newest Auto QC (2026-10-14): notes only, the VA/owner still decides. */
+  autoQc?: AutoQcView | null;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -342,6 +347,10 @@ export function QcScreen({
         />
 
         <aside className="flex flex-col rounded-card bg-surface p-4 shadow-card xl:min-h-[28rem]">
+          <div className="mb-4 flex flex-col gap-2">
+            <AutoQcBadge view={autoQc} />
+            <AutoQcNotes view={autoQc} />
+          </div>
           <details ref={saysRef} className="group mb-4">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-input bg-canvas px-3 text-sm font-semibold text-ink [&::-webkit-details-marker]:hidden">
               What the customer ordered

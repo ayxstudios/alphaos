@@ -92,6 +92,17 @@ export function describeEvent(e: CardEvent, viewerRole?: "admin" | "va" | "desig
   const to = e.toState;
   const from = e.fromState;
   switch (e.action) {
+    case "qc.auto_checked": {
+      // Auto QC (2026-10-14) is a note for the owners, never shown to designers.
+      if (designer) return null;
+      const issues = Number(e.metadata?.issues) || 0;
+      const verdict = e.metadata?.verdict;
+      return verdict === "pass"
+        ? "Auto QC'd: looks right"
+        : verdict === "issues"
+          ? `Auto QC'd: ${issues} issue${issues === 1 ? "" : "s"} found`
+          : "Auto QC'd: couldn't judge";
+    }
     case "order.ready_to_assign":
       return "moved this to Ready to assign";
     case "order.in_design":

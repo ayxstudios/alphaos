@@ -49,6 +49,7 @@
     "test:urgent": "tsx scripts/test-urgent.ts",
     "test:agent-completeness": "tsx scripts/test-agent-completeness.ts",
     "test:card-copy": "tsx scripts/test-card-copy.ts",
+    "test:auto-qc": "tsx scripts/test-auto-qc.ts",
     "test:agent-autopilot": "tsx scripts/test-agent-autopilot.ts",
     "test:agent-inbox": "tsx scripts/test-agent-inbox.ts",
     "test:legacy-intake": "tsx scripts/test-legacy-intake.ts",

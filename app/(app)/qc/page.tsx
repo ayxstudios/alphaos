@@ -4,6 +4,9 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { loadShellData } from "@/lib/shell/context";
 import { getQcQueue } from "@/lib/qc/data";
+import { getAutoQcBadgeViews } from "@/lib/qc/auto-qc";
+import { withUserContext } from "@/lib/db";
+import { AutoQcBadge } from "@/components/qc/auto-qc";
 import { formatAge } from "@/lib/orders/today-queue";
 import { setBusiness } from "@/app/(app)/actions";
 import { Badge, DataPanel, EmptyState, Page, PageHeader } from "@/components/ui";
@@ -30,6 +33,7 @@ export default async function QcQueuePage() {
   const { selected, options } = await loadShellData(user);
   const rows = await getQcQueue(user, selected.id);
   const now = Date.now();
+  const autoQc = await withUserContext(user, (tx) => getAutoQcBadgeViews(tx, rows.map((r) => r.id)));
 
   // Other workspaces with something waiting (only looked up when this one is clear).
   const elsewhere: { id: string; name: string; n: number }[] = [];
@@ -136,6 +140,7 @@ export default async function QcQueuePage() {
                       {formatAge(now - new Date(r.waitingSince).getTime())}
                     </span>
                     {r.photoCount > 1 && <Badge variant="info">{r.photoCount} photos</Badge>}
+                    <AutoQcBadge view={autoQc.get(r.id) ?? null} size="sm" />
                   </div>
                 </div>
                 <Link

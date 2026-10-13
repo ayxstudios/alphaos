@@ -834,6 +834,34 @@ export const qcChecks = pgTable(
   ],
 );
 
+/**
+ * Auto QC (Yousif 2026-10-14): the AI pass over an order waiting for QC.
+ * Informational only, never moves an order. One row per judged set of
+ * versions; see docs/AUTO_QC.md and lib/qc/auto-qc.ts.
+ */
+export const autoQcChecks = pgTable(
+  "auto_qc_checks",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "restrict" }),
+    orderId: text("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    /** Sorted asset ids of the versions judged (latest per portrait). */
+    assetIds: jsonb("asset_ids").notNull(),
+    /** pass | issues | unsure */
+    verdict: text("verdict").notNull(),
+    summary: text("summary"),
+    portraits: jsonb("portraits").notNull(),
+    revision: jsonb("revision"),
+    model: text("model"),
+    createdAt: createdAt(),
+  },
+  (t) => [index("auto_qc_checks_order_created_idx").on(t.orderId, t.createdAt)],
+);
+
 export const proofs = pgTable(
   "proofs",
   {
