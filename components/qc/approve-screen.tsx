@@ -193,7 +193,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
                 className={cn("flex items-center justify-center overflow-hidden rounded-card bg-canvas", focusRing)}
                 aria-label="Open the artwork full size"
               >
-                <img src={shown.url} alt={`Artwork for ${ctx.orderNumber}`} onError={() => setBroken(shown.url)} className="max-h-[70vh] w-full object-contain" />
+                <img src={shown.url} alt={`Artwork for ${ctx.orderNumber}`} onError={() => setBroken(shown.url)} className="max-h-[60vh] w-full object-contain lg:max-h-[70vh]" />
               </button>
             ) : (
               <div className="flex h-64 items-center justify-center rounded-card bg-canvas text-sm text-slate">No artwork uploaded yet</div>
@@ -201,7 +201,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
           </div>
 
           {/* What to judge it against */}
-          <div className="flex min-w-0 flex-col gap-4">
+          <div className={cn("flex min-w-0 flex-col gap-4", item.isRevision && "order-first lg:order-none")}>
             {item.isRevision ? (
               <div className="flex flex-col gap-2" data-testid="change-requests">
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-amber">What they asked for</h2>
