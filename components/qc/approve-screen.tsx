@@ -38,6 +38,15 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState("");
+  // A note typed before an app update reload comes back, panel open (see callAction).
+  useEffect(() => {
+    const key = `approve-note:${ctx.orderId}`;
+    const kept = window.sessionStorage.getItem(key);
+    if (!kept) return;
+    window.sessionStorage.removeItem(key);
+    setNote(kept);
+    setRejecting(true);
+  }, [ctx.orderId]);
   const [picked, setPicked] = useState<number[]>([]);
   const [showBefore, setShowBefore] = useState(false);
   const [enlarged, setEnlarged] = useState<string | null>(null);
@@ -83,11 +92,41 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
     });
   }
 
+  // Yousif 2026-10-14: a dropped connection or an app update mid-session left
+  // "Sending back..." spinning forever with nothing sent. Every call now ends:
+  // a thrown error or a 30 s stall frees the button with a reason, and a retry
+  // is safe because the server answers "Already checked" when the first landed.
+  async function callAction<T>(run: () => Promise<T>): Promise<T | null> {
+    try {
+      return await Promise.race([
+        run(),
+        new Promise<never>((_, fail) => setTimeout(() => fail(new Error("timeout")), 30_000)),
+      ]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/server action/i.test(msg)) {
+        // The page is older than the live app: reload onto this order, note kept.
+        if (note.trim()) window.sessionStorage.setItem(`approve-note:${ctx.orderId}`, note);
+        setError("AlphaOS was just updated, reloading. Tap again once it opens.");
+        window.location.assign(`/approve?o=${ctx.orderId}`);
+        return null;
+      }
+      setError(
+        msg === "timeout"
+          ? "No answer after 30 seconds, it may not have gone through. Check your connection and tap again."
+          : "That didn't go through (connection dropped). Tap again.",
+      );
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function approve() {
     setBusy("approve");
     setError(null);
-    const res = await ownerApprove(ctx.orderId);
-    setBusy(null);
+    const res = await callAction(() => ownerApprove(ctx.orderId));
+    if (!res) return;
     if (!res.ok) {
       if (res.code === "stale") {
         toast({ variant: "warning", title: "Already checked", description: res.message });
@@ -108,8 +147,8 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
     }
     setBusy("reject");
     setError(null);
-    const res = await ownerReject({ orderId: ctx.orderId, note, failedKeys: picked });
-    setBusy(null);
+    const res = await callAction(() => ownerReject({ orderId: ctx.orderId, note, failedKeys: picked }));
+    if (!res) return;
     if (!res.ok) {
       if (res.code === "stale") {
         toast({ variant: "warning", title: "Already checked", description: res.message });
