@@ -1,0 +1,411 @@
+"use client";
+
+/* eslint-disable @next/next/no-img-element -- order photos and artwork are signed R2/CDN urls of any size */
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState, useTransition } from "react";
+
+import { ownerApprove, ownerReject } from "@/app/(app)/approve/actions";
+import { useToast } from "@/components/ui";
+import { ArrowRight, Check, X } from "@/components/ui/icons";
+import { focusRing } from "@/components/ui/styles";
+import type { ApproveItem } from "@/lib/qc/approve-data";
+import { splitChecklistLabel } from "@/lib/qc/checklist";
+import { cn } from "@/lib/utils";
+
+type Props = { item: ApproveItem; position: number; total: number; nextId: string | null };
+
+function dueText(iso: string | null): { text: string; late: boolean } | null {
+  if (!iso) return null;
+  const ms = Date.parse(iso) - Date.now();
+  const h = Math.round(Math.abs(ms) / 3_600_000);
+  const span = h >= 48 ? `${Math.round(h / 24)} days` : h <= 1 ? "1 hour" : `${h} hours`;
+  return ms < 0 ? { text: `${span} late`, late: true } : { text: `due in ${span}`, late: false };
+}
+
+function whenText(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+}
+
+export function ApproveScreen({ item, position, total, nextId }: Props) {
+  const { ctx } = item;
+  const router = useRouter();
+  const toast = useToast();
+  const [pending, startTransition] = useTransition();
+  const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState(false);
+  const [note, setNote] = useState("");
+  const [picked, setPicked] = useState<number[]>([]);
+  const [showBefore, setShowBefore] = useState(false);
+  const [enlarged, setEnlarged] = useState<string | null>(null);
+
+  const versions = ctx.versions.filter((v) => v.url);
+  const latest = versions[versions.length - 1] ?? null;
+  const before = item.isRevision && versions.length > 1 ? versions[versions.length - 2] : null;
+  const shown = showBefore && before ? before : latest;
+  const due = dueText(ctx.dueAt);
+  const photos = ctx.references.filter((r) => r.url);
+
+  useEffect(() => {
+    if (!enlarged) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setEnlarged(null);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [enlarged]);
+
+  function goNext() {
+    startTransition(() => {
+      router.replace(nextId ? `/approve?o=${nextId}` : "/approve");
+      router.refresh();
+    });
+  }
+
+  async function approve() {
+    setBusy("approve");
+    setError(null);
+    const res = await ownerApprove(ctx.orderId);
+    setBusy(null);
+    if (!res.ok) {
+      if (res.code === "stale") {
+        toast({ variant: "warning", title: "Already checked", description: res.message });
+        goNext();
+        return;
+      }
+      setError(res.message);
+      return;
+    }
+    toast({ variant: "success", title: res.title, description: res.description });
+    goNext();
+  }
+
+  async function reject() {
+    if (!note.trim()) {
+      setError("Write what needs fixing first.");
+      return;
+    }
+    setBusy("reject");
+    setError(null);
+    const res = await ownerReject({ orderId: ctx.orderId, note, failedKeys: picked });
+    setBusy(null);
+    if (!res.ok) {
+      if (res.code === "stale") {
+        toast({ variant: "warning", title: "Already checked", description: res.message });
+        goNext();
+        return;
+      }
+      setError(res.message);
+      return;
+    }
+    toast({ variant: "success", title: res.title, description: res.description });
+    goNext();
+  }
+
+  const locked = busy !== null || pending;
+  const says = ctx.orderSays;
+
+  return (
+    <div className="mx-auto flex max-w-5xl flex-col gap-4" data-testid="approve-screen" data-kind={item.isRevision ? "revision" : "new"}>
+      {/* Where am I in the pile */}
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="font-display text-xl font-semibold text-ink">Approve</h1>
+        <div className="flex items-center gap-1 text-sm text-slate">
+          <span>
+            {position} of {total} to check
+          </span>
+          {nextId ? (
+            <Link
+              href={`/approve?o=${nextId}`}
+              className={cn("ml-1 inline-flex min-h-11 items-center gap-1 rounded-input px-2 font-medium text-pigment hover:bg-pigment-soft sm:min-h-0 sm:py-1", focusRing)}
+            >
+              Skip <ArrowRight size={14} />
+            </Link>
+          ) : null}
+        </div>
+      </div>
+
+      <section className="flex flex-col gap-4 rounded-card bg-surface p-4 shadow-card sm:p-5">
+        {/* What this is, at a glance */}
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {item.isRevision ? (
+              <span className="rounded-input bg-amber/10 px-3 py-1 text-base font-bold tracking-wide text-amber" data-testid="kind-label">
+                REVISION{item.round > 1 ? ` ${item.round}` : ""}
+              </span>
+            ) : (
+              <span className="rounded-input bg-pigment-soft px-3 py-1 text-base font-bold tracking-wide text-pigment" data-testid="kind-label">
+                NEW ORDER
+              </span>
+            )}
+            {item.urgent ? (
+              <span className="rounded-input bg-rose/10 px-3 py-1 text-sm font-bold text-rose" title={item.urgentReason ?? undefined}>
+                URGENT
+              </span>
+            ) : null}
+            {due ? <span className={cn("text-sm font-medium", due.late ? "text-rose" : "text-slate")}>{due.text}</span> : null}
+          </div>
+          <p className="text-sm text-slate">
+            <span className="font-medium text-ink">{ctx.orderNumber}</span>
+            {item.shopName ? ` · ${item.shopName}` : ""} · {ctx.customerName}
+            {ctx.designerName ? ` · by ${ctx.designerName}` : ""}
+          </p>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+          {/* The artwork */}
+          <div className="flex flex-col gap-2">
+            {before ? (
+              <div className="flex gap-1 self-start rounded-input bg-canvas p-1" role="group" aria-label="Which version">
+                {[
+                  { k: false, label: "New version" },
+                  { k: true, label: "Before" },
+                ].map((b) => (
+                  <button
+                    key={b.label}
+                    type="button"
+                    onClick={() => setShowBefore(b.k)}
+                    aria-pressed={showBefore === b.k}
+                    className={cn(
+                      "min-h-11 rounded-input px-3 text-sm font-medium sm:min-h-9",
+                      focusRing,
+                      showBefore === b.k ? "bg-surface text-ink shadow-card" : "text-slate",
+                    )}
+                  >
+                    {b.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            {shown?.url ? (
+              <button
+                type="button"
+                onClick={() => setEnlarged(shown.url)}
+                className={cn("flex items-center justify-center overflow-hidden rounded-card bg-canvas", focusRing)}
+                aria-label="Open the artwork full size"
+              >
+                <img src={shown.url} alt={`Artwork for ${ctx.orderNumber}`} className="max-h-[70vh] w-full object-contain" />
+              </button>
+            ) : (
+              <div className="flex h-64 items-center justify-center rounded-card bg-canvas text-sm text-slate">No artwork uploaded yet</div>
+            )}
+          </div>
+
+          {/* What to judge it against */}
+          <div className="flex min-w-0 flex-col gap-4">
+            {item.isRevision ? (
+              <div className="flex flex-col gap-2" data-testid="change-requests">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-amber">What they asked for</h2>
+                {item.requests.length === 0 ? (
+                  <p className="rounded-card border border-line p-3 text-base text-ink">
+                    {says.notes ?? "No notes were written for this revision."}
+                  </p>
+                ) : (
+                  item.requests.map((r, i) => (
+                    <div key={r.id} className={cn("flex flex-col gap-1 rounded-card border p-3", i === 0 ? "border-amber/40 bg-amber/5" : "border-line")}>
+                      <p className="text-xs text-slate">
+                        {r.kind === "customer" ? "Customer" : r.kind === "qc" ? `QC${r.who ? `, ${r.who}` : ""}` : (r.who ?? "Team")} · {whenText(r.at)}
+                        {i === 0 ? " · latest" : ""}
+                      </p>
+                      {r.note ? <p className="whitespace-pre-wrap break-words text-base text-ink">{r.note}</p> : null}
+                      {r.items.length ? (
+                        <ul className="list-disc pl-5 text-sm text-ink">
+                          {r.items.map((t) => (
+                            <li key={t}>{t}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {r.pins ? <p className="text-sm text-slate">{r.pins} spot{r.pins > 1 ? "s" : ""} marked on the proof</p> : null}
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : null}
+
+            <div className="flex flex-col gap-2">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate">
+                Customer photo{photos.length === 1 ? "" : "s"} {photos.length > 1 ? `(${photos.length})` : ""}
+              </h2>
+              {photos.length === 0 ? (
+                <p className="text-sm text-slate">No photos on this order.</p>
+              ) : (
+                <div className={cn("grid gap-2", item.isRevision ? "grid-cols-4" : "grid-cols-3")}>
+                  {photos.map((p, i) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setEnlarged(p.url)}
+                      className={cn("aspect-square overflow-hidden rounded-input bg-canvas", focusRing)}
+                      aria-label={`Customer photo ${i + 1}, open full size`}
+                    >
+                      <img src={p.url!} alt="" className="size-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {!item.isRevision ? (
+              <dl className="flex flex-col gap-2 text-sm" data-testid="order-info">
+                {says.items.map((it, i) => (
+                  <div key={i} className="flex flex-col">
+                    <dt className="text-xs text-slate">Ordered</dt>
+                    <dd className="break-words text-ink">
+                      <span className="font-medium">{it.title ?? it.productType}</span>
+                      {it.options.length ? <span className="text-slate"> · {it.options.map((o) => `${o.name}: ${o.value}`).join(" · ")}</span> : null}
+                    </dd>
+                  </div>
+                ))}
+                <div className="flex gap-6">
+                  <div className="flex flex-col">
+                    <dt className="text-xs text-slate">People / pets</dt>
+                    <dd className="text-ink">{ctx.figuresResolved || ctx.figureCount ? ctx.figureCount : "Not set"}</dd>
+                  </div>
+                  {ctx.style ? (
+                    <div className="flex min-w-0 flex-col">
+                      <dt className="text-xs text-slate">Style</dt>
+                      <dd className="break-words text-ink">{ctx.style}</dd>
+                    </div>
+                  ) : null}
+                </div>
+                {says.personalization ? (
+                  <div className="flex flex-col">
+                    <dt className="text-xs text-slate">Personalization</dt>
+                    <dd className="whitespace-pre-wrap break-words text-base text-ink">{says.personalization}</dd>
+                  </div>
+                ) : null}
+                {says.buyerNote ? (
+                  <div className="flex flex-col">
+                    <dt className="text-xs text-slate">Buyer note</dt>
+                    <dd className="whitespace-pre-wrap break-words text-base text-ink">{says.buyerNote}</dd>
+                  </div>
+                ) : null}
+                {says.notes ? (
+                  <div className="flex flex-col">
+                    <dt className="text-xs text-slate">Order notes</dt>
+                    <dd className="whitespace-pre-wrap break-words text-ink">{says.notes}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            ) : null}
+
+            <Link href={`/orders/${ctx.orderId}`} className={cn("self-start rounded-input text-sm font-medium text-pigment underline-offset-2 hover:underline", focusRing)}>
+              Open full order
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* The two buttons, always in reach */}
+      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 flex flex-col gap-3 rounded-card bg-surface p-3 shadow-lg lg:bottom-4">
+        {error ? (
+          <p role="alert" className="rounded-input bg-rose/10 px-3 py-2 text-sm text-rose">
+            {error}
+          </p>
+        ) : null}
+        {rejecting ? (
+          <div className="flex flex-col gap-3" data-testid="reject-panel">
+            <label htmlFor="touchups" className="text-sm font-semibold text-ink">
+              What needs fixing?
+            </label>
+            <textarea
+              id="touchups"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={3}
+              autoFocus
+              placeholder="e.g. Make her hair darker and add the necklace from photo 2"
+              className={cn("w-full rounded-input border border-line bg-surface px-3 py-2 text-base text-ink placeholder:text-slate", focusRing)}
+            />
+            <div className="flex flex-wrap gap-2" role="group" aria-label="What is wrong (optional)">
+              {ctx.checklist.items.map((it) => {
+                const on = picked.includes(it.key);
+                return (
+                  <button
+                    key={it.key}
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => setPicked((p) => (on ? p.filter((k) => k !== it.key) : [...p, it.key]))}
+                    className={cn(
+                      "min-h-11 rounded-input border px-3 text-sm font-medium sm:min-h-9",
+                      focusRing,
+                      on ? "border-rose bg-rose/10 text-rose" : "border-line text-slate",
+                    )}
+                  >
+                    {splitChecklistLabel(it.label).name}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                disabled={locked}
+                onClick={() => {
+                  setRejecting(false);
+                  setError(null);
+                }}
+                className={cn("h-12 rounded-input border border-line text-base font-medium text-ink disabled:opacity-50", focusRing)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={locked}
+                onClick={reject}
+                data-testid="send-back"
+                className={cn("h-12 rounded-input bg-rose text-base font-semibold text-surface disabled:opacity-60", focusRing)}
+              >
+                {busy === "reject" ? "Sending back..." : "Send back to designer"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              disabled={locked}
+              onClick={() => {
+                setRejecting(true);
+                setError(null);
+              }}
+              data-testid="reject"
+              className={cn("inline-flex h-14 items-center justify-center gap-2 rounded-input border-2 border-rose text-lg font-semibold text-rose disabled:opacity-50", focusRing)}
+            >
+              <X size={20} /> Reject
+            </button>
+            <button
+              type="button"
+              disabled={locked || !latest}
+              onClick={approve}
+              data-testid="approve"
+              className={cn("inline-flex h-14 items-center justify-center gap-2 rounded-input bg-sage text-lg font-semibold text-surface disabled:opacity-60", focusRing)}
+            >
+              <Check size={20} /> {busy === "approve" ? "Sending..." : "Approve"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {enlarged ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Full size"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/90 p-4"
+          onClick={() => setEnlarged(null)}
+        >
+          <img src={enlarged} alt="" className="max-h-full max-w-full object-contain" />
+          <button
+            type="button"
+            onClick={() => setEnlarged(null)}
+            className={cn("absolute right-3 top-3 flex size-11 items-center justify-center rounded-full bg-surface text-ink", focusRing)}
+            aria-label="Close"
+          >
+            <X size={20} />
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}

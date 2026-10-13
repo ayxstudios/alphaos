@@ -38,6 +38,7 @@ type NavItem = { label: string; href: string; icon: ComponentType<IconProps> };
 // calm and obvious instead of listing every page in the app.
 const ITEMS: Record<NavKey, NavItem> = {
   home: { label: "Home", href: "/dashboard", icon: Grid },
+  approve: { label: "Approve", href: "/approve", icon: CheckCircle },
   today: { label: "Today", href: "/today", icon: ListChecks },
   orders: { label: "Orders", href: "/orders", icon: Package },
   qc: { label: "QC", href: "/qc", icon: Eye },

@@ -6,7 +6,7 @@ import { PrefetchKind } from "next/dist/client/components/router-reducer/router-
 
 import { cn } from "@/lib/utils";
 import { focusRing } from "@/components/ui/styles";
-import { Grid, CheckCircle, ListChecks, Package, Mail, Columns, Calendar, Eye, Menu, BookOpen, type IconProps } from "@/components/ui/icons";
+import { Grid, CheckCircle, ListChecks, Package, Mail, Columns, Calendar, Menu, BookOpen, type IconProps } from "@/components/ui/icons";
 import type { ComponentType } from "react";
 import type { Role } from "@/lib/auth/config";
 import { tabNavKeys } from "@/lib/agent/nav";
@@ -21,8 +21,9 @@ const TOUCH_PREFETCH = { kind: PrefetchKind.FULL };
 
 type Tab = { label: string; href: string; icon: ComponentType<IconProps> };
 
-const ADMIN_VA_TABS: Record<"home" | "today" | "day" | "orders" | "messages", Tab> = {
+const ADMIN_VA_TABS: Record<"home" | "approve" | "today" | "day" | "orders" | "messages", Tab> = {
   home: { label: "Home", href: "/dashboard", icon: Grid },
+  approve: { label: "Approve", href: "/approve", icon: CheckCircle },
   today: { label: "Today", href: "/today", icon: ListChecks },
   // Agent mode: Day is the queue, so it takes Today's place (lib/agent/nav.ts).
   day: { label: "Day", href: "/day", icon: CheckCircle },
@@ -32,7 +33,7 @@ const ADMIN_VA_TABS: Record<"home" | "today" | "day" | "orders" | "messages", Ta
 
 const VA_TABS: Tab[] = [
   { label: "Home", href: "/dashboard", icon: Grid },
-  { label: "Awaiting QC", href: "/qc", icon: Eye },
+  { label: "Approve", href: "/approve", icon: CheckCircle },
   { label: "Messages", href: "/emails", icon: Mail },
   { label: "Boards", href: "/board", icon: Columns },
 ];

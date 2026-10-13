@@ -83,3 +83,13 @@ Production untouched.
 - QA (laptop + phone) in /tmp/alphaos-qa-req5e549: warmed board switch 50-280ms laptop, no skeleton; All Orders 240-420ms client nav; helper sees Board+Help only, pay routes redirect to /board, card open + drag there and back OK. Production untouched.
 
 2026-10-06: fix/designers-business-scope. Designers page and staff Home roster listed every business's designers (getDesignerRoster had no business filter; rail and order-page picker were already scoped). getDesignerRoster now takes the selected businessId and joins designer_businesses; no schema/RLS change. Perfetta workspace shows only Perfetta designers, PixArt only PixArt.
+
+# Owner Approve screen (req f97b5, 2026-10-14)
+
+- From 14 Oct there are no VAs: Yousif and Ayser QC designer work on /approve.
+- /approve: one order at a time, every business, urgent first then soonest due. NEW ORDER (photos + order info) or REVISION N (what was asked for, newest first, New/Before toggle).
+- Approve = the VA pass + proof email in one tap (all checks ticked, signed with their name); an admin tap also releases an AI portrait held for owner review.
+- Reject = touchups note (+ optional check chips, else guessed from the words) -> submitQcFail -> Failed QC on the designer's board.
+- Login links take ?next=/approve (safeNext: same-site paths only).
+- Nav: Approve after Home on the VA/admin sidebar and phone tabs.
+- Status: built + committed; next = staging test, land via integrate:alphaos, send links, 9:00 reminder.

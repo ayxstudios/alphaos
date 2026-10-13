@@ -41,13 +41,13 @@ async function main() {
   check("no signature = body untouched", withSignature("Hi", null).text === "Hi" && withSignature("Hi", null).html === undefined);
   const off = primaryNavKeys("va", false);
   const on = primaryNavKeys("va", true);
-  check("VA flags off = Yousif's VA menu (qc, no today/day/overview/exceptions)", off.join() === "home,qc,messages,boards,print,orders");
-  check("VA flags on = same menu plus exceptions", on.join() === "home,qc,exceptions,messages,boards,print,orders");
+  check("VA flags off = Yousif's VA menu (qc, no today/day/overview/exceptions)", off.join() === "home,approve,qc,messages,boards,print,orders");
+  check("VA flags on = same menu plus exceptions", on.join() === "home,approve,qc,exceptions,messages,boards,print,orders");
   const aOn = primaryNavKeys("admin", true);
   const aOff = primaryNavKeys("admin", false);
   check("admin on/off follows the same rule, keeps settings", !aOn.includes("today") && aOn.includes("day") && aOff.includes("today") && aOn.includes("settings") && aOff.includes("settings"));
   check("admin flags off: overview+exceptions in the extra group", adminExtraKeys(false).join() === "overview,exceptions" && adminExtraKeys(true).length === 0);
-  check("phone tabs: Day replaces Today only in agent mode", tabNavKeys(true).includes("day") && !tabNavKeys(true).includes("today") && tabNavKeys(false).includes("today") && !tabNavKeys(false).includes("day"));
+  check("phone tabs: Approve second, same with flags on or off", tabNavKeys(true).join() === "home,approve,orders,messages" && tabNavKeys(false).join() === tabNavKeys(true).join());
   check("designer nav untouched", primaryNavKeys("designer", true).join() === primaryNavKeys("designer", false).join());
 
   // --- database round trip -------------------------------------------------

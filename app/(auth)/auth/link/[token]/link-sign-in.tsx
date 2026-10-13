@@ -12,11 +12,20 @@ type Phase = "signing" | "failed" | "locked";
 
 /**
  * Signs in with the "link" provider as soon as the page loads, then lands on
- * /dashboard with a full navigation (fresh server render with the new cookie).
+ * /dashboard (or the link's ?next= path) with a full navigation (fresh server render with the new cookie).
  * A link that does not work (revoked, expired, replaced, or the person was
  * deactivated) shows a calm card with the way back to the normal sign-in.
  */
-export function LinkSignIn({ token }: { token: string }) {
+/**
+ * Where to land after signing in: a link may carry ?next=/approve (owner QC,
+ * 2026-10-14). Only a same-site path is honoured; anything else is /dashboard.
+ */
+export function safeNext(next: string | null | undefined): string {
+  if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/\\")) return "/dashboard";
+  return next;
+}
+
+export function LinkSignIn({ token, next }: { token: string; next?: string | null }) {
   const [phase, setPhase] = useState<Phase>("signing");
   const started = useRef(false);
 
@@ -25,9 +34,10 @@ export function LinkSignIn({ token }: { token: string }) {
     started.current = true;
     (async () => {
       try {
-        const res = await signIn("link", { token, redirect: false, redirectTo: "/dashboard" });
+        const landing = safeNext(next);
+        const res = await signIn("link", { token, redirect: false, redirectTo: landing });
         if (res?.ok && !res.error) {
-          window.location.replace("/dashboard");
+          window.location.replace(landing);
           return;
         }
         setPhase(res?.code === "locked" ? "locked" : "failed");
@@ -35,7 +45,7 @@ export function LinkSignIn({ token }: { token: string }) {
         setPhase("failed");
       }
     })();
-  }, [token]);
+  }, [token, next]);
 
   return (
     <div className="flex flex-col gap-6">

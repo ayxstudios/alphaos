@@ -15,6 +15,8 @@ const PROTECTED = [
   /^\/board(\/|$)/,
   /^\/queue(\/|$)/,
   /^\/qc(\/|$)/,
+  // Owner QC (2026-10-14): staff only, a designer gets the clean 307.
+  /^\/approve(\/|$)/,
   /^\/customers(\/|$)/,
   /^\/settings(\/|$)/,
   /^\/emails(\/|$)/,

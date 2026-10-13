@@ -6,6 +6,7 @@
 // off is nav exactly as on main. Routes stay reachable by URL either way.
 export type NavKey =
   | "home"
+  | "approve"
   | "today"
   | "orders"
   | "qc"
@@ -30,12 +31,14 @@ export function isAgentMode(flags: AgentFlags | null | undefined): boolean {
   return !!(flags?.agentIntakeEnabled || flags?.agentAssignEnabled || flags?.agentInboxEnabled);
 }
 
-const ADMIN_OFF: NavKey[] = ["home", "today", "orders", "qc", "messages", "boards", "print", "money", "settings"];
+// Approve (owner QC, 2026-10-14): from 14 Oct there are no VAs; the owners QC
+// designer work from one simple page, second in every staff menu.
+const ADMIN_OFF: NavKey[] = ["home", "approve", "today", "orders", "qc", "messages", "boards", "print", "money", "settings"];
 // VA menu as Yousif set it on 2026-10-01; agent mode only adds Exceptions
 // (what the agent hands to a human). VAs QC and approve print drafts.
-const VA_OFF: NavKey[] = ["home", "qc", "messages", "boards", "print", "orders"];
-const ADMIN_ON: NavKey[] = ["home", "day", "overview", "exceptions", "orders", "messages", "boards", "print", "money", "settings"];
-const VA_ON: NavKey[] = ["home", "qc", "exceptions", "messages", "boards", "print", "orders"];
+const VA_OFF: NavKey[] = ["home", "approve", "qc", "messages", "boards", "print", "orders"];
+const ADMIN_ON: NavKey[] = ["home", "approve", "day", "overview", "exceptions", "orders", "messages", "boards", "print", "money", "settings"];
+const VA_ON: NavKey[] = ["home", "approve", "qc", "exceptions", "messages", "boards", "print", "orders"];
 
 /** Ordered primary nav keys for a staff role. Designers have their own fixed nav. */
 export function primaryNavKeys(role: NavRole, agentMode: boolean): NavKey[] {
@@ -44,9 +47,13 @@ export function primaryNavKeys(role: NavRole, agentMode: boolean): NavKey[] {
   return agentMode ? VA_ON : VA_OFF;
 }
 
-/** The phone bottom tab bar: four places, the day's work first in agent mode. */
+/**
+ * The phone bottom tab bar: four places. Approve (owner QC) takes the second
+ * slot from 2026-10-14; Today / Day stay one tap away in More.
+ */
 export function tabNavKeys(agentMode: boolean): NavKey[] {
-  return agentMode ? ["home", "day", "orders", "messages"] : ["home", "today", "orders", "messages"];
+  void agentMode;
+  return ["home", "approve", "orders", "messages"];
 }
 
 /**

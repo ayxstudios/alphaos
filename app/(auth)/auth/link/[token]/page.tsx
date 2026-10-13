@@ -16,7 +16,14 @@ export const metadata: Metadata = {
  * the "link" Credentials provider, so a link preview that fetches the page
  * without running scripts never signs anyone in.
  */
-export default async function LinkSignInPage({ params }: { params: Promise<{ token: string }> }) {
+export default async function LinkSignInPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ token: string }>;
+  searchParams: Promise<{ next?: string | string[] }>;
+}) {
   const { token } = await params;
-  return <LinkSignIn token={token} />;
+  const { next } = await searchParams;
+  return <LinkSignIn token={token} next={typeof next === "string" ? next : null} />;
 }
