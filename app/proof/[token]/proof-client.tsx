@@ -251,8 +251,8 @@ export function ProofClient({
               {pins.length > 0 && (
                 <div className="flex items-center justify-between text-sm text-slate">
                   <span>
-                    {pins.length} spot{pins.length === 1 ? "" : "s"} marked on the
-                    image
+                    {pins.length} spot{pins.length === 1 ? "" : "s"} marked on the{" "}
+                    {multi ? "portraits" : "image"}
                   </span>
                   <button
                     type="button"
