@@ -57,7 +57,8 @@ function PortraitNotes({ p, labelled }: { p: AutoQcPortrait; labelled: boolean }
       {labelled ? (
         <p className="text-sm font-semibold text-ink">{p.portrait ? `Portrait ${p.portrait}` : "Untagged upload"}</p>
       ) : null}
-      {p.summary ? <p className="break-words text-sm text-slate">{p.summary}</p> : null}
+      {/* One portrait: its summary is the order summary already shown above, so it is not repeated. */}
+      {labelled && p.summary ? <p className="break-words text-sm text-slate">{p.summary}</p> : null}
       {failed.length ? (
         <ul className="flex flex-col gap-2 rounded-card border border-rose/30 bg-rose/5 p-3" aria-label="Problems found">
           {failed.map((c) => (
