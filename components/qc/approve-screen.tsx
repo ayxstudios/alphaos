@@ -40,6 +40,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
   const [picked, setPicked] = useState<number[]>([]);
   const [showBefore, setShowBefore] = useState(false);
   const [enlarged, setEnlarged] = useState<string | null>(null);
+  const [broken, setBroken] = useState<string | null>(null);
 
   const versions = ctx.versions.filter((v) => v.url);
   const latest = versions[versions.length - 1] ?? null;
@@ -147,7 +148,8 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
           </div>
           <p className="text-sm text-slate">
             <span className="font-medium text-ink">{ctx.orderNumber}</span>
-            {item.shopName ? ` · ${item.shopName}` : ""} · {ctx.customerName}
+            {item.shopName ? ` · ${item.shopName}` : ""}
+            {/\p{L}/u.test(ctx.customerName) ? ` · ${ctx.customerName}` : ""}
             {ctx.designerName ? ` · by ${ctx.designerName}` : ""}
           </p>
         </div>
@@ -177,14 +179,21 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
                 ))}
               </div>
             ) : null}
-            {shown?.url ? (
+            {shown?.url && broken === shown.url ? (
+              <div className="flex h-64 flex-col items-center justify-center gap-1 rounded-card bg-canvas p-4 text-center text-sm text-slate">
+                The artwork did not load.
+                <Link href={`/orders/${ctx.orderId}`} className="font-medium text-pigment underline-offset-2 hover:underline">
+                  Open full order
+                </Link>
+              </div>
+            ) : shown?.url ? (
               <button
                 type="button"
                 onClick={() => setEnlarged(shown.url)}
                 className={cn("flex items-center justify-center overflow-hidden rounded-card bg-canvas", focusRing)}
                 aria-label="Open the artwork full size"
               >
-                <img src={shown.url} alt={`Artwork for ${ctx.orderNumber}`} className="max-h-[70vh] w-full object-contain" />
+                <img src={shown.url} alt={`Artwork for ${ctx.orderNumber}`} onError={() => setBroken(shown.url)} className="max-h-[70vh] w-full object-contain" />
               </button>
             ) : (
               <div className="flex h-64 items-center justify-center rounded-card bg-canvas text-sm text-slate">No artwork uploaded yet</div>
@@ -211,7 +220,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
                       {r.items.length ? (
                         <ul className="list-disc pl-5 text-sm text-ink">
                           {r.items.map((t) => (
-                            <li key={t}>{t}</li>
+                            <li key={t}>{splitChecklistLabel(t).name}</li>
                           ))}
                         </ul>
                       ) : null}
