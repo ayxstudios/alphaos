@@ -31,8 +31,12 @@ export function VersionStrip({
 
   return (
     <div className="flex items-end gap-2 overflow-x-auto pb-1">
-      {versions.map((v, i) => {
-        const isLatest = i === versions.length - 1;
+      {versions.map((v, globalIndex) => {
+        // Tagged versions (2+ portrait orders) count per portrait, each with its own Latest.
+        const tagged = versions.some((x) => x.portrait);
+        const own = tagged ? versions.filter((x) => x.portrait === v.portrait) : versions;
+        const i = tagged ? own.indexOf(v) : globalIndex;
+        const isLatest = i === own.length - 1;
         const selected = v.id === selectedId;
         return (
           <button

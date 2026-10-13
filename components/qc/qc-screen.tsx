@@ -282,7 +282,12 @@ export function QcScreen({
 
   const selectedIndex = ctx.versions.findIndex((v) => v.id === selectedVersionId);
   const selectedVersion = selectedIndex >= 0 ? ctx.versions[selectedIndex] : null;
-  const isLatest = selectedIndex === ctx.versions.length - 1;
+  // On 2+ portrait orders "latest" and the version number are per portrait.
+  const sameSlot = ctx.versions.some((v) => v.portrait)
+    ? ctx.versions.filter((v) => v.portrait === selectedVersion?.portrait)
+    : ctx.versions;
+  const slotIndex = selectedVersion ? sameSlot.indexOf(selectedVersion) : -1;
+  const isLatest = slotIndex === sameSlot.length - 1;
   // On 2+ portrait orders the designer tagged which portrait a version is.
   const whichPortrait = selectedVersion?.portrait ? `Portrait ${selectedVersion.portrait}, ` : "";
   const portraitLabel =
@@ -292,7 +297,7 @@ export function QcScreen({
         ? whichPortrait
           ? `Designer's portrait (${whichPortrait.slice(0, -2)})`
           : "Designer's portrait"
-        : `Designer's portrait (${whichPortrait}version ${selectedIndex + 1})`;
+        : `Designer's portrait (${whichPortrait}version ${slotIndex + 1})`;
 
   // The fail box starts with what the reviewer already said: the lines marked
   // wrong. With none marked, the unticked lines if some were ticked; with
@@ -397,7 +402,7 @@ export function QcScreen({
           <span className="text-xs font-medium text-slate">Versions</span>
           {selectedVersion && ctx.versions.length > 1 && (
             <span className="text-xs text-slate">
-              Showing {isLatest ? "the newest" : `version ${selectedIndex + 1}`}. Tap another to compare.
+              Showing {whichPortrait}{isLatest ? "the newest" : `version ${slotIndex + 1}`}. Tap another to compare.
             </span>
           )}
         </div>

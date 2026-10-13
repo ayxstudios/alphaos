@@ -826,8 +826,14 @@ function CardUploadPanel({
         <div className="mt-3">
           <p className="mb-2 text-xs font-medium text-ink">Portrait versions ({submissions.length}), newest last</p>
           <div className="flex gap-2 overflow-x-auto pb-1">
-            {submissions.map((image, index) => {
+            {submissions.map((image, globalIndex) => {
               const n = image.orderItemId ? portraitNo.get(image.orderItemId) : undefined;
+              // On 2+ portrait orders each portrait counts its own versions and
+              // has its own "latest" (Jerome saw one latest across both).
+              const slot = (s: CardImage) => (s.orderItemId ? (portraitNo.get(s.orderItemId) ?? 0) : 0);
+              const own = multiPortrait ? submissions.filter((s) => slot(s) === slot(image)) : submissions;
+              const index = multiPortrait ? own.indexOf(image) : globalIndex;
+              const lastIndex = own.length - 1;
               return (
                 <div key={image.id} className="w-20 shrink-0">
                   <a href={image.url} target="_blank" rel="noopener noreferrer" aria-label="Open this version full size">
@@ -837,7 +843,7 @@ function CardUploadPanel({
                   <p className="mt-1 truncate text-xs text-slate">
                     {/* Which portrait a version belongs to, on 2+ portrait orders. */}
                     {multiPortrait && n ? `P${n} · ` : ""}
-                    {`v${index + 1}${index === submissions.length - 1 ? ", latest" : ""}`}
+                    {`v${index + 1}${index === lastIndex ? ", latest" : ""}`}
                   </p>
                 </div>
               );
