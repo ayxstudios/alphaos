@@ -279,9 +279,9 @@ async function handleMatch(
   },
 ): Promise<ReconcileOrderResult> {
   const { businessId, order, provider, result, source } = ctx;
-  // An approved order matched to a real provider order is in print, whether it had no job row at all or only a
-  // placeholder row with no provider order id (the agent's print road writes those, 2026-10-14).
-  const wasApprovedSelfHeal = order.status === "approved" && (!ctx.job || !ctx.job.providerOrderId);
+  // An approved order matched to a real provider order is in print, whatever its job row looks like (none, a
+  // placeholder with no provider order id, or an id written by the agent's print road, 2026-10-14).
+  const wasApprovedSelfHeal = order.status === "approved";
   const job = ctx.job ?? (await ensureJobRow(tx, businessId, order.id, provider));
   const newState = classify(result);
   const prevState = job.reconcileState || "unchecked";

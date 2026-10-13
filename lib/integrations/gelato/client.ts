@@ -165,7 +165,7 @@ export class GelatoClient implements PrintProviderClient {
       return fixture ? gelatoStatusToNormalized(fixture) : null;
     }
     const body = {
-      orderReferenceIds: [referenceId],
+      orderReferenceIds: Array.from(new Set([referenceId, referenceId.replace(/^#/, "")])),
       orderTypes: ["order"],
       startDate: window.since.toISOString(),
       limit: 25,
@@ -174,7 +174,9 @@ export class GelatoClient implements PrintProviderClient {
       method: "POST",
       body: JSON.stringify(body),
     });
-    const match = (result.orders ?? []).find((order) => order.orderReferenceId === referenceId);
+    // AlphaOS keeps Shopify names with the hash ("#CPS10293"); orders placed by API often drop it ("CPS10293").
+    const bare = (v: string | null | undefined) => (v ?? "").replace(/^#/, "");
+    const match = (result.orders ?? []).find((order) => bare(order.orderReferenceId) === bare(referenceId));
     if (!match) return null;
     // Search rows carry no items/fulfillments (no tracking): read the full order.
     return (await this.getOrder(match.id)) ?? gelatoStatusToNormalized(match);
