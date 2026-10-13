@@ -6,7 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { actingDesignerId, isDesignerLike } from "@/lib/auth/roles";
 import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
-import { activityLog, assets, assignments, orders } from "@/lib/db/schema";
+import { activityLog, assets, assignments, orderItems, orders } from "@/lib/db/schema";
 import {
   transition,
   runTransition,
@@ -200,6 +200,8 @@ export async function saveCardAssetUploads(input: {
   orderId: string;
   type: CardAssetType;
   r2Keys: string[];
+  /** Which portrait (order item) a submission/final belongs to, on 2+ portrait orders. */
+  orderItemId?: string | null;
 }): Promise<CardUploadSaveResult> {
   const user = await requireSignedIn();
   if ("error" in user) return { ok: false, message: user.error };
@@ -225,6 +227,20 @@ export async function saveCardAssetUploads(input: {
         throw new Error("Finished portraits can only be uploaded while the card is in design");
       }
 
+      // A portrait tag must be one of THIS order's items; anything else is
+      // refused rather than silently dropped (a mis-tag misleads QC and the
+      // customer's proof page).
+      let orderItemId: string | null = null;
+      if (input.orderItemId) {
+        const [item] = await tx
+          .select({ id: orderItems.id })
+          .from(orderItems)
+          .where(and(eq(orderItems.id, input.orderItemId), eq(orderItems.orderId, order.id)))
+          .limit(1);
+        if (!item) throw new Error("That portrait is not on this order");
+        orderItemId = item.id;
+      }
+
       // Type, size and the bytes themselves (a .png that is really HTML is refused).
       await Promise.all(r2Keys.map((key) => assertStoredImage(key)));
 
@@ -235,6 +251,7 @@ export async function saveCardAssetUploads(input: {
           type: input.type,
           storage: "r2" as const,
           r2Key,
+          orderItemId,
           uploadedBy: user.id,
         })),
       );

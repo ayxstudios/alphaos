@@ -228,8 +228,7 @@ export function CardModal({
                 kind={card.qcFail ? "qc" : "customer"}
                 reason={revision.reason}
                 failedItems={revision.failedItems}
-                annotations={revision.annotations ?? []}
-                pinImageUrl={pinnedVersionUrl(detail, events)}
+                pinGroups={groupPins(revision.annotations ?? [], detail, events)}
               />
             )}
 
@@ -451,8 +450,15 @@ function CardUploadPanel({
   const [submitting, setSubmitting] = useState(false);
   const [starting, setStarting] = useState(false);
   const [progress, setProgress] = useState<UploadProgress[]>([]);
+  // Orders with 2+ portraits get a per-portrait upload area: the designer says
+  // which portrait a version is, so the strip, QC and the customer's proof all
+  // know which is which (Jerome, 2026-10-14).
+  const portraits = detail?.portraits ?? [];
+  const multiPortrait = portraits.length >= 2;
+  const [portraitId, setPortraitId] = useState<string | null>(null);
   const submissions = (detail?.images ?? []).filter((image) => image.type === "submission");
   const latestSubmission = submissions.at(-1) ?? null;
+  const portraitNo = new Map(portraits.map((p) => [p.id, p.n]));
   // After a send-back (QC fail, revision) the old versions no longer count:
   // the server refuses Submit for QC until a newer version is uploaded.
   const lastSendBack = (detail?.events ?? [])
@@ -501,6 +507,16 @@ function CardUploadPanel({
     const tooBig = images.find((file) => file.size > MAX_UPLOAD_BYTES);
     if (tooBig) {
       toast({ variant: "danger", title: "Upload too large", description: `${tooBig.name} is over 25 MB.` });
+      return;
+    }
+    // Portraits (submission/final) on a 2+ portrait order must say which one;
+    // reference photos stay order-wide.
+    if (multiPortrait && type !== "reference" && !portraitId) {
+      toast({
+        variant: "warning",
+        title: "Which portrait?",
+        description: "This order has more than one portrait. Pick which one this upload is for first.",
+      });
       return;
     }
 
@@ -567,6 +583,9 @@ function CardUploadPanel({
         orderId: card.orderId,
         type,
         r2Keys: keys,
+        // Single-portrait orders tag implicitly; multi-portrait uses the pick.
+        orderItemId:
+          type !== "reference" ? (multiPortrait ? portraitId : (portraits[0]?.id ?? null)) : null,
       });
       if (!saved.ok) throw new Error(saved.message);
       onSaved(saved.detail);
@@ -694,6 +713,39 @@ function CardUploadPanel({
           onChange={(event) => event.target.files && void upload(Array.from(event.target.files))}
         />
       </div>
+      {/* 2+ portraits on one order: every upload says which portrait it is,
+          so versions never blur together as one "latest". */}
+      {canUpload && multiPortrait && type !== "reference" && (
+        <fieldset className="mt-3">
+          <legend className="text-xs font-medium text-ink">
+            Which portrait is this upload for?
+          </legend>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {portraits.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                disabled={uploading}
+                aria-pressed={portraitId === p.id}
+                onClick={() => setPortraitId(p.id)}
+                title={p.label || undefined}
+                className={cn(
+                  "flex min-h-9 max-w-full items-center rounded-input border px-2.5 py-1.5 text-sm transition-colors motion-hover",
+                  focusRing,
+                  portraitId === p.id
+                    ? "border-pigment bg-pigment-soft font-medium text-ink"
+                    : "border-line bg-surface text-slate hover:border-slate/40 hover:text-ink",
+                )}
+              >
+                <span className="truncate">
+                  Portrait {p.n}
+                  {p.label ? ` · ${p.label}` : ""}
+                </span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      )}
       {canUpload && (
         <button
           type="button"
@@ -758,17 +810,22 @@ function CardUploadPanel({
         <div className="mt-3">
           <p className="mb-2 text-xs font-medium text-ink">Portrait versions ({submissions.length}), newest last</p>
           <div className="flex gap-2 overflow-x-auto pb-1">
-            {submissions.map((image, index) => (
-              <div key={image.id} className="w-20 shrink-0">
-                <a href={image.url} target="_blank" rel="noopener noreferrer" aria-label="Open this version full size">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={image.url} alt="" className="size-20 rounded-input border border-line object-cover" />
-                </a>
-                <p className="mt-1 truncate text-xs text-slate">
-                  {`v${index + 1}${index === submissions.length - 1 ? ", latest" : ""}`}
-                </p>
-              </div>
-            ))}
+            {submissions.map((image, index) => {
+              const n = image.orderItemId ? portraitNo.get(image.orderItemId) : undefined;
+              return (
+                <div key={image.id} className="w-20 shrink-0">
+                  <a href={image.url} target="_blank" rel="noopener noreferrer" aria-label="Open this version full size">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={image.url} alt="" className="size-20 rounded-input border border-line object-cover" />
+                  </a>
+                  <p className="mt-1 truncate text-xs text-slate">
+                    {/* Which portrait a version belongs to, on 2+ portrait orders. */}
+                    {multiPortrait && n ? `P${n} · ` : ""}
+                    {`v${index + 1}${index === submissions.length - 1 ? ", latest" : ""}`}
+                  </p>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -933,10 +990,14 @@ function Gallery({ images, cover }: { images: CardImage[] | null; cover: string 
 /**
  * The version the customer put their pins on: the newest one from before the
  * latest revision request. Once a fixed version is added, the pins still sit
- * on the proof they were dropped on, not on the fix.
+ * on the proof they were dropped on, not on the fix. With a portrait given,
+ * only versions tagged to that portrait count, so a pin dropped on Portrait 2
+ * never overlays Portrait 1's image.
  */
-function pinnedVersionUrl(detail: CardDetail | null, events: CardEvent[]): string | null {
-  const versions = (detail?.images ?? []).filter((img) => img.type === "submission");
+function pinnedVersionUrl(detail: CardDetail | null, events: CardEvent[], orderItemId?: string): string | null {
+  const versions = (detail?.images ?? []).filter(
+    (img) => img.type === "submission" && (!orderItemId || img.orderItemId === orderItemId),
+  );
   const asked = events
     .filter((e) => e.toState === "in_design" && e.fromState === "awaiting_approval")
     .reduce<number>((max, e) => Math.max(max, Date.parse(e.createdAt)), 0);
@@ -944,22 +1005,57 @@ function pinnedVersionUrl(detail: CardDetail | null, events: CardEvent[]): strin
   return (before.at(-1) ?? versions.at(-1))?.url ?? null;
 }
 
+type PinGroup = {
+  /** "Portrait 2" on multi-portrait orders; null = the whole (single) proof. */
+  label: string | null;
+  url: string | null;
+  /** Pins keep the number the customer saw (drop order across all images). */
+  pins: { n: number; x: number; y: number }[];
+};
+
+/**
+ * Pins grouped by the portrait they were dropped on. Pins without a portrait
+ * (single-portrait orders, older pins) form one unlabelled group over the
+ * pinned proof version — exactly the old behaviour.
+ */
+function groupPins(
+  annotations: { x: number; y: number; p?: number }[],
+  detail: CardDetail | null,
+  events: CardEvent[],
+): PinGroup[] {
+  const groups = new Map<number, PinGroup>();
+  annotations.forEach((pin, i) => {
+    const p = typeof pin.p === "number" ? pin.p : 0;
+    let group = groups.get(p);
+    if (!group) {
+      const portrait = p > 0 ? (detail?.portraits ?? [])[p - 1] : undefined;
+      group = {
+        label: p > 0 ? `Portrait ${p}` : null,
+        url: pinnedVersionUrl(detail, events, portrait?.id) ?? pinnedVersionUrl(detail, events),
+        pins: [],
+      };
+      groups.set(p, group);
+    }
+    group.pins.push({ n: i + 1, x: pin.x, y: pin.y });
+  });
+  return [...groups.entries()].sort(([a], [b]) => a - b).map(([, g]) => g);
+}
+
 function RevisionBlock({
   kind,
   reason,
   failedItems,
-  annotations,
-  pinImageUrl,
+  pinGroups,
 }: {
   kind: "qc" | "customer";
   reason: string | null;
   failedItems: string[];
-  annotations: { x: number; y: number }[];
-  pinImageUrl: string | null;
+  pinGroups: PinGroup[];
 }) {
   const qc = kind === "qc";
   const note = revisionNote(reason, failedItems);
   const copy = revisionCopyText(note, failedItems);
+  const pinCount = pinGroups.reduce((sum, g) => sum + g.pins.length, 0);
   return (
     <div
       className={cn(
@@ -989,28 +1085,39 @@ function RevisionBlock({
           ))}
         </ul>
       )}
-      {annotations.length > 0 && (
-        <div className="space-y-1">
+      {pinCount > 0 && (
+        <div className="space-y-2">
           <p className="text-xs font-medium text-ink">
-            The customer marked {annotations.length} spot{annotations.length === 1 ? "" : "s"} on the proof:
+            The customer marked {pinCount} spot{pinCount === 1 ? "" : "s"} on the proof:
           </p>
-          {pinImageUrl ? (
-            <div className="relative overflow-hidden rounded-input border border-line">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={pinImageUrl} alt="Latest submission with revision pins" className="block w-full" />
-              {annotations.map((p, i) => (
-                <span
-                  key={i}
-                  className="pointer-events-none absolute flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-pigment text-xs font-semibold text-surface shadow-md ring-2 ring-surface"
-                  style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
-                >
-                  {i + 1}
-                </span>
-              ))}
+          {pinGroups.map((group, gi) => (
+            <div key={gi} className="space-y-1">
+              {group.label && <p className="text-xs font-medium text-slate">{group.label}</p>}
+              {group.url ? (
+                <div className="relative overflow-hidden rounded-input border border-line">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={group.url}
+                    alt={`${group.label ?? "Latest submission"} with revision pins`}
+                    className="block w-full"
+                  />
+                  {group.pins.map((p) => (
+                    <span
+                      key={p.n}
+                      className="pointer-events-none absolute flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-pigment text-xs font-semibold text-surface shadow-md ring-2 ring-surface"
+                      style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
+                    >
+                      {p.n}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate">
+                  Pin positions were saved but no portrait image is available to show them on.
+                </p>
+              )}
             </div>
-          ) : (
-            <p className="text-xs text-slate">Pin positions were saved but no portrait image is available to show them on.</p>
-          )}
+          ))}
         </div>
       )}
     </div>

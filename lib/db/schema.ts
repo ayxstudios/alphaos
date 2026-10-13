@@ -867,8 +867,10 @@ export const proofs = pgTable(
   (t) => [index("proofs_order_idx").on(t.orderId)],
 );
 
-/** A revision pin dropped on the preview, in normalised image coordinates. */
-export type ProofAnnotation = { x: number; y: number };
+/** A revision pin dropped on the preview, in normalised image coordinates.
+ *  `p` (1-based portrait number, by item order) says which portrait's preview
+ *  the pin was dropped on; absent on single-portrait orders and older pins. */
+export type ProofAnnotation = { x: number; y: number; p?: number };
 
 export const messages = pgTable(
   "messages",

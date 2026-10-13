@@ -4,6 +4,7 @@ import { withUserContext, type RequestUser } from "@/lib/db";
 import { activityLog, assets, assignments, orders, users } from "@/lib/db/schema";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { isDesignerLike } from "@/lib/auth/roles";
+import { getOrderPortraits, type OrderPortrait } from "./portraits";
 import type { OrderStatus } from "./transitions";
 
 /**
@@ -33,11 +34,15 @@ export type CardImage = {
   url: string;
   uploadedBy: string | null;
   createdAt: string;
+  /** The portrait slot (order item) this upload was tagged with, if any. */
+  orderItemId: string | null;
 };
 
 export type CardDetail = {
   events: CardEvent[];
   images: CardImage[];
+  /** The order's portrait slots; 2+ makes the upload panel ask which one. */
+  portraits: OrderPortrait[];
 };
 
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
@@ -134,6 +139,7 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
         storage: assets.storage,
         r2Key: assets.r2Key,
         createdAt: assets.createdAt,
+        orderItemId: assets.orderItemId,
         uploadedByName: users.name,
         uploadedByEmail: users.email,
       })
@@ -167,12 +173,19 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
             url,
             uploadedBy: a.uploadedByName ?? (isDesignerLike(user.role) ? null : a.uploadedByEmail) ?? null,
             createdAt: a.createdAt.toISOString(),
+            orderItemId: a.orderItemId ?? null,
           });
         }
       }),
     );
 
-    return { events, images };
+    // Promise.all resolves out of order; the gallery and version numbering
+    // rely on upload order, so restore it.
+    images.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+    const portraits = await getOrderPortraits(tx, orderId);
+
+    return { events, images, portraits };
   });
 }
 
