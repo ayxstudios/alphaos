@@ -279,7 +279,9 @@ async function handleMatch(
   },
 ): Promise<ReconcileOrderResult> {
   const { businessId, order, provider, result, source } = ctx;
-  const wasApprovedSelfHeal = !ctx.job && order.status === "approved";
+  // An approved order matched to a real provider order is in print, whether it had no job row at all or only a
+  // placeholder row with no provider order id (the agent's print road writes those, 2026-10-14).
+  const wasApprovedSelfHeal = order.status === "approved" && (!ctx.job || !ctx.job.providerOrderId);
   const job = ctx.job ?? (await ensureJobRow(tx, businessId, order.id, provider));
   const newState = classify(result);
   const prevState = job.reconcileState || "unchecked";
@@ -299,7 +301,16 @@ async function handleMatch(
     })
     .where(eq(printJobs.id, job.id));
 
-  if (newState === prevState && !wasApprovedSelfHeal) {
+  if (wasApprovedSelfHeal) {
+    await runTransition(tx, SYSTEM_ACTOR, {
+      orderId: order.id,
+      to: "printing",
+      expectedFrom: "approved",
+      metadata: { via: "print_reconcile_self_heal", provider, providerOrderId: result.providerOrderId },
+    });
+  }
+
+  if (newState === prevState && !(wasApprovedSelfHeal && newState === "shipped")) {
     return { orderId: order.id, outcome: newState, provider };
   }
 
@@ -328,15 +339,6 @@ async function handleMatch(
     action: `print.reconcile_${newState}`,
     metadata: { provider, providerOrderId: result.providerOrderId, rawStatus: result.rawStatus, via: "print_reconcile" },
   });
-
-  if (wasApprovedSelfHeal && order.status === "approved") {
-    await runTransition(tx, SYSTEM_ACTOR, {
-      orderId: order.id,
-      to: "printing",
-      expectedFrom: "approved",
-      metadata: { via: "print_reconcile_self_heal", provider, providerOrderId: result.providerOrderId },
-    });
-  }
 
   if (newState === "shipped" && result.shipments[0]) {
     await applyReconcileShipment(tx, {

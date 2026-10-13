@@ -32,7 +32,7 @@ function log(event: string, fields: Record<string, unknown>) {
 }
 
 function gelatoStatusToNormalized(order: GelatoOrder): NormalizedProviderOrder {
-  const shipments = order.items.flatMap((item) =>
+  const shipments = (order.items ?? []).flatMap((item) =>
     (item.fulfillments ?? []).map((f) => ({
       trackingNumber: f.trackingCode,
       carrier: f.shipmentMethodName ?? f.shipmentMethodUid ?? null,
@@ -174,7 +174,9 @@ export class GelatoClient implements PrintProviderClient {
       method: "POST",
       body: JSON.stringify(body),
     });
-    const match = result.orders.find((order) => order.orderReferenceId === referenceId);
-    return match ? gelatoStatusToNormalized(match) : null;
+    const match = (result.orders ?? []).find((order) => order.orderReferenceId === referenceId);
+    if (!match) return null;
+    // Search rows carry no items/fulfillments (no tracking): read the full order.
+    return (await this.getOrder(match.id)) ?? gelatoStatusToNormalized(match);
   }
 }
