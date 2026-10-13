@@ -173,9 +173,9 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
           </p>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
           {/* The artwork */}
-          <div className="flex flex-col gap-2">
+          <div className="flex min-w-0 flex-col gap-2">
             {portraitGroups ? (
               <div className="flex flex-col gap-1.5">
                 <p className="text-sm text-slate">
@@ -200,7 +200,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
                           : "border-line bg-surface text-slate hover:text-ink",
                       )}
                     >
-                      <span className="truncate">
+                      <span className="min-w-0 truncate">
                         {g.title}
                         {g.label ? ` · ${g.label}` : ""}
                         {g.versions.length ? "" : " (none yet)"}

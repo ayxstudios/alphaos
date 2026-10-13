@@ -720,13 +720,19 @@ function CardUploadPanel({
           accept="image/*"
           multiple
           className="hidden"
-          onChange={(event) => event.target.files && void upload(Array.from(event.target.files))}
+          onChange={(event) => {
+            const files = event.target.files ? Array.from(event.target.files) : [];
+            // Cleared so picking the same file again (after "Which portrait?")
+            // still fires a change.
+            event.target.value = "";
+            if (files.length) void upload(files);
+          }}
         />
       </div>
       {/* 2+ portraits on one order: every upload says which portrait it is,
           so versions never blur together as one "latest". */}
       {canUpload && multiPortrait && type !== "reference" && (
-        <fieldset className="mt-3">
+        <fieldset className="mt-3 min-w-0">
           <legend className="text-xs font-medium text-ink">
             Which portrait is this upload for?
           </legend>
@@ -740,14 +746,14 @@ function CardUploadPanel({
                 onClick={() => setPortraitId(p.id)}
                 title={p.label || undefined}
                 className={cn(
-                  "flex min-h-9 max-w-full items-center rounded-input border px-2.5 py-1.5 text-sm transition-colors motion-hover",
+                  "flex min-h-9 max-w-full items-center rounded-input border px-2.5 py-1.5 text-sm transition-colors motion-hover max-md:min-h-11",
                   focusRing,
                   portraitId === p.id
                     ? "border-pigment bg-pigment-soft font-medium text-ink"
                     : "border-line bg-surface text-slate hover:border-slate/40 hover:text-ink",
                 )}
               >
-                <span className="truncate">
+                <span className="min-w-0 truncate">
                   Portrait {p.n}
                   {p.label ? ` · ${p.label}` : ""}
                 </span>
