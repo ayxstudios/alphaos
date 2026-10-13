@@ -163,7 +163,11 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
                 URGENT
               </span>
             ) : null}
-            {due ? <span className={cn("text-sm font-medium", due.late ? "text-rose" : "text-slate")}>{due.text}</span> : null}
+            {due ? (
+              <span className={cn("text-sm font-medium", due.late ? "text-rose" : "text-slate")} suppressHydrationWarning>
+                {due.text}
+              </span>
+            ) : null}
           </div>
           <p className="text-sm text-slate">
             <span className="font-medium text-ink">{ctx.orderNumber}</span>
@@ -265,7 +269,9 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
                 ) : (
                   item.requests.map((r, i) => (
                     <div key={r.id} className={cn("flex flex-col gap-1 rounded-card border p-3", i === 0 ? "border-amber/40 bg-amber/5" : "border-line")}>
-                      <p className="text-xs text-slate">
+                      {/* Local time differs between the server and the phone: the
+                          browser's own value wins without a hydration error. */}
+                      <p className="text-xs text-slate" suppressHydrationWarning>
                         {r.kind === "customer" ? "Customer" : r.kind === "qc" ? `QC${r.who ? `, ${r.who}` : ""}` : (r.who ?? "Team")} · {whenText(r.at)}
                         {i === 0 ? " · latest" : ""}
                       </p>
@@ -351,7 +357,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
               </dl>
             ) : null}
 
-            <Link href={`/orders/${ctx.orderId}`} className={cn("self-start rounded-input text-sm font-medium text-pigment underline-offset-2 hover:underline", focusRing)}>
+            <Link href={`/orders/${ctx.orderId}`} className={cn("self-start rounded-input text-sm font-medium text-pigment underline-offset-2 hover:underline max-sm:inline-flex max-sm:min-h-11 max-sm:items-center", focusRing)}>
               Open full order
             </Link>
           </div>
