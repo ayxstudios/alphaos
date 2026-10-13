@@ -842,7 +842,7 @@ function CardUploadPanel({
                   </a>
                   <p className="mt-1 truncate text-xs text-slate">
                     {/* Which portrait a version belongs to, on 2+ portrait orders. */}
-                    {multiPortrait && n ? `P${n} · ` : ""}
+                    {multiPortrait ? (n ? `P${n} · ` : "Untagged · ") : ""}
                     {`v${index + 1}${index === lastIndex ? ", latest" : ""}`}
                   </p>
                 </div>

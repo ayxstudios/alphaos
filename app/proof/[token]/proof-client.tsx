@@ -195,7 +195,7 @@ export function ProofClient({
                   loading={submitting}
                   className="sm:flex-1"
                 >
-                  Yes, approve it
+                  {multi ? "Yes, approve them" : "Yes, approve it"}
                 </Button>
                 <Button
                   size="lg"

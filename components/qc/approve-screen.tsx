@@ -55,7 +55,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
             versions: allVersions.filter((v) => v.portrait === p.n),
           })),
           ...(allVersions.some((v) => !v.portrait)
-            ? [{ n: 0, title: "Other", label: "", versions: allVersions.filter((v) => !v.portrait) }]
+            ? [{ n: 0, title: "Untagged", label: "", versions: allVersions.filter((v) => !v.portrait) }]
             : []),
         ]
       : null;

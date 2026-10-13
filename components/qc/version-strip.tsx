@@ -67,7 +67,7 @@ export function VersionStrip({
                 )}
               >
                 {/* P2 = which portrait, on 2+ portrait orders */}
-                {v.portrait ? `P${v.portrait} · ` : ""}
+                {tagged ? (v.portrait ? `P${v.portrait} · ` : "Untagged · ") : ""}
                 {isLatest ? "Latest" : `v${i + 1}`}
               </span>
             </div>
