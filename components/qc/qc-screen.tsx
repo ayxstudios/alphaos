@@ -283,12 +283,16 @@ export function QcScreen({
   const selectedIndex = ctx.versions.findIndex((v) => v.id === selectedVersionId);
   const selectedVersion = selectedIndex >= 0 ? ctx.versions[selectedIndex] : null;
   const isLatest = selectedIndex === ctx.versions.length - 1;
+  // On 2+ portrait orders the designer tagged which portrait a version is.
+  const whichPortrait = selectedVersion?.portrait ? `Portrait ${selectedVersion.portrait}, ` : "";
   const portraitLabel =
     selectedVersion == null
       ? "Designer's portrait"
       : isLatest
-        ? "Designer's portrait"
-        : `Designer's portrait (version ${selectedIndex + 1})`;
+        ? whichPortrait
+          ? `Designer's portrait (${whichPortrait.slice(0, -2)})`
+          : "Designer's portrait"
+        : `Designer's portrait (${whichPortrait}version ${selectedIndex + 1})`;
 
   // The fail box starts with what the reviewer already said: the lines marked
   // wrong. With none marked, the unticked lines if some were ticked; with

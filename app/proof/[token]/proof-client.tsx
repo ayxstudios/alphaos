@@ -1,17 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui";
 import { PROOF_ISSUES } from "@/lib/proofs/issues";
 import type { ProofAnnotation } from "@/lib/db/schema";
 import type { ProofDecision } from "@/lib/proofs/decide";
+import type { ProofPortrait } from "@/lib/proofs/data";
 import { approveAction, revisionAction, trackView } from "./actions";
 
 type Props = {
   token: string;
   orderNumber: string;
   hasPreview: boolean;
+  /** 2+ entries = one preview per portrait, each under its own heading. */
+  portraits?: ProofPortrait[];
   actionable: boolean;
   initialDecision: ProofDecision | null;
   /** A newer proof went out after this one (this link is an older email's). */
@@ -24,10 +27,12 @@ export function ProofClient({
   token,
   orderNumber,
   hasPreview,
+  portraits = [],
   actionable,
   initialDecision,
   superseded = false,
 }: Props) {
+  const multi = portraits.length > 1;
   const [outcome, setOutcome] = useState<ProofDecision | null>(initialDecision);
   const [mode, setMode] = useState<Mode>("idle");
   const [checked, setChecked] = useState<Set<string>>(new Set());
@@ -35,7 +40,6 @@ export function ProofClient({
   const [pins, setPins] = useState<ProofAnnotation[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const imgRef = useRef<HTMLImageElement>(null);
 
   // Log the view once, on mount. Fire-and-forget; failures are non-fatal.
   useEffect(() => {
@@ -51,12 +55,43 @@ export function ProofClient({
     });
   }
 
-  function addPin(e: React.MouseEvent<HTMLImageElement>) {
+  function addPin(e: React.MouseEvent<HTMLImageElement>, portrait?: number) {
     if (mode !== "revise") return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = (e.clientX - rect.left) / rect.width;
     const y = (e.clientY - rect.top) / rect.height;
-    setPins((prev) => [...prev, { x, y }]);
+    // On a 2+ portrait order the pin remembers which portrait it was dropped
+    // on, so the designer sees it over the right image.
+    setPins((prev) => [...prev, portrait ? { x, y, p: portrait } : { x, y }]);
+  }
+
+  /** One preview image with its pins; the whole proof, or one portrait of it. */
+  function preview(portrait?: ProofPortrait) {
+    const src = portrait ? `/api/proof/${token}/preview?p=${portrait.n}` : `/api/proof/${token}/preview`;
+    const mine = pins
+      .map((pin, i) => ({ ...pin, n: i + 1 }))
+      .filter((pin) => (portrait ? pin.p === portrait.n : true));
+    return (
+      <figure className="relative overflow-hidden rounded-card border border-line bg-canvas shadow-sm">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={portrait ? `Portrait ${portrait.n} proof for order ${orderNumber}` : `Portrait proof for order ${orderNumber}`}
+          onClick={(e) => addPin(e, portrait?.n)}
+          className={"block w-full select-none " + (mode === "revise" ? "cursor-crosshair" : "")}
+          draggable={false}
+        />
+        {mine.map((pin) => (
+          <span
+            key={pin.n}
+            className="pointer-events-none absolute flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-pigment text-xs font-semibold text-surface shadow-md ring-2 ring-surface"
+            style={{ left: `${pin.x * 100}%`, top: `${pin.y * 100}%` }}
+          >
+            {pin.n}
+          </span>
+        ))}
+      </figure>
+    );
   }
 
   async function onApprove() {
@@ -84,30 +119,30 @@ export function ProofClient({
   return (
     <div className="flex flex-col gap-5">
       {/* Preview -------------------------------------------------------- */}
-      {hasPreview ? (
-        <figure className="relative overflow-hidden rounded-card border border-line bg-canvas shadow-sm">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            ref={imgRef}
-            src={`/api/proof/${token}/preview`}
-            alt={`Portrait proof for order ${orderNumber}`}
-            onClick={addPin}
-            className={
-              "block w-full select-none " +
-              (mode === "revise" ? "cursor-crosshair" : "")
-            }
-            draggable={false}
-          />
-          {pins.map((p, i) => (
-            <span
-              key={i}
-              className="pointer-events-none absolute flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-pigment text-xs font-semibold text-surface shadow-md ring-2 ring-surface"
-              style={{ left: `${p.x * 100}%`, top: `${p.y * 100}%` }}
-            >
-              {i + 1}
-            </span>
+      {multi ? (
+        // 2+ portraits: each under its own heading so the customer always
+        // knows which one they are looking at and marking.
+        <div className="flex flex-col gap-5">
+          {portraits.map((portrait) => (
+            <section key={portrait.n} className="flex flex-col gap-2" aria-label={`Portrait ${portrait.n}`}>
+              <h2 className="text-base font-semibold text-ink">
+                Portrait {portrait.n}
+                {portrait.label && (
+                  <span className="ml-2 font-normal text-slate">{portrait.label}</span>
+                )}
+              </h2>
+              {portrait.hasPreview ? (
+                preview(portrait)
+              ) : (
+                <div className="rounded-card border border-dashed border-line bg-surface p-6 text-center text-sm text-slate">
+                  This one is still being prepared.
+                </div>
+              )}
+            </section>
           ))}
-        </figure>
+        </div>
+      ) : hasPreview ? (
+        preview()
       ) : actionable && !outcome ? (
         // "Being prepared" only while a decision is still to come; a decided
         // proof with no image left says nothing here (its outcome card does).
@@ -118,7 +153,7 @@ export function ProofClient({
 
       {/* Outcome (read-only once decided) ------------------------------ */}
       {outcome ? (
-        <Confirmation decision={outcome} superseded={superseded} />
+        <Confirmation decision={outcome} superseded={superseded} multi={multi} />
       ) : !actionable ? (
         <p className="rounded-card border border-line bg-surface p-4 text-center text-sm text-slate">
           This proof isn&rsquo;t awaiting your review right now.
@@ -134,7 +169,7 @@ export function ProofClient({
           {mode === "idle" && (
             <div className="flex flex-col gap-3">
               <Button size="lg" onClick={() => setMode("confirmApprove")}>
-                Approve this portrait
+                {multi ? "Approve these portraits" : "Approve this portrait"}
               </Button>
               <Button
                 size="lg"
@@ -149,8 +184,9 @@ export function ProofClient({
           {mode === "confirmApprove" && (
             <div className="flex flex-col gap-3 rounded-card border border-line bg-surface p-4">
               <p className="text-base text-ink">
-                Happy with your portrait? Once you approve, we&rsquo;ll get it
-                ready for you. No further changes after this.
+                {multi
+                  ? "Happy with all of your portraits? Once you approve, we\u2019ll get them ready for you. No further changes after this."
+                  : "Happy with your portrait? Once you approve, we\u2019ll get it ready for you. No further changes after this."}
               </p>
               <div className="flex flex-col gap-2 sm:flex-row-reverse">
                 <Button
@@ -181,7 +217,7 @@ export function ProofClient({
                   What would you like changed?
                 </h2>
                 <p className="mt-1 text-sm text-slate">
-                  Pick anything that applies, add a note, and tap the image to
+                  Pick anything that applies, add a note, and tap {multi ? "a portrait" : "the image"} to
                   point at a spot.
                 </p>
               </div>
@@ -255,14 +291,14 @@ export function ProofClient({
   );
 }
 
-function Confirmation({ decision, superseded }: { decision: ProofDecision; superseded: boolean }) {
+function Confirmation({ decision, superseded, multi }: { decision: ProofDecision; superseded: boolean; multi: boolean }) {
   if (decision === "approved") {
     return (
       <div className="flex flex-col items-center gap-2 rounded-card border border-sage/30 bg-sage/10 p-6 text-center">
         <span className="flex size-11 items-center justify-center rounded-full bg-sage text-surface">
           <CheckIcon />
         </span>
-        <h2 className="text-lg font-semibold text-ink">Portrait approved</h2>
+        <h2 className="text-lg font-semibold text-ink">{multi ? "Portraits approved" : "Portrait approved"}</h2>
         <p className="text-sm text-slate">
           Thank you! We&rsquo;ve received your approval and will take it from
           here.

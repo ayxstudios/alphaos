@@ -2,7 +2,19 @@ import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 
 import { withSystemContext, type Tx } from "@/lib/db";
 import { activityLog, assets, businesses, orders, proofs } from "@/lib/db/schema";
+import { getOrderPortraits } from "@/lib/orders/portraits";
 import type { ProofDecision } from "./decide";
+
+/**
+ * One portrait on a 2+ portrait order, as the customer sees it: its number
+ * (the same "Portrait N" the designer tagged the upload with), a short label
+ * from what was ordered, and whether a version exists to show yet.
+ */
+export type ProofPortrait = {
+  n: number;
+  label: string;
+  hasPreview: boolean;
+};
 
 /**
  * Everything the PUBLIC proof page is allowed to render. Deliberately minimal:
@@ -19,6 +31,14 @@ export type ProofView = {
   decision: ProofDecision | null;
   decidedAt: string | null; // ISO
   hasPreview: boolean;
+  /**
+   * Empty on a single-portrait order (one preview, today's page). On an order
+   * with 2+ portraits whose designer tagged uploads per portrait, one entry per
+   * portrait so the page shows each one under its own heading and the
+   * customer always knows which portrait they are looking at (Jerome,
+   * 2026-10-14).
+   */
+  portraits: ProofPortrait[];
   /** A newer proof was sent for the same order after this one. */
   superseded: boolean;
 };
@@ -52,6 +72,7 @@ export async function getProofView(token: string): Promise<ProofView | null> {
     if (!row) return null;
 
     const preview = await resolvePreviewAsset(tx, row.orderId);
+    const portraits = await resolvePortraitPreviews(tx, row.orderId);
     // Scoped to the one order this token resolves to.
     const [newer] = await tx
       .select({ id: proofs.id })
@@ -67,6 +88,7 @@ export async function getProofView(token: string): Promise<ProofView | null> {
       decision: row.decision,
       decidedAt: row.decidedAt ? row.decidedAt.toISOString() : null,
       hasPreview: preview != null,
+      portraits,
       superseded: Boolean(newer),
     };
   });
@@ -127,6 +149,8 @@ export type ProofImageSource = {
  */
 export async function getProofImageSource(
   token: string,
+  /** 1-based portrait number on a 2+ portrait order; omitted = the order's newest version. */
+  portraitN?: number,
 ): Promise<ProofImageSource | null> {
   return withSystemContext(async (tx) => {
     const [proof] = await tx
@@ -136,22 +160,38 @@ export async function getProofImageSource(
       .where(eq(proofs.token, token));
     if (!proof) return null;
 
-    const asset = await resolvePreviewAsset(tx, proof.orderId);
+    let orderItemId: string | undefined;
+    if (portraitN) {
+      // Still scoped to the token's order: the item must be one of ITS items.
+      const portrait = (await getOrderPortraits(tx, proof.orderId)).find((p) => p.n === portraitN);
+      if (!portrait) return null;
+      orderItemId = portrait.id;
+    }
+    const asset = await resolvePreviewAsset(tx, proof.orderId, orderItemId);
     if (!asset) return null;
     return { url: asset.url, r2Key: asset.r2Key, businessName: proof.businessName };
   });
 }
 
-/** Latest final/submission asset (finals preferred, then newest) for an order. */
+/**
+ * Latest final/submission asset (finals preferred, then newest) for an order,
+ * or for one portrait of it when the designer tagged uploads per portrait.
+ */
 async function resolvePreviewAsset(
   tx: Tx,
   orderId: string,
+  orderItemId?: string,
 ): Promise<{ url: string | null; r2Key: string | null } | null> {
   const rows = await tx
     .select({ url: assets.url, r2Key: assets.r2Key, type: assets.type, createdAt: assets.createdAt })
     .from(assets)
     .where(
-      and(eq(assets.orderId, orderId), inArray(assets.type, [...PREVIEW_TYPES]), isNull(assets.deletedAt)),
+      and(
+        eq(assets.orderId, orderId),
+        inArray(assets.type, [...PREVIEW_TYPES]),
+        isNull(assets.deletedAt),
+        ...(orderItemId ? [eq(assets.orderItemId, orderItemId)] : []),
+      ),
     )
     .orderBy(desc(assets.createdAt));
   // Only assets we can actually read count, so the page never shows a broken image.
@@ -160,4 +200,19 @@ async function resolvePreviewAsset(
   // Prefer a "final" if one exists; otherwise the newest submission.
   const final = readable.find((r) => r.type === "final");
   return final ?? readable[0];
+}
+
+/**
+ * Per-portrait previews for the proof page. Only an order with 2+ portraits
+ * AND at least one upload tagged to a portrait gets a list; everything else
+ * (single portrait, or a multi-portrait order whose versions predate
+ * per-portrait tagging) keeps the one-image page, so nothing old breaks.
+ */
+async function resolvePortraitPreviews(tx: Tx, orderId: string): Promise<ProofPortrait[]> {
+  const portraits = await getOrderPortraits(tx, orderId);
+  if (portraits.length < 2) return [];
+  const previews = await Promise.all(
+    portraits.map(async (p) => ({ n: p.n, label: p.label, hasPreview: (await resolvePreviewAsset(tx, orderId, p.id)) != null })),
+  );
+  return previews.some((p) => p.hasPreview) ? previews : [];
 }

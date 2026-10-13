@@ -13,6 +13,7 @@ import {
   users,
   activityLog,
 } from "@/lib/db/schema";
+import { getOrderPortraits, type OrderPortrait } from "@/lib/orders/portraits";
 import type { OrderStatus } from "@/lib/orders/transitions";
 import { resolveChecklist, type ChecklistSnapshot } from "./checklist";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
@@ -32,6 +33,8 @@ export type QcVersion = {
   type: string;
   uploadedBy: string | null;
   createdAt: string; // ISO
+  /** 1-based portrait number this version was tagged with (2+ portrait orders), else null. */
+  portrait: number | null;
 };
 
 /** What was ordered, verbatim from the order data, for the QC "Order says" panel. */
@@ -70,6 +73,8 @@ export type QcContext = {
   dueAt: string | null;
   references: QcImage[];
   versions: QcVersion[]; // oldest → newest
+  /** The order's portrait slots; 2+ means versions are judged per portrait. */
+  portraits: OrderPortrait[];
   checklist: ChecklistSnapshot;
 };
 
@@ -212,6 +217,7 @@ export async function getQcContext(
         r2Key: assets.r2Key,
         type: assets.type,
         createdAt: assets.createdAt,
+        orderItemId: assets.orderItemId,
         uploadedByName: users.name,
         uploadedByEmail: users.email,
       })
@@ -223,12 +229,15 @@ export async function getQcContext(
     const resolvedReferences = await Promise.all(
       references.map(async (r) => ({ id: r.id, url: await resolveAssetUrl(r) })),
     );
+    const portraits = await getOrderPortraits(tx, orderId);
+    const portraitNo = new Map(portraits.map((p) => [p.id, p.n]));
     const versions: QcVersion[] = await Promise.all(versionRows.map(async (v) => ({
       id: v.id,
       url: await resolveAssetUrl(v),
       type: v.type,
       uploadedBy: v.uploadedByName ?? v.uploadedByEmail ?? null,
       createdAt: v.createdAt.toISOString(),
+      portrait: (v.orderItemId && portraitNo.get(v.orderItemId)) || null,
     })));
 
     return {
@@ -247,6 +256,7 @@ export async function getQcContext(
       dueAt: order.dueAt ? order.dueAt.toISOString() : null,
       references: resolvedReferences,
       versions,
+      portraits,
       checklist: resolveChecklist({
         checklistVersion: shop?.checklistVersion ?? 1,
         integrationConfig: shop?.integrationConfig ?? null,

@@ -39,7 +39,9 @@ export default async function ProofPage({
           </span>
         )}
         <div className="flex flex-col gap-0.5">
-          <h1 className="text-2xl font-semibold text-ink">Your portrait is ready</h1>
+          <h1 className="text-2xl font-semibold text-ink">
+            {proof.portraits.length > 1 ? "Your portraits are ready" : "Your portrait is ready"}
+          </h1>
           <p className="text-sm text-slate">Order {proof.orderNumber}</p>
         </div>
         {/* Only while the customer can still decide: an approved proof used
@@ -56,6 +58,7 @@ export default async function ProofPage({
         token={token}
         orderNumber={proof.orderNumber}
         hasPreview={proof.hasPreview}
+        portraits={proof.portraits}
         actionable={proof.actionable}
         initialDecision={proof.decision}
         superseded={proof.superseded}

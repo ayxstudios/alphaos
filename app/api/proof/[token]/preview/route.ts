@@ -33,7 +33,11 @@ export async function GET(
     });
   }
 
-  const source = await getProofImageSource(token);
+  // ?p=N picks one portrait of a 2+ portrait order (1-based, by item order);
+  // anything that is not a small positive integer is ignored, never trusted.
+  const pRaw = new URL(req.url).searchParams.get("p");
+  const p = pRaw && /^\d{1,2}$/.test(pRaw) && Number(pRaw) >= 1 ? Number(pRaw) : undefined;
+  const source = await getProofImageSource(token, p);
   if (!source) return new Response("Not found", { status: 404 });
 
   let original: Buffer;

@@ -42,7 +42,26 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
   const [enlarged, setEnlarged] = useState<string | null>(null);
   const [broken, setBroken] = useState<string | null>(null);
 
-  const versions = ctx.versions.filter((v) => v.url);
+  const allVersions = ctx.versions.filter((v) => v.url);
+  // 2+ portrait orders whose designer tagged each upload: the owner checks
+  // every portrait in turn, each with its own new/before (Jerome, 2026-10-14).
+  const portraitGroups =
+    ctx.portraits.length >= 2 && allVersions.some((v) => v.portrait)
+      ? [
+          ...ctx.portraits.map((p) => ({
+            n: p.n,
+            title: `Portrait ${p.n}`,
+            label: p.label,
+            versions: allVersions.filter((v) => v.portrait === p.n),
+          })),
+          ...(allVersions.some((v) => !v.portrait)
+            ? [{ n: 0, title: "Other", label: "", versions: allVersions.filter((v) => !v.portrait) }]
+            : []),
+        ]
+      : null;
+  const [portraitN, setPortraitN] = useState(portraitGroups?.[0]?.n ?? 0);
+  const group = portraitGroups ? (portraitGroups.find((g) => g.n === portraitN) ?? portraitGroups[0]) : null;
+  const versions = group ? group.versions : allVersions;
   const latest = versions[versions.length - 1] ?? null;
   const before = item.isRevision && versions.length > 1 ? versions[versions.length - 2] : null;
   const shown = showBefore && before ? before : latest;
@@ -157,6 +176,40 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
           {/* The artwork */}
           <div className="flex flex-col gap-2">
+            {portraitGroups ? (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-sm text-slate">
+                  This order has {ctx.portraits.length} portraits. Check each one.
+                </p>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Which portrait">
+                  {portraitGroups.map((g) => (
+                    <button
+                      key={g.n}
+                      type="button"
+                      onClick={() => {
+                        setPortraitN(g.n);
+                        setShowBefore(false);
+                      }}
+                      aria-pressed={group?.n === g.n}
+                      title={g.label || undefined}
+                      className={cn(
+                        "flex min-h-11 max-w-full items-center rounded-input border px-3 text-sm sm:min-h-9",
+                        focusRing,
+                        group?.n === g.n
+                          ? "border-pigment bg-pigment-soft font-medium text-ink"
+                          : "border-line bg-surface text-slate hover:text-ink",
+                      )}
+                    >
+                      <span className="truncate">
+                        {g.title}
+                        {g.label ? ` · ${g.label}` : ""}
+                        {g.versions.length ? "" : " (none yet)"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {before ? (
               <div className="flex gap-1 self-start rounded-input bg-canvas p-1" role="group" aria-label="Which version">
                 {[
@@ -385,7 +438,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
             </button>
             <button
               type="button"
-              disabled={locked || !latest}
+              disabled={locked || !allVersions.length}
               onClick={approve}
               data-testid="approve"
               className={cn("inline-flex h-14 items-center justify-center gap-2 rounded-input bg-sage text-lg font-semibold text-surface disabled:opacity-60", focusRing)}

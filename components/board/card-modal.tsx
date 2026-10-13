@@ -606,10 +606,20 @@ function CardUploadPanel({
       if (fileRef.current) fileRef.current.value = "";
     } catch (error) {
       setProgress((rows) => rows.map((row) => (row.status === "done" ? row : { ...row, status: "failed" })));
+      const message = error instanceof Error ? error.message : "";
+      // A page left open across an AlphaOS update calls a save action the new
+      // server no longer has; only a refresh fixes that (Jerome, 2026-10-14).
+      const stalePage =
+        /server action|failed-to-find-server-action|was not found on the server|unexpected response was received from the server/i.test(
+          message,
+        );
       toast({
         variant: "danger",
         title: "Upload failed",
-        description: error instanceof Error ? error.message : "Could not upload photos",
+        description: stalePage
+          ? "AlphaOS was updated while this page was open. Refresh the page, then upload again."
+          : message || "Could not upload photos",
+        ...(stalePage ? { action: { label: "Refresh", onClick: () => window.location.reload() } } : {}),
       });
     } finally {
       setUploading(false);

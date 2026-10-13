@@ -121,8 +121,11 @@ function sanitizeAnnotations(raw: unknown): ProofAnnotation[] {
     if (out.length >= MAX_PINS) break;
     const x = (a as { x?: unknown })?.x;
     const y = (a as { y?: unknown })?.y;
+    const p = (a as { p?: unknown })?.p;
     if (typeof x === "number" && typeof y === "number" && isFinite(x) && isFinite(y)) {
-      out.push({ x: clamp01(x), y: clamp01(y) });
+      // p = which portrait the pin was dropped on (2+ portrait orders only).
+      const portrait = typeof p === "number" && Number.isInteger(p) && p >= 1 && p <= 99 ? { p } : {};
+      out.push({ x: clamp01(x), y: clamp01(y), ...portrait });
     }
   }
   return out;

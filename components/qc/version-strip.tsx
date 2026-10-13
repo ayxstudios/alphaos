@@ -62,6 +62,8 @@ export function VersionStrip({
                   isLatest ? "bg-pigment text-surface" : "bg-ink/70 text-surface",
                 )}
               >
+                {/* P2 = which portrait, on 2+ portrait orders */}
+                {v.portrait ? `P${v.portrait} · ` : ""}
                 {isLatest ? "Latest" : `v${i + 1}`}
               </span>
             </div>
