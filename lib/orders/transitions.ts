@@ -27,6 +27,7 @@ import { onRevisionEdge } from "@/lib/agent/ai-core";
 import { runAutoAssign } from "./assign";
 import { SENT_BACK_FROM } from "./board-constants";
 import { prepareProofForApproval, queueStageEmail } from "@/lib/email/dispatch";
+import { autoResolveOrderFigures } from "@/lib/orders/figure-auto";
 import { createEarningForCompletion } from "@/lib/orders/earnings";
 import { sendQcFeedback } from "@/lib/notifications/designer-events";
 
@@ -370,7 +371,7 @@ async function assertFiguresResolved(tx: Tx, orderId: string, platformOrderId: s
       `Cannot complete order ${platformOrderId}: it has no order items. Add the purchased item first (items drive payout).`,
     );
   }
-  if (items.some((i) => i.figureCount == null)) {
+  if (items.some((i) => i.figureCount == null) && (await autoResolveOrderFigures(tx, orderId)) > 0) {
     throw new PreconditionError(
       `Cannot complete order ${platformOrderId}: it has an unresolved figure count. Resolve it from Orders first (figure count drives payout).`,
     );

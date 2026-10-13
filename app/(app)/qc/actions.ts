@@ -32,6 +32,7 @@ import {
 } from "@/lib/orders/transitions";
 import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
 import { getQcFailContext } from "@/lib/qc/data";
+import { autoResolveOrderFigures } from "@/lib/orders/figure-auto";
 import { qcPassEmailInFlight } from "@/lib/qc/send-guard";
 import { holdForOwnerReview, ownerReviewRequired } from "@/lib/agent/ai-designer";
 import { generateProofToken } from "@/lib/proofs/tokens";
@@ -474,8 +475,16 @@ async function readQcEmailContext(tx: Tx, orderId: string) {
     .from(orderItems)
     .where(eq(orderItems.orderId, orderId));
   if (!itemRows.length) return { ok: false as const, code: "items", message: "This order has no items." };
+  // The proof email only picks single vs multi wording from this, so a count the
+  // order cannot supply never blocks the send. Fill what the order already says
+  // (saved with its source); the pay guard on completion stays strict.
   if (itemRows.some((item) => item.figureCount == null)) {
-    return { ok: false as const, code: "figures", message: "Set how many people and pets are in this order first." };
+    await autoResolveOrderFigures(tx, orderId);
+    const again = await tx
+      .select({ productType: orderItems.productType, figureCount: orderItems.figureCount })
+      .from(orderItems)
+      .where(eq(orderItems.orderId, orderId));
+    itemRows.splice(0, itemRows.length, ...again);
   }
 
   const [asset] = await tx
@@ -546,9 +555,11 @@ function selectProofTemplate(ctx: Extract<Awaited<ReturnType<typeof readQcEmailC
   const physical = ctx.items.some((item) => item.productType === "physical");
   const figures = ctx.items.reduce((sum, item) => sum + (item.figureCount ?? 0), 0);
   if (physical && figures === 1) return { key: "proof_ready_physical_single", reason: "Physical order with one figure." };
-  if (physical) return { key: "proof_ready_physical_multi", reason: `Physical order with ${figures} figures.` };
+  const unknown = ctx.items.some((item) => item.figureCount == null);
+  const how = unknown ? "an unconfirmed number of" : String(figures);
+  if (physical) return { key: "proof_ready_physical_multi", reason: `Physical order with ${how} figures.` };
   if (figures === 1) return { key: "proof_ready_digital_single", reason: "Digital order with one figure." };
-  return { key: "proof_ready_digital_multi", reason: `Digital order with ${figures} figures.` };
+  return { key: "proof_ready_digital_multi", reason: `Digital order with ${how} figures.` };
 }
 
 async function ensureProof(
