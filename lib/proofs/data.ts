@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 
 import { withSystemContext, type Tx } from "@/lib/db";
 import { activityLog, assets, businesses, orders, proofs } from "@/lib/db/schema";
@@ -138,14 +138,15 @@ export type ProofImageSource = {
   url: string | null;
   r2Key: string | null;
   businessName: string;
+  orderNumber: string;
 };
 
 /**
- * Resolve the source image the preview route should watermark: the latest
- * final/submission asset for the token's order, plus the business name for the
- * watermark label. CDN assets carry a fetchable URL; R2 assets (every designer
- * submission) carry their private key, which the route reads server-side, so
- * the clean bytes never leave the server either way.
+ * Resolve the source image the preview route serves: the latest
+ * final/submission asset for the token's order, plus the business and order
+ * number for the download filename. CDN assets carry a fetchable URL; R2 assets
+ * (every designer submission) carry their private key, which the route reads
+ * server-side.
  */
 export async function getProofImageSource(
   token: string,
@@ -154,9 +155,10 @@ export async function getProofImageSource(
 ): Promise<ProofImageSource | null> {
   return withSystemContext(async (tx) => {
     const [proof] = await tx
-      .select({ orderId: proofs.orderId, businessName: businesses.name })
+      .select({ orderId: proofs.orderId, businessName: businesses.name, orderNumber: sql<string>`coalesce(${orders.platformOrderName}, ${orders.platformOrderId})` })
       .from(proofs)
       .innerJoin(businesses, eq(businesses.id, proofs.businessId))
+      .innerJoin(orders, eq(orders.id, proofs.orderId))
       .where(eq(proofs.token, token));
     if (!proof) return null;
 
@@ -169,7 +171,7 @@ export async function getProofImageSource(
     }
     const asset = await resolvePreviewAsset(tx, proof.orderId, orderItemId);
     if (!asset) return null;
-    return { url: asset.url, r2Key: asset.r2Key, businessName: proof.businessName };
+    return { url: asset.url, r2Key: asset.r2Key, businessName: proof.businessName, orderNumber: proof.orderNumber };
   });
 }
 

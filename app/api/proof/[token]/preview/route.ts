@@ -1,18 +1,17 @@
 import { getProofImageSource } from "@/lib/proofs/data";
 import { readStoredObject } from "@/lib/uploads/store";
 import { checkRateLimit, clientIp } from "@/lib/proofs/rate-limit";
-import { watermarkImage } from "@/lib/proofs/watermark";
+import sharp from "sharp";
 
-// sharp needs the Node runtime; the watermark is per-request and must never be
-// cached at the edge (each response contains customer artwork behind a token).
+// sharp needs the Node runtime (format sniffing); never cached at the edge
+// (each response contains customer artwork behind a token).
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Serves the WATERMARKED portrait for a proof token. The original file is
- * fetched server-side and never sent to the client — the only bytes that leave
- * this handler are the watermarked JPEG, so the clean image is unreachable from
- * the proof page.
+ * Serves the FULL portrait for a proof token: no watermark, original bytes
+ * (Yousif 2026-10-14). ?download=1 sends it as an attachment so the customer
+ * can save it straight from the proof page.
  */
 export async function GET(
   req: Request,
@@ -53,22 +52,27 @@ export async function GET(
     return new Response("Not found", { status: 404 });
   }
 
-  let watermarked: Buffer;
+  let format = "jpeg";
   try {
-    watermarked = await watermarkImage(original, `Proof · ${source.businessName}`);
+    format = (await sharp(original).metadata()).format ?? "jpeg";
   } catch {
-    // If the source isn't a decodable image, fail closed rather than leak it.
+    // Not a decodable image: fail closed rather than serve arbitrary bytes.
     return new Response("Not found", { status: 404 });
   }
+  const ext = format === "jpeg" ? "jpg" : format;
+  const download = new URL(req.url).searchParams.get("download") === "1";
+  const slug = source.businessName.normalize("NFKD").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "Portrait";
+  const suffix = p ? `-${p}` : "";
+  const filename = `${slug}-${source.orderNumber.replace(/[^A-Za-z0-9-]/g, "")}${suffix}.${ext}`;
 
-  return new Response(new Uint8Array(watermarked), {
+  return new Response(new Uint8Array(original), {
     status: 200,
     headers: {
-      "Content-Type": "image/jpeg",
-      // Private and uncacheable: no CDN/proxy should retain the proof image.
+      "Content-Type": `image/${format}`,
+      // Private and uncacheable: no CDN/proxy should retain the image.
       "Cache-Control": "private, no-store, max-age=0, must-revalidate",
       "X-Robots-Tag": "noindex, nofollow",
-      "Content-Disposition": "inline",
+      "Content-Disposition": `${download ? "attachment" : "inline"}; filename="${filename}"`,
     },
   });
 }

@@ -18,7 +18,7 @@ Factual snapshot of what exists. See CLAUDE.md for conventions/constraints.
   shopify-missing-photos, unassigned, awaiting-qc, revisions, awaiting-customer,
   fulfilment, ready-to-print, overdue). Auto-assignment algorithm.
 - **QC screen.** Synced compare viewer, checklist gate, keyboard shortcuts.
-- **Customer proof portal.** Token-scoped, watermarked preview, approve / request-
+- **Customer proof portal.** Token-scoped full-size preview (no watermark) with download, approve / request-
   revision with annotations; read-only after a decision.
 - **Shopify integration.** Client-credentials grant (2026 Dev Dashboard) + legacy
   token fallback; token refresh; sync (60-day first window, incremental cursor);

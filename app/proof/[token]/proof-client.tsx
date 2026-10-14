@@ -72,6 +72,7 @@ export function ProofClient({
       .map((pin, i) => ({ ...pin, n: i + 1 }))
       .filter((pin) => (portrait ? pin.p === portrait.n : true));
     return (
+      <div className="flex flex-col gap-2">
       <figure className="relative overflow-hidden rounded-card border border-line bg-canvas shadow-sm">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -91,6 +92,13 @@ export function ProofClient({
           </span>
         ))}
       </figure>
+      <a
+        href={`${src}${portrait ? "&" : "?"}download=1`}
+        className="inline-flex h-11 items-center justify-center rounded-input border border-line bg-surface px-4 text-sm font-semibold text-ink"
+      >
+        {portrait ? `Download portrait ${portrait.n}` : "Download your portrait"}
+      </a>
+      </div>
     );
   }
 
