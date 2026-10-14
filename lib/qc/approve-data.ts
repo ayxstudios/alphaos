@@ -6,6 +6,7 @@ import type { CardEvent } from "@/lib/orders/card-detail";
 import { buildRevisionHistory, type RevisionHistoryNote } from "@/lib/orders/revision-history";
 import type { OrderStatus } from "@/lib/orders/transitions";
 import { getAutoQcView, latestSlots, slotAssetIds, type AutoQcView } from "./auto-qc";
+import { othersClaims, startIndex, summarizeOthers } from "./claims";
 import { getQcContext, getQcQueueIds, type QcContext } from "./data";
 
 /**
@@ -36,6 +37,36 @@ export async function getApproveQueue(user: RequestUser, skip: string[] = []): P
   if (!skip.length) return ids;
   const hide = new Set(skip);
   return ids.filter((id) => !hide.has(id));
+}
+
+/**
+ * The queue one owner works on /approve (2026-10-14, two owners): the shared
+ * queue minus anything another person has open right now (lib/qc/claims.ts),
+ * so the two of them never land on the same order. `start` = where to open:
+ * the order asked for with ?o=, or when that one is gone or someone else's,
+ * the next free one after it in the shared order (so Skip never bounces back
+ * to the order just skipped). `takenBy` = who has the asked-for order when it
+ * is someone else's; `others` = who else is checking and how many.
+ */
+export async function getOwnerApproveQueue(
+  user: RequestUser,
+  skip: string[] = [],
+  asked?: string,
+): Promise<{ ids: string[]; start: number; others: { name: string; count: number }[]; takenBy: string | null }> {
+  const [all, live] = await Promise.all([
+    getQcQueueIds(user, "all"),
+    withUserContext(user, (tx) => othersClaims(tx, user.id)),
+  ]);
+  const inQueue = new Set(all);
+  const claims = live.filter((c) => inQueue.has(c.orderId));
+  const hide = new Set([...skip, ...claims.map((c) => c.orderId)]);
+  const ids = all.filter((id) => !hide.has(id));
+  return {
+    ids,
+    start: startIndex(all, ids, asked),
+    others: summarizeOthers(claims),
+    takenBy: (asked && claims.find((c) => c.orderId === asked)?.holder) || null,
+  };
 }
 
 export async function getApproveItem(user: RequestUser, orderId: string): Promise<ApproveItem | null> {

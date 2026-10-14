@@ -104,3 +104,12 @@ Branch task/approve-bg-qcfail in ~/Documents/projects/alphaos-wt-approvebg = mer
 - [x] staging deploy + QA (desktop + phone): 3 loops; found+fixed ~6 s hold after Approve/Stop (fc176f6, now ~0.1 s), added instant Alpha message when a failed order turns urgent (3231c09)
 - [x] landed 3231c09 on origin/main; prod = CLI deploy dpl_2iM64MqbHL1tv2k8NbC1j9c4hHvm on alphaos-kappa, migration 0055 applied (2026-10-14 13:27 AEDT)
 - [ ] reply to Yousif (dot points)
+
+# Two owners on /approve (Yousif 2026-10-14 16:31, chat 64828303487194@lid)
+Ask: a link for Ayser to QC too; "me and him can't really overlap in our work or if we do it chooses the one that was first"; Ayser doesn't need to sign in.
+- qc_claims (migration 0056, lib/qc/claims.ts): the order on someone's /approve screen is claimed on open, refreshed every 30 s while visible, released on Skip or tab close, lapses after 3 min untouched (locked phone). DB now() only.
+- Other owner's queue skips it (getOwnerApproveQueue; Auto QC keeps using getApproveQueue unfiltered); ?o= to a taken order or Skip opens the next free one after it (startIndex), toast "<name> is checking that one".
+- First one wins on the server: prepareQcEmailPreview + confirmQcPassAndSend (under the order row lock) + submitQcFail refuse code "claimed" while someone else's claim is fresh; the approve store drops the row with a toast, nothing sent. An approval in its Stop window keeps the hold.
+- Header: "<name> is checking N"; All done names who has the last ones.
+- Tests: test:qc-claims (pure + DB checks with CLAIMS_DB_URL=staging app_user, 26 ok), test:approve-queue (claimed case). Staging two-person QA (admin laptop + VA phone): 17/17 (/tmp/qa-two-owners/qa.mjs).
+- Ayser's existing sign-in link (vault ALPHAOS_LOGIN_LINK_AYSER, not re-minted) + ?next=/approve verified on prod; expiry moved 2026-12-22 -> 2027-01-12 (90 days from today) so it lasts through Christmas.

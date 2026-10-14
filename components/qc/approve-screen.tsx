@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
 import { ownerReject } from "@/app/(app)/approve/actions";
+import { releaseClaim, useApproveClaim } from "@/components/qc/approve-claim";
 import { QcPicturePicker, useQcPictures } from "@/components/qc/attachment-picker";
 import {
   approvalStore,
@@ -25,7 +26,16 @@ import type { ApproveItem } from "@/lib/qc/approve-data";
 import { splitChecklistLabel } from "@/lib/qc/checklist";
 import { cn } from "@/lib/utils";
 
-type Props = { item: ApproveItem; position: number; total: number; nextId: string | null };
+type Props = {
+  item: ApproveItem;
+  position: number;
+  total: number;
+  nextId: string | null;
+  /** Who else is checking right now (their orders are not in this queue). */
+  others: { name: string; count: number }[];
+  /** Set when ?o= asked for an order someone else has open. */
+  takenBy: string | null;
+};
 
 function dueText(iso: string | null): { text: string; late: boolean } | null {
   if (!iso) return null;
@@ -39,10 +49,15 @@ function whenText(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 }
 
-export function ApproveScreen({ item, position, total, nextId }: Props) {
+export function ApproveScreen({ item, position, total, nextId, others, takenBy }: Props) {
   const { ctx } = item;
   const router = useRouter();
   const toast = useToast();
+  // Two owners (2026-10-14): this order is mine while it is on screen.
+  useApproveClaim(ctx.orderId, ctx.orderNumber);
+  useEffect(() => {
+    if (takenBy) toast({ variant: "info", title: `${takenBy} is checking that one`, description: "Here is the next one." });
+  }, [takenBy, toast]);
   usePendingApprovals(); // re-render when the skip list changes (Skip link)
   // The page Approve moves to (this order skipped), preloaded so the swap is instant.
   const afterApprove = approveHref(nextId, undefined, ctx.orderId);
@@ -165,8 +180,12 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
     const res = await callAction(() => ownerReject({ orderId: ctx.orderId, note, failedKeys: picked, attachmentAssetIds: pictures.assetIds }));
     if (!res) return;
     if (!res.ok) {
-      if (res.code === "stale") {
-        toast({ variant: "warning", title: "Already checked", description: res.message });
+      if (res.code === "stale" || res.code === "claimed") {
+        toast(
+          res.code === "claimed"
+            ? { variant: "warning", title: res.message, description: "Your note was not sent." }
+            : { variant: "warning", title: "Already checked", description: res.message },
+        );
         goNext();
         return;
       }
@@ -185,7 +204,14 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
       <PendingApprovalsHost />
       {/* Where am I in the pile */}
       <div className="flex items-center justify-between gap-3">
-        <h1 className="font-display text-xl font-semibold text-ink">Approve</h1>
+        <div className="flex min-w-0 flex-col">
+          <h1 className="font-display text-xl font-semibold text-ink">Approve</h1>
+          {others.length ? (
+            <p className="text-xs text-slate" data-testid="others-checking">
+              {others.map((x) => `${x.name} is checking ${x.count}`).join(" · ")}
+            </p>
+          ) : null}
+        </div>
         <div className="flex items-center gap-1 text-sm text-slate">
           <span>
             {position} of {total} to check
@@ -193,6 +219,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
           {nextId ? (
             <Link
               href={approveHref(nextId)}
+              onClick={() => releaseClaim(ctx.orderId)}
               className={cn("ml-1 inline-flex min-h-11 items-center gap-1 rounded-input px-2 font-medium text-pigment hover:bg-pigment-soft sm:min-h-0 sm:py-1", focusRing)}
             >
               Skip <ArrowRight size={14} />
