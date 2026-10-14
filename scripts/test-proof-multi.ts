@@ -15,9 +15,13 @@ import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { withSystemContext, type RequestUser } from "../lib/db";
-import { assets, businesses, customers, exceptions, messages, orderItems, orders, proofs, shops, users } from "../lib/db/schema";
+import { ownerReject } from "../app/(app)/approve/actions";
+import { assets, assignments, businesses, customers, exceptions, messages, orderItems, orders, proofs, qcChecks, shops, users } from "../lib/db/schema";
 import { installMockTransport } from "../lib/mock/transport";
+import { getDesignerBoard } from "../lib/orders/board-data";
+import { getCardDetail } from "../lib/orders/card-detail";
 import { getProofImageSource, getProofView } from "../lib/proofs/data";
+import { getQcContext } from "../lib/qc/data";
 import { ownerApproveCore } from "../lib/qc/owner-approve";
 
 const MARK = "pmulti-";
@@ -280,6 +284,74 @@ async function main() {
     const pe = em?.proofId ? await proofOf(em.proofId) : undefined;
     const eview = pe ? await getProofView(pe.token) : null;
     check("its proof page is the one-image page", !!eview && eview.portraits.length === 0 && eview.hasPreview);
+
+    // 6. The gap order (1) on the owner's and the designer's screens: QC flags
+    // portrait 2, the one-tap send back is marked under Count, and the card and
+    // the board wait for portrait 2 before Submit for QC shows.
+    const [designer] = await q((tx) =>
+      tx.select({ id: users.id }).from(users).where(and(eq(users.role, "designer"), eq(users.active, true))).limit(1),
+    );
+    if (!designer) throw new Error("seed needs an active designer");
+    await q((tx) => tx.insert(assignments).values({ businessId, orderId: a.id, designerId: designer.id }));
+    const qa = await getQcContext(vaUser, a.id);
+    const gap = qa?.proofFiles.mode === "slots" ? qa.proofFiles.missing.map((m) => m.n).join() : "";
+    check("QC flags portrait 2 as missing", gap === "2", gap);
+    const back = await ownerReject({
+      orderId: a.id,
+      note: "Portrait 2 of 2 is missing. This order is 2 separate portraits, so please add it and submit again.",
+      failedKeys: [],
+    });
+    check("one tap sends it back to the designer", back.ok && (await statusOf(a.id)) === "in_design", back.ok ? back.title : back.message);
+    const countKey = qa?.checklist.items.find((it) => /count/i.test(it.label))?.key;
+    const [qcFail] = await q((tx) =>
+      tx
+        .select({ itemResults: qcChecks.itemResults })
+        .from(qcChecks)
+        .where(and(eq(qcChecks.orderId, a.id), eq(qcChecks.result, "fail")))
+        .orderBy(desc(qcChecks.createdAt))
+        .limit(1),
+    );
+    const marked = (qcFail?.itemResults ?? {}) as Record<string, boolean>;
+    check("the send back is marked under Count", countKey != null && marked[String(countKey)] === false, JSON.stringify(marked));
+
+    const upload = (name: string, unit: number) =>
+      q((tx) =>
+        tx.insert(assets).values({
+          businessId,
+          orderId: a.id,
+          type: "submission",
+          storage: "cdn",
+          url: `https://example.test/${a.number}-${name}.png`,
+          orderItemId: a.itemId,
+          portraitUnit: unit,
+          createdAt: new Date(Date.now() + 2000),
+        }),
+      );
+    const boardCard = async () => {
+      const board = await getDesignerBoard(vaUser, designer.id, businessId, { includeEarnings: false });
+      return Object.values(board.columns)
+        .flat()
+        .find((c) => c.orderId === a.id);
+    };
+    await upload("dog-v2", 1);
+    let card = await getCardDetail(vaUser, a.id);
+    check("the card says portrait 2 still needs a file", card.missingPortraits.map((m) => m.n).join() === "2", JSON.stringify(card.missingPortraits));
+    check(
+      "both dog versions count as portrait 1",
+      card.images.filter((i) => i.type === "submission").every((i) => i.portrait === 1),
+      card.images.map((i) => `${i.type}:${i.portrait}`).join(" "),
+    );
+    const early = await boardCard();
+    check("the board does not offer Submit for QC yet", !!early && !early.readyForQc, `${early?.status} ${early?.readyForQc}`);
+    await upload("cat", 2);
+    card = await getCardDetail(vaUser, a.id);
+    check("with the cat uploaded nothing is missing", card.missingPortraits.length === 0 && card.images.some((i) => i.portrait === 2));
+    const ready = await boardCard();
+    check("then the board offers Submit for QC", !!ready?.readyForQc, `${ready?.status} ${ready?.readyForQc}`);
+    // 4199589633's own files (tagged to the line, no unit) read as portrait 1 and 2, not both as 1.
+    const cb = await getCardDetail(vaUser, b.id);
+    const bn = b.files.map((f) => cb.images.find((i) => i.id === f.id)?.portrait);
+    check("the line-tagged dog and cat show as portraits 1 and 2 on the card", [...bn].sort().join() === "1,2", bn.join());
   } finally {
     setTestSession(null);
     await q(async (tx) => {

@@ -23,6 +23,7 @@ import { AiFixPanel } from "@/components/qc/auto-qc-fix";
 import { useToast } from "@/components/ui";
 import { ArrowRight, Check, Sparkles, X } from "@/components/ui/icons";
 import { focusRing } from "@/components/ui/styles";
+import { portraitList } from "@/lib/orders/portrait-list";
 import type { ApproveItem } from "@/lib/qc/approve-data";
 import { splitChecklistLabel } from "@/lib/qc/checklist";
 import { cn } from "@/lib/utils";
@@ -74,7 +75,7 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
     router.prefetch(approveHref(ctx.orderId, ctx.orderId), FULL_PREFETCH);
   }, [afterApprove, ctx.orderId, router]);
   const [pending, startTransition] = useTransition();
-  const [busy, setBusy] = useState<"reject" | null>(null);
+  const [busy, setBusy] = useState<"reject" | "missing" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState("");
@@ -123,6 +124,14 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
   const fixIds = item.fixes.map((f) => f.id);
   const due = dueText(ctx.dueAt);
   const photos = ctx.references.filter((r) => r.url);
+  // A portrait with no file yet (order 4199589633, 2026-10-14): the order cannot
+  // go to the customer (the server refuses it too), so Approve gives way to a
+  // one-tap send back that tells the designer which portrait is missing.
+  const missing = ctx.proofFiles.mode === "slots" ? ctx.proofFiles.missing.map((m) => m.n) : [];
+  const missingWho = missing.length ? portraitList(missing) : "";
+  const missingNote = missing.length
+    ? `${missingWho} of ${ctx.proofFiles.expected} ${missing.length > 1 ? "are" : "is"} missing. This order is ${ctx.proofFiles.expected} separate portraits, so please add ${missing.length > 1 ? "them" : "it"} and submit again.`
+    : "";
 
   useEffect(() => {
     if (!enlarged) return;
@@ -196,17 +205,23 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
       setError(pictures.busy ? "Wait for the pictures to finish uploading." : "Retry or remove the picture that did not upload.");
       return;
     }
-    setBusy("reject");
+    await sendBack("reject", {
+      note,
+      failedKeys: picked,
+      attachmentAssetIds: pictures.assetIds,
+      attachFixIds: attachFix ? fixIds : [],
+    });
+  }
+
+  // One tap: the missing portrait note goes back as is (it marks the Count check).
+  function sendBackMissing() {
+    void sendBack("missing", { note: missingNote, failedKeys: [] });
+  }
+
+  async function sendBack(kind: "reject" | "missing", input: Omit<Parameters<typeof ownerReject>[0], "orderId">) {
+    setBusy(kind);
     setError(null);
-    const res = await callAction(() =>
-      ownerReject({
-        orderId: ctx.orderId,
-        note,
-        failedKeys: picked,
-        attachmentAssetIds: pictures.assetIds,
-        attachFixIds: attachFix ? fixIds : [],
-      }),
-    );
+    const res = await callAction(() => ownerReject({ orderId: ctx.orderId, ...input }));
     if (!res) return;
     if (!res.ok) {
       if (res.code === "stale" || res.code === "claimed") {
@@ -227,6 +242,22 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
 
   const locked = busy !== null || pending;
   const says = ctx.orderSays;
+  const rejectButton = (
+    <button
+      type="button"
+      disabled={locked}
+      onClick={() => {
+        setRejecting(true);
+        setError(null);
+        // The missing portrait goes in the note too; the owner adds the rest.
+        if (missingNote) setNote((n) => n || missingNote);
+      }}
+      data-testid="reject"
+      className={cn("inline-flex h-14 items-center justify-center gap-2 rounded-input border-2 border-rose text-lg font-semibold text-rose disabled:opacity-50", focusRing)}
+    >
+      <X size={20} /> Reject
+    </button>
+  );
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4" data-testid="approve-screen" data-kind={item.isRevision ? "revision" : "new"}>
@@ -293,6 +324,25 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
           {/* The artwork */}
           <div className="flex min-w-0 flex-col gap-2">
+            {missing.length ? (
+              <div role="alert" data-testid="portrait-missing" className="rounded-card border border-rose bg-surface px-3 py-2 text-sm text-ink">
+                <p className="font-semibold text-rose">
+                  {missingWho} of {ctx.proofFiles.expected} {missing.length > 1 ? "have" : "has"} no file yet.
+                </p>
+                <p className="text-slate">
+                  The customer only gets this order with every portrait. Send it back so the designer adds{" "}
+                  {missing.length > 1 ? "them" : "it"}.
+                </p>
+              </div>
+            ) : null}
+            {/* Files matched to portraits by upload order, or left out (lib/proofs/files.ts). */}
+            {ctx.proofFiles.mode === "slots"
+              ? ctx.proofFiles.warnings.map((w) => (
+                  <p key={w} className="text-sm text-amber" data-testid="portrait-warning">
+                    {w}
+                  </p>
+                ))
+              : null}
             {portraitGroups ? (
               <div className="flex flex-col gap-1.5">
                 <p className="text-sm text-slate">
@@ -587,6 +637,27 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
               </button>
             </div>
           </div>
+        ) : missing.length ? (
+          // A portrait has no file: nothing can be approved, Reject (notes) | Send back (one tap).
+          <div className="grid grid-cols-2 gap-3">
+            {rejectButton}
+            <button
+              type="button"
+              disabled={locked}
+              onClick={sendBackMissing}
+              data-testid="send-back-missing"
+              className={cn("inline-flex h-14 flex-col items-center justify-center rounded-input bg-rose px-2 text-surface disabled:opacity-60", focusRing)}
+            >
+              {busy === "missing" ? (
+                <span className="text-lg font-semibold">Sending back...</span>
+              ) : (
+                <>
+                  <span className="text-lg font-semibold leading-tight">Send back</span>
+                  <span className="max-w-full truncate text-xs leading-tight">{missingWho} missing</span>
+                </>
+              )}
+            </button>
+          </div>
         ) : (
           // Phone: Send AI fix full width on top of Reject | Approve. Wider: one row, Send AI fix last.
           <div className={cn("grid grid-cols-2 gap-3", fixIds.length && "sm:grid-cols-3")}>
@@ -601,18 +672,7 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
                 <Sparkles size={20} /> Send AI fix
               </button>
             ) : null}
-            <button
-              type="button"
-              disabled={locked}
-              onClick={() => {
-                setRejecting(true);
-                setError(null);
-              }}
-              data-testid="reject"
-              className={cn("inline-flex h-14 items-center justify-center gap-2 rounded-input border-2 border-rose text-lg font-semibold text-rose disabled:opacity-50", focusRing)}
-            >
-              <X size={20} /> Reject
-            </button>
+            {rejectButton}
             <button
               type="button"
               disabled={locked || !allVersions.length || item.aiWaiting}

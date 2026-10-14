@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Page, Textarea, useToast } from "@/components/ui";
 import { Check, XCircle } from "@/components/ui/icons";
 import { shortcutFor, type ItemResults } from "@/lib/qc/checklist";
+import { portraitList } from "@/lib/orders/portrait-list";
 import type { QcContext } from "@/lib/qc/data";
 import {
   confirmQcPassAndSend,
@@ -339,6 +340,17 @@ export function QcScreen({
           </Button>
         </div>
       )}
+
+      {ctx.isReviewable && ctx.proofFiles.mode === "slots" && ctx.proofFiles.missing.length ? (
+        <div role="alert" data-testid="portrait-missing" className="rounded-card border border-rose bg-surface px-4 py-2 text-sm text-ink">
+          <span className="font-semibold text-rose">
+            {portraitList(ctx.proofFiles.missing.map((m) => m.n))} of {ctx.proofFiles.expected}{" "}
+            {ctx.proofFiles.missing.length > 1 ? "have" : "has"} no file yet.
+          </span>{" "}
+          It cannot pass until every portrait is done. Fail it under Count so the designer adds{" "}
+          {ctx.proofFiles.missing.length > 1 ? "them" : "it"}.
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-1 flex-1 gap-3 xl:min-h-[38rem] xl:grid-cols-[minmax(0,1fr)_380px]">
         <CompareViewer

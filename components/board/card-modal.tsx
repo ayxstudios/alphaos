@@ -29,6 +29,7 @@ import {
 } from "@/app/(app)/board/actions";
 import type { BoardCard } from "@/lib/orders/board-data";
 import { optionsSummary } from "@/lib/orders/options-summary";
+import { portraitList } from "@/lib/orders/portrait-list";
 import { buildRevisionHistory, revisionCopyText } from "@/lib/orders/revision-history";
 import { isWithCustomer, SENT_BACK_FROM } from "@/lib/orders/board-constants";
 import type { CardDetail, CardEvent, CardImage } from "@/lib/orders/card-detail";
@@ -470,7 +471,16 @@ function CardUploadPanel({
   const [portraitKey, setPortraitKey] = useState<string | null>(null);
   const submissions = (detail?.images ?? []).filter((image) => image.type === "submission");
   const latestSubmission = submissions.at(-1) ?? null;
-  const portraitNo = new Map(portraits.map((p) => [p.key, p.n]));
+  // The portraits with no file yet, by the same pick QC and the proof email use:
+  // Submit for QC waits for every one, and the picker starts on the first gap
+  // (and moves on to the next gap once that one is uploaded).
+  const missingPortraits = detail?.missingPortraits ?? [];
+  const missingKeys = missingPortraits.map((m) => m.key).join(",");
+  useEffect(() => {
+    const first = missingKeys.split(",")[0];
+    if (first) setPortraitKey(first);
+  }, [missingKeys]);
+  const missingWho = missingPortraits.length ? portraitList(missingPortraits.map((m) => m.n)) : "";
   // After a send-back (QC fail, revision) the old versions no longer count:
   // the server refuses Submit for QC until a newer version is uploaded.
   const lastSendBack = (detail?.events ?? [])
@@ -478,6 +488,8 @@ function CardUploadPanel({
     .reduce<string | null>((max, e) => (!max || e.createdAt > max ? e.createdAt : max), null);
   const freshVersion =
     !!latestSubmission && (!lastSendBack || Date.parse(latestSubmission.createdAt) > Date.parse(lastSendBack));
+  // The server refuses Submit for QC while a portrait has no file (transitions.ts).
+  const canSubmit = freshVersion && !missingPortraits.length;
   const canUpload = !designer || canDesignerUpload;
   // Why a designer can't upload right now, in the card's own terms: a card
   // that hasn't been started is NOT locked, it just needs starting first.
@@ -491,11 +503,15 @@ function CardUploadPanel({
           : "Passed QC. Nothing more to do here.";
   const designerHint = !canDesignerUpload
     ? designerNote
-    : freshVersion
-      ? "Ready. Press Submit for QC, or add a new version first."
-      : latestSubmission
-        ? "Add a new version with the changes, then submit it for QC."
-        : "Add the finished portrait, then submit it for QC.";
+    : latestSubmission && missingPortraits.length
+      ? `${portraits.length - missingPortraits.length} of ${portraits.length} portraits uploaded. Add ${missingWho}, then submit them for QC.`
+      : freshVersion
+        ? "Ready. Press Submit for QC, or add a new version first."
+        : latestSubmission
+          ? "Add a new version with the changes, then submit it for QC."
+          : multiPortrait
+            ? `This order is ${portraits.length} separate portraits. Add each one, then submit them for QC.`
+            : "Add the finished portrait, then submit it for QC.";
 
   useEffect(() => {
     if (designer) setType("submission");
@@ -644,7 +660,7 @@ function CardUploadPanel({
         {designer ? (
           // Two buttons (Submit for QC, Add new version) get a row of their
           // own under the text instead of one wrapping on its own.
-          <div className={cn("min-w-40 flex-1", canDesignerUpload && freshVersion && "basis-full")}>
+          <div className={cn("min-w-40 flex-1", canDesignerUpload && canSubmit && "basis-full")}>
             <span className="text-sm font-medium text-ink">Finished portrait</span>
             <p className="mt-0.5 text-sm text-slate">{designerHint}</p>
           </div>
@@ -706,7 +722,7 @@ function CardUploadPanel({
             {latestSubmission && designer ? "Add new version" : "Upload"}
           </Button>
         )}
-        {designer && canDesignerUpload && freshVersion && onSubmitForQc && (
+        {designer && canDesignerUpload && canSubmit && onSubmitForQc && (
           <Button
             type="button"
             size="sm"
@@ -746,7 +762,10 @@ function CardUploadPanel({
       {canUpload && multiPortrait && type !== "reference" && (
         <fieldset className="mt-3 min-w-0">
           <legend className="text-xs font-medium text-ink">
-            Which portrait is this upload for?
+            Which portrait is this upload for?{" "}
+            <span className="font-normal text-slate" data-testid="portraits-uploaded">
+              {portraits.length - missingPortraits.length} of {portraits.length} uploaded
+            </span>
           </legend>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {portraits.map((p) => (
@@ -769,6 +788,9 @@ function CardUploadPanel({
                   Portrait {p.n}
                   {p.label ? ` · ${p.label}` : ""}
                 </span>
+                {missingPortraits.some((m) => m.key === p.key) ? (
+                  <span className="ml-1.5 shrink-0 text-xs font-medium text-rose">needs a file</span>
+                ) : null}
               </button>
             ))}
           </div>
@@ -839,10 +861,12 @@ function CardUploadPanel({
           <p className="mb-2 text-xs font-medium text-ink">Portrait versions ({submissions.length}), newest last</p>
           <div className="flex gap-2 overflow-x-auto pb-1">
             {submissions.map((image, globalIndex) => {
-              const n = image.slotKey ? portraitNo.get(image.slotKey) : undefined;
+              // The server's pick numbers each version (a tag, or upload order
+              // for files tagged only to a line of several portraits).
+              const n = image.portrait;
               // On 2+ portrait orders each portrait counts its own versions and
               // has its own "latest" (Jerome saw one latest across both).
-              const slot = (s: CardImage) => (s.slotKey ? (portraitNo.get(s.slotKey) ?? 0) : 0);
+              const slot = (s: CardImage) => s.portrait ?? 0;
               const own = multiPortrait ? submissions.filter((s) => slot(s) === slot(image)) : submissions;
               const index = multiPortrait ? own.indexOf(image) : globalIndex;
               const lastIndex = own.length - 1;

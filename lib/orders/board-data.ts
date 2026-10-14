@@ -21,6 +21,8 @@ import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
 import { issueLabels } from "@/lib/proofs/issues";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { liveOrderWhere } from "@/lib/orders/archive";
+import { clampItemQuantity } from "@/lib/orders/item-quantity";
+import { loadProofFilePick } from "@/lib/proofs/files";
 import { sizedImageUrl } from "@/lib/images";
 import { personalizationOf } from "@/lib/orders/options-summary";
 import {
@@ -148,6 +150,7 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
         style: orderItems.style,
         title: orderItems.title,
         options: orderItems.options,
+        quantity: orderItems.quantity,
       })
       .from(orderItems)
       .where(inArray(orderItems.orderId, ids)),
@@ -225,6 +228,16 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
   const readyForQc = new Set<string>();
   for (const s of submissionRows) {
     if (s.createdAt.getTime() > (lastSendBack.get(s.orderId) ?? 0)) readyForQc.add(s.orderId);
+  }
+  // A 2+ portrait order is ready only once every portrait has a file (the
+  // server refuses Submit for QC before that). Only those few cards pay for
+  // the pick QC uses; one portrait (most cards) skips it.
+  const units = new Map<string, number>();
+  for (const it of items) units.set(it.orderId, (units.get(it.orderId) ?? 0) + clampItemQuantity(it.quantity));
+  const multi = [...readyForQc].filter((id) => (units.get(id) ?? 0) >= 2);
+  if (multi.length) {
+    const picks = await withUserContext(user, (tx) => Promise.all(multi.map((id) => loadProofFilePick(tx, id))));
+    picks.forEach((pick, i) => pick.missing.length && readyForQc.delete(multi[i]));
   }
 
   const fig = new Map<string, number>();

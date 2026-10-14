@@ -4,6 +4,7 @@ import { withUserContext, type RequestUser } from "@/lib/db";
 import { activityLog, assets, assignments, orders, users } from "@/lib/db/schema";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { isDesignerLike } from "@/lib/auth/roles";
+import { loadProofFilePick, type MissingPortrait } from "@/lib/proofs/files";
 import { getOrderPortraits, slotKeyOf, type OrderPortrait } from "./portraits";
 import type { OrderStatus } from "./transitions";
 
@@ -36,6 +37,12 @@ export type CardImage = {
   createdAt: string;
   /** The portrait slot (OrderPortrait.key) this upload was tagged with, if any. */
   slotKey: string | null;
+  /**
+   * 2+ portrait orders: the portrait number this upload counts as, by the same
+   * pick QC and the proof email use (its tag, or upload order for a file tagged
+   * only to a line of several portraits). Null = not one of them.
+   */
+  portrait: number | null;
 };
 
 export type CardDetail = {
@@ -43,6 +50,8 @@ export type CardDetail = {
   images: CardImage[];
   /** The order's portrait slots; 2+ makes the upload panel ask which one. */
   portraits: OrderPortrait[];
+  /** 2+ portrait orders: the portraits with no file yet (Submit for QC waits for every one). */
+  missingPortraits: MissingPortrait[];
 };
 
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
@@ -175,6 +184,7 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
             uploadedBy: a.uploadedByName ?? (isDesignerLike(user.role) ? null : a.uploadedByEmail) ?? null,
             createdAt: a.createdAt.toISOString(),
             slotKey: slotKeyOf({ orderItemId: a.orderItemId, portraitUnit: a.portraitUnit }),
+            portrait: null,
           });
         }
       }),
@@ -185,8 +195,10 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
     images.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
     const portraits = await getOrderPortraits(tx, orderId);
+    const pick = portraits.length >= 2 ? await loadProofFilePick(tx, orderId, portraits) : null;
+    for (const image of images) image.portrait = pick?.slotOf[image.id] ?? null;
 
-    return { events, images, portraits };
+    return { events, images, portraits, missingPortraits: pick?.mode === "slots" ? pick.missing : [] };
   });
 }
 

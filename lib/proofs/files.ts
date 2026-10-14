@@ -3,6 +3,7 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import type { Tx } from "@/lib/db";
 import { activityLog, assets, proofs } from "@/lib/db/schema";
 import { getOrderPortraits, slotKeyOf, type OrderPortrait } from "@/lib/orders/portraits";
+import { portraitList } from "@/lib/orders/portrait-list";
 import type { OrderStatus } from "@/lib/orders/transitions";
 
 /**
@@ -88,11 +89,7 @@ const time = (iso: string): number => {
 const byAge = (a: ProofFileRow, b: ProofFileRow): number =>
   time(a.createdAt) - time(b.createdAt) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
-/** [2] -> "Portrait 2"; [2, 3] -> "Portraits 2 and 3"; [1, 2, 5] -> "Portraits 1, 2 and 5". */
-export function portraitList(ns: number[]): string {
-  if (ns.length === 1) return `Portrait ${ns[0]}`;
-  return `Portraits ${ns.slice(0, -1).join(", ")} and ${ns[ns.length - 1]}`;
-}
+export { portraitList };
 
 /**
  * The default files for an order's proof email (pure).
