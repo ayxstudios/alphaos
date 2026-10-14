@@ -176,11 +176,13 @@ assert.deepEqual(importItems[0].options, [
   { name: "Background", value: "Snow" },
   { name: "Personalization", value: "Ammut" },
 ]);
-assert.equal(importItems[0].productType, "physical");
+// Etsy is_digital=false alone is NOT proof of a parcel (these shops list digital
+// portraits as normal listings): no physical evidence = digital.
+assert.equal(importItems[0].productType, "digital");
 assert.equal(importItems[1].productType, "digital");
 assert.deepEqual(importItems[1].options, []);
 // A conflicted listing (download flagged digital but a Canvas option) defaults
-// physical, matching reviewDefaults' fallback; malformed input yields nothing.
+// digital (never print by accident; the VA review resolves it); malformed input yields nothing.
 const conflicted = etsyImportItems({
   transactions: [{
     is_digital: true,
@@ -188,7 +190,27 @@ const conflicted = etsyImportItems({
   }],
 });
 assert.equal(conflicted.length, 1);
-assert.equal(conflicted[0].productType, "physical");
+assert.equal(conflicted[0].productType, "digital");
+
+// 2026-10-14 regression: CPS / Perfetta digital portraits listed as ordinary Etsy
+// items (is_digital false, no format option) must import digital; the Print & Ship
+// add-on, a mug and a chosen Canvas option stay physical.
+const kinds = (title: string, extra: Record<string, unknown> = {}, variations: unknown[] = []) =>
+  etsyImportItems({ transactions: [{ title, is_digital: false, variations, ...extra }] })[0].productType;
+assert.equal(
+  kinds("Watercolor House Painting, Custom Home Portrait, Mother's Day, New Home Gift", {
+    description: "Please note: This listing is for the digital file only. If you'd like a printed version...",
+  }, [{ formatted_name: "No. of characters (houses, people, pets, etc)", formatted_value: "House Only" }]),
+  "digital",
+);
+assert.equal(kinds("First Date Venue Watercolor Portrait | Custom Couple Watercolor Venue Drawing | Venue Keepsake Art"), "digital");
+assert.equal(kinds("Custom Hand-Drawn Watercolor Couple Portrait, Personalized Proposal Drawing from Photo"), "digital");
+assert.equal(kinds("Watercolour Wedding Venue Print | Custom Wedding Gift"), "digital");
+assert.equal(kinds("Digital Poster Pet Portrait, Printable Wall Art"), "digital");
+assert.equal(kinds("Print & Ship My Order - ADD-ON LISTING"), "physical");
+assert.equal(kinds("Add On - Print & Ship | Get Your Portrait Printed"), "physical");
+assert.equal(kinds("Custom Pet Portrait Mug | Pet Cartoon Drawing from Photo"), "physical");
+assert.equal(kinds("Custom Portrait", {}, [{ formatted_name: "Print On", formatted_value: "Canvas" }]), "physical");
 assert.deepEqual(etsyImportItems(null), []);
 assert.deepEqual(etsyImportItems({ transactions: [null, 4] }), []);
 

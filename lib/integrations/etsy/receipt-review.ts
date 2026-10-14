@@ -1,24 +1,38 @@
 import { decodeHtmlEntities } from "./html-entities";
-import { resolveProductType, titleProductType, type ProductTypeResolution } from "../figures";
+import { resolveProductType, type ProductTypeResolution } from "../figures";
+
+// Words in a LISTING TITLE that name a made, shipped thing outright (the Print &
+// Ship add-on, a mug, a canvas). Deliberately narrower than figures.ts
+// PHYSICAL_VALUE: a bare "Print" in a title ("Venue Print") is a digital
+// portrait's marketing word, not a parcel.
+const SHIPPED_TITLE =
+  /\b(print\s*(&|and)\s*ship|print\s*on\s*demand|add[\s-]*on\b.*\bprint|mugs?|pillows?|blankets?|puzzles?|ornaments?|t-?shirts?|canvas(es)?|framed|posters?)\b/i;
+const DIGITAL_ONLY_TEXT =
+  /\bdigital\s+(file|download|copy|delivery|print|art|portrait|poster|canvas)s?\b|\binstant\s+download\b|\bdownloadable\b/i;
 
 /**
- * One transaction's digital/physical call, strongest signal first: an option
- * value the buyer chose, then Etsy's is_digital=true (a download listing),
- * then the listing title ("Digital Prints" is digital, "Canvas" is physical).
- * is_digital=false alone is weak (it only means "not a download listing"),
- * so it is the last resort; null = the signals conflict or say nothing.
+ * One transaction's digital/physical call, strongest signal first. These shops
+ * list DIGITAL portraits as ordinary (non-download) Etsy listings, so Etsy's
+ * is_digital=false only means "not a download listing", never "ships" (Yousif
+ * 2026-10-14: CPS/Perfetta house, venue and couple orders imported as physical
+ * and entered the print road). Physical needs POSITIVE evidence: an option the
+ * buyer picked (Canvas, Poster...) or a title naming a shipped product / the
+ * Print & Ship add-on. Everything else is digital. null = signals conflict.
  */
-function transactionFulfillment(
+export function transactionFulfillment(
   kind: ProductTypeResolution,
   isDigital: boolean | null,
   title: string | null,
+  description: string | null = null,
 ): "physical" | "digital" | null {
   if (kind.conflict) return null;
   if (kind.source === "option") return kind.productType;
   if (isDigital === true) return "digital";
-  const fromTitle = titleProductType(title);
-  if (fromTitle) return fromTitle;
-  return isDigital == null ? null : kind.productType;
+  const t = String(title ?? "");
+  if (DIGITAL_ONLY_TEXT.test(t) || /\bprintable\b/i.test(t)) return "digital";
+  if (SHIPPED_TITLE.test(t)) return "physical";
+  if (DIGITAL_ONLY_TEXT.test(String(description ?? ""))) return "digital";
+  return "digital";
 }
 
 export type EtsyVariationPair = {
@@ -195,7 +209,7 @@ export function parseEtsyReceiptReview(rawImport: unknown): EtsyReceiptReview {
       variations.map((v) => ({ name: v.label, value: v.value })),
       isDigital === true,
     );
-    const fulfillment = transactionFulfillment(kind, isDigital, title);
+    const fulfillment = transactionFulfillment(kind, isDigital, title, asString(rawTx.description));
     const personalization =
       variations.find((v) => v.label.toLowerCase() === "personalization")?.value ?? null;
     const figureCount = extractFigureCount(variations);
@@ -259,7 +273,7 @@ export function parseEtsyReceiptReview(rawImport: unknown): EtsyReceiptReview {
  * chosen variations (Background, Size, Personalization…) land on the card
  * instead of staying buried in raw_import. Deliberately carries NO figure
  * count or style — those stay a VA/autopilot resolution, matching the
- * header-only import philosophy. productType falls back to "physical" when
+ * header-only import philosophy. productType falls back to "digital" (never a parcel by accident) when
  * Etsy's is_digital and the variations disagree (same default the VA form
  * uses); the VA's completion overwrites it.
  */
@@ -282,13 +296,13 @@ export function etsyImportItems(rawImport: unknown): EtsyImportItem[] {
       variations.map((v) => ({ name: v.label, value: v.value })),
       isDigital === true,
     );
-    const fulfillment = transactionFulfillment(kind, isDigital, asString(rawTx.title));
+    const fulfillment = transactionFulfillment(kind, isDigital, asString(rawTx.title), asString(rawTx.description));
     return [{
       sku: asString(rawTx.sku),
       title: asString(rawTx.title),
       options: variations.map((v) => ({ name: v.label, value: v.value })),
       rawVariations: variations,
-      productType: fulfillment ?? "physical",
+      productType: fulfillment ?? "digital",
     }];
   });
 }
@@ -314,7 +328,7 @@ export function reviewDefaults(
       review.inferredProductCategory ||
       review.transactions.find((t) => t.title?.trim())?.title?.trim() ||
       "",
-    productType: saved.productType ?? review.inferredFulfillment ?? "physical",
+    productType: saved.productType ?? review.inferredFulfillment ?? "digital",
     notes: saved.notes?.trim() || review.combinedPersonalization || review.buyerNote || "",
   };
 }
