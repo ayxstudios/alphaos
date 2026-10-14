@@ -32,6 +32,8 @@ import {
   activityLog,
   assets,
   assignments,
+  autoQcChecks,
+  autoQcFixes,
   businesses,
   customers,
   designerBusinesses,
@@ -49,6 +51,7 @@ import { installMockTransport } from "../lib/mock/transport";
 import { runAutoAssign } from "../lib/orders/assign";
 import { runTransition } from "../lib/orders/transitions";
 import { generateProofToken } from "../lib/proofs/tokens";
+import { aiAwaitingAutoQc, aiQcRefusal } from "../lib/qc/ai-qc-gate";
 import { resolveChecklist } from "../lib/qc/checklist";
 
 installMockTransport?.();
@@ -101,9 +104,12 @@ async function main() {
       .where(and(eq(users.role, "designer"), sql`${users.email} not like 'ai-studio+%'`))
       .limit(1),
   );
+  const [va] = await q((tx) => tx.select({ id: users.id }).from(users).where(and(eq(users.role, "va"), eq(users.active, true))).limit(1));
   const agentId = await q((tx) => getAgentDesignerId(tx, businessId));
   check("agent designer exists for the business", !!agentId);
-  if (!agentId || !admin || !human || !shop) throw new Error("demo data missing");
+  if (!agentId || !admin || !human || !shop || !va) throw new Error("demo data missing");
+  const ADMIN = { id: admin.id, role: "admin" as const };
+  const VA = { id: va.id, role: "va" as const };
 
   // Style: the PixArt-like product. Created once, left enabled at the end.
   await q(async (tx) => {
@@ -191,8 +197,9 @@ async function main() {
     const subs = await q((tx) => tx.select({ id: assets.id }).from(assets).where(and(eq(assets.orderId, id), eq(assets.type, "submission"))));
     check("proof stored as a submission asset", subs.length === 1);
 
-    // 5. VA QC pass (what confirmQcPassAndSend does) with the email held for the owner.
-    async function qcPassHeld(orderId: string) {
+    // 5. QC pass (what confirmQcPassAndSend does) with the email held for the owner. An AI portrait passes
+    // only by an owner and only once Auto QC has judged its file (lib/qc/ai-qc-gate.ts, Yousif 2026-10-14).
+    async function qcPassHeld(orderId: string, actor: { id: string; role: "admin" | "va" | "system" }) {
       return q(async (tx) => {
         const [p] = await tx.insert(proofs).values({ businessId, orderId, token: generateProofToken() }).returning({ id: proofs.id });
         const [m] = await tx
@@ -214,14 +221,28 @@ async function main() {
           .returning({ id: messages.id });
         const [sh] = await tx.select({ v: shops.checklistVersion, c: shops.integrationConfig }).from(shops).where(eq(shops.id, shop.id));
         const itemResults = Object.fromEntries(resolveChecklist({ checklistVersion: sh?.v ?? 1, integrationConfig: sh?.c ?? null }).items.map((i) => [i.key, true]));
-        await runTransition(tx, SYS, { orderId, to: "awaiting_approval", expectedFrom: "awaiting_qc", metadata: { via: "qc_email_send", messageId: m.id, itemResults } });
+        await runTransition(tx, actor, { orderId, to: "awaiting_approval", expectedFrom: "awaiting_qc", metadata: { via: "qc_email_send", messageId: m.id, itemResults, signature: "Test owner" } });
         const { holdForOwnerReview: hold } = await import("../lib/agent/ai-designer");
         await hold(tx, { orderId, businessId, messageId: m.id, byUserId: null });
         return { proofId: p.id, messageId: m.id };
       });
     }
     void holdForOwnerReview;
-    const held = await qcPassHeld(id);
+    const refused = (actor: { id: string; role: "admin" | "va" | "system" }) =>
+      qcPassHeld(id, actor).then(
+        () => "",
+        (e: Error) => e.message,
+      );
+    check("system QC pass of an AI portrait refused", (await refused(SYS)).includes("approved by an owner"));
+    check("VA QC pass of an AI portrait refused", (await refused(VA)).includes("approved by an owner"));
+    check("owner pass refused before Auto QC", (await refused(ADMIN)).includes("Auto QC is still checking"));
+    check("refused passes leave it in QC with nothing drafted", (await state(id)).s === "awaiting_qc" && (await q((tx) => tx.select({ id: proofs.id }).from(proofs).where(eq(proofs.orderId, id)))).length === 0);
+    check("Approve screen: AI portrait waits for Auto QC", (await q((tx) => aiAwaitingAutoQc(tx, id))) === true);
+    await q((tx) => tx.insert(autoQcChecks).values({ businessId, orderId: id, assetIds: [subs[0].id], verdict: "pass", summary: "aitest", portraits: [] }));
+    check("Approve screen: open once Auto QC judged the file", (await q((tx) => aiAwaitingAutoQc(tx, id))) === false);
+    check("VA still refused after Auto QC", (await q((tx) => aiQcRefusal(tx, VA, { orderId: id })))?.code === "ai_owner_qc");
+    check("human designer's order: no AI gate", (await q((tx) => aiQcRefusal(tx, VA, { orderId: off }))) === null);
+    const held = await qcPassHeld(id, ADMIN);
     check("after QC pass the order waits in owner_review", (await state(id)).ai === "owner_review" && (await state(id)).s === "awaiting_approval");
     const [p0] = await q((tx) => tx.select({ sentAt: proofs.sentAt }).from(proofs).where(eq(proofs.id, held.proofId)));
     check("proof email not sent yet", p0.sentAt === null);
@@ -255,6 +276,11 @@ async function main() {
     const st3 = await state(id);
     check("revision deliver re-enters VA QC", d2.status === "awaiting_qc" && st3.s === "awaiting_qc" && st3.ai === "qc");
     check("base64 stored as a second submission", (await q((tx) => tx.select({ id: assets.id }).from(assets).where(and(eq(assets.orderId, id), eq(assets.type, "submission"))))).length === 2);
+    check("revised file waits for its own Auto QC (the old verdict does not count)", (await q((tx) => aiQcRefusal(tx, ADMIN, { orderId: id })))?.code === "ai_auto_qc_pending" && (await q((tx) => aiAwaitingAutoQc(tx, id))) === true);
+    const [fx] = await q((tx) => tx.insert(autoQcFixes).values({ businessId, orderId: id, sourceAssetId: d2.assetId, status: "ready" }).returning({ id: autoQcFixes.id }));
+    check("Send AI fix refused until the fix has its Auto QC", (await q((tx) => aiQcRefusal(tx, ADMIN, { orderId: id, fixIds: [fx.id] })))?.code === "ai_auto_qc_pending");
+    await q((tx) => tx.update(autoQcFixes).set({ qcVerdict: "pass", qcAt: new Date() }).where(eq(autoQcFixes.id, fx.id)));
+    check("Send AI fix allowed once the fix is judged", (await q((tx) => aiQcRefusal(tx, ADMIN, { orderId: id, fixIds: [fx.id] }))) === null);
 
     // 8. Owner approval off: nothing to hold.
     const { ownerReviewRequired } = await import("../lib/agent/ai-designer");

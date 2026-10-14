@@ -56,6 +56,12 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
   const toast = useToast();
   // Two owners (2026-10-14): this order is mine while it is on screen.
   useApproveClaim(ctx.orderId, ctx.orderNumber);
+  // An AI portrait waits for its Auto QC before Approve opens (lib/qc/ai-qc-gate.ts): look again every 30 s.
+  useEffect(() => {
+    if (!item.aiWaiting) return;
+    const t = window.setInterval(() => router.refresh(), 30_000);
+    return () => window.clearInterval(t);
+  }, [item.aiWaiting, router]);
   useEffect(() => {
     if (takenBy) toast({ variant: "info", title: `${takenBy} is checking that one`, description: "Here is the next one." });
   }, [takenBy, toast]);
@@ -488,6 +494,11 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
       {/* The two buttons, on the very bottom edge of the screen */}
       <BottomDock>
         <PendingApprovalsInline />
+        {item.aiWaiting && !rejecting ? (
+          <p className="rounded-input bg-canvas px-3 py-2 text-sm text-slate" data-testid="ai-auto-qc-waiting">
+            Auto QC is still checking this AI portrait. Approve opens once it&apos;s done, usually within 10 minutes.
+          </p>
+        ) : null}
         {error ? (
           <p role="alert" className="rounded-input bg-rose/10 px-3 py-2 text-sm text-rose">
             {error}
@@ -582,7 +593,7 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
             {fixIds.length ? (
               <button
                 type="button"
-                disabled={locked}
+                disabled={locked || item.aiWaiting}
                 onClick={approveFix}
                 data-testid="approve-ai-fix"
                 className={cn("col-span-2 inline-flex h-12 items-center justify-center gap-2 rounded-input bg-pigment text-lg font-semibold text-surface disabled:opacity-60 sm:order-last sm:col-span-1 sm:h-14", focusRing)}
@@ -604,7 +615,7 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
             </button>
             <button
               type="button"
-              disabled={locked || !allVersions.length}
+              disabled={locked || !allVersions.length || item.aiWaiting}
               onClick={approve}
               data-testid="approve"
               className={cn("inline-flex h-14 items-center justify-center gap-2 rounded-input bg-sage text-lg font-semibold text-surface disabled:opacity-60", fixIds.length && "max-sm:text-base", focusRing)}

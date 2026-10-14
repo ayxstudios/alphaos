@@ -88,6 +88,25 @@ Returns `{ ok: true, id }`.
 alphaos-agent-tick (every 10 min, own lock, backgrounded). Vision judge = Claude CLI on the
 subscription, Fable first, then Opus, then Sonnet. Never touches order state.
 
+## AI portraits: Auto QC before the owner (Yousif 2026-10-14)
+
+"When you make the watercolor minimal storybook portraits for perfetta, make
+sure you still put it through the AlphaOS qc. And through that it should also
+go through autoQc check." (Perfetta 4197908493: both revisions were passed
+minutes after the AI delivered them, once on the VA login and once by the
+agent's own Approve, so Auto QC never judged the second file.)
+
+For an order the AI Studio drew, Auto QC is a gate, not just notes:
+`lib/qc/ai-qc-gate.ts` refuses the QC pass until an `auto_qc_checks` row has
+judged the exact file going out (or the `auto_qc_fixes` row a sent AI fix came
+from has its `qc_verdict`), and refuses any passer who is not an owner. Any
+verdict counts (pass, issues, unsure): the owner reads it and decides. On
+/approve the Approve and Send AI fix buttons stay shut with a line saying Auto
+QC is still checking, and the page looks again every 30 s. The daemon's AI
+designer runner asks for the Auto QC of each new drawing right after delivery
+(`alphaos-auto-qc.mjs order <n>`), so the wait is minutes. Orders drawn by
+people are unchanged.
+
 ## Fix samples (Yousif 2026-10-14)
 
 "On top of identifying the problems ... provide a sample where you have gone and changed up the portrait yourself to

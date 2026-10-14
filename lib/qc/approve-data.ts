@@ -5,6 +5,7 @@ import { activityLog, orders, shops, users } from "@/lib/db/schema";
 import type { CardEvent } from "@/lib/orders/card-detail";
 import { buildRevisionHistory, type RevisionHistoryNote } from "@/lib/orders/revision-history";
 import type { OrderStatus } from "@/lib/orders/transitions";
+import { aiAwaitingAutoQc } from "./ai-qc-gate";
 import { getAutoQcView, latestSlots, slotAssetIds, type AutoQcView } from "./auto-qc";
 import { othersClaims, startIndex, summarizeOthers } from "./claims";
 import { getFixViews, type AutoQcFixView } from "./auto-qc-fix";
@@ -31,6 +32,8 @@ export type ApproveItem = {
   autoQc: AutoQcView | null;
   /** AI fix samples painted on the current versions (one per portrait at most), newest first. */
   fixes: AutoQcFixView[];
+  /** An AI Studio portrait whose newest file has no Auto QC yet: Approve stays shut until it has (lib/qc/ai-qc-gate.ts). */
+  aiWaiting: boolean;
 };
 
 export async function getApproveQueue(user: RequestUser, skip: string[] = []): Promise<string[]> {
@@ -114,7 +117,8 @@ export async function getApproveItem(user: RequestUser, orderId: string): Promis
     }));
     const autoQc = await getAutoQcView(tx, orderId, slotAssetIds(latestSlots(ctx.versions, ctx.portraits)));
     const fixes = await getFixViews(tx, orderId, ctx.versions, ctx.portraits);
-    return { o, requests: buildRevisionHistory(events), autoQc, fixes };
+    const aiWaiting = await aiAwaitingAutoQc(tx, orderId);
+    return { o, requests: buildRevisionHistory(events), autoQc, fixes, aiWaiting };
   });
   const revisionCount = extra.o?.revisionCount ?? 0;
   const isRevision = revisionCount > 0 || extra.requests.length > 0;
@@ -128,5 +132,6 @@ export async function getApproveItem(user: RequestUser, orderId: string): Promis
     requests: extra.requests,
     autoQc: extra.autoQc,
     fixes: extra.fixes,
+    aiWaiting: extra.aiWaiting,
   };
 }

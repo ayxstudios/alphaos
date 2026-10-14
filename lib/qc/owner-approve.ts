@@ -7,6 +7,7 @@ import { withUserContext, type RequestUser } from "@/lib/db";
 import { sendAiFixUsed } from "@/lib/notifications/designer-events";
 import { orders } from "@/lib/db/schema";
 import type { ItemResults } from "@/lib/qc/checklist";
+import { aiQcRefusal } from "@/lib/qc/ai-qc-gate";
 import { applyAiFixes, type AppliedFix } from "@/lib/qc/auto-qc-fix";
 import { getQcContext } from "@/lib/qc/data";
 
@@ -39,6 +40,9 @@ export async function ownerApproveCore(
   if (ctx.versions.length === 0) {
     return { ok: false, code: "no_artwork", message: "There is no artwork on this order yet. Open the full order to look." };
   }
+  // AI portraits wait for Auto QC on the file (or fix) going out, checked before any fix is applied.
+  const ai = await withUserContext(user, (tx) => aiQcRefusal(tx, user, { orderId, fixIds: opts.fixIds }));
+  if (ai) return { ok: false, code: ai.code, message: ai.message };
   let applied: AppliedFix[] = [];
   if (opts.fixIds?.length) {
     const fix = await withUserContext(user, (tx) => applyAiFixes(tx, user, orderId, opts.fixIds!));

@@ -24,6 +24,7 @@ import {
   type ItemResults,
 } from "@/lib/qc/checklist";
 import { onRevisionEdge } from "@/lib/agent/ai-core";
+import { aiQcRefusal } from "@/lib/qc/ai-qc-gate";
 import { resetRevisionDeadline, runAutoAssign } from "./assign";
 import { SENT_BACK_FROM } from "./board-constants";
 import { prepareProofForApproval, queueStageEmail } from "@/lib/email/dispatch";
@@ -253,7 +254,12 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
   // order's shop (never trusted from the client); the client only supplies the
   // per-item verdicts. This also produces the authoritative snapshot we persist.
   let qc: QcOutcome | null = null;
-  if (key === "awaiting_qc->awaiting_approval") qc = await assertQc(tx, order, "pass", input.metadata, actor);
+  if (key === "awaiting_qc->awaiting_approval") {
+    // AI portraits: an owner, after Auto QC (lib/qc/ai-qc-gate.ts), whatever road the pass came by.
+    const ai = await aiQcRefusal(tx, actor, { orderId });
+    if (ai) throw new PreconditionError(ai.message);
+    qc = await assertQc(tx, order, "pass", input.metadata, actor);
+  }
   if (key === "awaiting_qc->in_design") {
     qc = await assertQc(tx, order, "fail", input.metadata, actor);
     qc.attachments = await resolveFailAttachments(tx, orderId, input.metadata);

@@ -13,13 +13,14 @@ import { setTestSession } from "./ci/next-request-stub";
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray } from "drizzle-orm";
 
-import { approveOwnerReview, ensureAgentDesigner } from "../lib/agent/ai-designer";
+import { ensureAgentDesigner } from "../lib/agent/ai-designer";
 import { runOutboxPass } from "../lib/agent/outbox";
 import { withSystemContext, type RequestUser } from "../lib/db";
 import {
   activityLog,
   assets,
   assignments,
+  autoQcChecks,
   businesses,
   customers,
   exceptions,
@@ -104,7 +105,8 @@ async function main() {
 
   async function newOrder(
     tag: string,
-    opts: { shopId: string; customer: "none" | "no_email" | "email"; receiptName?: string; agent?: boolean },
+    // agent = drawn by the AI Studio; its file gets an Auto QC verdict unless autoQc is false (lib/qc/ai-qc-gate.ts).
+    opts: { shopId: string; customer: "none" | "no_email" | "email"; receiptName?: string; agent?: boolean; autoQc?: boolean },
   ) {
     return q(async (tx) => {
       let customerId: string | null = null;
@@ -147,11 +149,17 @@ async function main() {
         figureCountSource: "manual",
         productType: "digital",
       });
-      await tx.insert(assets).values({ businessId, orderId: o.id, type: "submission", storage: "cdn", url: `https://example.test/${name}.png` });
+      const [sub] = await tx
+        .insert(assets)
+        .values({ businessId, orderId: o.id, type: "submission", storage: "cdn", url: `https://example.test/${name}.png` })
+        .returning({ id: assets.id });
       if (opts.agent) {
         const agentId = await ensureAgentDesigner(tx, businessId);
         await tx.insert(assignments).values({ businessId, orderId: o.id, designerId: agentId, active: true });
         await tx.update(orders).set({ aiState: "qc" }).where(eq(orders.id, o.id));
+        if (opts.autoQc !== false) {
+          await tx.insert(autoQcChecks).values({ businessId, orderId: o.id, assetIds: [sub.id], verdict: "pass", summary: "test", portraits: [] });
+        }
       }
       return { id: o.id, number: name };
     });
@@ -265,22 +273,24 @@ async function main() {
     const pd = dm?.proofId ? await proofRow(dm.proofId) : undefined;
     check("emailed proof marked sent", !!pd?.sentAt);
 
-    // 6. AI portrait held for the owner: draft first, Etsy queue on release.
+    // 6. AI portrait (Yousif 2026-10-14, lib/qc/ai-qc-gate.ts): only an owner passes it, and only once Auto QC
+    // has judged the file. A VA approve is refused with nothing drafted; the owner's approve releases it.
     const e = await newOrder("ai", { shopId: etsy.shopId, customer: "none", receiptName: "Robin Lee", agent: true });
     const gmail2 = gmailSends;
     asVa();
     const re = await ownerApproveCore(vaUser, va.name, e.id);
-    const held = (await outbound(e.id))[0];
-    check("AI portrait: VA approve holds it for the owner", re.ok && re.title === "Approved" && re.delivery === "held" && (await orderRow(e.id))?.ai === "owner_review", re.ok ? re.title : re.message);
-    check("the held proof is an Etsy draft", held?.channel === "etsy" && held.status === "draft");
-    check("the held Etsy draft stays out of the email outbox", !(await getOutbox(vaUser, { businessId })).some((r) => r.messageId === held?.id));
+    check(
+      "AI portrait: a VA approve is refused, nothing drafted",
+      !re.ok && re.code === "ai_owner_qc" && (await outbound(e.id)).length === 0 && (await orderRow(e.id))?.status === "awaiting_qc",
+      re.ok ? re.title : re.code,
+    );
     asAdmin();
-    const released = await approveOwnerReview(e.id, admin.id);
+    const released = await ownerApproveCore(adminUser, admin.name, e.id);
     const rel = (await outbound(e.id))[0];
-    check("owner approval releases it", released.ok, released.ok ? "" : released.message);
+    check("owner approve releases it", released.ok, released.ok ? "" : released.message);
     check("released into the Etsy queue, not emailed", rel?.channel === "etsy" && rel.status === "queued" && gmailSends === gmail2, `${rel?.status} sends=${gmailSends - gmail2}`);
     const pe = rel?.proofId ? await proofRow(rel.proofId) : undefined;
-    check("held proof still not marked sent", !!pe && pe.sentAt === null);
+    check("released proof not marked sent until the desk sends it", !!pe && pe.sentAt === null);
     const ea = await actions(e.id);
     check(
       "activity: etsy.queued via the owner approval, no email.sent",
@@ -288,17 +298,21 @@ async function main() {
     );
     check("order is with the buyer", (await orderRow(e.id))?.ai === "with_buyer");
 
-    // 6b. Held AI portrait with an email on file: the owner release still emails it.
+    // 6a. No Auto QC on the file yet: even the owner waits, nothing drafted.
+    const w = await newOrder("ai-waiting", { shopId: etsy.shopId, customer: "none", agent: true, autoQc: false });
+    const rw = await ownerApproveCore(adminUser, admin.name, w.id);
+    check(
+      "AI portrait without Auto QC: owner approve waits, nothing drafted",
+      !rw.ok && rw.code === "ai_auto_qc_pending" && (await outbound(w.id)).length === 0 && (await orderRow(w.id))?.status === "awaiting_qc",
+      rw.ok ? rw.title : rw.code,
+    );
+
+    // 6b. AI portrait with an email on file: the owner approve emails it.
     const g = await newOrder("ai-email", { shopId: etsy.shopId, customer: "email", agent: true });
-    asVa();
-    const rg = await ownerApproveCore(vaUser, va.name, g.id);
-    const gHeld = (await outbound(g.id))[0];
-    check("AI portrait with email: held as an email draft", rg.ok && rg.delivery === "held" && gHeld?.channel === "email" && gHeld.status === "draft", rg.ok ? `${gHeld?.channel}/${gHeld?.status}` : rg.message);
     const gmail3 = gmailSends;
-    asAdmin();
-    const gReleased = await approveOwnerReview(g.id, admin.id);
+    const rg = await ownerApproveCore(adminUser, admin.name, g.id);
     const gm = (await outbound(g.id))[0];
-    check("owner approval emails it as before", gReleased.ok && gm?.status === "sent" && gmailSends === gmail3 + 1, gReleased.ok ? `${gm?.status} sends=${gmailSends - gmail3}` : gReleased.message);
+    check("owner approval emails it as before", rg.ok && gm?.status === "sent" && gmailSends === gmail3 + 1, rg.ok ? `${gm?.status} sends=${gmailSends - gmail3}` : rg.message);
     const pg = gm?.proofId ? await proofRow(gm.proofId) : undefined;
     const ga = await actions(g.id);
     check("emailed after release: proof sent, email.sent logged", !!pg?.sentAt && ga.some((r) => r.action === "email.sent") && !ga.some((r) => r.action === "etsy.queued"));

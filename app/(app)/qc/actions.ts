@@ -37,6 +37,7 @@ import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
 import { getQcFailContext } from "@/lib/qc/data";
 import { autoResolveOrderFigures } from "@/lib/orders/figure-auto";
 import { qcPassEmailInFlight } from "@/lib/qc/send-guard";
+import { aiQcRefusal } from "@/lib/qc/ai-qc-gate";
 import { holdForOwnerReview, ownerReviewRequired } from "@/lib/agent/ai-designer";
 import { generateProofToken } from "@/lib/proofs/tokens";
 import { proofUrl } from "@/lib/urls";
@@ -238,6 +239,9 @@ export async function confirmQcPassAndSend(input: {
         message: "The designer added a newer portrait. Refresh and check that one.",
       };
     }
+    // AI portraits: only an owner, and only once Auto QC has judged this exact file (lib/qc/ai-qc-gate.ts).
+    const ai = await aiQcRefusal(tx, user, { orderId: ctx.order.id, assetId: ctx.asset.id });
+    if (ai) return { ok: false as const, code: ai.code, message: ai.message };
     const proof = await ensureProof(tx, ctx.order);
     if (proof.id !== input.proofId) {
       return { ok: false as const, code: "stale_proof", message: "The proof link changed. Refresh and preview again." };

@@ -2,8 +2,8 @@
 
 An outside agent draws portraits for products that have the AI designer
 switched on. AlphaOS holds the queue; the agent polls it over a small
-bearer-token API. Everything after delivery is the normal flow (VA QC, proof
-email, buyer approval or revision).
+bearer-token API. Everything after delivery is the normal flow (Auto QC, then
+an owner's QC on /approve, proof email, buyer approval or revision).
 
 ## Setup
 
@@ -27,15 +27,21 @@ email, buyer approval or revision).
 2. `GET jobs` lists it. `claim` moves it to in design (`ai_state 'claimed'`).
 3. `deliver` stores the portrait as a `submission` asset, moves the order to
    VA QC, logs activity `ai.delivered` with the `selfCheck`.
-4. A VA passes QC in the normal screen. With `aiOwnerApproval` on, the order
-   moves to awaiting approval but the proof email stays a held draft
-   (`ai_state 'owner_review'`). `listOwnerReview(businessId)` lists them;
-   `approveOwnerReview(orderId, adminUserId)` sends the email and marks the
-   proof sent. With the setting off the email goes out at QC pass as usual.
+4. QC (Yousif 2026-10-14, `lib/qc/ai-qc-gate.ts`): only an OWNER (admin) can
+   pass an AI portrait, on /approve, and only once Auto QC (docs/AUTO_QC.md)
+   has judged the exact file going out (or, for "Send AI fix", the fix
+   itself). Every other road is refused: the VA login, the system, scripts and
+   the agent's own Approve (`ai_owner_qc` / `ai_auto_qc_pending`, enforced in
+   `confirmQcPassAndSend`, `ownerApproveCore` and `runTransition`). Approve
+   stays shut on screen until the verdict lands. With `aiOwnerApproval` on, the
+   pass holds the proof email (`ai_state 'owner_review'`) and the owner's own
+   pass releases it at once (`approveOwnerReview`); orders held before
+   2026-10-14 can still be released with `approveOwnerReview(orderId,
+   adminUserId)`. With the setting off the email goes out at QC pass as usual.
 5. Revision (buyer or QC fail): the order goes back to the jobs queue as a
    `revision` job (`ai_state 'revision'`), never to a human board. Activity
    `ai.revision_queued` has `metadata.stage = 'in revision (AI)'`. After
-   `deliver` it re-enters VA QC.
+   `deliver` it re-enters QC (Auto QC first, then an owner).
 6. `fail` raises an exception card (`ai_designer_failed`); the order stays
    with the agent (`ai_state 'failed'`, out of the queue) until someone runs
    `reassignOrder`.
