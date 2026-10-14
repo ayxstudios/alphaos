@@ -216,7 +216,8 @@ async function resolvePortraitPreviews(tx: Tx, orderId: string): Promise<ProofPo
   const portraits = await getOrderPortraits(tx, orderId);
   if (portraits.length < 2) return [];
   const previews = await Promise.all(
-    portraits.map(async (p) => ({ n: p.n, label: p.label, hasPreview: (await resolvePreviewAsset(tx, orderId, p.id)) != null })),
+    // Shop option names can arrive with their own colon ("Number of Pets:: 1").
+    portraits.map(async (p) => ({ n: p.n, label: p.label.replace(/:{2,}/g, ":"), hasPreview: (await resolvePreviewAsset(tx, orderId, p.id)) != null })),
   );
   return previews.some((p) => p.hasPreview) ? previews : [];
 }

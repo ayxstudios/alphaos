@@ -82,13 +82,15 @@ export function ProofClient({
       .filter((pin) => (portrait ? pin.p === portrait.n : true));
     return (
       <div className="flex flex-col gap-2">
-        <figure className="relative bg-canvas">
+        {/* The whole file, never cropped: it fits the screen height on a laptop,
+            and the hairline only marks the file's edge (it hides no pixels). */}
+        <figure className="relative mx-auto w-fit max-w-full bg-canvas">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={src}
             alt={portrait ? `Portrait ${portrait.n} proof for order ${orderNumber}` : `Portrait proof for order ${orderNumber}`}
             onClick={(e) => addPin(e, portrait?.n)}
-            className={"block h-auto w-full select-none " + (mode === "revise" ? "cursor-crosshair" : "")}
+            className={"block h-auto max-h-[calc(100svh-4rem)] w-auto max-w-full select-none ring-1 ring-line " + (mode === "revise" ? "cursor-crosshair" : "")}
             draggable={false}
           />
           {mine.map((pin) => (
