@@ -18,6 +18,7 @@ approves, sends, fails or moves an order. It gives the order a badge
 9. Ear shape matches the reference.
 10. Number of hands, people and pets is correct. Nothing added, removed or duplicated. Finger count correct.
 11. (Revisions only) The revision was done correctly and fully, no missed touchups.
+12. Nothing makes it look obviously AI: no extra or missing limbs, fingers, legs, ears or eyes, fused or melted shapes, warped faces, garbled text, impossible anatomy or objects, odd glossy/plastic skin, mismatched details side to side.
 
 Each check result: `pass` | `fail` | `na` (nothing of that kind in the photos, e.g. no tattoos) | `unsure` (cannot tell from the photos).
 

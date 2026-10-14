@@ -15,7 +15,7 @@ import { activityLog, assets, autoQcChecks } from "@/lib/db/schema";
 import type { OrderPortrait } from "@/lib/orders/portraits";
 import type { QcVersion } from "./data";
 
-/** Yousif's checks, keys stable (11 applies to revisions only). */
+/** Yousif's checks, keys stable (11 applies to revisions only, 12 to every portrait). */
 export const AUTO_QC_CHECKS: { key: number; label: string }[] = [
   { key: 1, label: "Portrait style" },
   { key: 2, label: "Rings and jewellery" },
@@ -28,6 +28,7 @@ export const AUTO_QC_CHECKS: { key: number; label: string }[] = [
   { key: 9, label: "Ear shape" },
   { key: 10, label: "Count of people, pets, hands, fingers" },
   { key: 11, label: "Revision done fully" },
+  { key: 12, label: "Looks obviously AI" },
 ];
 
 export const AUTO_QC_VERDICTS = ["pass", "issues", "unsure"] as const;
