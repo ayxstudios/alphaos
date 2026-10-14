@@ -155,7 +155,6 @@ async function decide(
           id: proofs.id,
           orderId: proofs.orderId,
           decision: proofs.decision,
-          createdAt: proofs.createdAt,
         })
         .from(proofs)
         .where(eq(proofs.token, token))
@@ -172,10 +171,11 @@ async function decide(
 
       // An older email must never decide a newer proof, even if its page
       // was left open before the replacement was sent.
+      const createdAt = tx.select({ createdAt: proofs.createdAt }).from(proofs).where(eq(proofs.id, proof.id));
       const [newer] = await tx
         .select({ id: proofs.id })
         .from(proofs)
-        .where(and(eq(proofs.orderId, proof.orderId), gt(proofs.createdAt, proof.createdAt)))
+        .where(and(eq(proofs.orderId, proof.orderId), gt(proofs.createdAt, createdAt)))
         .limit(1);
       if (newer) {
         return err("not_actionable", "We have sent you an updated proof. Please open the link in our most recent email.");

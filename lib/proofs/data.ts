@@ -56,7 +56,6 @@ export async function getProofView(token: string): Promise<ProofView | null> {
     const [row] = await tx
       .select({
         orderId: proofs.orderId,
-        createdAt: proofs.createdAt,
         decision: proofs.decision,
         decidedAt: proofs.decidedAt,
         orderStatus: orders.status,
@@ -73,11 +72,14 @@ export async function getProofView(token: string): Promise<ProofView | null> {
 
     const preview = await resolvePreviewAsset(tx, row.orderId);
     const portraits = await resolvePortraitPreviews(tx, row.orderId);
+    // Compare timestamps inside Postgres: converting to a JS Date loses
+    // microseconds and can make a proof appear newer than itself.
+    const createdAt = tx.select({ createdAt: proofs.createdAt }).from(proofs).where(eq(proofs.token, token));
     // Scoped to the one order this token resolves to.
     const [newer] = await tx
       .select({ id: proofs.id })
       .from(proofs)
-      .where(and(eq(proofs.orderId, row.orderId), gt(proofs.createdAt, row.createdAt)))
+      .where(and(eq(proofs.orderId, row.orderId), gt(proofs.createdAt, createdAt)))
       .limit(1);
 
     return {
