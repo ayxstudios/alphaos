@@ -20,27 +20,48 @@ export const DESIGNER_SLA_HOURS = 24;
 
 /**
  * The business's designer deadlines (businesses.agent_config designerSlaHours /
- * revisionSlaHours, default 24 h each). Yousif 2026-10-14: "revisions need to be
- * done in 24 hours, orders also within 24 hours, Pixart orders can be 48 hours".
+ * revisionSlaHours / qcFailSlaHours / urgentRevisionSlaHours). Yousif
+ * 2026-10-14: orders and customer revisions 24 h, PixArt new orders 48 h, a
+ * failed QC 12 h, any revision on an urgent order 3 h.
  */
-export async function businessSlaHours(tx: Tx, businessId: string): Promise<{ order: number; revision: number }> {
+export async function businessSlaHours(
+  tx: Tx,
+  businessId: string,
+): Promise<{ order: number; revision: number; qcFail: number; urgentRevision: number }> {
   const [b] = await tx
     .select({ agentConfig: businesses.agentConfig })
     .from(businesses)
     .where(eq(businesses.id, businessId))
     .limit(1);
   const cfg = getAgentConfig(b ?? null);
-  return { order: cfg.designerSlaHours, revision: cfg.revisionSlaHours };
+  return {
+    order: cfg.designerSlaHours,
+    revision: cfg.revisionSlaHours,
+    qcFail: cfg.qcFailSlaHours,
+    urgentRevision: cfg.urgentRevisionSlaHours,
+  };
 }
 
+export type RevisionKind = "qc_fail" | "customer";
+
 /**
- * A revision (QC fail or customer change) gives the designer a fresh deadline:
- * the active assignment's due_at becomes now + the business's revisionSlaHours.
- * No active assignment = nothing to do. Returns the new deadline, or null.
+ * A revision gives the designer a fresh deadline: the active assignment's
+ * due_at becomes now + qcFailSlaHours (QC fail, default 12) or revisionSlaHours
+ * (customer change, default 24), capped at urgentRevisionSlaHours (default 3)
+ * when the order is urgent. No active assignment = nothing to do. Returns the
+ * new deadline, or null.
  */
-export async function resetRevisionDeadline(tx: Tx, orderId: string, businessId: string): Promise<Date | null> {
-  const { revision } = await businessSlaHours(tx, businessId);
-  const dueAt = new Date(Date.now() + revision * 60 * 60 * 1000);
+export async function resetRevisionDeadline(
+  tx: Tx,
+  orderId: string,
+  businessId: string,
+  kind: RevisionKind,
+): Promise<Date | null> {
+  const sla = await businessSlaHours(tx, businessId);
+  const [o] = await tx.select({ urgentAt: orders.urgentAt }).from(orders).where(eq(orders.id, orderId)).limit(1);
+  let hours = kind === "qc_fail" ? sla.qcFail : sla.revision;
+  if (o?.urgentAt) hours = Math.min(hours, sla.urgentRevision);
+  const dueAt = new Date(Date.now() + hours * 60 * 60 * 1000);
   const rows = await tx
     .update(assignments)
     .set({ dueAt })

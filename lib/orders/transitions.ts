@@ -276,8 +276,8 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
   let aiRevision = false;
   if (edge.revision) {
     // Fresh designer deadline for the revision, set before any brief or QC
-    // feedback reads it (24 h default, businesses.agent_config.revisionSlaHours).
-    await resetRevisionDeadline(tx, orderId, order.businessId);
+    // feedback reads it (QC fail 12 h, customer change 24 h, urgent order 3 h; businesses.agent_config).
+    await resetRevisionDeadline(tx, orderId, order.businessId, qc && qc.result === "fail" ? "qc_fail" : "customer");
     aiRevision = await onRevisionEdge(tx, {
       orderId,
       businessId: order.businessId,

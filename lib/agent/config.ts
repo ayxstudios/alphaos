@@ -40,6 +40,8 @@ export const AGENT_CONFIG_DEFAULTS: AgentConfig = {
   replySignOff: null,
   designerSlaHours: 24,
   revisionSlaHours: 24,
+  qcFailSlaHours: 12,
+  urgentRevisionSlaHours: 3,
 };
 
 function cleanSignature(v: unknown): { text: string; html: string } | null {
@@ -104,6 +106,8 @@ export function getAgentConfig(business: { agentConfig?: unknown } | null | unde
     emailSignature: cleanSignature(raw.emailSignature),
     designerSlaHours: num(raw.designerSlaHours, 1, 168, AGENT_CONFIG_DEFAULTS.designerSlaHours),
     revisionSlaHours: num(raw.revisionSlaHours, 1, 168, AGENT_CONFIG_DEFAULTS.revisionSlaHours),
+    qcFailSlaHours: num(raw.qcFailSlaHours, 1, 72, AGENT_CONFIG_DEFAULTS.qcFailSlaHours),
+    urgentRevisionSlaHours: num(raw.urgentRevisionSlaHours, 1, 24, AGENT_CONFIG_DEFAULTS.urgentRevisionSlaHours),
     replySignOff: typeof raw.replySignOff === "string" && raw.replySignOff.trim() && raw.replySignOff.length <= 200 ? raw.replySignOff : null,
   };
 }
