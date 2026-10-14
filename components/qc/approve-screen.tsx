@@ -510,9 +510,17 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
                 disabled={locked || pictures.busy}
                 onClick={reject}
                 data-testid="send-back"
-                className={cn("h-12 rounded-input bg-rose text-base font-semibold text-surface disabled:opacity-60", focusRing)}
+                className={cn("h-12 rounded-input bg-rose px-3 text-base font-semibold text-surface disabled:opacity-60", focusRing)}
               >
-                {busy === "reject" ? "Sending back..." : "Send back to designer"}
+                {/* The full label is wider than half a phone screen. */}
+                {busy === "reject" ? (
+                  "Sending back..."
+                ) : (
+                  <>
+                    <span className="sm:hidden">Send back</span>
+                    <span className="hidden sm:inline">Send back to designer</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
