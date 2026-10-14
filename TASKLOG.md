@@ -104,3 +104,5 @@ Branch task/approve-bg-qcfail in ~/Documents/projects/alphaos-wt-approvebg = mer
 - [x] staging deploy + QA (desktop + phone): 3 loops; found+fixed ~6 s hold after Approve/Stop (fc176f6, now ~0.1 s), added instant Alpha message when a failed order turns urgent (3231c09)
 - [x] landed 3231c09 on origin/main; prod = CLI deploy dpl_2iM64MqbHL1tv2k8NbC1j9c4hHvm on alphaos-kappa, migration 0055 applied (2026-10-14 13:27 AEDT)
 - [ ] reply to Yousif (dot points)
+- [x] 2026-10-14 re-verify on staging (fresh, /tmp/alphaos-verify-1014): found the "Sending..." row still visible ~20 s after the window (server send ~20 s) and the 30 s client timeout too close; c5856a6 hides sending/sent rows (only Stop window + failures), wait 55 s. Re-verified desktop+phone: next order 50-200 ms, Stop = nothing sent after 37 s, send lands ~22 s with only the countdown ever shown, closing the app still sends; Reject with 2 pictures (button locked while uploading), designer sees both (200), 12 h deadline; urgent reject 3 h + URGENT line; urgent after fail = 3 h + qc_fix_urgent. Landed c5856a6, prod alphaos-lw6lzit2m on alphaos-kappa.
+- [ ] reply to Yousif
