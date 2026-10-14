@@ -236,7 +236,7 @@ export function DesignerBoard({
   }
 
   /** The board fail dialog's submit: same server action as the QC screen's Fail. */
-  async function failFromBoard(failedKeys: number[], reason: string, signature: string) {
+  async function failFromBoard(failedKeys: number[], reason: string, signature: string, attachmentAssetIds: string[]) {
     if (!qcFail) return;
     setQcFailPending(true);
     const res = await submitQcFail({
@@ -246,6 +246,7 @@ export function DesignerBoard({
       failedKeys,
       reason,
       signature,
+      attachmentAssetIds,
     });
     setQcFailPending(false);
     if (!res.ok) {
@@ -423,6 +424,7 @@ export function DesignerBoard({
           onClose={() => {
             if (!qcFailPending) setQcFail(null);
           }}
+          orderId={qcFail.card.orderId}
           items={qcFail.checklist.items}
           initialFailedKeys={[]}
           submitting={qcFailPending}

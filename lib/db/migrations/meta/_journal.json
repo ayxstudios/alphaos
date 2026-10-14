@@ -386,6 +386,13 @@
       "when": 1791700000000,
       "tag": "0054_auto_qc",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1791790000000,
+      "tag": "0055_qc_check_attachments",
+      "breakpoints": true
     }
   ]
 }

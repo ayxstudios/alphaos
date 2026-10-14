@@ -33,6 +33,17 @@ import { buildRevisionHistory, revisionCopyText } from "@/lib/orders/revision-hi
 import { isWithCustomer, SENT_BACK_FROM } from "@/lib/orders/board-constants";
 import type { CardDetail, CardEvent, CardImage } from "@/lib/orders/card-detail";
 import { formatAt, formatDeadline } from "@/lib/time";
+import { QcPictures } from "@/components/qc/qc-pictures";
+import type { QcAttachmentView } from "@/lib/qc/attachments";
+import {
+  PARALLEL_UPLOADS,
+  PRESIGN_REFRESH_MS,
+  UPLOAD_ATTEMPTS,
+  UploadError,
+  runLimited,
+  sleep,
+  uploadToR2,
+} from "@/components/uploads/r2-put";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 type ViewerRole = "admin" | "va" | "designer";
@@ -229,6 +240,7 @@ export function CardModal({
                 reason={revision.reason}
                 failedItems={revision.failedItems}
                 pinGroups={groupPins(revision.annotations ?? [], detail, events)}
+                attachments={card.qcFail ? (card.qcFail.attachments ?? []) : []}
               />
             )}
 
@@ -855,89 +867,6 @@ function CardUploadPanel({
   );
 }
 
-const UPLOAD_ATTEMPTS = 3;
-const PARALLEL_UPLOADS = 2;
-const PRESIGN_REFRESH_MS = 4 * 60 * 1000; // presigned PUT links live 5 minutes (lib/storage/r2.ts)
-const UPLOAD_STALL_MS = 45 * 1000; // no bytes moved for this long = the connection is gone
-
-class UploadError extends Error {
-  status: number;
-  constructor(filename: string, status: number) {
-    super(`Upload failed for ${filename}: ${describeUploadFailure(status)}`);
-    this.name = "UploadError";
-    this.status = status;
-  }
-}
-
-/** Status 0 is what the browser reports for a dropped, blocked or stalled connection. */
-function describeUploadFailure(status: number): string {
-  if (status === 0) return "the connection dropped";
-  if (status === 403) return "the upload link was refused";
-  return `storage answered ${status}`;
-}
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-/** Run fn(0..count-1) with at most `limit` in flight at once. */
-async function runLimited(count: number, limit: number, fn: (index: number) => Promise<void>): Promise<void> {
-  let next = 0;
-  const workers = Array.from({ length: Math.max(1, Math.min(limit, count)) }, async () => {
-    while (next < count) {
-      const index = next++;
-      await fn(index);
-    }
-  });
-  await Promise.all(workers);
-}
-
-function uploadToR2(
-  url: string,
-  file: File,
-  onProgress: (loaded: number, total: number) => void,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    let stalled = false;
-    let stallTimer: ReturnType<typeof setTimeout> | undefined;
-    const armStall = () => {
-      if (stallTimer) clearTimeout(stallTimer);
-      stallTimer = setTimeout(() => {
-        stalled = true;
-        xhr.abort();
-      }, UPLOAD_STALL_MS);
-    };
-    const settle = () => {
-      if (stallTimer) clearTimeout(stallTimer);
-    };
-    xhr.open("PUT", url);
-    xhr.setRequestHeader("Content-Type", file.type);
-    xhr.upload.onprogress = (event) => {
-      armStall();
-      if (event.lengthComputable) onProgress(event.loaded, event.total);
-    };
-    xhr.onload = () => {
-      settle();
-      if (xhr.status >= 200 && xhr.status < 300) {
-        onProgress(file.size, file.size);
-        resolve();
-      } else {
-        reject(new UploadError(file.name, xhr.status));
-      }
-    };
-    xhr.onerror = () => {
-      settle();
-      reject(new UploadError(file.name, 0));
-    };
-    xhr.onabort = () => {
-      settle();
-      reject(new UploadError(file.name, 0));
-      void stalled;
-    };
-    armStall();
-    xhr.send(file);
-  });
-}
-
 function DueLine({
   dueAt,
   done = false,
@@ -1068,11 +997,13 @@ function RevisionBlock({
   reason,
   failedItems,
   pinGroups,
+  attachments,
 }: {
   kind: "qc" | "customer";
   reason: string | null;
   failedItems: string[];
   pinGroups: PinGroup[];
+  attachments: QcAttachmentView[];
 }) {
   const qc = kind === "qc";
   const note = revisionNote(reason, failedItems);
@@ -1107,6 +1038,7 @@ function RevisionBlock({
           ))}
         </ul>
       )}
+      <QcPictures pictures={attachments} />
       {pinCount > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-medium text-ink">

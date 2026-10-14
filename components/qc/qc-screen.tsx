@@ -21,6 +21,7 @@ import { ChecklistPanel } from "./checklist-panel";
 import { OrderSaysPanel } from "./order-says-panel";
 import { VersionStrip } from "./version-strip";
 import { QcHeader } from "./qc-header";
+import { QcPictures } from "./qc-pictures";
 import { FailDialog } from "./fail-dialog";
 import { ShortcutLegend, LegendToggle } from "./shortcut-legend";
 import { SignatureInput, signatureName } from "./signature-input";
@@ -194,7 +195,7 @@ export function QcScreen({
   }, [checked, ctx, emailBody, emailPreview, handleResult, pending, signature]);
 
   const doFail = useCallback(
-    (failedKeys: number[], reason: string) => {
+    (failedKeys: number[], reason: string, _signature: string, attachmentAssetIds: string[]) => {
       setActing("fail");
       start(async () => {
         const res = await submitQcFail({
@@ -204,6 +205,7 @@ export function QcScreen({
           failedKeys,
           reason,
           signature,
+          attachmentAssetIds,
         });
         if (res.ok) setFailOpen(false);
         handleResult(res, "Sent back to the designer");
@@ -361,6 +363,26 @@ export function QcScreen({
               <OrderSaysPanel says={ctx.orderSays} />
             </div>
           </details>
+          {ctx.pastFails.length > 0 && (
+            <details className="group mb-4" data-testid="earlier-fails" open>
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-input bg-rose/10 px-3 text-sm font-semibold text-rose [&::-webkit-details-marker]:hidden">
+                Earlier QC fails ({ctx.pastFails.length})
+                <span className="text-xs font-normal group-open:hidden">Show</span>
+                <span className="hidden text-xs font-normal group-open:inline">Hide</span>
+              </summary>
+              <ul className="mt-2 flex flex-col gap-2">
+                {ctx.pastFails.map((f) => (
+                  <li key={f.id} className="flex flex-col gap-1.5 rounded-input border border-line p-2">
+                    <p className="text-xs text-slate" suppressHydrationWarning>
+                      {new Date(f.at).toLocaleString()}
+                    </p>
+                    {f.reason && <p className="whitespace-pre-wrap break-words text-sm text-ink">{f.reason}</p>}
+                    <QcPictures pictures={f.pictures} />
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
           <div className="min-h-0 flex-1">
               <ChecklistPanel
                 items={items}
@@ -426,6 +448,7 @@ export function QcScreen({
       <FailDialog
         open={failOpen}
         onClose={() => setFailOpen(false)}
+        orderId={ctx.orderId}
         items={items}
         initialFailedKeys={initialFailedKeys}
         submitting={pending}

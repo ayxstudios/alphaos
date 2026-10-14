@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { QcPictures } from "@/components/qc/qc-pictures";
+import { resolveAttachmentViews } from "@/lib/qc/attachment-urls";
 import { notFound, redirect } from "next/navigation";
 import { and, asc, desc, eq } from "drizzle-orm";
 
@@ -351,6 +353,7 @@ export default async function OrderDetailPage({
       .select({
         result: qcChecks.result,
         reason: qcChecks.reason,
+        attachments: qcChecks.attachments,
         createdAt: qcChecks.createdAt,
       })
       .from(qcChecks)
@@ -512,6 +515,7 @@ export default async function OrderDetailPage({
   );
   const styleText = styles.length ? styles.map(styleLabel).join(", ") : "Not set";
   const latestQc = qcRows[0] ?? null;
+  const latestQcPictures = await resolveAttachmentViews(latestQc?.attachments);
   const references = detail.images.filter((image) => image.type === "reference");
   const hasPhysicalItem = items.some((item) => item.productType === "physical");
   const latestTracking = printRows.find((print) => print.trackingNumber);
@@ -986,6 +990,7 @@ export default async function OrderDetailPage({
                 value={latestQc ? `${titleCase(latestQc.result)} · ${fmtDateTime(latestQc.createdAt)}` : "No QC yet"}
                 sub={latestQc?.reason ?? null}
               />
+              {latestQcPictures.length > 0 && <QcPictures pictures={latestQcPictures} />}
             </dl>
           </DataPanel>
 

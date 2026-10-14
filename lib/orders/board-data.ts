@@ -29,6 +29,8 @@ import {
   SENT_BACK_FROM,
   WITH_CUSTOMER_STATUSES,
 } from "@/lib/orders/board-constants";
+import { resolveAttachmentViews } from "@/lib/qc/attachment-urls";
+import type { QcAttachmentView } from "@/lib/qc/attachments";
 import type { OrderStatus } from "./transitions";
 import type { ProofAnnotation } from "@/lib/db/schema";
 
@@ -38,6 +40,8 @@ export type QcFailInfo = {
   failedItems: string[];
   /** Pins the customer dropped on the proof preview (normalised 0..1 coords) — customer revisions only. */
   annotations?: ProofAnnotation[];
+  /** Pictures the reviewer attached to a failed QC (login-free links), QC fails only. */
+  attachments?: QcAttachmentView[];
 };
 
 export type BoardCard = {
@@ -171,6 +175,7 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
             reason: qcChecks.reason,
             checklistSnapshot: qcChecks.checklistSnapshot,
             itemResults: qcChecks.itemResults,
+            attachments: qcChecks.attachments,
             createdAt: qcChecks.createdAt,
           })
           .from(qcChecks)
@@ -283,6 +288,7 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
       qcFail.set(f.orderId, {
         reason: f.reason,
         failedItems: failedLabels(f.checklistSnapshot, f.itemResults),
+        attachments: await resolveAttachmentViews(f.attachments),
       });
       qcAt.set(f.orderId, f.createdAt);
     }

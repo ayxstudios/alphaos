@@ -8,6 +8,7 @@ import { Button, Textarea } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
 import { X } from "@/components/ui/icons";
 import type { ChecklistItem } from "@/lib/qc/checklist";
+import { QcPicturePicker, useQcPictures } from "./attachment-picker";
 import { SignatureInput, signatureName } from "./signature-input";
 
 /**
@@ -22,6 +23,7 @@ import { SignatureInput, signatureName } from "./signature-input";
 export function FailDialog({
   open,
   onClose,
+  orderId,
   items,
   initialFailedKeys,
   submitting,
@@ -30,10 +32,11 @@ export function FailDialog({
 }: {
   open: boolean;
   onClose: () => void;
+  orderId: string;
   items: ChecklistItem[];
   initialFailedKeys: number[];
   submitting: boolean;
-  onSubmit: (failedKeys: number[], reason: string, signature: string) => void;
+  onSubmit: (failedKeys: number[], reason: string, signature: string, attachmentAssetIds: string[]) => void;
   withSignature?: boolean;
 }) {
   const [mounted, setMounted] = useState(false);
@@ -42,6 +45,8 @@ export function FailDialog({
   const [signature, setSignature] = useState("");
   const [touched, setTouched] = useState(false);
   const reasonRef = useRef<HTMLTextAreaElement>(null);
+  const pictures = useQcPictures(orderId);
+  const resetPictures = pictures.reset;
 
   useEffect(() => setMounted(true), []);
 
@@ -52,10 +57,11 @@ export function FailDialog({
       setReason("");
       setSignature("");
       setTouched(false);
+      resetPictures();
       const raf = requestAnimationFrame(() => reasonRef.current?.focus());
       return () => cancelAnimationFrame(raf);
     }
-  }, [open, initialFailedKeys]);
+  }, [open, initialFailedKeys, resetPictures]);
 
   useEffect(() => {
     if (!open) return;
@@ -81,12 +87,12 @@ export function FailDialog({
   // Any typed name signs (owner 2026-10-06: the signature is a backlog trail,
   // not a gate); two characters keeps a stray tap from unlocking.
   const signed = !withSignature || signatureName(signature).length >= 2;
-  const canSubmit = failed.size > 0 && reasonTrimmed.length > 0 && signed && !submitting;
+  const canSubmit = failed.size > 0 && reasonTrimmed.length > 0 && signed && !submitting && !pictures.busy && pictures.failedCount === 0;
 
   function submit() {
     setTouched(true);
     if (!canSubmit) return;
-    onSubmit([...failed], reasonTrimmed, signature);
+    onSubmit([...failed], reasonTrimmed, signature, pictures.assetIds);
   }
 
   return createPortal(
@@ -167,6 +173,12 @@ export function FailDialog({
             error={touched && !reasonTrimmed ? "A reason is required." : undefined}
             rows={4}
           />
+
+          <QcPicturePicker state={pictures} disabled={submitting} />
+          {pictures.busy && <p className="text-xs text-slate">Waiting for the pictures to finish uploading.</p>}
+          {pictures.failedCount > 0 && (
+            <p className="text-xs text-rose">Retry or remove the picture that did not upload.</p>
+          )}
 
           {withSignature && (
             <SignatureInput

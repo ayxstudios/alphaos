@@ -116,7 +116,12 @@ function guessFailedKeys(items: ChecklistItem[], note: string): number[] {
  * Ticking what is wrong is optional; with nothing ticked the check the words
  * point at is marked (Details when nothing matches).
  */
-export async function ownerReject(input: { orderId: string; note: string; failedKeys: number[] }): Promise<ApproveActionResult> {
+export async function ownerReject(input: {
+  orderId: string;
+  note: string;
+  failedKeys: number[];
+  attachmentAssetIds?: string[];
+}): Promise<ApproveActionResult> {
   const staff = await requireStaff();
   if ("error" in staff) return staff.error;
   const { user, name } = staff;
@@ -138,6 +143,7 @@ export async function ownerReject(input: { orderId: string; note: string; failed
     failedKeys,
     reason: note,
     signature: name,
+    attachmentAssetIds: input.attachmentAssetIds,
   });
   if (!res.ok) return { ok: false, code: res.code, message: res.message };
   revalidatePath("/approve");
