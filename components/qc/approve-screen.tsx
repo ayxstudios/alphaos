@@ -17,6 +17,7 @@ import {
   usePendingApprovals,
 } from "@/components/qc/pending-approvals";
 import { AutoQcBadge, AutoQcNotes } from "@/components/qc/auto-qc";
+import { BottomDock } from "@/components/qc/bottom-dock";
 import { useToast } from "@/components/ui";
 import { ArrowRight, Check, X } from "@/components/ui/icons";
 import { focusRing } from "@/components/ui/styles";
@@ -422,8 +423,8 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
         </div>
       </section>
 
-      {/* The two buttons, always in reach */}
-      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 flex flex-col gap-3 rounded-card bg-surface p-3 shadow-lg lg:bottom-4">
+      {/* The two buttons, on the very bottom edge of the screen */}
+      <BottomDock>
         <PendingApprovalsInline />
         {error ? (
           <p role="alert" className="rounded-input bg-rose/10 px-3 py-2 text-sm text-rose">
@@ -513,7 +514,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
             </button>
           </div>
         )}
-      </div>
+      </BottomDock>
 
       {enlarged ? (
         <div

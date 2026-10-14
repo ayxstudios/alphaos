@@ -98,8 +98,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       <div
         // Below lg the bottom tab bar (h-16) is there: toasts sit above it,
         // inset 16px on both sides (w-full plus right-4 ran off the left edge
-        // of a phone). lg and up: bottom right, as before.
-        className="pointer-events-none fixed inset-x-4 bottom-20 z-[60] flex flex-col gap-2 sm:left-auto sm:w-full sm:max-w-sm lg:bottom-4 lg:right-4"
+        // of a phone). lg and up: bottom right, as before. A bottom dock
+        // (Approve buttons) sets --dock-h: toasts then sit above the dock.
+        className="pointer-events-none fixed inset-x-4 bottom-[max(5rem,calc(var(--dock-h,0px)+0.75rem))] z-[60] flex flex-col gap-2 sm:left-auto sm:w-full sm:max-w-sm lg:bottom-[max(1rem,calc(var(--dock-h,0px)+0.75rem))] lg:right-4"
         role="region"
         aria-label="Notifications"
       >

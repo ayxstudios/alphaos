@@ -97,7 +97,8 @@ export function AppShell({
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      {/* relative: the Approve dock (components/qc/bottom-dock.tsx) pins to this column's bottom edge on lg. */}
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <TopBar
           user={user}
           options={options}

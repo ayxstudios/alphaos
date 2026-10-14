@@ -232,7 +232,7 @@ function useApprovalEvents() {
 }
 
 /**
- * Desktop: a fixed stack bottom-right. On a phone the same rows sit inline
+ * Desktop: a fixed stack bottom-right, above the Approve dock. On a phone the same rows sit inline
  * (PendingApprovalsInline) right above the Approve / Send back buttons.
  * `all` shows the fixed stack at every width (the "All done" page).
  */
@@ -247,7 +247,7 @@ export function PendingApprovalsHost({ all = false }: { all?: boolean }) {
         "fixed z-40 flex flex-col gap-2",
         all
           ? "inset-x-3 bottom-[calc(5rem+env(safe-area-inset-bottom))] lg:inset-x-auto lg:bottom-4 lg:right-4 lg:w-96"
-          : "bottom-4 right-4 hidden w-96 lg:flex",
+          : "bottom-[max(1rem,calc(var(--dock-h,0px)+0.75rem))] right-4 hidden w-96 lg:flex",
       )}
     >
       <Rows rows={rows} />
