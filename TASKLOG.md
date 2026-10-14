@@ -97,3 +97,10 @@ Production untouched.
 ## 2026-10-14 Auto QC (Yousif) task/alphaos-reqea8b3
 - Done: migration 0054 auto_qc_checks (tested in a rolled-back tx on prod), lib/qc/auto-qc*.ts, /api/agent-qc/{queue,result}, badge + notes on /approve, /qc cards, /qc/[orderId]; tsc, test:auto-qc, next build green.
 - Next: daemon judge scripts/alphaos-auto-qc.mjs (ai-employee-agent), land under integrate:alphaos, first sweep.
+
+# Approve in background + Stop, QC fail pictures, 12 h / urgent 3 h (Yousif 2026-10-14, chat 64828303487194@lid)
+Branch task/approve-bg-qcfail in ~/Documents/projects/alphaos-wt-approvebg = merge of 4bdc6cf (approve bg) + 3a73c30 (sla) + 1e5d25d (fail pictures, migration 0055). Agent repo chaser urgent lane pushed (cb934003).
+- [x] three streams built, merged, tsc green
+- [ ] staging deploy + QA (desktop + phone)
+- [ ] land on origin/main under integrate:alphaos lock -> production (Vercel git deploy runs migration 0055)
+- [ ] reply to Yousif (dot points)
