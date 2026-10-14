@@ -101,6 +101,6 @@ Production untouched.
 # Approve in background + Stop, QC fail pictures, 12 h / urgent 3 h (Yousif 2026-10-14, chat 64828303487194@lid)
 Branch task/approve-bg-qcfail in ~/Documents/projects/alphaos-wt-approvebg = merge of 4bdc6cf (approve bg) + 3a73c30 (sla) + 1e5d25d (fail pictures, migration 0055). Agent repo chaser urgent lane pushed (cb934003).
 - [x] three streams built, merged, tsc green
-- [ ] staging deploy + QA (desktop + phone)
-- [ ] land on origin/main under integrate:alphaos lock -> production (Vercel git deploy runs migration 0055)
+- [x] staging deploy + QA (desktop + phone): 3 loops; found+fixed ~6 s hold after Approve/Stop (fc176f6, now ~0.1 s), added instant Alpha message when a failed order turns urgent (3231c09)
+- [x] landed 3231c09 on origin/main; prod = CLI deploy dpl_2iM64MqbHL1tv2k8NbC1j9c4hHvm on alphaos-kappa, migration 0055 applied (2026-10-14 13:27 AEDT)
 - [ ] reply to Yousif (dot points)
