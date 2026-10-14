@@ -113,3 +113,11 @@ Ask: a link for Ayser to QC too; "me and him can't really overlap in our work or
 - Header: "<name> is checking N"; All done names who has the last ones.
 - Tests: test:qc-claims (pure + DB checks with CLAIMS_DB_URL=staging app_user, 26 ok), test:approve-queue (claimed case). Staging two-person QA (admin laptop + VA phone): 17/17 (/tmp/qa-two-owners/qa.mjs).
 - Ayser's existing sign-in link (vault ALPHAOS_LOGIN_LINK_AYSER, not re-minted) + ?next=/approve verified on prod; expiry moved 2026-12-22 -> 2027-01-12 (90 days from today) so it lasts through Christmas.
+
+# Approve buttons on the very bottom (Yousif 2026-10-14, chat 64828303487194@lid)
+Ask: "put the buttons on the very bottom for me to press? Not hovering in the middle of the screen?"
+- components/qc/bottom-dock.tsx: Approve/Reject (and the reject panel, and the phone Stop row) docked flush to the bottom edge. Phone = fixed over the tab bar (menu button still opens every page); lg = absolute in AppShell's content column (now `relative`), so it follows the sidebar width. Spacer keeps the end of the page clear; height capped 85dvh.
+- `--dock-h` on <html> lifts toasts and the desktop Stop stack above the dock; unset on any other page (dashboard toasts unchanged: 80 px phone / 16 px laptop).
+- Send-back button reads "Send back" under sm (full label overflowed half a 390 px screen).
+- Staging QA (alphaos-staging-dock.vercel.app, admin, desktop 1440x900 + phone 390x844 touch): 41/41 (dock bottom = viewport bottom, column edges both sidebar widths, buttons unobstructed, scroll end clear, reject panel, Stop + toast above dock, dashboard reset). Script: ~/Documents/ai-employee-agent/var/subtasks/alphaos-dock/qa.mjs
+- [x] landed acbd9ae on origin/main (merged 329ac55 two-owners first, no conflicts); prod = CLI deploy dpl_EQWZMx162qDVNCG59P1Hx9bPmTy7 on alphaos-kappa (2026-10-14 17:06 AEDT)
