@@ -17,7 +17,9 @@ import {
 
 export { APPROVE_GRACE_MS };
 
-const COMMIT_TIMEOUT_MS = 30_000;
+// Sending runs in the background (it can take ~20 s server side), so the
+// wait sits just under the commit route's 60 s maxDuration.
+const COMMIT_TIMEOUT_MS = 55_000;
 /** Full RSC prefetch: the server render of /approve takes seconds, so Approve and Stop swap from the cache instead. */
 export const FULL_PREFETCH = { kind: PrefetchKind.FULL };
 
@@ -32,7 +34,7 @@ async function viaRoute(orderId: string, keepalive: boolean): Promise<CommitResu
 }
 
 // Same protections the screen's callAction always had (Yousif 2026-10-14): a
-// dropped connection or a 30 s stall ends with a reason, and a retry is safe
+// dropped connection or a 55 s stall ends with a reason, and a retry is safe
 // because the server answers "Already checked" when the first one landed.
 async function commit(orderId: string): Promise<CommitResult> {
   try {
@@ -56,7 +58,7 @@ async function commit(orderId: string): Promise<CommitResult> {
       code: msg === "timeout" ? "timeout" : "network",
       message:
         msg === "timeout"
-          ? "No answer after 30 seconds, it may not have gone through."
+          ? "No answer after a minute, it may not have gone through."
           : "That didn't go through (connection dropped).",
     };
   }
@@ -207,6 +209,16 @@ function Rows({ rows }: { rows: PendingRow[] }) {
   );
 }
 
+/**
+ * Only the Stop window and a failure are shown (Yousif 2026-10-14: "it just
+ * sends in the background, I don't need to see it say sending"). Sending and
+ * sent rows stay in the store, so the order stays out of the queue, but are
+ * never drawn; a failed send comes back with Retry / Open.
+ */
+function visibleRows<T extends { status: string }>(rows: T[]): T[] {
+  return rows.filter((r) => r.status === "pending" || r.status === "failed");
+}
+
 /** Toast for an approval the server said was already checked (the row just goes). */
 function useApprovalEvents() {
   const toast = useToast();
@@ -225,7 +237,7 @@ function useApprovalEvents() {
  * `all` shows the fixed stack at every width (the "All done" page).
  */
 export function PendingApprovalsHost({ all = false }: { all?: boolean }) {
-  const rows = usePendingApprovals();
+  const rows = visibleRows(usePendingApprovals());
   useApprovalEvents();
   if (!rows.length) return null;
   return (
@@ -244,7 +256,7 @@ export function PendingApprovalsHost({ all = false }: { all?: boolean }) {
 }
 
 export function PendingApprovalsInline() {
-  const rows = usePendingApprovals();
+  const rows = visibleRows(usePendingApprovals());
   if (!rows.length) return null;
   return (
     <div data-testid="pending-approvals-inline" className="flex flex-col gap-2 lg:hidden">
