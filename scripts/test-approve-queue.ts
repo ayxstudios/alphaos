@@ -91,5 +91,14 @@ const info = (orderId: string) => ({ orderId, orderNumber: "CPS1", customerName:
   s.retry(A);
   await advance(0);
   assert.equal(s.getRows()[0].status, "sent");
+  assert.equal(s.getRows()[0].delivery, "email");
+
+  // No email on file: the row keeps that it went as an Etsy message.
+  s = mk();
+  answer = { ok: true, title: "Queued for Etsy", delivery: "etsy" };
+  s.enqueue(info(A));
+  await advance(8000);
+  assert.equal(s.getRows()[0].status, "sent");
+  assert.equal(s.getRows()[0].delivery, "etsy");
   console.log("approve queue: all checks passed");
 })();

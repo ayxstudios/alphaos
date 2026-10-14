@@ -137,6 +137,7 @@ async function promoteStep(businessId: string, dryRun: boolean, report: OutboxRe
         and(
           eq(messages.businessId, businessId),
           eq(messages.direction, "outbound"),
+          eq(messages.channel, "email"),
           eq(messages.status, "draft"),
           isNull(messages.archivedAt),
           agentMessageScope(),
@@ -199,7 +200,7 @@ async function sendStep(
     tx
       .select({ id: messages.id, metadata: messages.metadata })
       .from(messages)
-      .where(and(eq(messages.businessId, businessId), eq(messages.direction, "outbound"), eq(messages.status, "queued"), isNull(messages.archivedAt), agentMessageScope()))
+      .where(and(eq(messages.businessId, businessId), eq(messages.direction, "outbound"), eq(messages.channel, "email"), eq(messages.status, "queued"), isNull(messages.archivedAt), agentMessageScope()))
       .orderBy(asc(messages.createdAt))
       .limit(BATCH),
   );
@@ -257,6 +258,7 @@ async function retryStep(
         and(
           eq(messages.businessId, business.id),
           eq(messages.direction, "outbound"),
+          eq(messages.channel, "email"),
           eq(messages.status, "failed"),
           isNull(messages.archivedAt),
           agentMessageScope(),

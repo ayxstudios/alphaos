@@ -60,7 +60,8 @@
     "test:email-noise": "tsx scripts/test-email-noise.ts",
     "test:designer-deadlines": "tsx scripts/test-designer-deadlines.ts",
     "test:approve-queue": "tsx scripts/test-approve-queue.ts",
-    "test:qc-claims": "tsx scripts/test-qc-claims.ts"
+    "test:qc-claims": "tsx scripts/test-qc-claims.ts",
+    "test:etsy-proof-queue": "tsx scripts/test-etsy-proof-queue.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1102.0",

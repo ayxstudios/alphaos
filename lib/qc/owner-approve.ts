@@ -8,8 +8,11 @@ import { orders } from "@/lib/db/schema";
 import type { ItemResults } from "@/lib/qc/checklist";
 import { getQcContext } from "@/lib/qc/data";
 
+/** How an approved proof leaves: emailed, queued for an Etsy message (no email on file), or held for an owner. */
+export type ApproveDelivery = "email" | "etsy" | "held";
+
 export type ApproveActionResult =
-  | { ok: true; title: string; description?: string }
+  | { ok: true; title: string; description?: string; delivery?: ApproveDelivery }
   | { ok: false; code: string; message: string };
 
 /**
@@ -60,14 +63,23 @@ export async function ownerApproveCore(user: RequestUser, name: string, orderId:
   );
   if (row?.aiState === "owner_review") {
     if (user.role !== "admin") {
-      return { ok: true, title: "Approved", description: "AI portrait: it goes to the customer once an owner approves it." };
+      return { ok: true, title: "Approved", description: "AI portrait: it goes to the customer once an owner approves it.", delivery: "held" };
     }
     const released = await approveOwnerReview(orderId, user.id);
     revalidatePath("/approve");
     if (!released.ok) {
-      return { ok: false, code: released.code, message: `Approved, but the email is still held: ${released.message}` };
+      return { ok: false, code: released.code, message: `Approved, but the proof is still held: ${released.message}` };
     }
   }
   revalidatePath("/approve");
-  return { ok: true, title: "Sent to the customer", description: `${ctx.orderNumber}: proof emailed to ${ctx.customerName}.` };
+  const who = ctx.customerName && ctx.customerName !== "-" ? ctx.customerName : "the buyer";
+  if (sent.delivery === "etsy") {
+    return {
+      ok: true,
+      title: "Queued for Etsy",
+      description: `${ctx.orderNumber}: no email on file, so the proof goes to ${who} as an Etsy message.`,
+      delivery: "etsy",
+    };
+  }
+  return { ok: true, title: "Sent to the customer", description: `${ctx.orderNumber}: proof emailed to ${who}.`, delivery: "email" };
 }

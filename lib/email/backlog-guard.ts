@@ -84,6 +84,7 @@ export async function skipStaleBacklog(
       and(
         eq(messages.businessId, businessId),
         eq(messages.direction, "outbound"),
+        eq(messages.channel, "email"),
         inArray(messages.status, ["queued", "draft"]),
         isNotNull(messages.templateKey),
         isNull(messages.archivedAt),

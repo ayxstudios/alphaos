@@ -858,6 +858,7 @@ async function computeHealthMetrics(run: TxRunner, scope: HealthScope): Promise<
           all(
             scopedWhere(scope, messages.businessId),
             eq(messages.direction, "outbound"),
+            eq(messages.channel, "email"),
             isNull(messages.archivedAt),
             inArray(messages.status, ["queued", "failed"]),
           ),

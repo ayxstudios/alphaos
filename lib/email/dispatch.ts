@@ -337,7 +337,11 @@ export async function draftFreeformReply(
 }
 
 /** `busy`: another pass holds this send right now; nothing was attempted, so it is no failure. */
-export type SendResult = { ok: true } | { ok: false; error: string; retryable: boolean; busy?: boolean };
+/**
+ * `queued: "etsy"` = an Etsy-message delivery (buyer has no email on file) was
+ * released to the shop desk; nothing was emailed.
+ */
+export type SendResult = { ok: true; queued?: "etsy" } | { ok: false; error: string; retryable: boolean; busy?: boolean };
 
 const SEND_CAP_SUMMARY = "Automatic emails paused: hourly limit reached";
 
@@ -359,6 +363,7 @@ async function autoSendCapHit(businessId: string): Promise<string | null> {
         and(
           eq(messages.businessId, businessId),
           eq(messages.direction, "outbound"),
+          eq(messages.channel, "email"),
           eq(messages.status, "sent"),
           isNull(messages.approvedBy),
           sql`${messages.sentAt} > now() - interval '1 hour'`,
@@ -402,6 +407,7 @@ export async function sendMessage(
         id: messages.id,
         businessId: messages.businessId,
         status: messages.status,
+        channel: messages.channel,
         orderId: messages.orderId,
         subject: messages.subject,
         body: messages.body,
@@ -421,6 +427,27 @@ export async function sendMessage(
   // Never resend what already reached the customer (sent, or marked sent by hand).
   if (msg.status === "sent" || msg.manualSentAt) return { ok: true };
   if (msg.direction !== "outbound") return { ok: false, error: "Not an outbound message", retryable: false };
+  // Etsy-message delivery (an Etsy buyer with no email on file). AlphaOS never
+  // talks to Etsy: releasing the row only queues it. The shop desk sends it
+  // from the shop's own Etsy inbox and marks it sent. Gmail, the sending
+  // switch and the auto-send cap do not apply.
+  if (msg.channel === "etsy") {
+    if (msg.status !== "queued") {
+      await withSystemContext((tx) =>
+        tx
+          .update(messages)
+          .set({
+            status: "queued",
+            error: null,
+            sendClaimedAt: null,
+            ...(opts?.approvedById ? { approvedBy: opts.approvedById } : {}),
+          })
+          .where(and(eq(messages.id, messageId), ne(messages.status, "sent"))),
+      );
+    }
+    return { ok: true, queued: "etsy" };
+  }
+  if (msg.channel !== "email") return { ok: false, error: `Cannot send a ${msg.channel} message by email`, retryable: false };
   if (!msg.address) {
     await markFailed(messageId, "No recipient address");
     return { ok: false, error: "No recipient address", retryable: false };
@@ -633,8 +660,8 @@ export async function flushQueued(businessId?: string): Promise<{ sent: number; 
       .from(messages)
       .where(
         businessId
-          ? and(eq(messages.status, "queued"), eq(messages.businessId, businessId))
-          : eq(messages.status, "queued"),
+          ? and(eq(messages.status, "queued"), eq(messages.channel, "email"), eq(messages.businessId, businessId))
+          : and(eq(messages.status, "queued"), eq(messages.channel, "email")),
       )
       .limit(200),
   );

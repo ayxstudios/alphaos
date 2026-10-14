@@ -80,6 +80,7 @@ export async function getOutbox(
       .where(
         and(
           eq(messages.direction, "outbound"),
+          eq(messages.channel, "email"),
           inArray(messages.status, ["draft", "queued", "failed"]),
           isNull(messages.archivedAt),
           ...(bizFilter ? [bizFilter] : []),
@@ -135,6 +136,7 @@ export async function getOutboxCount(
         : undefined;
     const base = and(
       eq(messages.direction, "outbound"),
+      eq(messages.channel, "email"),
       eq(messages.status, "draft"),
       isNull(messages.archivedAt),
     );
@@ -162,6 +164,7 @@ export async function getQueuedEmailCount(
       .where(
         and(
           eq(messages.direction, "outbound"),
+          eq(messages.channel, "email"),
           eq(messages.status, "queued"),
           isNull(messages.archivedAt),
           ...(bizFilter ? [bizFilter] : []),

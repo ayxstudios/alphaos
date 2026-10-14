@@ -117,6 +117,13 @@ function firstName(full: string): string {
   return !f || f === "-" ? "the customer" : f;
 }
 
+/** The done line: only an emailed proof is "Sent". */
+function doneLine(r: PendingRow): string {
+  if (r.delivery === "etsy") return `Etsy message queued for ${firstName(r.customerName)}`;
+  if (r.delivery === "held") return "Approved, waits for an owner";
+  return `Sent to ${firstName(r.customerName)}`;
+}
+
 function Rows({ rows }: { rows: PendingRow[] }) {
   const router = useRouter();
   const toast = useToast();
@@ -149,7 +156,7 @@ function Rows({ rows }: { rows: PendingRow[] }) {
                 ) : r.status === "sending" ? (
                   <span className="font-semibold">Sending {r.orderNumber}...</span>
                 ) : r.status === "sent" ? (
-                  <span className="font-semibold text-sage">Sent to {firstName(r.customerName)}</span>
+                  <span className="font-semibold text-sage">{doneLine(r)}</span>
                 ) : (
                   <>
                     <span className="font-semibold">{r.orderNumber} not sent.</span>

@@ -5,7 +5,12 @@
 export const APPROVE_GRACE_MS = 8000;
 export const SENT_LINGER_MS = 2000;
 
-export type CommitResult = { ok: true; title: string; description?: string } | { ok: false; code: string; message: string };
+/** email = sent; etsy = queued as an Etsy message (no email on file); held = waits for an owner. */
+export type CommitDelivery = "email" | "etsy" | "held";
+
+export type CommitResult =
+  | { ok: true; title: string; description?: string; delivery?: CommitDelivery }
+  | { ok: false; code: string; message: string };
 
 export type PendingRow = {
   orderId: string;
@@ -16,6 +21,8 @@ export type PendingRow = {
   startedAt: number;
   endsAt: number;
   message: string | null;
+  /** Set once it went through: how the proof left. */
+  delivery?: CommitDelivery;
 };
 
 /** stale = already checked; claimed = someone else has it open (lib/qc/claims.ts). */
@@ -67,7 +74,7 @@ export function createApprovalStore(deps: StoreDeps) {
     const row = get(id);
     if (!row) return;
     if (res.ok) {
-      patch(id, { status: "sent", message: null });
+      patch(id, { status: "sent", message: null, delivery: res.delivery ?? "email" });
       timers.set(id, deps.schedule(() => remove(id), linger));
     } else if (res.code === "stale" || res.code === "claimed") {
       remove(id);

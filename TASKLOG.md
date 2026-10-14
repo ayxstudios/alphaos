@@ -121,3 +121,12 @@ Ask: "put the buttons on the very bottom for me to press? Not hovering in the mi
 - Send-back button reads "Send back" under sm (full label overflowed half a 390 px screen).
 - Staging QA (alphaos-staging-dock.vercel.app, admin, desktop 1440x900 + phone 390x844 touch): 41/41 (dock bottom = viewport bottom, column edges both sidebar widths, buttons unobstructed, scroll end clear, reject panel, Stop + toast above dock, dashboard reset). Script: ~/Documents/ai-employee-agent/var/subtasks/alphaos-dock/qa.mjs
 - [x] landed acbd9ae on origin/main (merged 329ac55 two-owners first, no conflicts); prod = CLI deploy dpl_EQWZMx162qDVNCG59P1Hx9bPmTy7 on alphaos-kappa (2026-10-14 17:06 AEDT)
+
+# Etsy proof fallback for buyers with no email (Yousif 2026-10-14, chat 64828303487194@lid)
+Ask: "For orders that don't have email in alphaOS you should still find a way to send it to them like through Etsy messages: 4197971695 not sent."
+- [x] Approve on an Etsy order with no email queues an etsy-channel proof message (address null, proof link in body, metadata delivery=etsy_message reason=no_email) in the same tx as the move to awaiting_approval; proofs.sent_at stays null until the desk confirms delivery
+- [x] Gmail outbox, flush, backlog guard, auto-send cap and daily report ignore etsy rows; AI owner hold keeps an etsy draft and the release queues it; non-Etsy no-email = clear ask; /approve row + order timeline say "Etsy message queued"
+- [x] test:etsy-proof-queue 39 ok (local bench only); full ci-local bench = the same 8 known failures (7 demo-db suites + security pre-send sign-off); next build green
+- [ ] land under integrate:alphaos, prod CLI deploy on alphaos-kappa (worktree .vercel/project.json = prj_o9jxHFw46R17KuV2V6DkmqaygF3V, scope team_hdxl43AlgWsesgr06UyM3Lnk, VERCEL_TOKEN_VISION)
+- [ ] agent: the shop desk sends queued etsy proofs as an Etsy message, then marks the row sent (messages.sent_at, proofs.sent_at, activity etsy.sent)
+- [ ] reply to Yousif (dot points)

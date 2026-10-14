@@ -471,7 +471,7 @@ export async function listOwnerReview(businessId: string): Promise<OwnerReviewIt
 
 async function findHeldDraft(tx: Tx, orderId: string) {
   const [m] = await tx
-    .select({ id: messages.id, subject: messages.subject, address: messages.address, proofId: messages.proofId })
+    .select({ id: messages.id, subject: messages.subject, address: messages.address, proofId: messages.proofId, channel: messages.channel })
     .from(messages)
     .where(
       and(
@@ -511,18 +511,29 @@ export async function approveOwnerReview(orderId: string, userId: string): Promi
 
   const sent = await sendMessage(prep.held.id, { approvedById: userId, markRetryableFailed: true });
   if (!sent.ok) return { ok: false, code: "email_failed", message: `The proof email did not send: ${sent.error}` };
+  // An Etsy-message proof (no email on file) is only queued here; the shop
+  // desk stamps proofs.sent_at when it has really gone out.
+  const etsy = prep.held.channel === "etsy";
 
   await withSystemContext(async (tx) => {
-    if (prep.held.proofId) await tx.update(proofs).set({ sentAt: new Date() }).where(eq(proofs.id, prep.held.proofId));
+    if (prep.held.proofId && !etsy) await tx.update(proofs).set({ sentAt: new Date() }).where(eq(proofs.id, prep.held.proofId));
     await tx.update(orders).set({ aiState: "with_buyer" }).where(eq(orders.id, orderId));
     await tx.insert(activityLog).values([
-      {
-        businessId: prep.businessId,
-        orderId,
-        actorId: userId,
-        action: "email.sent",
-        metadata: { messageId: prep.held.id, to: prep.held.address, via: "ai_owner_approval" },
-      },
+      etsy
+        ? {
+            businessId: prep.businessId,
+            orderId,
+            actorId: userId,
+            action: "etsy.queued",
+            metadata: { messageId: prep.held.id, reason: "no_email", via: "ai_owner_approval" },
+          }
+        : {
+            businessId: prep.businessId,
+            orderId,
+            actorId: userId,
+            action: "email.sent",
+            metadata: { messageId: prep.held.id, to: prep.held.address, via: "ai_owner_approval" },
+          },
       { businessId: prep.businessId, orderId, actorId: userId, action: "ai.owner_approved", metadata: { messageId: prep.held.id } },
     ]);
   });

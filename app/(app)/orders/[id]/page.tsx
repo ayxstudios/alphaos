@@ -389,6 +389,7 @@ export default async function OrderDetailPage({
             id: messages.id,
             direction: messages.direction,
             status: messages.status,
+            channel: messages.channel,
             subject: messages.subject,
             body: messages.body,
             address: messages.address,
@@ -563,6 +564,10 @@ export default async function OrderDetailPage({
 
   // Proof status, in plain English — sent, viewed, or a decision made.
   const latestProof = proofRows[0] ?? null;
+  // No email on an Etsy order: the proof waits for the shop desk's Etsy message.
+  const etsyProofQueued = timelineRows.some(
+    (m) => m.direction === "outbound" && m.channel === "etsy" && m.status === "queued",
+  );
   const proofStatusLine = !latestProof
     ? "No proof sent yet"
     : latestProof.decision === "approved"
@@ -573,7 +578,9 @@ export default async function OrderDetailPage({
           ? `Viewed, no answer yet (${formatAge(now.getTime() - latestProof.viewedAt.getTime())})`
           : latestProof.sentAt
             ? `Sent, not opened yet (${formatAge(now.getTime() - latestProof.sentAt.getTime())})`
-            : "Waiting to send";
+            : etsyProofQueued
+              ? "Waiting for Etsy message (no email on file)"
+              : "Waiting to send";
 
 
   const stageSteps = buildStageTimeline(detail.events);
@@ -916,11 +923,17 @@ export default async function OrderDetailPage({
                           {inbound ? (
                             <Badge variant="info" dot>Customer reply</Badge>
                           ) : m.status === "sent" ? (
-                            <Badge variant="neutral" dot>Sent</Badge>
+                            <Badge variant="neutral" dot>{m.channel === "etsy" ? "Sent on Etsy" : "Sent"}</Badge>
                           ) : m.status === "failed" ? (
                             <Badge variant="danger" dot>Not sent</Badge>
                           ) : (
-                            <Badge variant="warning" dot>{m.status === "queued" ? "Waiting to send" : "Draft, not sent"}</Badge>
+                            <Badge variant="warning" dot>
+                              {m.status === "queued"
+                                ? m.channel === "etsy"
+                                  ? "Waiting for Etsy message"
+                                  : "Waiting to send"
+                                : "Draft, not sent"}
+                            </Badge>
                           )}
                           <span className="text-xs text-slate">{fmtDateTime(when)}</span>
                         </div>
