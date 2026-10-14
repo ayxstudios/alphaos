@@ -14,9 +14,9 @@ approves, sends, fails or moves an order. It gives the order a badge
 5. Eye colour is accurate.
 6. Pet fur colour, markings and texture match the reference photo.
 7. Hair colour and hairstyle are accurate.
-8. Hands and fingers are anatomically correct (no missing or extra fingers).
+8. Hands and fingers are anatomically correct (no missing or extra fingers). Every arm ends in a hand (or the hand is hidden the way the photo shows), and two people holding hands show BOTH hands (Yousif 2026-10-14 after 4202169700, see Close look below).
 9. Ear shape matches the reference.
-10. Number of hands, people and pets is correct. Nothing added, removed or duplicated. Finger count correct.
+10. Number of hands, people and pets is correct. Nothing added, removed or duplicated. Finger count correct. Arms, legs and paws count too.
 11. (Revisions only) The revision was done correctly and fully, no missed touchups.
 12. Nothing makes it look obviously AI: no extra or missing limbs, fingers, legs, ears or eyes, fused or melted shapes, warped faces, garbled text, impossible anatomy or objects, odd glossy/plastic skin, mismatched details side to side.
 13. Resolution (Yousif 2026-10-14: "resolution should at least be 2400 X 3000 px with the ideal being 4800 px X 6000 px in either horizontal or vertical"). MEASURED, never asked of the model: the judge reads the pixel size of the file itself (the original upload, before any resize). Short side >= 2400 and long side >= 3000 = `pass`; under that = `fail` ("ask the designer for the full-size file"); the note says whether it also meets the 4800 x 6000 ideal. A square file needs 3000 x 3000. Code: `resolutionTier` in lib/qc/auto-qc.ts, mirrored in the judge. Applies to every portrait and to every AI fix image. The AI fix never repaints for it (listed under "not fixed").
@@ -87,6 +87,36 @@ Returns `{ ok: true, id }`.
 `~/Documents/ai-employee-agent/scripts/alphaos-auto-qc.mjs sweep|order <n>|--dry`, run by the
 alphaos-agent-tick (every 10 min, own lock, backgrounded). Vision judge = Claude CLI on the
 subscription, Fable first, then Opus, then Sonnet. Never touches order state.
+
+### Close look (Yousif 2026-10-14)
+
+"Make sure these sorts of things are checked in the AlphaOS autoQC moving forward" (4202169700: where the couple
+hold hands only her fist was drawn, on his empty cuff, and Auto QC passed checks 8 and 10 as "four hands, all small
+but plausible". The judge sees a 4800 x 6000 file at about a fifth of its size.)
+
+- Beside the main judge, a second judge per portrait (and per AI fix image) reads overlapping close-ups cut from the
+  ORIGINAL file: 3 x 3 when the long side is 3000 px or more, 2 x 2 from 1500 px. On a full-size file that is more
+  than twice the detail of the whole view.
+- It is briefed on body parts only: trace every arm to its hand, every handhold (two people holding hands = two
+  hands, two thumbs), finger counts, legs and feet, every pet's legs, paws, ears, eyes and tail, held objects, rings
+  and lettering only readable up close. A hand hidden the way the photo shows, a customer ask and simplification
+  that fits the style are not problems.
+- Every place two or more hands meet (a handhold, hands stacked to show a ring, two hands on a box) also gets a blind
+  count: a tight full-size crop goes to two judges who are asked only what is drawn there (each sleeve end, thumbs,
+  hands), never what should be. A sleeve with no hand of its own, or fewer hands than the photos show, from either
+  judge becomes a finding. On a re-run the inspector itself read Eleanor's one fist as two clasped hands; asked only
+  to count, the judges saw one fist.
+- Every finding gets a second opinion before it counts: a fresh judge, told how the inspector goes wrong (the back of
+  a jacket read as a sleeve, a hand given to the wrong arm where arms overlap, a far arm the photo hides too), first
+  says what the photos show at that spot in its own words, then checks a full-size crop around it, naming every hand
+  and the arm leading into it, and keeps only what it can see itself. If it cannot answer, the findings stand.
+  Two blind counts that both came up short are never overruled by that look at the portrait: only photos that show
+  no more hands than are drawn clear them (on Eleanor's order the second opinion read the single fist as a clasp again).
+  A count finding at a spot where the inspector's own hand finding was kept is dropped, so nothing is said twice.
+- Each problem fails check 2, 4, 8, 10 or 12 with a note starting "Close look:" and where it is ("about X% across,
+  Y% down"), and makes the verdict `issues`, so the AI fix lane picks it up like any other flag. It never turns a
+  fail into a pass; if it cannot answer, the main judge's notes still go out.
+- Test it alone, posting nothing: `alphaos-auto-qc.mjs order <n> --dry --close-only`.
 
 ## AI portraits: Auto QC before the owner (Yousif 2026-10-14)
 
