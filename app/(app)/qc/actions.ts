@@ -389,6 +389,8 @@ export async function submitQcFail(input: {
   failedKeys: number[];
   reason: string;
   signature: string;
+  /** Pictures from the fail dialog (qc_feedback assets of this order); verified in the transition. */
+  attachmentAssetIds?: string[];
 }): Promise<QcResult> {
   const auth = await requireVa();
   if ("error" in auth) return auth.error;
@@ -416,7 +418,12 @@ export async function submitQcFail(input: {
       orderId: input.orderId,
       to: "in_design",
       expectedFrom: input.expectedFrom,
-      metadata: { reason, itemResults, signature: input.signature },
+      metadata: {
+        reason,
+        itemResults,
+        signature: input.signature,
+        attachmentAssetIds: input.attachmentAssetIds ?? [],
+      },
     });
     revalidate(input.orderId);
     return { ok: true, status };

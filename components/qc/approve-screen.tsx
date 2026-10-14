@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
 import { ownerReject } from "@/app/(app)/approve/actions";
+import { QcPicturePicker, useQcPictures } from "@/components/qc/attachment-picker";
 import { approvalStore, approveHref, PendingApprovalsHost, PendingApprovalsInline, usePendingApprovals } from "@/components/qc/pending-approvals";
 import { AutoQcBadge, AutoQcNotes } from "@/components/qc/auto-qc";
 import { useToast } from "@/components/ui";
@@ -50,7 +51,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
     setRejecting(true);
   }, [ctx.orderId]);
   const [picked, setPicked] = useState<number[]>([]);
-  const [showBefore, setShowBefore] = useState(false);
+  const pictures = useQcPictures(ctx.orderId);  const [showBefore, setShowBefore] = useState(false);
   const [enlarged, setEnlarged] = useState<string | null>(null);
   const [broken, setBroken] = useState<string | null>(null);
 
@@ -137,9 +138,13 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
       setError("Write what needs fixing first.");
       return;
     }
+    if (pictures.busy || pictures.failedCount > 0) {
+      setError(pictures.busy ? "Wait for the pictures to finish uploading." : "Retry or remove the picture that did not upload.");
+      return;
+    }
     setBusy("reject");
     setError(null);
-    const res = await callAction(() => ownerReject({ orderId: ctx.orderId, note, failedKeys: picked }));
+    const res = await callAction(() => ownerReject({ orderId: ctx.orderId, note, failedKeys: picked, attachmentAssetIds: pictures.assetIds }));
     if (!res) return;
     if (!res.ok) {
       if (res.code === "stale") {
@@ -442,6 +447,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
                 );
               })}
             </div>
+            <QcPicturePicker state={pictures} disabled={locked} />
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
@@ -456,7 +462,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
               </button>
               <button
                 type="button"
-                disabled={locked}
+                disabled={locked || pictures.busy}
                 onClick={reject}
                 data-testid="send-back"
                 className={cn("h-12 rounded-input bg-rose text-base font-semibold text-surface disabled:opacity-60", focusRing)}

@@ -29,6 +29,7 @@ import { SENT_BACK_FROM } from "./board-constants";
 import { prepareProofForApproval, queueStageEmail } from "@/lib/email/dispatch";
 import { autoResolveOrderFigures } from "@/lib/orders/figure-auto";
 import { createEarningForCompletion } from "@/lib/orders/earnings";
+import { MAX_QC_ATTACHMENTS, type QcAttachment } from "@/lib/qc/attachments";
 import { sendQcFeedback } from "@/lib/notifications/designer-events";
 
 export type OrderStatus = (typeof orderStatus.enumValues)[number];
@@ -253,7 +254,10 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
   // per-item verdicts. This also produces the authoritative snapshot we persist.
   let qc: QcOutcome | null = null;
   if (key === "awaiting_qc->awaiting_approval") qc = await assertQc(tx, order, "pass", input.metadata, actor);
-  if (key === "awaiting_qc->in_design") qc = await assertQc(tx, order, "fail", input.metadata, actor);
+  if (key === "awaiting_qc->in_design") {
+    qc = await assertQc(tx, order, "fail", input.metadata, actor);
+    qc.attachments = await resolveFailAttachments(tx, orderId, input.metadata);
+  }
 
   // Conditional (compare-and-swap) update — belt to the FOR UPDATE braces.
   const updated = await tx
@@ -422,7 +426,48 @@ type QcOutcome = {
   reason: string | null;
   /** The name the reviewer typed at sign-off; recorded as-is for the backlog. */
   signature: string | null;
+  /** Pictures attached to a fail; verified against the order's own qc_feedback assets. */
+  attachments: QcAttachment[] | null;
 };
+
+/**
+ * The pictures a reviewer attached to a fail. The client only names asset ids;
+ * each must be an undeleted qc_feedback asset of THIS order (so a crafted id
+ * can never attach another order's file), in the order given, at most three.
+ */
+async function resolveFailAttachments(
+  tx: Tx,
+  orderId: string,
+  metadata: Record<string, unknown> | undefined,
+): Promise<QcAttachment[] | null> {
+  const raw = metadata?.attachmentAssetIds;
+  if (!Array.isArray(raw)) return null;
+  const ids = [...new Set(raw.filter((v): v is string => typeof v === "string" && v.length > 0))];
+  if (ids.length === 0) return null;
+  if (ids.length > MAX_QC_ATTACHMENTS) {
+    throw new PreconditionError(`Attach at most ${MAX_QC_ATTACHMENTS} pictures.`);
+  }
+  const rows = await tx
+    .select({ id: assets.id, r2Key: assets.r2Key })
+    .from(assets)
+    .where(
+      and(
+        inArray(assets.id, ids),
+        eq(assets.orderId, orderId),
+        eq(assets.type, "qc_feedback"),
+        eq(assets.storage, "r2"),
+        isNull(assets.deletedAt),
+      ),
+    );
+  const byId = new Map(rows.map((r) => [r.id, r.r2Key]));
+  if (ids.some((id) => !byId.get(id))) {
+    throw new PreconditionError("One of the pictures could not be found. Remove it and add it again.");
+  }
+  return ids.map((id) => {
+    const key = byId.get(id) as string;
+    return { assetId: id, key, filename: key.split("/").pop() ?? "picture" };
+  });
+}
 
 /**
  * The sign-off signature (owner 2026-09-09): a person passes or fails QC only
@@ -479,7 +524,7 @@ async function assertQc(
         "Tick every line before you pass.",
       );
     }
-    return { result, checklist, itemResults, reason: null, signature };
+    return { result, checklist, itemResults, reason: null, signature, attachments: null };
   }
 
   // Fail.
@@ -491,7 +536,7 @@ async function assertQc(
   if (!reason) {
     throw new PreconditionError("Write a note for the designer before you fail.");
   }
-  return { result, checklist, itemResults, reason, signature };
+  return { result, checklist, itemResults, reason, signature, attachments: null };
 }
 
 /**
@@ -527,6 +572,7 @@ async function insertQc(
     checklistSnapshot: qc.checklist,
     itemResults: qc.itemResults,
     signature: qc.signature,
+    attachments: qc.attachments,
   });
 }
 

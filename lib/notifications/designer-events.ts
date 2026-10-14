@@ -21,6 +21,7 @@ import { assignments, customerPublic, orderItems, orders, proofs, qcChecks } fro
 import { loadDesignerContact, type DesignerContact } from "@/lib/designers/profile";
 import { DEFAULT_TIMEZONE, formatInTimezone, isValidTimezone, quietWindowEnd } from "@/lib/designers/quiet-hours";
 import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
+import { LOGIN_FREE_LINK_SECONDS, resolveAttachmentViews } from "@/lib/qc/attachment-urls";
 import { appUrl } from "@/lib/urls";
 
 type OrderBrief = {
@@ -333,6 +334,7 @@ export async function sendQcFeedback(tx: Tx, input: { orderId: string; now?: Dat
       reason: qcChecks.reason,
       checklistSnapshot: qcChecks.checklistSnapshot,
       itemResults: qcChecks.itemResults,
+      attachments: qcChecks.attachments,
     })
     .from(qcChecks)
     .where(and(eq(qcChecks.orderId, input.orderId), eq(qcChecks.result, "fail")))
@@ -355,6 +357,9 @@ export async function sendQcFeedback(tx: Tx, input: { orderId: string; now?: Dat
     .limit(1);
   const pins = proof?.annotations ?? [];
   const links = orderLinks(brief.id);
+  // The board link needs a login, so each picture is its own signed link that
+  // opens straight in the phone (private bucket, valid 7 days).
+  const pictures = await resolveAttachmentViews(check.attachments, LOGIN_FREE_LINK_SECONDS);
 
   const [urgentRow] = await tx.select({ urgentAt: orders.urgentAt }).from(orders).where(eq(orders.id, input.orderId)).limit(1);
   const parts: string[] = [];
@@ -363,6 +368,7 @@ export async function sendQcFeedback(tx: Tx, input: { orderId: string; now?: Dat
   parts.push(`Order ${brief.number} did not pass QC.`);
   if (failed.length) parts.push(`Please fix: ${failed.join("; ")}.`);
   if (check.reason) parts.push(`Note from QC: ${check.reason}`);
+  pictures.forEach((p, i) => parts.push(`Picture ${i + 1}: ${p.url}`));
   if (pins.length) parts.push(`There ${pins.length === 1 ? "is 1 pin" : `are ${pins.length} pins`} on the image showing where.`);
   if (deadline?.normalLine) parts.push(deadline.normalLine);
   parts.push(`Upload the fixed version here: ${links.boardUrl}`);
@@ -382,6 +388,7 @@ export async function sendQcFeedback(tx: Tx, input: { orderId: string; now?: Dat
       dueAt: assignment.dueAt ? assignment.dueAt.toISOString() : null,
       reason: check.reason,
       annotations: pins,
+      pictures: pictures.map((p) => ({ filename: p.filename, url: p.url })),
       ...contactPayload(contact),
       // An urgent fix has a short clock: no quiet-hours hold.
       ...(urgentRow?.urgentAt ? {} : deliverAfterFor(now, contact)),

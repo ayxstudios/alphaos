@@ -77,6 +77,9 @@ export const assetType = pgEnum("asset_type", [
   "reference",
   "submission",
   "final",
+  // A picture a reviewer attached when failing QC (marked-up screenshot,
+  // reference). Never shown as a reference, version or final.
+  "qc_feedback",
 ]);
 export const assetStorage = pgEnum("asset_storage", ["cdn", "r2"]);
 // How an order_item's figure_count was determined (drives payout trust).
@@ -826,6 +829,8 @@ export const qcChecks = pgTable(
     reason: text("reason"),
     /** The reviewer's name as they typed it at sign-off (never prefilled). */
     signature: text("signature"),
+    /** Pictures the reviewer attached to a fail (qc_feedback assets of this order). */
+    attachments: jsonb("attachments").$type<{ assetId: string; key: string; filename: string }[]>(),
     createdAt: createdAt(),
   },
   (t) => [

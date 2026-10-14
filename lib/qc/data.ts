@@ -12,10 +12,13 @@ import {
   shops,
   users,
   activityLog,
+  qcChecks,
 } from "@/lib/db/schema";
 import { getOrderPortraits, type OrderPortrait } from "@/lib/orders/portraits";
 import type { OrderStatus } from "@/lib/orders/transitions";
 import { resolveChecklist, type ChecklistSnapshot } from "./checklist";
+import { resolveAttachmentViews } from "./attachment-urls";
+import type { QcAttachmentView } from "./attachments";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { currentMatchForProduct } from "@/lib/orders/style-learning";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
@@ -54,6 +57,14 @@ export type QcOrderSays = {
   notes: string | null;
 };
 
+/** An earlier failed QC on this order: what was wrong, and any pictures attached. */
+export type QcPastFail = {
+  id: string;
+  at: string; // ISO
+  reason: string | null;
+  pictures: QcAttachmentView[];
+};
+
 export type QcContext = {
   orderId: string;
   orderNumber: string;
@@ -76,6 +87,8 @@ export type QcContext = {
   /** The order's portrait slots; 2+ means versions are judged per portrait. */
   portraits: OrderPortrait[];
   checklist: ChecklistSnapshot;
+  /** Earlier failed QCs, newest first (only those with a reason or pictures). */
+  pastFails: QcPastFail[];
 };
 
 const SUBMISSION_TYPES = ["submission", "final"] as const;
@@ -240,6 +253,23 @@ export async function getQcContext(
       portrait: (v.orderItemId && portraitNo.get(v.orderItemId)) || null,
     })));
 
+    const failRows = await tx
+      .select({ id: qcChecks.id, reason: qcChecks.reason, attachments: qcChecks.attachments, createdAt: qcChecks.createdAt })
+      .from(qcChecks)
+      .where(and(eq(qcChecks.orderId, orderId), eq(qcChecks.result, "fail")))
+      .orderBy(desc(qcChecks.createdAt))
+      .limit(5);
+    const pastFails: QcPastFail[] = (
+      await Promise.all(
+        failRows.map(async (f) => ({
+          id: f.id,
+          at: f.createdAt.toISOString(),
+          reason: f.reason,
+          pictures: await resolveAttachmentViews(f.attachments),
+        })),
+      )
+    ).filter((f) => f.reason || f.pictures.length);
+
     return {
       orderId: order.id,
       orderNumber: order.platformOrderName ?? order.platformOrderId,
@@ -257,6 +287,7 @@ export async function getQcContext(
       references: resolvedReferences,
       versions,
       portraits,
+      pastFails,
       checklist: resolveChecklist({
         checklistVersion: shop?.checklistVersion ?? 1,
         integrationConfig: shop?.integrationConfig ?? null,
