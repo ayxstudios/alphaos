@@ -16,7 +16,7 @@ import {
   proofs,
   shops,
 } from "@/lib/db/schema";
-import { describeAssetAttachment } from "@/lib/email/attachments";
+import { describeProofAttachments, MAX_EMAIL_ATTACHMENT_BYTES, type ProofAttachment } from "@/lib/email/attachments";
 import { notifyVaEmailFailure, sendMessage } from "@/lib/email/dispatch";
 import {
   renderTemplate,
@@ -39,6 +39,7 @@ import { autoResolveOrderFigures } from "@/lib/orders/figure-auto";
 import { qcPassEmailInFlight } from "@/lib/qc/send-guard";
 import { aiQcRefusal } from "@/lib/qc/ai-qc-gate";
 import { holdForOwnerReview, ownerReviewRequired } from "@/lib/agent/ai-designer";
+import { loadProofFilePick, portraitList } from "@/lib/proofs/files";
 import { generateProofToken } from "@/lib/proofs/tokens";
 import { proofUrl } from "@/lib/urls";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
@@ -80,6 +81,16 @@ export type QcEmailPreviewResult =
           sizeBytes: number | null;
           fingerprint: string | null;
         };
+        /** Every file the email carries, in portrait order (one on a one-portrait order). */
+        attachments: {
+          assetId: string;
+          n: number;
+          label: string;
+          url: string | null;
+          filename: string;
+          contentType: string;
+          sizeBytes: number | null;
+        }[];
       };
     }
   | { ok: false; code: string; message: string };
@@ -156,10 +167,9 @@ export async function prepareQcEmailPreview(input: {
       business_name: ctx.business.name,
       proof_link: proofUrl(proof.token),
     });
-    const attachment = await describeAssetAttachment(tx, ctx.asset.id, ctx.order.orderNumber, ctx.business.name);
-    if (!attachment) {
-      return { ok: false as const, code: "attachment", message: "The portrait file could not be opened. Ask the designer to add it again." };
-    }
+    const set = await proofAttachments(tx, ctx);
+    if (!set.ok) return set;
+    const first = set.files[0];
     return {
       ok: true as const,
       preview: {
@@ -176,9 +186,24 @@ export async function prepareQcEmailPreview(input: {
         proofId: proof.id,
         proofLink: proofUrl(proof.token),
         attachment: {
-          ...attachment,
+          assetId: first.assetId,
+          filename: first.filename,
+          contentType: first.contentType,
+          sizeBytes: first.sizeBytes,
+          fingerprint: set.fingerprint,
           url: await resolvePreviewUrl(ctx.asset),
         },
+        attachments: await Promise.all(
+          set.files.map(async (f, i) => ({
+            assetId: f.assetId,
+            n: f.n,
+            label: f.label,
+            filename: f.filename,
+            contentType: f.contentType,
+            sizeBytes: f.sizeBytes,
+            url: await resolvePreviewUrl(ctx.assets[i]),
+          })),
+        ),
       },
     };
   });
@@ -246,8 +271,9 @@ export async function confirmQcPassAndSend(input: {
     if (proof.id !== input.proofId) {
       return { ok: false as const, code: "stale_proof", message: "The proof link changed. Refresh and preview again." };
     }
-    const attachment = await describeAssetAttachment(tx, ctx.asset.id, ctx.order.orderNumber, ctx.business.name);
-    if (!attachment) return { ok: false as const, code: "attachment", message: "The portrait file could not be opened. Ask the designer to add it again." };
+    const set = await proofAttachments(tx, ctx);
+    if (!set.ok) return set;
+    const attachment = { ...set.files[0], fingerprint: set.fingerprint };
     if (attachment.fingerprint && input.attachmentFingerprint && attachment.fingerprint !== input.attachmentFingerprint) {
       return {
         ok: false as const,
@@ -294,9 +320,28 @@ export async function confirmQcPassAndSend(input: {
             templateReason: input.templateReason,
           },
           ...(ctx.delivery === "etsy" ? { delivery: "etsy_message", reason: "no_email" } : {}),
+          // 2+ portraits: every file goes with the email (lib/email/dispatch).
+          ...(set.files.length > 1
+            ? {
+                proofFiles: set.files.map((f) => ({
+                  assetId: f.assetId,
+                  n: f.n,
+                  label: f.label,
+                  filename: f.filename,
+                  contentType: f.contentType,
+                  sizeBytes: f.sizeBytes,
+                })),
+              }
+            : {}),
         },
       })
       .returning({ id: messages.id });
+    // What this proof shows, in order: the proof page lists these files, and
+    // the next round's file pick keeps each portrait where the customer saw it.
+    await tx
+      .update(proofs)
+      .set({ files: ctx.files.map((f) => ({ assetId: f.assetId, label: f.label, n: f.n, slotKey: f.slotKey })) })
+      .where(eq(proofs.id, proof.id));
     // AI portraits wait for the owner (aiOwnerApproval): the pass is recorded
     // and the order moves on, but the proof email is held as a draft.
     const hold = await ownerReviewRequired(tx, ctx.order.id, ctx.order.businessId);
@@ -600,26 +645,37 @@ async function readQcEmailContext(tx: Tx, orderId: string) {
     itemRows.splice(0, itemRows.length, ...again);
   }
 
-  const [asset] = await tx
-    .select({
-      id: assets.id,
-      url: assets.url,
-      storage: assets.storage,
-      r2Key: assets.r2Key,
-      type: assets.type,
-      createdAt: assets.createdAt,
-    })
-    .from(assets)
-    .where(
-      and(
-        eq(assets.orderId, orderId),
-        inArray(assets.type, ["final", "submission"]),
-        isNull(assets.deletedAt),
-      ),
-    )
-    .orderBy(desc(assets.createdAt))
-    .limit(1);
-  if (!asset) return { ok: false as const, code: "attachment", message: "Upload a final portrait before sending." };
+  // The files the email carries: the newest upload, or one per portrait on a
+  // 2+ portrait order, which only goes out with every portrait (Yousif
+  // 2026-10-14, 4199589633: the dog was uploaded but only the cat showed).
+  const pick = await loadProofFilePick(tx, orderId);
+  if (pick.mode === "slots" && pick.missing.length) {
+    const gap = pick.missing.map((m) => m.n);
+    return {
+      ok: false as const,
+      code: "portraits_missing",
+      message: `${portraitList(gap)} of ${pick.expected} ${gap.length === 1 ? "has" : "have"} no file yet. Send it back to the designer.`,
+    };
+  }
+  const fileRows = pick.files.length
+    ? await tx
+        .select({
+          id: assets.id,
+          url: assets.url,
+          storage: assets.storage,
+          r2Key: assets.r2Key,
+          type: assets.type,
+          createdAt: assets.createdAt,
+        })
+        .from(assets)
+        .where(and(inArray(assets.id, pick.files.map((f) => f.assetId)), isNull(assets.deletedAt)))
+    : [];
+  const fileAssets = pick.files.map((f) => fileRows.find((r) => r.id === f.assetId));
+  if (!fileAssets.length || fileAssets.some((a) => !a)) {
+    return { ok: false as const, code: "attachment", message: "Upload a final portrait before sending." };
+  }
+  const orderedAssets = fileAssets as NonNullable<(typeof fileAssets)[number]>[];
+  const asset = orderedAssets[0];
 
   // Has the CUSTOMER already seen a proof and asked for changes? revisionCount
   // also counts QC fails, which the customer never saw, so it cannot pick the
@@ -655,11 +711,40 @@ async function readQcEmailContext(tx: Tx, orderId: string) {
     delivery,
     items: itemRows,
     asset,
+    /** Every file the email carries, in portrait order; asset is the first. */
+    files: pick.files,
+    assets: orderedAssets,
     customerHasSeenProof: !!customerRevision,
   };
 }
 
-function selectProofTemplate(ctx: Extract<Awaited<ReturnType<typeof readQcEmailContext>>, { ok: true }>): {
+type QcEmailContext = Extract<Awaited<ReturnType<typeof readQcEmailContext>>, { ok: true }>;
+
+/** Every file the proof email carries, or why it cannot go out. */
+async function proofAttachments(
+  tx: Tx,
+  ctx: QcEmailContext,
+): Promise<{ ok: true; files: ProofAttachment[]; fingerprint: string | null } | { ok: false; code: string; message: string }> {
+  const set = await describeProofAttachments(tx, ctx.files, ctx.order.orderNumber, ctx.business.name);
+  if (!set) {
+    return {
+      ok: false,
+      code: "attachment",
+      message: `${ctx.files.length > 1 ? "A portrait file" : "The portrait file"} could not be opened. Ask the designer to add it again.`,
+    };
+  }
+  if (ctx.delivery === "email" && set.files.length > 1 && set.totalBytes != null && set.totalBytes > MAX_EMAIL_ATTACHMENT_BYTES) {
+    const mb = (bytes: number) => (bytes / 1024 / 1024).toFixed(1);
+    return {
+      ok: false,
+      code: "too_big",
+      message: `The ${set.files.length} portraits are ${mb(set.totalBytes)} MB together, more than one email can carry (${mb(MAX_EMAIL_ATTACHMENT_BYTES)} MB). Ask the designer for smaller files (JPG), then send again.`,
+    };
+  }
+  return { ok: true, files: set.files, fingerprint: set.fingerprint };
+}
+
+function selectProofTemplate(ctx: QcEmailContext): {
   key: TemplateKey;
   reason: string;
 } {

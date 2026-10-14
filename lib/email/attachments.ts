@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { eq } from "drizzle-orm";
 
 import type { Tx } from "@/lib/db";
@@ -74,6 +76,47 @@ export async function describeAssetAttachment(
   }
 
   return null;
+}
+
+/**
+ * The most files one proof email may carry. Gmail's limit (36.7 MB) is for
+ * the encoded message, and base64 grows files by about a third.
+ */
+export const MAX_EMAIL_ATTACHMENT_BYTES = 24 * 1024 * 1024;
+
+export type ProofAttachment = EmailAttachmentDescriptor & { n: number; label: string };
+
+/**
+ * Every file a proof email carries, in portrait order. One file keeps today's
+ * name ("Shop-1234.jpg"); 2+ files are numbered by portrait
+ * ("Shop-1234-portrait-2.jpg") so the customer can tell them apart. Null when
+ * any file cannot be opened: an email never goes out short of a portrait. The
+ * fingerprint is the file's own for one file, else one over the whole set, so
+ * it changes when any file is added, swapped or re-uploaded.
+ */
+export async function describeProofAttachments(
+  tx: Tx,
+  files: { assetId: string; n: number; label: string }[],
+  orderNumber: string,
+  businessName?: string | null,
+): Promise<{ files: ProofAttachment[]; fingerprint: string | null; totalBytes: number | null } | null> {
+  if (!files.length) return null;
+  const described = await Promise.all(files.map((f) => describeAssetAttachment(tx, f.assetId, orderNumber, businessName)));
+  const out: ProofAttachment[] = [];
+  for (const [i, d] of described.entries()) {
+    if (!d) return null;
+    const { n, label } = files[i];
+    out.push({ ...d, n, label, filename: files.length > 1 ? d.filename.replace(/(\.[A-Za-z0-9]+)$/, `-portrait-${n}$1`) : d.filename });
+  }
+  const fingerprint =
+    out.length === 1
+      ? out[0].fingerprint
+      : createHash("sha256")
+          .update(out.map((d) => `${d.n}:${d.assetId}:${d.fingerprint ?? ""}`).join("|"))
+          .digest("hex")
+          .slice(0, 32);
+  const totalBytes = out.every((d) => d.sizeBytes != null) ? out.reduce((sum, d) => sum + (d.sizeBytes ?? 0), 0) : null;
+  return { files: out, fingerprint, totalBytes };
 }
 
 export async function loadAssetAttachment(

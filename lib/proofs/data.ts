@@ -1,7 +1,7 @@
 import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 
 import { withSystemContext, type Tx } from "@/lib/db";
-import { activityLog, assets, businesses, orders, proofs } from "@/lib/db/schema";
+import { activityLog, assets, businesses, orders, proofs, type ProofFileEntry } from "@/lib/db/schema";
 import { getOrderPortraits } from "@/lib/orders/portraits";
 import type { ProofDecision } from "./decide";
 
@@ -56,6 +56,7 @@ export async function getProofView(token: string): Promise<ProofView | null> {
     const [row] = await tx
       .select({
         orderId: proofs.orderId,
+        files: proofs.files,
         decision: proofs.decision,
         decidedAt: proofs.decidedAt,
         orderStatus: orders.status,
@@ -71,7 +72,10 @@ export async function getProofView(token: string): Promise<ProofView | null> {
     if (!row) return null;
 
     const preview = await resolvePreviewAsset(tx, row.orderId);
-    const portraits = await resolvePortraitPreviews(tx, row.orderId);
+    const pinned = pinnedFiles(row.files);
+    const portraits = pinned.length
+      ? await pinnedPortraitPreviews(tx, row.orderId, pinned)
+      : await resolvePortraitPreviews(tx, row.orderId);
     // Compare timestamps inside Postgres: converting to a JS Date loses
     // microseconds and can make a proof appear newer than itself.
     const createdAt = tx.select({ createdAt: proofs.createdAt }).from(proofs).where(eq(proofs.token, token));
@@ -157,12 +161,39 @@ export async function getProofImageSource(
 ): Promise<ProofImageSource | null> {
   return withSystemContext(async (tx) => {
     const [proof] = await tx
-      .select({ orderId: proofs.orderId, businessName: businesses.name, orderNumber: sql<string>`coalesce(${orders.platformOrderName}, ${orders.platformOrderId})` })
+      .select({
+        orderId: proofs.orderId,
+        files: proofs.files,
+        businessName: businesses.name,
+        orderNumber: sql<string>`coalesce(${orders.platformOrderName}, ${orders.platformOrderId})`,
+      })
       .from(proofs)
       .innerJoin(businesses, eq(businesses.id, proofs.businessId))
       .innerJoin(orders, eq(orders.id, proofs.orderId))
       .where(eq(proofs.token, token));
     if (!proof) return null;
+
+    const pinned = pinnedFiles(proof.files);
+    if (portraitN && pinned.length) {
+      // The exact file this proof was sent with for that portrait, and only
+      // ever a file of the token's own order.
+      const entry = pinned.find((f) => f.n === portraitN);
+      if (!entry) return null;
+      const [asset] = await tx
+        .select({ url: assets.url, r2Key: assets.r2Key })
+        .from(assets)
+        .where(
+          and(
+            eq(assets.id, entry.assetId),
+            eq(assets.orderId, proof.orderId),
+            inArray(assets.type, [...PREVIEW_TYPES]),
+            isNull(assets.deletedAt),
+          ),
+        )
+        .limit(1);
+      if (!asset || (!asset.url && !asset.r2Key)) return null;
+      return { url: asset.url, r2Key: asset.r2Key, businessName: proof.businessName, orderNumber: proof.orderNumber };
+    }
 
     let orderItemId: string | undefined;
     if (portraitN) {
@@ -205,6 +236,40 @@ async function resolvePreviewAsset(
   // Prefer a "final" if one exists; otherwise the newest submission.
   const final = readable.find((r) => r.type === "final");
   return final ?? readable[0];
+}
+
+type PinnedFile = { assetId: string; n: number; label: string };
+
+/**
+ * The files a proof was sent with, in portrait order, when it carried 2+
+ * portraits (proofs.files, pinned by the QC send). Such a proof shows exactly
+ * those files, each under the number the email used, never a newer upload
+ * nobody has checked yet. Empty = the page works it out from the order.
+ */
+function pinnedFiles(files: ProofFileEntry[] | null): PinnedFile[] {
+  if (!Array.isArray(files) || files.length < 2) return [];
+  // Shop option names can arrive with their own colon ("Number of Pets:: 1").
+  return files.map((f, i) => ({ assetId: f.assetId, n: f.n ?? i + 1, label: (f.label ?? "").replace(/:{2,}/g, ":") }));
+}
+
+/** One entry per pinned portrait; scoped to the token's order like every query here. */
+async function pinnedPortraitPreviews(tx: Tx, orderId: string, pinned: PinnedFile[]): Promise<ProofPortrait[]> {
+  const rows = await tx
+    .select({ id: assets.id, url: assets.url, r2Key: assets.r2Key })
+    .from(assets)
+    .where(
+      and(
+        eq(assets.orderId, orderId),
+        inArray(
+          assets.id,
+          pinned.map((f) => f.assetId),
+        ),
+        inArray(assets.type, [...PREVIEW_TYPES]),
+        isNull(assets.deletedAt),
+      ),
+    );
+  const readable = new Set(rows.filter((r) => r.url || r.r2Key).map((r) => r.id));
+  return pinned.map((f) => ({ n: f.n, label: f.label, hasPreview: readable.has(f.assetId) }));
 }
 
 /**

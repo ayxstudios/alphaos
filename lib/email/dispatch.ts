@@ -397,6 +397,36 @@ async function autoSendCapHit(businessId: string): Promise<string | null> {
  * connection is retryable (row left as-is); a hard send error marks the row
  * `failed`.
  */
+/**
+ * The files a message carries: every portrait of a 2+ portrait proof
+ * (metadata.proofFiles, written by the QC send), else its one attachment
+ * column, else none. Null when that portrait list cannot be read, so the send
+ * fails rather than reach the customer short of a portrait.
+ */
+function messageFiles(msg: {
+  metadata: unknown;
+  attachmentAssetId: string | null;
+  attachmentFilename: string | null;
+  attachmentContentType: string | null;
+}): { assetId: string; filename: string | null; contentType: string | null }[] | null {
+  const listed = (msg.metadata as { proofFiles?: unknown } | null)?.proofFiles;
+  if (Array.isArray(listed) && listed.length > 1) {
+    const files = listed.map((raw) => {
+      const f = (raw ?? {}) as { assetId?: unknown; filename?: unknown; contentType?: unknown };
+      if (typeof f.assetId !== "string") return null;
+      return {
+        assetId: f.assetId,
+        filename: typeof f.filename === "string" ? f.filename : null,
+        contentType: typeof f.contentType === "string" ? f.contentType : null,
+      };
+    });
+    return files.every((f) => f != null) ? files.flatMap((f) => (f ? [f] : [])) : null;
+  }
+  return msg.attachmentAssetId
+    ? [{ assetId: msg.attachmentAssetId, filename: msg.attachmentFilename, contentType: msg.attachmentContentType }]
+    : [];
+}
+
 export async function sendMessage(
   messageId: string,
   opts?: { approvedById?: string; markRetryableFailed?: boolean },
@@ -417,6 +447,7 @@ export async function sendMessage(
         attachmentAssetId: messages.attachmentAssetId,
         attachmentFilename: messages.attachmentFilename,
         attachmentContentType: messages.attachmentContentType,
+        metadata: messages.metadata,
         manualSentAt: messages.manualSentAt,
       })
       .from(messages)
@@ -555,22 +586,24 @@ export async function sendMessage(
 
   try {
     const threadId = msg.gmailThreadId ?? prior?.threadId ?? undefined;
-    const attachment = msg.attachmentAssetId
+    const files = messageFiles(msg);
+    const loaded = files?.length
       ? await withSystemContext((tx) =>
-          loadAssetAttachment(tx, msg.attachmentAssetId!, msg.attachmentFilename, msg.attachmentContentType),
+          Promise.all(files.map((f) => loadAssetAttachment(tx, f.assetId, f.filename, f.contentType))),
         )
-      : null;
-    if (msg.attachmentAssetId && !attachment) {
+      : [];
+    if (!files || loaded.some((a) => !a)) {
       await markFailed(messageId, "Attachment asset is missing or unreadable");
       return { ok: false, error: "Attachment asset is missing or unreadable", retryable: false };
     }
+    const attachments = loaded.flatMap((a) => (a ? [a] : []));
     const res = await client.send(
       {
         to: msg.address,
         subject: msg.subject ?? "",
         ...withSignature(msg.body ?? "", signature),
         inReplyToMessageId: prior?.rfcMessageId ?? undefined,
-        ...(attachment ? { attachments: [attachment] } : {}),
+        ...(attachments.length ? { attachments } : {}),
       },
       threadId ? { threadId } : undefined,
     );

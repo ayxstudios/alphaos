@@ -518,12 +518,42 @@ function EmailPreviewDialog({
             <div>
               <h2 id="qc-email-preview-title" className="font-display text-xl font-semibold text-ink">Check the email, then send</h2>
               <p className="mt-1 text-sm text-slate">
-                The customer gets this email with the portrait attached.
+                {preview.attachments.length > 1
+                  ? `The customer gets this email with all ${preview.attachments.length} portraits attached.`
+                  : "The customer gets this email with the portrait attached."}
               </p>
             </div>
             <Badge variant="info">Order {preview.orderNumber}</Badge>
           </div>
 
+          {preview.attachments.length > 1 ? (
+            <div className="mt-4 rounded-card border border-line bg-canvas p-3">
+              <p className="mb-2 text-sm font-medium text-ink">Attached portraits ({preview.attachments.length})</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {preview.attachments.map((file) => (
+                  <figure key={file.assetId} className="min-w-0">
+                    <figcaption className="mb-1 text-sm font-medium text-ink [overflow-wrap:anywhere]">
+                      Portrait {file.n}
+                      {file.label ? <span className="font-normal text-slate"> · {file.label}</span> : null}
+                    </figcaption>
+                    {file.url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={file.url}
+                        alt={`Portrait ${file.n}`}
+                        className="max-h-64 w-full rounded-input bg-surface object-contain xl:max-h-[24rem]"
+                      />
+                    ) : (
+                      <div className="flex h-40 items-center justify-center rounded-input bg-surface px-3 text-center text-sm text-slate">
+                        No preview here, but the file will still be attached.
+                      </div>
+                    )}
+                    <p className="mt-1 text-xs text-slate [overflow-wrap:anywhere]">{file.filename}</p>
+                  </figure>
+                ))}
+              </div>
+            </div>
+          ) : (
           <div className="mt-4 rounded-card border border-line bg-canvas p-3">
             <p className="mb-2 text-sm font-medium text-ink">Attached portrait</p>
             {preview.attachment.url ? (
@@ -542,6 +572,7 @@ function EmailPreviewDialog({
               {preview.attachment.filename}
             </p>
           </div>
+          )}
 
           <p className="mt-3 flex items-center gap-2 text-sm text-slate">
             <Check size={14} className="text-sage" />
