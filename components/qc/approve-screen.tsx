@@ -335,9 +335,10 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
                 </p>
               </div>
             ) : null}
-            {/* Files matched to portraits by upload order, or left out (lib/proofs/files.ts). */}
+            {/* Files matched to portraits by upload order, or left out (lib/proofs/files.ts); the
+                missing-file lines are left to the banner above, which already says them. */}
             {ctx.proofFiles.mode === "slots"
-              ? ctx.proofFiles.warnings.map((w) => (
+              ? ctx.proofFiles.warnings.filter((w) => !/no file yet\.$|^No artwork uploaded yet\.$/.test(w)).map((w) => (
                   <p key={w} className="text-sm text-amber" data-testid="portrait-warning">
                     {w}
                   </p>
