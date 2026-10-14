@@ -6,10 +6,11 @@
 // order with no deadline yet gets one 24 h out. An archived (pre-cutoff) order
 // is brought back to the live boards, since a buyer chasing it means it is live.
 // updated_at is left alone on purpose: it drives "waiting since" on the QC list.
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 import type { Tx } from "@/lib/db";
-import { activityLog, orders } from "@/lib/db/schema";
+import { activityLog, assignments, orders, qcChecks } from "@/lib/db/schema";
+import { businessSlaHours } from "@/lib/orders/assign";
 
 /** Who may mark or clear urgent from the app. Designers and helpers only see it. */
 export function canManageUrgent(role: string | null | undefined): boolean {
@@ -46,6 +47,36 @@ export type UrgentChange =
   | { ok: false; message: string };
 
 /**
+ * Yousif 2026-10-14: an urgent revision is due in a few hours. If the order is
+ * already back with its designer after a QC fail (in_design, newest QC check a
+ * fail), shorten the active assignment's due_at to at most now +
+ * urgentRevisionSlaHours. Never lengthens a deadline.
+ */
+async function tightenQcFailDeadline(
+  tx: Tx,
+  order: { id: string; status: string; businessId: string },
+  now: Date,
+): Promise<void> {
+  if (order.status !== "in_design") return;
+  const [last] = await tx
+    .select({ result: qcChecks.result })
+    .from(qcChecks)
+    .where(eq(qcChecks.orderId, order.id))
+    .orderBy(desc(qcChecks.createdAt))
+    .limit(1);
+  if (last?.result !== "fail") return;
+  const [a] = await tx
+    .select({ id: assignments.id, dueAt: assignments.dueAt })
+    .from(assignments)
+    .where(and(eq(assignments.orderId, order.id), eq(assignments.active, true)))
+    .limit(1);
+  if (!a) return;
+  const { urgentRevision } = await businessSlaHours(tx, order.businessId);
+  const cap = new Date(now.getTime() + urgentRevision * 3600 * 1000);
+  if (!a.dueAt || a.dueAt > cap) await tx.update(assignments).set({ dueAt: cap }).where(eq(assignments.id, a.id));
+}
+
+/**
  * Mark (urgent=true) or clear an order's urgent flag inside the caller's
  * transaction (withUserContext for a person, withSystemContext for the agent),
  * writing one activity_log row. `actorId` null = the agent/system.
@@ -57,6 +88,7 @@ export async function setOrderUrgent(
   const [order] = await tx
     .select({
       id: orders.id,
+      status: orders.status,
       businessId: orders.businessId,
       dueAt: orders.dueAt,
       urgentAt: orders.urgentAt,
@@ -82,6 +114,7 @@ export async function setOrderUrgent(
         ...(order.archivedAt ? { archivedAt: null, archiveReason: null } : {}),
       })
       .where(eq(orders.id, order.id));
+    await tightenQcFailDeadline(tx, order, now);
     await tx.insert(activityLog).values({
       businessId: order.businessId,
       orderId: order.id,

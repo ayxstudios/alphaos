@@ -10,6 +10,16 @@ export type AgentConfigInput = {
   designerSlaHours?: number;
   /** Hours a designer gets for a revision (QC fail or customer change). Default 24. */
   revisionSlaHours?: number;
+  /**
+   * Hours a designer gets to fix a QC fail (Yousif 2026-10-14). Default 12,
+   * allowed 1-72. A customer revision keeps revisionSlaHours.
+   */
+  qcFailSlaHours?: number;
+  /**
+   * Cap in hours for a revision (QC fail or customer change) on an URGENT
+   * order. Default 3, allowed 1-24. The designer is messaged the exact time.
+   */
+  urgentRevisionSlaHours?: number;
   /** Minimum classifier confidence for the agent to act on a reply by itself. */
   replyConfidenceThreshold?: number;
   /** Hours after the latest proof before the agent drafts a proof reminder. */

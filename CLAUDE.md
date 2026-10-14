@@ -104,6 +104,14 @@ No component may introduce a colour outside these:
 - `assignments.due_at` — the assigned designer's deadline for their attempt.
   Reassignment inserts a new assignment row with a fresh `due_at` while
   `orders.due_at` stays put.
+- Designer clocks are per business in `businesses.agent_config`:
+  `designerSlaHours` (new order, default 24, PixArt 48), `revisionSlaHours`
+  (customer revision, default 24), `qcFailSlaHours` (failed QC, default 12,
+  1-72) and `urgentRevisionSlaHours` (cap for any revision on an urgent order,
+  default 3, 1-24). `resetRevisionDeadline(tx, orderId, businessId, kind)`
+  picks the hours; marking an order urgent after a QC fail tightens the active
+  assignment too. The QC-fail WhatsApp states the exact due time in the
+  designer's timezone (urgent: an URGENT first line, no quiet-hours hold).
 
 ## Integration rules
 

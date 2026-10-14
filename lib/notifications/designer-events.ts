@@ -19,7 +19,7 @@ import type { Tx } from "@/lib/db";
 import { sendAlphaEvent } from "@/lib/alpha/client";
 import { assignments, customerPublic, orderItems, orders, proofs, qcChecks } from "@/lib/db/schema";
 import { loadDesignerContact, type DesignerContact } from "@/lib/designers/profile";
-import { formatInTimezone, quietWindowEnd } from "@/lib/designers/quiet-hours";
+import { DEFAULT_TIMEZONE, formatInTimezone, isValidTimezone, quietWindowEnd } from "@/lib/designers/quiet-hours";
 import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
 import { appUrl } from "@/lib/urls";
 
@@ -279,6 +279,41 @@ export function failedChecklistLabels(snapshot: unknown, results: unknown): stri
   return items.filter((it) => res[it.key] === false).map((it) => it.label);
 }
 
+function clockInTimezone(at: Date, tz: string | null | undefined, withDay: boolean): string {
+  const zone = isValidTimezone(tz) ? tz : DEFAULT_TIMEZONE;
+  return new Intl.DateTimeFormat("en-AU", {
+    timeZone: zone,
+    ...(withDay ? { weekday: "short" as const } : {}),
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  })
+    .format(at)
+    .replace(",", "");
+}
+
+/**
+ * The exact deadline sentence for a QC-fail message, in the designer's own
+ * timezone, from the real assignment due_at (never a hard-coded number of
+ * hours). Urgent orders get an URGENT first line instead of the plain sentence.
+ */
+export function qcFeedbackDeadline(
+  dueAt: Date | null,
+  now: Date,
+  tz: string | null | undefined,
+  urgent: boolean,
+): { urgentLine: string | null; normalLine: string | null } | null {
+  if (!dueAt) return null;
+  const hours = Math.max(1, Math.round((dueAt.getTime() - now.getTime()) / 3600000));
+  if (urgent) {
+    return {
+      urgentLine: `URGENT: the customer is waiting. Please upload the fix within ${hours} hour${hours === 1 ? "" : "s"}, by ${clockInTimezone(dueAt, tz, false)} your time.`,
+      normalLine: null,
+    };
+  }
+  return { urgentLine: null, normalLine: `Please upload the fix by ${clockInTimezone(dueAt, tz, true)} your time (${hours} h).` };
+}
+
 /**
  * QC failed: tell the assigned designer exactly what to fix. Reads the newest
  * failed qc_checks row (the server-authoritative record) plus any annotation
@@ -321,10 +356,15 @@ export async function sendQcFeedback(tx: Tx, input: { orderId: string; now?: Dat
   const pins = proof?.annotations ?? [];
   const links = orderLinks(brief.id);
 
-  const parts: string[] = [`Order ${brief.number} did not pass QC.`];
+  const [urgentRow] = await tx.select({ urgentAt: orders.urgentAt }).from(orders).where(eq(orders.id, input.orderId)).limit(1);
+  const parts: string[] = [];
+  const deadline = qcFeedbackDeadline(assignment.dueAt, now, contact?.timezone, !!urgentRow?.urgentAt);
+  if (deadline?.urgentLine) parts.push(deadline.urgentLine);
+  parts.push(`Order ${brief.number} did not pass QC.`);
   if (failed.length) parts.push(`Please fix: ${failed.join("; ")}.`);
   if (check.reason) parts.push(`Note from QC: ${check.reason}`);
   if (pins.length) parts.push(`There ${pins.length === 1 ? "is 1 pin" : `are ${pins.length} pins`} on the image showing where.`);
+  if (deadline?.normalLine) parts.push(deadline.normalLine);
   parts.push(`Upload the fixed version here: ${links.boardUrl}`);
 
   return sendAlphaEvent(tx, {
@@ -338,10 +378,13 @@ export async function sendQcFeedback(tx: Tx, input: { orderId: string; now?: Dat
       links,
       orderNumber: brief.number,
       failedItems: failed,
+      urgent: !!urgentRow?.urgentAt,
+      dueAt: assignment.dueAt ? assignment.dueAt.toISOString() : null,
       reason: check.reason,
       annotations: pins,
       ...contactPayload(contact),
-      ...deliverAfterFor(now, contact),
+      // An urgent fix has a short clock: no quiet-hours hold.
+      ...(urgentRow?.urgentAt ? {} : deliverAfterFor(now, contact)),
     },
   });
 }
