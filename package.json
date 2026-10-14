@@ -58,7 +58,8 @@
     "test:agent-config": "tsx scripts/test-agent-config.ts",
     "test:email-dedupe": "tsx scripts/test-email-dedupe.ts",
     "test:email-noise": "tsx scripts/test-email-noise.ts",
-    "test:designer-deadlines": "tsx scripts/test-designer-deadlines.ts"
+    "test:designer-deadlines": "tsx scripts/test-designer-deadlines.ts",
+    "test:approve-queue": "tsx scripts/test-approve-queue.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1102.0",

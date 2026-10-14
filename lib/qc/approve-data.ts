@@ -29,9 +29,13 @@ export type ApproveItem = {
   autoQc: AutoQcView | null;
 };
 
-export async function getApproveQueue(user: RequestUser): Promise<string[]> {
-  // One queue across every business the owner can see.
-  return getQcQueueIds(user, "all");
+export async function getApproveQueue(user: RequestUser, skip: string[] = []): Promise<string[]> {
+  // One queue across every business the owner can see. `skip` = approvals still
+  // in their Stop window: still awaiting_qc on the server, so kept out here.
+  const ids = await getQcQueueIds(user, "all");
+  if (!skip.length) return ids;
+  const hide = new Set(skip);
+  return ids.filter((id) => !hide.has(id));
 }
 
 export async function getApproveItem(user: RequestUser, orderId: string): Promise<ApproveItem | null> {

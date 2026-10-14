@@ -6,7 +6,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
-import { ownerApprove, ownerReject } from "@/app/(app)/approve/actions";
+import { ownerReject } from "@/app/(app)/approve/actions";
+import { approvalStore, approveHref, PendingApprovalsHost, PendingApprovalsInline, usePendingApprovals } from "@/components/qc/pending-approvals";
 import { AutoQcBadge, AutoQcNotes } from "@/components/qc/auto-qc";
 import { useToast } from "@/components/ui";
 import { ArrowRight, Check, X } from "@/components/ui/icons";
@@ -33,8 +34,9 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
   const { ctx } = item;
   const router = useRouter();
   const toast = useToast();
+  usePendingApprovals(); // re-render when the skip list changes (Skip link)
   const [pending, startTransition] = useTransition();
-  const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
+  const [busy, setBusy] = useState<"reject" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [note, setNote] = useState("");
@@ -87,7 +89,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
 
   function goNext() {
     startTransition(() => {
-      router.replace(nextId ? `/approve?o=${nextId}` : "/approve");
+      router.replace(approveHref(nextId));
       router.refresh();
     });
   }
@@ -122,21 +124,11 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
     }
   }
 
-  async function approve() {
-    setBusy("approve");
+  // Yousif 2026-10-14: no "Sending..." wait. The approval is queued with a short
+  // Stop window (components/qc/pending-approvals.tsx) and the screen moves on.
+  function approve() {
     setError(null);
-    const res = await callAction(() => ownerApprove(ctx.orderId));
-    if (!res) return;
-    if (!res.ok) {
-      if (res.code === "stale") {
-        toast({ variant: "warning", title: "Already checked", description: res.message });
-        goNext();
-        return;
-      }
-      setError(res.message);
-      return;
-    }
-    toast({ variant: "success", title: res.title, description: res.description });
+    approvalStore.enqueue({ orderId: ctx.orderId, orderNumber: ctx.orderNumber, customerName: ctx.customerName });
     goNext();
   }
 
@@ -167,6 +159,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4" data-testid="approve-screen" data-kind={item.isRevision ? "revision" : "new"}>
+      <PendingApprovalsHost />
       {/* Where am I in the pile */}
       <div className="flex items-center justify-between gap-3">
         <h1 className="font-display text-xl font-semibold text-ink">Approve</h1>
@@ -176,7 +169,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
           </span>
           {nextId ? (
             <Link
-              href={`/approve?o=${nextId}`}
+              href={approveHref(nextId)}
               className={cn("ml-1 inline-flex min-h-11 items-center gap-1 rounded-input px-2 font-medium text-pigment hover:bg-pigment-soft sm:min-h-0 sm:py-1", focusRing)}
             >
               Skip <ArrowRight size={14} />
@@ -409,6 +402,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
 
       {/* The two buttons, always in reach */}
       <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 flex flex-col gap-3 rounded-card bg-surface p-3 shadow-lg lg:bottom-4">
+        <PendingApprovalsInline />
         {error ? (
           <p role="alert" className="rounded-input bg-rose/10 px-3 py-2 text-sm text-rose">
             {error}
@@ -492,7 +486,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
               data-testid="approve"
               className={cn("inline-flex h-14 items-center justify-center gap-2 rounded-input bg-sage text-lg font-semibold text-surface disabled:opacity-60", focusRing)}
             >
-              <Check size={20} /> {busy === "approve" ? "Sending..." : "Approve"}
+              <Check size={20} /> Approve
             </button>
           </div>
         )}
