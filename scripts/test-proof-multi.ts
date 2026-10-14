@@ -16,19 +16,23 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 
 import { withSystemContext, type RequestUser } from "../lib/db";
 import { ownerReject } from "../app/(app)/approve/actions";
-import { assets, assignments, businesses, customers, exceptions, messages, orderItems, orders, proofs, qcChecks, shops, users } from "../lib/db/schema";
+import { assets, assignments, autoQcChecks, businesses, customers, exceptions, messages, orderItems, orders, proofs, qcChecks, shops, users } from "../lib/db/schema";
 import { installMockTransport } from "../lib/mock/transport";
 import { getDesignerBoard } from "../lib/orders/board-data";
 import { getCardDetail } from "../lib/orders/card-detail";
 import { getProofImageSource, getProofView } from "../lib/proofs/data";
 import { getQcContext } from "../lib/qc/data";
 import { ownerApproveCore } from "../lib/qc/owner-approve";
+import { listAutoQcJobs } from "../lib/qc/auto-qc-jobs";
+import { PreconditionError, runTransition } from "../lib/orders/transitions";
+import { MAX_PROOF_EMAILS, splitProofEmails } from "../lib/email/attachments";
 
 const MARK = "pmulti-";
 const PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 /** What a "-big" file reports on HEAD: two of them are more than one email may carry. */
 const BIG = 13 * 1024 * 1024;
+const HUGE = 25 * 1024 * 1024;
 
 let failed = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -75,7 +79,7 @@ async function main() {
     const url = input instanceof Request ? input.url : String(input);
     if (url.startsWith("https://example.test/")) {
       const head = (init?.method ?? (input instanceof Request ? input.method : "GET")) === "HEAD";
-      const length = head && url.includes("-big") ? BIG : png.length;
+      const length = head && url.includes("-huge") ? HUGE : head && url.includes("-big") ? BIG : png.length;
       return Promise.resolve(
         new Response(head ? null : png, { headers: { "content-type": "image/png", "content-length": String(length) } }),
       );
@@ -176,6 +180,7 @@ async function main() {
         .select({
           channel: messages.channel,
           status: messages.status,
+          subject: messages.subject,
           proofId: messages.proofId,
           metadata: messages.metadata,
           error: messages.error,
@@ -204,6 +209,14 @@ async function main() {
 
     // 2. The 4199589633 shape: both files on the line, no unit, one upload time.
     const b = await newOrder("both", { email: true, quantity: 2, files: [{ name: "dog", unit: "line" }, { name: "cat", unit: "line" }] });
+    // A pre-slot Auto QC looked only at the cat even though both files were
+    // already uploaded. Time alone must not make that check current.
+    await q((tx) => tx.insert(autoQcChecks).values({
+      businessId, orderId: b.id, assetIds: [b.files[1].id], verdict: "pass",
+      portraits: [], createdAt: new Date(),
+    }));
+    const recheck = (await listAutoQcJobs({ limit: 1000 })).find((job) => job.orderId === b.id);
+    check("an old cat-only check requeues both existing portraits", !!recheck && recheck.assetIds.length === 2);
     const sends1 = sent.length;
     const rb = await ownerApproveCore(vaUser, va.name, b.id);
     check("with both portraits it sends", rb.ok && rb.delivery === "email", rb.ok ? `${rb.title}` : rb.message);
@@ -254,12 +267,57 @@ async function main() {
     const p2after = pb ? await getProofImageSource(pb.token, 2) : null;
     check("a newer unchecked upload does not change the sent proof", !!p2after && p2after.url === url(listed[1]), `${p2after?.url}`);
 
-    // 3. Too big for one email: refused before anything goes out.
+    // 3. Too big for one email (13 + 13 MB): two emails, one portrait each,
+    // "(1 of 2)" and "(2 of 2)", the plural wording, the order moves on once.
     const c = await newOrder("big", { email: true, quantity: 2, files: [{ name: "dog-big", unit: 1 }, { name: "cat-big", unit: 2 }] });
     const sends2 = sent.length;
     const rc = await ownerApproveCore(vaUser, va.name, c.id);
-    check("a set too big for one email is refused", !rc.ok && /more than one email can carry/.test(rc.message), rc.ok ? "sent!" : rc.message);
-    check("nothing went out and it stays in QC", sent.length === sends2 && (await outbound(c.id)).length === 0 && (await statusOf(c.id)) === "awaiting_qc");
+    check("a set too big for one email is sent as two", rc.ok && rc.delivery === "email" && /in 2 emails/.test(rc.description ?? ""), rc.ok ? rc.description : rc.message);
+    const cm = (await outbound(c.id)).reverse();
+    check(
+      "two sent emails, (1 of 2) then (2 of 2)",
+      cm.length === 2 && cm.every((m) => m.status === "sent") && / \(1 of 2\)$/.test(cm[0].subject ?? "") && / \(2 of 2\)$/.test(cm[1].subject ?? ""),
+      cm.map((m) => `${m.status} ${m.subject}`).join(" | "),
+    );
+    check("the plural wording on both", cm.every((m) => /proofs are ready/.test(m.subject ?? "")), cm.map((m) => m.subject).join(" | "));
+    const cNames = sent.slice(sends2).map(attachedNames);
+    check(
+      "each portrait attached exactly once, in order",
+      sent.length === sends2 + 2 && cNames.length === 2 && cNames[0].length === 1 && cNames[1].length === 1 && /-portrait-1\./.test(cNames[0][0]) && /-portrait-2\./.test(cNames[1][0]),
+      JSON.stringify(cNames),
+    );
+    const cMeta = cm.map((m) => (m.metadata ?? {}) as { qcPass?: unknown; proofEmail?: { n: number; of: number } });
+    check("only the first email carries the QC pass", !!cMeta[0]?.qcPass && !cMeta[1]?.qcPass && cMeta[1]?.proofEmail?.n === 2 && cMeta[1]?.proofEmail?.of === 2);
+    check("one proof, pinned to both portraits", cm[0]?.proofId === cm[1]?.proofId && ((cm[0]?.proofId ? await proofOf(cm[0].proofId) : undefined)?.files?.length ?? 0) === 2);
+    check("the order moved on", (await statusOf(c.id)) === "awaiting_approval");
+
+    // 3b. One file over the cap can never go by email: refused, nothing sent.
+    const h = await newOrder("over", { email: true, quantity: 2, files: [{ name: "dog", unit: 1 }, { name: "cat-huge", unit: 2 }] });
+    const sendsH = sent.length;
+    const rh = await ownerApproveCore(vaUser, va.name, h.id);
+    check("a single file over the cap is refused", !rh.ok && /Portrait 2 is .* MB, more than one email can carry/.test(rh.message), rh.ok ? "sent!" : rh.message);
+    check("nothing went out and it stays in QC", sent.length === sendsH && (await outbound(h.id)).length === 0 && (await statusOf(h.id)) === "awaiting_qc");
+
+    // 3c. More than MAX_PROOF_EMAILS emails' worth: refused, nothing sent.
+    const many = await newOrder("many", {
+      email: true,
+      quantity: 5,
+      files: [1, 2, 3, 4, 5].map((n) => ({ name: `p${n}-big`, unit: n })),
+    });
+    const sendsM = sent.length;
+    const rm = await ownerApproveCore(vaUser, va.name, many.id);
+    check("a set needing 5 emails is refused", !rm.ok && /more than 4 emails can carry/.test(rm.message), rm.ok ? "sent!" : rm.message);
+    check("nothing went out for it", sent.length === sendsM && (await outbound(many.id)).length === 0);
+
+    // 3d. The split itself: consecutive groups in portrait order, each under the cap.
+    const mb = (n: number | null, i: number) => ({ i, sizeBytes: n == null ? null : n * 1024 * 1024 });
+    const groups = (sizes: (number | null)[]) => splitProofEmails(sizes.map(mb))?.map((g) => g.map((f) => f.i).join("+")).join(" | ") ?? "refused";
+    check("fits in one: one email", groups([10, 10]) === "0+1");
+    check("10+10+10 MB: two emails, in order", groups([10, 10, 10]) === "0+1 | 2", groups([10, 10, 10]));
+    check("an unknown size keeps one email", groups([20, null, 20]) === "0+1+2");
+    check("one portrait is never split", groups([30]) === "0");
+    check("one file over the cap: refused", groups([5, 25]) === "refused");
+    check(`more than ${MAX_PROOF_EMAILS} emails: refused`, groups([20, 20, 20, 20, 20]) === "refused" && groups([20, 20, 20, 20]) === "0 | 1 | 2 | 3");
 
     // 4. No email on file: the Etsy desk sends the proof link, so size is no limit.
     const d = await newOrder("etsy", { email: false, quantity: 2, files: [{ name: "dog-big", unit: 1 }, { name: "cat-big", unit: 2 }] });
@@ -284,6 +342,34 @@ async function main() {
     const pe = em?.proofId ? await proofOf(em.proofId) : undefined;
     const eview = pe ? await getProofView(pe.token) : null;
     check("its proof page is the one-image page", !!eview && eview.portraits.length === 0 && eview.hasPreview);
+
+    // 5b. Sent short, then re-checked (4198299787: the buyer got 1 of 2 before
+    // portraits counted). Back to QC through hold, Approve again: the same
+    // proof link goes with both portraits and the proof-ready wording, not
+    // the "revised portrait" one (the buyer never asked for changes).
+    await q(async (tx) => {
+      await tx.update(orderItems).set({ quantity: 2 }).where(eq(orderItems.orderId, e.id));
+      await tx.update(assets).set({ orderItemId: e.itemId, portraitUnit: 1 }).where(eq(assets.orderId, e.id));
+      await tx.insert(assets).values({
+        businessId, orderId: e.id, type: "submission", storage: "cdn",
+        url: `https://example.test/${e.number}-second.png`, orderItemId: e.itemId, portraitUnit: 2,
+        createdAt: new Date(Date.now() - 30_000),
+      });
+    });
+    await q((tx) => runTransition(tx, vaUser, { orderId: e.id, expectedFrom: "awaiting_approval", to: "on_hold", metadata: { reason: "proof sent short" } }));
+    await q((tx) => runTransition(tx, vaUser, { orderId: e.id, expectedFrom: "on_hold", to: "awaiting_qc", metadata: { reason: "proof sent short" } }));
+    // The live orders were sent hours earlier; outside the 10 minute double-send guard.
+    await q((tx) => tx.update(messages).set({ createdAt: new Date(Date.now() - 11 * 60_000) }).where(eq(messages.orderId, e.id)));
+    const sends5 = sent.length;
+    const re2 = await ownerApproveCore(vaUser, va.name, e.id);
+    const em2 = (await outbound(e.id))[0];
+    check("the re-check sends", re2.ok && re2.delivery === "email" && em2?.status === "sent" && sent.length === sends5 + 1, re2.ok ? `${em2?.status}` : re2.message);
+    check("same proof link as the first email", !!em2 && em2.proofId === em?.proofId);
+    check("proof-ready plural wording, not the revision one", /proofs are ready/.test(em2?.subject ?? ""), em2?.subject ?? "");
+    const both = attachedNames(sent[sent.length - 1] ?? "");
+    check("both portraits attached this time", both.length === 2 && /-portrait-1\./.test(both[0]) && /-portrait-2\./.test(both[1]), both.join(", "));
+    const pe2 = em2?.proofId ? await proofOf(em2.proofId) : undefined;
+    check("the proof page now shows both", pe2?.files?.length === 2);
 
     // 6. The gap order (1) on the owner's and the designer's screens: QC flags
     // portrait 2, the one-tap send back is marked under Count, and the card and
@@ -341,6 +427,15 @@ async function main() {
       card.images.filter((i) => i.type === "submission").every((i) => i.portrait === 1),
       card.images.map((i) => `${i.type}:${i.portrait}`).join(" "),
     );
+    let refusedMissing = false;
+    try {
+      await q((tx) => runTransition(tx, vaUser, {
+        orderId: a.id, expectedFrom: "in_design", to: "awaiting_qc",
+      }));
+    } catch (error) {
+      refusedMissing = error instanceof PreconditionError && /Portrait 2/.test(error.message);
+    }
+    check("the transition refuses two dog versions with the cat missing", refusedMissing && (await statusOf(a.id)) === "in_design");
     const early = await boardCard();
     check("the board does not offer Submit for QC yet", !!early && !early.readyForQc, `${early?.status} ${early?.readyForQc}`);
     await upload("cat", 2);

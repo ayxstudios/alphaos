@@ -16,7 +16,13 @@ import {
   proofs,
   shops,
 } from "@/lib/db/schema";
-import { describeProofAttachments, MAX_EMAIL_ATTACHMENT_BYTES, type ProofAttachment } from "@/lib/email/attachments";
+import {
+  describeProofAttachments,
+  MAX_EMAIL_ATTACHMENT_BYTES,
+  MAX_PROOF_EMAILS,
+  splitProofEmails,
+  type ProofAttachment,
+} from "@/lib/email/attachments";
 import { notifyVaEmailFailure, sendMessage } from "@/lib/email/dispatch";
 import {
   renderTemplate,
@@ -54,7 +60,15 @@ export type ProofDelivery = "email" | "etsy";
 const ETSY_DELIVERY_TO = "Etsy message to the buyer (no email on file)";
 
 export type QcResult =
-  | { ok: true; status: OrderStatus; delivery?: ProofDelivery }
+  | {
+      ok: true;
+      status: OrderStatus;
+      delivery?: ProofDelivery;
+      /** A 2+ portrait proof too big for one email went as this many. */
+      emails?: number;
+      /** How many of those did not go out yet (the outbox retries them). */
+      unsent?: number;
+    }
   | { ok: false; code: string; message: string };
 
 export type QcEmailPreviewResult =
@@ -81,6 +95,8 @@ export type QcEmailPreviewResult =
           sizeBytes: number | null;
           fingerprint: string | null;
         };
+        /** How many emails the proof goes as (2+ when the files are too big for one). */
+        emails: number;
         /** Every file the email carries, in portrait order (one on a one-portrait order). */
         attachments: {
           assetId: string;
@@ -185,6 +201,7 @@ export async function prepareQcEmailPreview(input: {
         templateReason: selection.reason,
         proofId: proof.id,
         proofLink: proofUrl(proof.token),
+        emails: set.parts.length,
         attachment: {
           assetId: first.assetId,
           filename: first.filename,
@@ -288,6 +305,20 @@ export async function confirmQcPassAndSend(input: {
         message: "This email was just sent. Refresh to see where the order is now.",
       };
     }
+    // AI portraits wait for the owner (aiOwnerApproval): the pass is recorded
+    // and the order moves on, but the proof email is held as a draft. A held
+    // proof is that one draft, so it is never split over several emails.
+    const hold = await ownerReviewRequired(tx, ctx.order.id, ctx.order.businessId);
+    if (hold && set.parts.length > 1) {
+      return {
+        ok: false as const,
+        code: "too_big",
+        message: "These portraits are too big for one email. Ask the designer for smaller files (JPG), then send again.",
+      };
+    }
+    const [first, ...rest] = set.parts;
+    const subject = input.subject.trim();
+    const body = input.body.trim();
 
     const [message] = await tx
       .insert(messages)
@@ -302,8 +333,8 @@ export async function confirmQcPassAndSend(input: {
         status: "draft",
         templateKey: input.templateKey,
         proofId: proof.id,
-        subject: input.subject.trim(),
-        body: input.body.trim(),
+        subject: partSubject(subject, 1, set.parts.length),
+        body,
         address: ctx.delivery === "email" ? ctx.customer.email : null,
         attachmentAssetId: attachment.assetId,
         attachmentFilename: attachment.filename,
@@ -320,19 +351,10 @@ export async function confirmQcPassAndSend(input: {
             templateReason: input.templateReason,
           },
           ...(ctx.delivery === "etsy" ? { delivery: "etsy_message", reason: "no_email" } : {}),
-          // 2+ portraits: every file goes with the email (lib/email/dispatch).
-          ...(set.files.length > 1
-            ? {
-                proofFiles: set.files.map((f) => ({
-                  assetId: f.assetId,
-                  n: f.n,
-                  label: f.label,
-                  filename: f.filename,
-                  contentType: f.contentType,
-                  sizeBytes: f.sizeBytes,
-                })),
-              }
-            : {}),
+          // 2+ portraits: every file goes with the email (lib/email/dispatch);
+          // a set too big for one email lists this first email's files only.
+          ...proofFilesMeta(first),
+          ...(set.parts.length > 1 ? { proofEmail: { n: 1, of: set.parts.length } } : {}),
         },
       })
       .returning({ id: messages.id });
@@ -342,18 +364,22 @@ export async function confirmQcPassAndSend(input: {
       .update(proofs)
       .set({ files: ctx.files.map((f) => ({ assetId: f.assetId, label: f.label, n: f.n, slotKey: f.slotKey })) })
       .where(eq(proofs.id, proof.id));
-    // AI portraits wait for the owner (aiOwnerApproval): the pass is recorded
-    // and the order moves on, but the proof email is held as a draft.
-    const hold = await ownerReviewRequired(tx, ctx.order.id, ctx.order.businessId);
     return {
       ok: true as const,
       hold,
       messageId: message.id,
       businessId: ctx.order.businessId,
       orderId: ctx.order.id,
+      customerId: ctx.order.customerId,
       proofId: proof.id,
       to: ctx.delivery === "email" ? ctx.customer.email : ETSY_DELIVERY_TO,
+      address: ctx.delivery === "email" ? ctx.customer.email : null,
       delivery: ctx.delivery,
+      subject,
+      body,
+      emails: set.parts.length,
+      /** The other emails of a proof too big for one, queued once the first is out. */
+      rest: rest.map((files, i) => ({ n: i + 2, files })),
     };
   });
 
@@ -394,6 +420,11 @@ export async function confirmQcPassAndSend(input: {
       message: "The proof email did not go out, so the order stays in QC. Try Pass again in a minute. If it keeps failing, tell an admin.",
     };
   }
+
+  // The first email is out: queue the rest of a split proof before the order
+  // moves on, so they are owed whatever happens next (the outbox sends any
+  // queued email this action does not get to).
+  const restIds = prepared.rest.length ? await queueRestOfProof(user, prepared, input.templateKey) : [];
 
   try {
     // An Etsy proof is queued in the same transaction as the move: the order
@@ -446,11 +477,18 @@ export async function confirmQcPassAndSend(input: {
         orderId: prepared.orderId,
         actorId: user.id,
         action: "email.sent",
-        metadata: { messageId: prepared.messageId, templateKey: input.templateKey, to: prepared.to, via: "qc_pass" },
+        metadata: {
+          messageId: prepared.messageId,
+          templateKey: input.templateKey,
+          to: prepared.to,
+          via: "qc_pass",
+          ...(prepared.emails > 1 ? { emails: prepared.emails, restMessageIds: restIds } : {}),
+        },
       });
     });
+    const unsent = (prepared.emails - 1 - restIds.length) + (await sendRestOfProof(user, prepared, restIds));
     revalidate(input.orderId);
-    return { ok: true, status, delivery: "email" };
+    return { ok: true, status, delivery: "email", ...(prepared.emails > 1 ? { emails: prepared.emails, unsent } : {}) };
   } catch (err) {
     const message = err instanceof OrderTransitionError ? err.message : String(err);
     if (prepared.delivery === "etsy") {
@@ -482,6 +520,95 @@ export async function confirmQcPassAndSend(input: {
       });
     });
     return { ok: false, code: "transition_failed_after_send", message: `The email went out, but the order did not move on. Tell an admin. (${message})` };
+  }
+}
+
+/** What emails 2..N of a proof too big for one email need (from the first one). */
+type RestOfProof = {
+  businessId: string;
+  orderId: string;
+  customerId: (typeof messages.$inferInsert)["customerId"];
+  proofId: string;
+  messageId: string;
+  address: string | null;
+  subject: string;
+  body: string;
+  emails: number;
+  rest: { n: number; files: ProofAttachment[] }[];
+};
+
+/**
+ * Queue emails 2..N of a proof too big for one (4200343312: nine portraits):
+ * the same words, "(2 of 3)" on the subject, each with its own files. The
+ * first email is already with the customer, so this never throws: a failure
+ * is reported to the team and the order still moves on.
+ */
+async function queueRestOfProof(user: RequestUser, proof: RestOfProof, templateKey: TemplateKey): Promise<string[]> {
+  try {
+    return await withUserContext(user, async (tx) => {
+      const ids: string[] = [];
+      for (const part of proof.rest) {
+        const [row] = await tx
+          .insert(messages)
+          .values({
+            businessId: proof.businessId,
+            orderId: proof.orderId,
+            customerId: proof.customerId,
+            direction: "outbound",
+            channel: "email",
+            status: "queued",
+            approvedBy: user.id,
+            templateKey,
+            proofId: proof.proofId,
+            subject: partSubject(proof.subject, part.n, proof.emails),
+            body: proof.body,
+            address: proof.address,
+            attachmentAssetId: part.files[0].assetId,
+            attachmentFilename: part.files[0].filename,
+            attachmentContentType: part.files[0].contentType,
+            attachmentSizeBytes: part.files[0].sizeBytes,
+            metadata: {
+              proofEmail: { n: part.n, of: proof.emails, firstMessageId: proof.messageId },
+              ...proofFilesMeta(part.files),
+            },
+          })
+          .returning({ id: messages.id });
+        ids.push(row.id);
+      }
+      return ids;
+    });
+  } catch (err) {
+    await reportRestUnsent(user, proof, proof.messageId, `The rest of the portraits (${proof.rest.length} more email${proof.rest.length === 1 ? "" : "s"}) could not be set up: ${err instanceof Error ? err.message : String(err)}`);
+    return [];
+  }
+}
+
+/** Send the queued rest of a split proof now. Returns how many did not go; the outbox retries those. */
+async function sendRestOfProof(user: RequestUser, proof: RestOfProof, ids: string[]): Promise<number> {
+  let unsent = 0;
+  for (const id of ids) {
+    const res = await sendMessage(id, { approvedById: user.id, markRetryableFailed: true });
+    if (res.ok || res.busy) continue; // busy: the outbox is sending it right now
+    unsent += 1;
+    await reportRestUnsent(user, proof, id, res.error);
+  }
+  return unsent;
+}
+
+async function reportRestUnsent(user: RequestUser, proof: RestOfProof, messageId: string, error: string): Promise<void> {
+  try {
+    await withUserContext(user, async (tx) => {
+      await notifyVaEmailFailure(tx, { businessId: proof.businessId, orderId: proof.orderId, messageId, error });
+      await tx.insert(activityLog).values({
+        businessId: proof.businessId,
+        orderId: proof.orderId,
+        actorId: user.id,
+        action: "email.send_failed",
+        metadata: { messageId, error, to: proof.address, proofEmailOf: proof.messageId },
+      });
+    });
+  } catch (err) {
+    console.error("proof email report failed", proof.orderId, err);
   }
 }
 
@@ -679,12 +806,15 @@ async function readQcEmailContext(tx: Tx, orderId: string) {
 
   // Has the CUSTOMER already seen a proof and asked for changes? revisionCount
   // also counts QC fails, which the customer never saw, so it cannot pick the
-  // "revised portrait" wording on its own. A proof already sent, or a
-  // customer-side move back to design (older orders), means this is a revision.
+  // "revised portrait" wording on its own. A sent proof the customer answered,
+  // or a customer-side move back to design (older orders), means this is a
+  // revision. A sent proof still waiting on her is not: that is the same proof
+  // going again (4198299787: sent with one of its two portraits, re-checked
+  // and sent with both), and it keeps the proof-ready wording.
   const [sentProof] = await tx
     .select({ id: proofs.id })
     .from(proofs)
-    .where(and(eq(proofs.orderId, orderId), isNotNull(proofs.sentAt)))
+    .where(and(eq(proofs.orderId, orderId), isNotNull(proofs.sentAt), isNotNull(proofs.decision)))
     .limit(1);
   const [customerRevision] = sentProof
     ? [sentProof]
@@ -720,11 +850,18 @@ async function readQcEmailContext(tx: Tx, orderId: string) {
 
 type QcEmailContext = Extract<Awaited<ReturnType<typeof readQcEmailContext>>, { ok: true }>;
 
-/** Every file the proof email carries, or why it cannot go out. */
+/**
+ * Every file the proof email carries, or why it cannot go out. `parts` is how
+ * the files go: one email, or (2+ portraits too big for one) consecutive
+ * emails that each fit. An Etsy delivery sends only the link, so one part.
+ */
 async function proofAttachments(
   tx: Tx,
   ctx: QcEmailContext,
-): Promise<{ ok: true; files: ProofAttachment[]; fingerprint: string | null } | { ok: false; code: string; message: string }> {
+): Promise<
+  | { ok: true; files: ProofAttachment[]; parts: ProofAttachment[][]; fingerprint: string | null }
+  | { ok: false; code: string; message: string }
+> {
   const set = await describeProofAttachments(tx, ctx.files, ctx.order.orderNumber, ctx.business.name);
   if (!set) {
     return {
@@ -733,15 +870,40 @@ async function proofAttachments(
       message: `${ctx.files.length > 1 ? "A portrait file" : "The portrait file"} could not be opened. Ask the designer to add it again.`,
     };
   }
-  if (ctx.delivery === "email" && set.files.length > 1 && set.totalBytes != null && set.totalBytes > MAX_EMAIL_ATTACHMENT_BYTES) {
+  const parts = ctx.delivery === "email" ? splitProofEmails(set.files) : [set.files];
+  if (!parts) {
     const mb = (bytes: number) => (bytes / 1024 / 1024).toFixed(1);
+    const huge = set.files.find((f) => (f.sizeBytes ?? 0) > MAX_EMAIL_ATTACHMENT_BYTES);
     return {
       ok: false,
       code: "too_big",
-      message: `The ${set.files.length} portraits are ${mb(set.totalBytes)} MB together, more than one email can carry (${mb(MAX_EMAIL_ATTACHMENT_BYTES)} MB). Ask the designer for smaller files (JPG), then send again.`,
+      message: huge
+        ? `Portrait ${huge.n} is ${mb(huge.sizeBytes ?? 0)} MB, more than one email can carry (${mb(MAX_EMAIL_ATTACHMENT_BYTES)} MB). Ask the designer for a smaller file (JPG), then send again.`
+        : `The ${set.files.length} portraits are ${mb(set.totalBytes ?? 0)} MB together, more than ${MAX_PROOF_EMAILS} emails can carry. Ask the designer for smaller files (JPG), then send again.`,
     };
   }
-  return { ok: true, files: set.files, fingerprint: set.fingerprint };
+  return { ok: true, files: set.files, parts, fingerprint: set.fingerprint };
+}
+
+/** "(2 of 3)" on each email of a proof split over several. */
+function partSubject(subject: string, n: number, of: number): string {
+  return of > 1 ? `${subject} (${n} of ${of})` : subject;
+}
+
+/** The message metadata that lists a 2+ file email's attachments (lib/email/dispatch). */
+function proofFilesMeta(files: ProofAttachment[]) {
+  return files.length > 1
+    ? {
+        proofFiles: files.map((f) => ({
+          assetId: f.assetId,
+          n: f.n,
+          label: f.label,
+          filename: f.filename,
+          contentType: f.contentType,
+          sizeBytes: f.sizeBytes,
+        })),
+      }
+    : {};
 }
 
 function selectProofTemplate(ctx: QcEmailContext): {
@@ -752,6 +914,14 @@ function selectProofTemplate(ctx: QcEmailContext): {
     return { key: "revision_received", reason: "The customer already saw a proof and asked for changes, so the revision-ready template is used." };
   }
   const physical = ctx.items.some((item) => item.productType === "physical");
+  // 2+ separate portraits: the plural wording ("the high-resolution images are
+  // attached"), whatever the figure count (4200343312: nine one-person portraits).
+  if (ctx.files.length > 1) {
+    return {
+      key: physical ? "proof_ready_physical_multi" : "proof_ready_digital_multi",
+      reason: `${physical ? "Physical" : "Digital"} order with ${ctx.files.length} separate portraits, every one attached.`,
+    };
+  }
   const figures = ctx.items.reduce((sum, item) => sum + (item.figureCount ?? 0), 0);
   if (physical && figures === 1) return { key: "proof_ready_physical_single", reason: "Physical order with one figure." };
   const unknown = ctx.items.some((item) => item.figureCount == null);

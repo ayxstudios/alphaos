@@ -81,6 +81,10 @@ assert.deepEqual(
   ],
 );
 
+// Subject count is not portrait count: two pets together is one file.
+slots = buildPortraitSlots([item("pair", "Two Pets Watercolor", 1, "Number Of Pets: 2")], null);
+assert.equal(slots.length, 1, "two pets in one purchased portrait is one slot");
+
 // Two lines of quantity 1 (order 4201015378): the item ids stay the keys, so
 // every upload tagged before quantities counted still lands on its portrait.
 slots = buildPortraitSlots([item("a", "Dog", 1), item("b", "Cat", 1)], null);

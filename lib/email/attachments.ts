@@ -84,7 +84,39 @@ export async function describeAssetAttachment(
  */
 export const MAX_EMAIL_ATTACHMENT_BYTES = 24 * 1024 * 1024;
 
+/** The most emails one proof is split into (4200343312: nine portraits, about 40 MB). */
+export const MAX_PROOF_EMAILS = 4;
+
 export type ProofAttachment = EmailAttachmentDescriptor & { n: number; label: string };
+
+/**
+ * A 2+ portrait proof too big for one email, as consecutive groups in portrait
+ * order that each fit under the cap. One group when it fits, or when a size is
+ * unknown (today's behaviour). Null when a single file is over the cap or the
+ * set needs more than MAX_PROOF_EMAILS emails: then it cannot go by email.
+ */
+export function splitProofEmails<T extends { sizeBytes: number | null }>(
+  files: T[],
+  max: number = MAX_EMAIL_ATTACHMENT_BYTES,
+): T[][] | null {
+  if (files.length < 2 || files.some((f) => f.sizeBytes == null)) return [files];
+  const parts: T[][] = [];
+  let part: T[] = [];
+  let bytes = 0;
+  for (const f of files) {
+    const size = f.sizeBytes ?? 0;
+    if (size > max) return null;
+    if (part.length && bytes + size > max) {
+      parts.push(part);
+      part = [];
+      bytes = 0;
+    }
+    part.push(f);
+    bytes += size;
+  }
+  if (part.length) parts.push(part);
+  return parts.length > MAX_PROOF_EMAILS ? null : parts;
+}
 
 /**
  * Every file a proof email carries, in portrait order. One file keeps today's

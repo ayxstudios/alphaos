@@ -112,10 +112,15 @@ export async function ownerApproveCore(
       delivery: "etsy",
     };
   }
+  // A 2+ portrait proof too big for one email goes as several (lib/email/attachments).
+  const split =
+    sent.emails && sent.emails > 1
+      ? ` in ${sent.emails} emails (too big for one)${sent.unsent ? `; ${sent.unsent} of them did not go yet and is retried by itself` : ""}`
+      : "";
   return {
     ok: true,
     title: "Sent to the customer",
-    description: `${ctx.orderNumber}: ${applied.length ? "the AI fix was" : "proof"} emailed to ${who}.`,
+    description: `${ctx.orderNumber}: ${applied.length ? "the AI fix was" : "proof"} emailed to ${who}${split}.`,
     delivery: "email",
   };
 }

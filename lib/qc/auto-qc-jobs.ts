@@ -4,10 +4,10 @@
  * the agent (no signed-in user), so it reads through the system context and
  * writes with actor_id null. Never changes an order's state.
  */
-import { and, eq, inArray, isNull, max } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, max } from "drizzle-orm";
 
 import { SYSTEM_ACTOR_ID, withSystemContext, type RequestUser } from "@/lib/db";
-import { assets, autoQcChecks, businesses, orders } from "@/lib/db/schema";
+import { assets, autoQcChecks, businesses, orderItems, orders } from "@/lib/db/schema";
 import { getApproveItem, getApproveQueue } from "./approve-data";
 import type { ProofFilePick } from "@/lib/proofs/files";
 import { insertAutoQc, latestSlots, sameIds, slotAssetIds, type AutoQcBody } from "./auto-qc";
@@ -61,28 +61,50 @@ export async function listAutoQcJobs(opts: { limit: number; orderNumber?: string
   } else {
     const queue = await getApproveQueue(SYSTEM);
     if (queue.length === 0) return [];
+    const latest = new Map<string, { at: Date; assetIds: unknown }>();
+    const multi: string[] = [];
     const done = await withSystemContext(async (tx) => {
       const lastUpload = await tx
         .select({ orderId: assets.orderId, at: max(assets.createdAt) })
         .from(assets)
         .where(and(inArray(assets.orderId, queue), inArray(assets.type, ["submission", "final"]), isNull(assets.deletedAt)))
         .groupBy(assets.orderId);
-      const lastCheck = await tx
-        .select({ orderId: autoQcChecks.orderId, at: max(autoQcChecks.createdAt) })
+      const checks = await tx
+        .select({ orderId: autoQcChecks.orderId, at: autoQcChecks.createdAt, assetIds: autoQcChecks.assetIds })
         .from(autoQcChecks)
         .where(inArray(autoQcChecks.orderId, queue))
-        .groupBy(autoQcChecks.orderId);
-      const checked = new Map(lastCheck.map((r) => [r.orderId, r.at]));
+        .orderBy(desc(autoQcChecks.createdAt));
+      for (const c of checks) if (!latest.has(c.orderId)) latest.set(c.orderId, c);
       const set = new Set<string>();
       for (const u of lastUpload) {
-        const c = checked.get(u.orderId);
-        if (c && u.at && c >= u.at) set.add(u.orderId);
+        const c = latest.get(u.orderId);
+        if (c && u.at && c.at >= u.at) set.add(u.orderId);
       }
+      // A 2+ portrait order can look judged by time alone while its last check
+      // saw only some of its files (4199589633: dog and cat uploaded together,
+      // a check from before portraits counted judged only the cat). Those are
+      // compared file by file below.
+      const timed = [...set];
+      const lines = timed.length
+        ? await tx
+            .select({ orderId: orderItems.orderId, quantity: orderItems.quantity })
+            .from(orderItems)
+            .where(inArray(orderItems.orderId, timed))
+        : [];
+      const count = new Map<string, number>();
+      for (const l of lines) count.set(l.orderId, (count.get(l.orderId) ?? 0) + Math.max(1, l.quantity ?? 1));
+      for (const id of timed) if ((count.get(id) ?? 0) > 1) multi.push(id);
       // No artwork at all: nothing to judge yet.
       const withArt = new Set(lastUpload.map((u) => u.orderId));
       for (const id of queue) if (!withArt.has(id)) set.add(id);
       return set;
     });
+    for (const id of multi) {
+      const item = await getApproveItem(SYSTEM, id);
+      if (!item) continue;
+      const current = slotAssetIds(latestSlots(item.ctx.versions, item.ctx.portraits, item.ctx.proofFiles));
+      if (!sameIds(latest.get(id)?.assetIds, current)) done.delete(id);
+    }
     ids = queue.filter((id) => !done.has(id));
   }
 
