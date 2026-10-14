@@ -49,9 +49,16 @@ import { proofUrl } from "@/lib/urls";
 import { draftAnswerToQuestion } from "./answer";
 import { getAgentConfig } from "./config";
 import { openExceptionTx, type ExceptionKind } from "./exceptions";
+import { mailRecommendation, screenNewMailTx } from "./junk-mail";
 
 /** Activity actions that mark an inbound message as handled by the agent. */
-export const HANDLED_ACTIONS = ["agent.reply_applied", "agent.reply_escalated", "agent.reply_answer_drafted"] as const;
+// agent.mail_cleared: junk the no-limbo screen cleared before it became a card (./junk-mail.ts).
+export const HANDLED_ACTIONS = [
+  "agent.reply_applied",
+  "agent.reply_escalated",
+  "agent.reply_answer_drafted",
+  "agent.mail_cleared",
+] as const;
 /** At most this many agent reminders per proof; after that the day-5 alert takes over. */
 const MAX_REMINDERS_PER_PROOF = 2;
 /** No second proof reminder inside this window, whoever drafted the first. */
@@ -75,6 +82,8 @@ export type InboxReport = {
   repliesEscalated: number;
   unmatchedChecked: number;
   unmatchedEscalated: number;
+  /** Unmatched mail cleared as spam or a sales pitch (sender ignored), never a card. */
+  mailCleared: number;
   remindersChecked: number;
   remindersDrafted: number;
   exceptionsOpened: number;
@@ -99,6 +108,7 @@ export function emptyInboxReport(): InboxReport {
     repliesEscalated: 0,
     unmatchedChecked: 0,
     unmatchedEscalated: 0,
+    mailCleared: 0,
     remindersChecked: 0,
     remindersDrafted: 0,
     exceptionsOpened: 0,
@@ -601,6 +611,21 @@ async function unmatchedStep(ctx: Ctx, businessId: string, since: Date, outOfTim
           return;
         }
       }
+      // No limbo, L2 (./junk-mail.ts): spam, phishing and sales pitches are
+      // cleared here and their sender ignored; everything else becomes a card
+      // with a recommendation for the owner.
+      const excerpt = excerptOf(stripQuotedReplyText(r.body) || r.body);
+      const screen = await screenNewMailTx(
+        tx,
+        { businessId, messageId: r.messageId, from: r.fromAddress ?? null, subject: r.subject, excerpt, hasCandidates: candidates.length > 0 },
+        ctx.now,
+      );
+      if (screen.cleared) {
+        bump((rep) => {
+          rep.mailCleared += 1;
+        });
+        return;
+      }
       const ref = { businessId, orderId: null };
       const from = r.fromAddress ?? "unknown sender";
       const opened = await openExceptionTx(tx, {
@@ -611,8 +636,11 @@ async function unmatchedStep(ctx: Ctx, businessId: string, since: Date, outOfTim
           messageId: r.messageId,
           from,
           subject: r.subject,
-          excerpt: excerptOf(stripQuotedReplyText(r.body) || r.body),
+          excerpt,
           candidates,
+          recommendation: mailRecommendation(screen.verdict, candidates),
+          verdict: screen.verdict.verdict,
+          verdictReason: screen.verdict.reason,
         },
       });
       await logAgent(tx, ref, "agent.exception_opened", { exceptionId: opened.id, kind: "unmatched_reply" });

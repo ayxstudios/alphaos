@@ -19,6 +19,7 @@ import "./load-env";
 import { S3Client, GetBucketCorsCommand, PutBucketCorsCommand } from "@aws-sdk/client-s3";
 
 import { isR2Configured } from "../lib/storage/r2";
+import { assertR2EnvSource } from "../lib/storage/r2-env-guard";
 
 const LOCAL_ORIGINS = ["http://localhost:3000", "http://localhost:3111", "http://localhost:3122"];
 
@@ -36,6 +37,7 @@ async function main() {
     console.error("R2 is not configured (R2_ENDPOINT, R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY).");
     process.exit(1);
   }
+  assertR2EnvSource();
   const origins = [
     ...new Set(
       [process.env.NEXT_PUBLIC_APP_URL, process.env.AUTH_URL, ...process.argv.slice(2), ...LOCAL_ORIGINS]

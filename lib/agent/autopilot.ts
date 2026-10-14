@@ -11,7 +11,7 @@
 // a dry run does the same work and rolls each transaction back. Idempotent: a
 // tick right after a tick writes nothing.
 
-import { and, desc, eq, gte, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 
 import { SYSTEM_ACTOR_ID, withSystemContext, type Tx } from "@/lib/db";
 import {
@@ -37,7 +37,7 @@ import { ensureAgentDesigner } from "./ai-core";
 import { queuePhotoRequest, queuePhotoShortfall } from "@/lib/email/dispatch";
 import { shopStyleChoices } from "@/lib/designers/styles";
 import type { EtsyIntegrationConfig, EtsyTransaction } from "@/lib/integrations/etsy/types";
-import { runAutoAssign } from "@/lib/orders/assign";
+import { businessSlaHours, createAssignment, runAutoAssign } from "@/lib/orders/assign";
 import { classifyOrder, isNonPortraitLine, type ClassifyConfig } from "@/lib/integrations/classify";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { agentOrderScope } from "./scope";
@@ -50,11 +50,25 @@ import { runOutboxPass, type OutboxReport } from "./outbox";
 import { rebalanceBusiness } from "./rebalance";
 import { parseIntake } from "./intake";
 import { findCatalogStyle, registerUnindexedProduct } from "./legacy-intake";
+import {
+  autoCloseStaleExceptions,
+  autoResolveTx,
+  checkDesignerBacklog,
+  closeClearedBacklogs,
+  findAddonParents,
+  getLimboCensus,
+  handFailedAiToDesigners,
+  linkAddonTx,
+  noDesignerRecommendation,
+  pickOverflowDesigner,
+  watchWaitingStates,
+  type LimboCensus,
+} from "./limbo";
+import { clearUnmatchedReplies, type ClearMailResult } from "./junk-mail";
+import { sendOwnerDigest, type OwnerDigestResult } from "./owner-digest";
 
 /** How long a customer has to answer the shortfall email before a human is asked. */
 export const PHOTO_SHORTFALL_GRACE_HOURS = 72;
-/** How long an order may sit in ready_to_assign with nobody eligible before a human is asked. */
-export const NO_DESIGNER_GRACE_HOURS = 4;
 /** Stop starting new orders after this long, so the cron stays inside maxDuration. */
 const DEFAULT_BUDGET_MS = 45_000;
 /** Orders looked at per business per step and tick. */
@@ -80,6 +94,10 @@ const REOPEN_AFTER_HOURS: Record<ExceptionKind, number | null> = {
   new_product: 0,
   // An add-on-only order (Print & Ship, a rush upgrade) that reached the design queue.
   addon_only: null,
+  // Raised by the AI designer (./ai-designer.ts) and the no-limbo passes (./limbo.ts).
+  ai_designer_failed: 0,
+  stuck_order: 0,
+  designer_backlog: 0,
 };
 
 export type AgentOrderError = { orderId: string; message: string };
@@ -105,6 +123,10 @@ export type AgentBusinessReport = {
   noEligibleDesigner: number;
   /** Add-on-only orders (no portrait to draw) left for a person instead of a designer. */
   addonOnly: number;
+  /** Add-on-only orders linked to the buyer's one portrait order (now fulfillment_only). */
+  addonLinked?: number;
+  /** Of `assigned`: orders that went to the style's main designer past their limit (docs/NO_LIMBO.md L3). */
+  overflowAssigned?: number;
   /** Left to a human: the importer flagged them (missing email, conflicts). */
   skippedNeedsReview: number;
   /** Not-yet-started orders moved off an over-capacity or away designer. */
@@ -119,7 +141,22 @@ export type AgentBusinessReport = {
   inbox: Omit<InboxReport, "exceptionsOpened" | "exceptionKinds" | "errors">;
   /** Outbox pass counts: agent mail sent by itself, retries, failed-send exceptions. */
   outbox?: Omit<OutboxReport, "errors">;
+  /** No limbo pass (docs/NO_LIMBO.md): junk mail cleared, stale rows closed, stuck orders raised, census. */
+  noLimbo?: NoLimboReport;
   errors: AgentOrderError[];
+};
+
+export type NoLimboReport = {
+  mail: ClearMailResult | null;
+  autoClosed: number;
+  autoClosedBy: Record<string, number>;
+  stuckOpened: number;
+  stuckRefreshed: number;
+  stuckClosed: number;
+  backlogsClosed: number;
+  /** Orders the AI designer failed on, given to a person. */
+  aiHandedOver: number;
+  census: LimboCensus | null;
 };
 
 export type AgentTickReport = {
@@ -129,6 +166,9 @@ export type AgentTickReport = {
   /** True when the time budget ran out before every order was looked at. */
   truncated: boolean;
   businesses: AgentBusinessReport[];
+  /** The one owner message this tick (docs/NO_LIMBO.md L5). */
+  digest?: OwnerDigestResult;
+  digestError?: string;
 };
 
 export type AgentTickOptions = {
@@ -186,16 +226,9 @@ export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTi
         agentConfig: businesses.agentConfig,
       })
       .from(businesses)
-      .where(
-        and(
-          or(
-            eq(businesses.agentIntakeEnabled, true),
-            eq(businesses.agentAssignEnabled, true),
-            eq(businesses.agentInboxEnabled, true),
-          ),
-          opts.businessId ? eq(businesses.id, opts.businessId) : undefined,
-        ),
-      )
+      // Every business: the switches gate the steps below, but no limbo is
+      // across all of AlphaOS (docs/NO_LIMBO.md), switched on or not.
+      .where(opts.businessId ? eq(businesses.id, opts.businessId) : undefined)
       .orderBy(businesses.name),
   );
 
@@ -249,7 +282,7 @@ export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTi
       }
     }
     // Every enabled business: the agent's mail goes out on its own, failed sends are retried.
-    if (!outOfTime()) {
+    if ((biz.intake || biz.assign || biz.inbox) && !outOfTime()) {
       const outbox = await runOutboxPass(biz, { dryRun, now, outOfTime });
       const { errors, ...counts } = outbox;
       report.outbox = counts;
@@ -257,6 +290,20 @@ export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTi
       if (outbox.exceptionsOpened && !report.exceptionKinds.includes("email_send_failed")) report.exceptionKinds.push("email_send_failed");
       for (const e of errors) report.errors.push({ orderId: "", message: e.messageId ? `email ${e.messageId}: ${e.message}` : e.message });
     }
+    if (!outOfTime()) await noLimboStep(ctx, biz.id, biz.assign);
+  }
+
+  // One owner message for everything still stuck, every business together.
+  // Cheap, so it runs even when the order budget ran out (the cron's
+  // maxDuration has room past the budget).
+  let digest: OwnerDigestResult | undefined;
+  let digestError: string | undefined;
+  try {
+    // Read the clock again: a row the steps above opened a moment ago (no
+    // designer, a stuck order) is due now, not at the next hourly message.
+    digest = await sendOwnerDigest({ now: opts.now ?? new Date(), dryRun, businessIds: bizRows.map((b) => b.id) });
+  } catch (e) {
+    digestError = errorMessage(e);
   }
 
   return {
@@ -265,6 +312,48 @@ export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTi
     finishedAt: new Date().toISOString(),
     truncated,
     businesses: reports,
+    digest,
+    ...(digestError ? { digestError } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// No limbo (docs/NO_LIMBO.md): every business, every tick
+// ---------------------------------------------------------------------------
+
+async function noLimboStep(ctx: TickCtx, businessId: string, assignOn: boolean): Promise<void> {
+  const { dryRun, now, report } = ctx;
+  const attempt = async <T>(what: string, fn: () => Promise<T>): Promise<T | null> => {
+    try {
+      return await fn();
+    } catch (e) {
+      report.errors.push({ orderId: "", message: `${what}: ${errorMessage(e)}` });
+      return null;
+    }
+  };
+  // L2 first (a matched email becomes a card on its order), the AI handover
+  // (assigning, so only with the assign switch on), then L1, L4, the backlog
+  // lines, the census.
+  const mail = await attempt("junk mail", () => clearUnmatchedReplies(businessId, { now, dryRun }));
+  const handover = assignOn ? await attempt("ai handover", () => handFailedAiToDesigners(businessId, { now, dryRun })) : null;
+  const stale = await attempt("auto close", () => autoCloseStaleExceptions(businessId, { now, dryRun }));
+  const watch = await attempt("waiting orders", () => watchWaitingStates(businessId, { now, dryRun }));
+  const backlogsClosed = await attempt("designer backlog", () => closeClearedBacklogs(businessId, { now, dryRun }));
+  const census = await attempt("census", () => getLimboCensus(businessId, { now }));
+  if (watch?.opened) {
+    report.exceptionsOpened += watch.opened;
+    if (!report.exceptionKinds.includes("stuck_order")) report.exceptionKinds.push("stuck_order");
+  }
+  report.noLimbo = {
+    mail,
+    autoClosed: stale?.closed ?? 0,
+    autoClosedBy: stale?.byReason ?? {},
+    stuckOpened: watch?.opened ?? 0,
+    stuckRefreshed: watch?.refreshed ?? 0,
+    stuckClosed: watch?.closed ?? 0,
+    backlogsClosed: backlogsClosed ?? 0,
+    aiHandedOver: handover?.handed ?? 0,
+    census,
   };
 }
 
@@ -715,6 +804,9 @@ async function assignStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
           updatedAt: orders.updatedAt,
           platformOrderId: orders.platformOrderId,
           platformOrderName: orders.platformOrderName,
+          customerId: orders.customerId,
+          placedAt: orders.placedAt,
+          createdAt: orders.createdAt,
           shopConfig: shops.integrationConfig,
         })
         .from(orders)
@@ -743,10 +835,26 @@ async function assignStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
         .where(eq(orderItems.orderId, order.id));
       const cfg = (order.shopConfig ?? null) as ClassifyConfig | null;
       if (classifyOrder({ sourceName: null, lines, config: cfg }) === "fulfillment_only") {
+        // No limbo (L3): an add-on rides on the buyer's one portrait order.
+        const titles = lines.map((l) => l.title ?? "").filter(Boolean);
+        const parents = await findAddonParents(tx, order);
+        if (parents.length === 1) {
+          await linkAddonTx(tx, { id: order.id, businessId: order.businessId, number: orderLabel(order), status: order.status }, parents[0], titles);
+          const open = await tx
+            .select({ id: exceptions.id })
+            .from(exceptions)
+            .where(and(eq(exceptions.orderId, order.id), eq(exceptions.kind, "addon_only"), eq(exceptions.status, "open")));
+          await autoResolveTx(tx, open.map((e) => ({ id: e.id, businessId: order.businessId, orderId: order.id, kind: "addon_only", reason: `linked to order ${parents[0].number}` })), ctx.now);
+          bump((r) => (r.addonLinked = (r.addonLinked ?? 0) + 1));
+          return;
+        }
         bump((r) => (r.addonOnly += 1));
+        const recommendation = parents.length
+          ? `Link it to the right portrait order: ${parents.map((p) => p.number).join(" or ")}.`
+          : "No open portrait order from this buyer in the last 30 days: fulfil it on its own or check with the buyer.";
         await raise(tx, bump, ctx.now, order, "addon_only",
-          `Order #${orderLabel(order)} is an add-on only (${lines.map((l) => l.title).filter(Boolean).join(", ") || "no title"}): match it to the portrait order and fulfil it`,
-          { titles: lines.map((l) => l.title) });
+          `Order #${orderLabel(order)} is an add-on only (${titles.join(", ") || "no title"}): match it to the portrait order and fulfil it`,
+          { titles: lines.map((l) => l.title), candidates: parents.map((p) => ({ id: p.id, number: p.number, status: p.status })), recommendation });
         return;
       }
 
@@ -754,25 +862,56 @@ async function assignStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
       if (assigned) {
         await logAgent(tx, order, "agent.assigned", { designerId: assigned, via: "agent_autopilot" });
         bump((r) => (r.assigned += 1));
+        await backlogCheck(tx, order, assigned, ctx.now);
         return;
       }
 
-      bump((r) => (r.noEligibleDesigner += 1));
-      const [entered] = await tx
-        .select({ at: activityLog.createdAt })
-        .from(activityLog)
-        .where(and(eq(activityLog.orderId, order.id), eq(activityLog.toState, "ready_to_assign")))
-        .orderBy(desc(activityLog.createdAt))
-        .limit(1);
-      const enteredAt = new Date(entered?.at ?? order.updatedAt);
-      if (ctx.now.getTime() - enteredAt.getTime() < NO_DESIGNER_GRACE_HOURS * HOUR) return;
-
+      // No limbo (L3): everyone who draws the style is at a limit, so the
+      // style's main designer takes it into their queue; their due date moves
+      // out by the queue (orders.due_at never moves).
       const why = await whyNoDesigner(tx, order.businessId, order.id);
+      const overflow = why.style ? await pickOverflowDesigner(tx, order.businessId, why.style) : null;
+      if (overflow) {
+        const sla = (await businessSlaHours(tx, order.businessId)).order;
+        const dueAtHours = sla + 24 * Math.floor(overflow.queue / overflow.dailyCapacity);
+        await createAssignment(tx, { orderId: order.id, businessId: order.businessId, designerId: overflow.designerId, assignedBy: null, dueAtHours });
+        await logAgent(tx, order, "agent.assigned", {
+          designerId: overflow.designerId,
+          via: "agent_autopilot",
+          overflow: true,
+          queue: overflow.queue,
+          dailyCapacity: overflow.dailyCapacity,
+          dueAtHours,
+        });
+        bump((r) => {
+          r.assigned += 1;
+          r.overflowAssigned = (r.overflowAssigned ?? 0) + 1;
+        });
+        await backlogCheck(tx, order, overflow.designerId, ctx.now);
+        return;
+      }
+
+      // Nobody draws the style (or it is unknown): the owner hears at once, with what I would do.
+      bump((r) => (r.noEligibleDesigner += 1));
+      const product = lines.find((l) => l.title)?.title ?? null;
+      const recommendation = await noDesignerRecommendation(tx, order.businessId, why.style, product);
       await raise(tx, bump, ctx.now, order, "no_eligible_designer",
         `Order #${orderLabel(order)}: no designer can take it (${why.headline})`,
-        { enteredReadyAt: enteredAt.toISOString(), ...why });
+        { ...why, recommendation });
     });
   }
+}
+
+/** After an assignment: the designer's not-started queue for the order's style past 3 days of their limit is one line for the owner. */
+async function backlogCheck(tx: Tx, order: { id: string; businessId: string }, designerId: string, now: Date): Promise<void> {
+  const [item] = await tx
+    .select({ style: orderItems.style })
+    .from(orderItems)
+    .where(and(eq(orderItems.orderId, order.id), sql`${orderItems.style} is not null`))
+    .limit(1);
+  const style = item?.style?.trim();
+  if (!style) return;
+  await checkDesignerBacklog(tx, { businessId: order.businessId, designerId, style, now });
 }
 
 /**

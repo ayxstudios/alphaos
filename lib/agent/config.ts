@@ -38,6 +38,7 @@ export const AGENT_CONFIG_DEFAULTS: AgentConfig = {
   printDrafts: false,
   emailSignature: null,
   replySignOff: null,
+  ownerUserId: null,
   designerSlaHours: 24,
   revisionSlaHours: 24,
   qcFailSlaHours: 12,
@@ -109,6 +110,7 @@ export function getAgentConfig(business: { agentConfig?: unknown } | null | unde
     qcFailSlaHours: num(raw.qcFailSlaHours, 1, 72, AGENT_CONFIG_DEFAULTS.qcFailSlaHours),
     urgentRevisionSlaHours: num(raw.urgentRevisionSlaHours, 1, 24, AGENT_CONFIG_DEFAULTS.urgentRevisionSlaHours),
     replySignOff: typeof raw.replySignOff === "string" && raw.replySignOff.trim() && raw.replySignOff.length <= 200 ? raw.replySignOff : null,
+    ownerUserId: typeof raw.ownerUserId === "string" && raw.ownerUserId.trim() ? raw.ownerUserId.trim() : null,
   };
 }
 

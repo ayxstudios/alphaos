@@ -9,6 +9,8 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
+import { assertR2EnvSource } from "./r2-env-guard";
+
 /**
  * Cloudflare R2 (S3-compatible) object storage for VA-uploaded reference photos.
  *
@@ -30,6 +32,7 @@ const GET_TTL_SECONDS = 3600; // presigned GET validity: an hour, so a photo on 
 
 let cached: S3Client | null = null;
 function client(): S3Client {
+  assertR2EnvSource(); // a script must not use another app's bucket inherited from its parent
   if (cached) return cached;
   cached = new S3Client({
     region: "auto",

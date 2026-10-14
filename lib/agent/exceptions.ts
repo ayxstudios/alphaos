@@ -13,7 +13,12 @@ export type ExceptionKind =
   | "email_send_failed"
   | "legacy_order"
   | "new_product"
-  | "addon_only";
+  | "addon_only"
+  | "ai_designer_failed"
+  // No limbo (docs/NO_LIMBO.md): an order nobody owns, and a designer whose
+  // not-started queue is past three days of their daily limit.
+  | "stuck_order"
+  | "designer_backlog";
 
 export type OpenExceptionInput = {
   businessId: string;

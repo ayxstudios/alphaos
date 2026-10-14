@@ -89,4 +89,9 @@ export type AgentConfigInput = {
   emailSignature?: { text: string; html: string } | null;
   /** How drafted answers sign off, e.g. "Regards,\nBrianna" (the shop's persona). Default: "Warm regards," + the team. */
   replySignOff?: string | null;
+  /**
+   * The AlphaOS user who hears about anything stuck (docs/NO_LIMBO.md L5): the
+   * owner digest goes to this person only. Unset = every admin.
+   */
+  ownerUserId?: string | null;
 };
