@@ -46,12 +46,15 @@ export function OverviewTable({
   rows,
   businesses,
   stages,
+  initialBusinessId = "",
 }: {
   rows: OverviewRow[];
   businesses: { id: string; name: string }[];
   stages: { value: string; label: string }[];
+  /** Business picked in the switcher; the table opens filtered to it. */
+  initialBusinessId?: string;
 }) {
-  const [biz, setBiz] = useState<string>("");
+  const [biz, setBiz] = useState<string>(initialBusinessId);
   const [stage, setStage] = useState("");
   const [delayedOnly, setDelayedOnly] = useState(false);
   const [q, setQ] = useState("");

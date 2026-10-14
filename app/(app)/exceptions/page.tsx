@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 
 import { auth } from "@/lib/auth";
+import { loadShellData } from "@/lib/shell/context";
 import { withSystemContext, withUserContext } from "@/lib/db";
 import { listDesignerChoices, type DesignerChoice } from "@/lib/agent/legacy-intake";
 import { listBusinessStyles } from "@/lib/designers/styles";
@@ -192,6 +193,8 @@ export default async function ExceptionsPage() {
   const user = { id: session.user.id, role: session.user.role };
   if (user.role === "designer") redirect("/board");
 
+  // Scoped to the business picked in the switcher, like every other page.
+  const { selected } = await loadShellData(user);
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const select = {
     id: exceptions.id,
@@ -213,14 +216,14 @@ export default async function ExceptionsPage() {
         .from(exceptions)
         .innerJoin(businesses, eq(businesses.id, exceptions.businessId))
         .leftJoin(orders, eq(orders.id, exceptions.orderId))
-        .where(eq(exceptions.status, "open"))
+        .where(and(eq(exceptions.status, "open"), eq(exceptions.businessId, selected.id)))
         .orderBy(desc(exceptions.createdAt)),
       tx
         .select(select)
         .from(exceptions)
         .innerJoin(businesses, eq(businesses.id, exceptions.businessId))
         .leftJoin(orders, eq(orders.id, exceptions.orderId))
-        .where(and(eq(exceptions.status, "resolved"), gte(exceptions.resolvedAt, weekAgo)))
+        .where(and(eq(exceptions.status, "resolved"), eq(exceptions.businessId, selected.id), gte(exceptions.resolvedAt, weekAgo)))
         .orderBy(sql`${exceptions.resolvedAt} desc`)
         .limit(50),
     ]),

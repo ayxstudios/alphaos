@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
+import { loadShellData } from "@/lib/shell/context";
 import { getOverview } from "@/lib/agent/overview";
 import { DataPanel, Page, PageHeader } from "@/components/ui";
 import { OverviewTable } from "@/components/overview/overview-table";
@@ -13,7 +14,7 @@ export default async function OverviewPage() {
   const user = { id: session.user.id, role: session.user.role };
   if (user.role === "designer") redirect("/board");
 
-  const data = await getOverview(user);
+  const [data, { selected }] = await Promise.all([getOverview(user), loadShellData(user)]);
 
   return (
     <Page>
@@ -38,7 +39,7 @@ export default async function OverviewPage() {
         </ul>
       </DataPanel>
 
-      <OverviewTable rows={data.rows} businesses={data.businesses} stages={data.stages} />
+      <OverviewTable rows={data.rows} businesses={data.businesses} stages={data.stages} initialBusinessId={selected.id} />
     </Page>
   );
 }
