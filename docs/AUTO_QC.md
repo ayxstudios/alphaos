@@ -118,4 +118,6 @@ first." Applies to new orders and revisions (missed touchups) alike.
 - Reject can carry the AI fix as one of its pictures ("Add the AI fix as a picture for the designer").
 - Agent side: `~/Documents/ai-employee-agent/scripts/alphaos-qc-fix.mjs sweep|order <n>|--input <job.json> --dry`,
   run by the alphaos-agent-tick after the Auto QC sweep (own lock, backgrounded). Image model: ChatGPT image gen
-  (codex), then the OpenAI image API; never another engine.
+  (codex, then ChatGPT on the web); never another engine. Each spot's box is re-read on a close-up before painting,
+  a change that runs off its crop is repainted once in a bigger area, and the spot judge sees a wider view so a half
+  changed thing (half the hair) counts as not fixed. Runbook: knowledge/integrations/alphaos-qc-fix.md (agent repo).
