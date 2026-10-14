@@ -261,7 +261,7 @@ export function ProofClient({
                       onChange={() => toggleIssue(issue.key)}
                       className="peer absolute left-1 top-1/2 size-11 -translate-y-1/2 cursor-pointer opacity-0"
                     />
-                    <span aria-hidden="true" className="pointer-events-none absolute left-4 flex size-5 items-center justify-center rounded border border-slate bg-surface text-transparent peer-checked:border-pigment peer-checked:bg-pigment peer-checked:text-surface">
+                    <span aria-hidden="true" className="pointer-events-none absolute left-4 flex size-5 items-center justify-center rounded-input border border-slate bg-surface text-transparent peer-checked:border-pigment peer-checked:bg-pigment peer-checked:text-surface">
                       <CheckIcon />
                     </span>
                     {issue.label}
