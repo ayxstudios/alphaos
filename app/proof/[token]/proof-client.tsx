@@ -47,6 +47,14 @@ export function ProofClient({
     void trackView(token);
   }, [token]);
 
+  function cancelRevision() {
+    setPins([]);
+    setChecked(new Set());
+    setNote("");
+    setError(null);
+    setMode("idle");
+  }
+
   function toggleIssue(key: string) {
     setChecked((prev) => {
       const next = new Set(prev);
@@ -74,13 +82,13 @@ export function ProofClient({
       .filter((pin) => (portrait ? pin.p === portrait.n : true));
     return (
       <div className="flex flex-col gap-2">
-        <figure className="relative overflow-hidden rounded-card border border-line bg-canvas shadow-sm">
+        <figure className="relative bg-canvas">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={src}
             alt={portrait ? `Portrait ${portrait.n} proof for order ${orderNumber}` : `Portrait proof for order ${orderNumber}`}
             onClick={(e) => addPin(e, portrait?.n)}
-            className={"block w-full select-none " + (mode === "revise" ? "cursor-crosshair" : "")}
+            className={"block h-auto w-full select-none " + (mode === "revise" ? "cursor-crosshair" : "")}
             draggable={false}
           />
           {mine.map((pin) => (
@@ -96,8 +104,8 @@ export function ProofClient({
         <a
           href={`${src}${portrait ? "&" : "?"}download=1`}
           className={
-            "inline-flex h-11 items-center justify-center rounded-input border border-line bg-surface px-4 text-sm font-semibold text-ink " +
-            "transition-[background-color,border-color] duration-[120ms] hover:border-slate/40 hover:bg-canvas " +
+            "inline-flex h-11 items-center justify-center rounded-input border border-line bg-surface px-4 text-base font-semibold text-ink " +
+            "transition-[background-color,border-color] duration-[120ms] hover:border-slate/40 hover:bg-canvas active:bg-pigment-soft " +
             focusRing
           }
         >
@@ -147,7 +155,7 @@ export function ProofClient({
               {portrait.hasPreview ? (
                 preview(portrait)
               ) : (
-                <div className="rounded-card border border-dashed border-line bg-surface p-6 text-center text-sm text-slate">
+                <div className="rounded-card border border-dashed border-line bg-surface p-6 text-center text-base text-slate">
                   This one is still being prepared.
                 </div>
               )}
@@ -159,22 +167,28 @@ export function ProofClient({
       ) : actionable && !outcome ? (
         // "Being prepared" only while a decision is still to come; a decided
         // proof with no image left says nothing here (its outcome card does).
-        <div className="rounded-card border border-dashed border-line bg-surface p-8 text-center text-sm text-slate">
+        <div className="rounded-card border border-dashed border-line bg-surface p-8 text-center text-base text-slate">
           Your proof is being prepared. Please check back shortly.
         </div>
       ) : null}
 
+      {superseded && outcome !== "revision" && (
+        <p className="rounded-card border border-line bg-surface p-4 text-center text-base text-slate">
+          We have sent you an updated proof. Please open the link in our most recent email.
+        </p>
+      )}
+
       {/* Outcome (read-only once decided) ------------------------------ */}
       {outcome ? (
         <Confirmation decision={outcome} superseded={superseded} multi={multi} />
-      ) : !actionable ? (
-        <p className="rounded-card border border-line bg-surface p-4 text-center text-sm text-slate">
+      ) : !actionable ? (superseded ? null : (
+        <p className="rounded-card border border-line bg-surface p-4 text-center text-base text-slate">
           This proof isn&rsquo;t awaiting your review right now.
         </p>
-      ) : (
+      )) : (
         <>
           {error && (
-            <p className="rounded-input border border-rose/30 bg-rose/10 p-3 text-sm text-rose">
+            <p className="rounded-input border border-rose/30 bg-rose/10 p-3 text-base text-rose">
               {error}
             </p>
           )}
@@ -229,7 +243,7 @@ export function ProofClient({
                 <h2 className="text-lg font-semibold text-ink">
                   What would you like changed?
                 </h2>
-                <p className="mt-1 text-sm text-slate">
+                <p className="mt-1 text-base text-slate">
                   Pick anything that applies, add a note, and tap {multi ? "a portrait" : "the image"} to
                   point at a spot.
                 </p>
@@ -239,14 +253,17 @@ export function ProofClient({
                 {PROOF_ISSUES.map((issue) => (
                   <label
                     key={issue.key}
-                    className="flex min-h-11 cursor-pointer items-center gap-3 rounded-input border border-line px-3 py-2.5 text-sm text-ink has-[:checked]:border-pigment has-[:checked]:bg-pigment-soft motion-hover"
+                    className="relative flex min-h-14 cursor-pointer items-center rounded-input border border-line py-3 pl-14 pr-3 text-base text-ink has-[:checked]:border-pigment has-[:checked]:bg-pigment-soft has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-pigment has-[:focus-visible]:ring-offset-2 motion-hover"
                   >
                     <input
                       type="checkbox"
                       checked={checked.has(issue.key)}
                       onChange={() => toggleIssue(issue.key)}
-                      className="size-4 accent-pigment"
+                      className="peer absolute left-1 top-1/2 size-11 -translate-y-1/2 cursor-pointer opacity-0"
                     />
+                    <span aria-hidden="true" className="pointer-events-none absolute left-4 flex size-5 items-center justify-center rounded border border-slate bg-surface text-transparent peer-checked:border-pigment peer-checked:bg-pigment peer-checked:text-surface">
+                      <CheckIcon />
+                    </span>
                     {issue.label}
                   </label>
                 ))}
@@ -258,11 +275,11 @@ export function ProofClient({
                 rows={4}
                 maxLength={2000}
                 placeholder="Add any details that will help us get it just right…"
-                className="w-full rounded-input border border-line bg-canvas p-3 text-sm text-ink placeholder:text-slate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pigment"
+                className="w-full rounded-input border border-line bg-canvas p-3 text-base text-ink placeholder:text-slate focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pigment"
               />
 
               {pins.length > 0 && (
-                <div className="flex items-center justify-between text-sm text-slate">
+                <div className="flex items-center justify-between text-base text-slate">
                   <span>
                     {pins.length} spot{pins.length === 1 ? "" : "s"} marked on the{" "}
                     {multi ? "portraits" : "image"}
@@ -270,7 +287,7 @@ export function ProofClient({
                   <button
                     type="button"
                     onClick={() => setPins([])}
-                    className="-my-2 inline-flex h-11 items-center px-2 font-medium text-pigment underline-offset-2 hover:underline"
+                    className={"-my-2 inline-flex min-h-11 shrink-0 items-center rounded-input px-2 font-medium text-pigment underline-offset-2 hover:underline active:bg-pigment-soft " + focusRing}
                   >
                     Clear spots
                   </button>
@@ -289,7 +306,7 @@ export function ProofClient({
                 <Button
                   size="lg"
                   variant="ghost"
-                  onClick={() => setMode("idle")}
+                  onClick={cancelRevision}
                   disabled={submitting}
                   className="sm:flex-1"
                 >
@@ -312,7 +329,7 @@ function Confirmation({ decision, superseded, multi }: { decision: ProofDecision
           <CheckIcon />
         </span>
         <h2 className="text-lg font-semibold text-ink">{multi ? "Portraits approved" : "Portrait approved"}</h2>
-        <p className="text-sm text-slate">
+        <p className="text-base text-ink">
           Thank you! We&rsquo;ve received your approval and will take it from
           here.
         </p>
@@ -326,12 +343,12 @@ function Confirmation({ decision, superseded, multi }: { decision: ProofDecision
       </span>
       <h2 className="text-lg font-semibold text-ink">Changes requested</h2>
       {superseded ? (
-        <p className="text-sm text-slate">
+        <p className="text-base text-slate">
           We&rsquo;ve since sent you an updated proof. Please open the link in
           our most recent email.
         </p>
       ) : (
-        <p className="text-sm text-slate">
+        <p className="text-base text-slate">
           Thanks. Your notes are with our design team. We&rsquo;ll send an updated
           proof soon.
         </p>

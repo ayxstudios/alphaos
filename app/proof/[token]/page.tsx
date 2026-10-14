@@ -24,7 +24,7 @@ export default async function ProofPage({
   if (!proof) notFound();
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-col gap-6 px-4 py-8 sm:py-12">
+    <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:py-12">
       <header className="flex flex-col items-center gap-3 text-center">
         {proof.businessLogoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -47,7 +47,7 @@ export default async function ProofPage({
         {/* Only while the customer can still decide: an approved proof used
             to keep asking them to approve it. */}
         {proof.actionable && (
-          <p className="max-w-sm text-sm text-slate">
+          <p className="max-w-md text-base text-slate">
             Take a look below. If everything looks perfect, approve{" "}
             {proof.portraits.length > 1 ? "them" : "it"}, or let us know what to change.
           </p>
@@ -64,7 +64,7 @@ export default async function ProofPage({
         superseded={proof.superseded}
       />
 
-      <footer className="pt-2 text-center text-xs text-slate">
+      <footer className="pt-2 text-center text-sm text-slate">
         {proof.businessName}
       </footer>
     </main>

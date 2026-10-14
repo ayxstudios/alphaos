@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 
 import { withSystemContext, SYSTEM_ACTOR_ID, type Tx } from "@/lib/db";
 import { proofs } from "@/lib/db/schema";
@@ -155,6 +155,7 @@ async function decide(
           id: proofs.id,
           orderId: proofs.orderId,
           decision: proofs.decision,
+          createdAt: proofs.createdAt,
         })
         .from(proofs)
         .where(eq(proofs.token, token))
@@ -167,6 +168,17 @@ async function decide(
           "already_decided",
           "A decision has already been recorded for this proof.",
         );
+      }
+
+      // An older email must never decide a newer proof, even if its page
+      // was left open before the replacement was sent.
+      const [newer] = await tx
+        .select({ id: proofs.id })
+        .from(proofs)
+        .where(and(eq(proofs.orderId, proof.orderId), gt(proofs.createdAt, proof.createdAt)))
+        .limit(1);
+      if (newer) {
+        return err("not_actionable", "We have sent you an updated proof. Please open the link in our most recent email.");
       }
 
       const extra = await run(tx, proof.orderId, "awaiting_approval");

@@ -84,7 +84,7 @@ export async function getProofView(token: string): Promise<ProofView | null> {
       businessName: row.businessName,
       businessLogoUrl: row.businessLogoUrl,
       orderNumber: row.platformOrderName ?? row.platformOrderId,
-      actionable: row.orderStatus === "awaiting_approval" && !row.decision,
+      actionable: row.orderStatus === "awaiting_approval" && !row.decision && !newer,
       decision: row.decision,
       decidedAt: row.decidedAt ? row.decidedAt.toISOString() : null,
       hasPreview: preview != null,
