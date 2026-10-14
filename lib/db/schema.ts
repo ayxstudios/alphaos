@@ -886,6 +886,55 @@ export const qcClaims = pgTable(
   (t) => [index("qc_claims_seen_idx").on(t.seenAt)],
 );
 
+/**
+ * Auto QC fix samples (Yousif 2026-10-14): the AI's repaint of ONLY the spots
+ * an Auto QC flagged, offered on /approve as a suggestion. `ready` rows carry
+ * the image (r2_key); `failed` rows record that no clean fix could be made, so
+ * the agent does not try the same version again. The owner's "Send AI fix"
+ * turns a ready row into a new artwork version (`used_asset_id`, status
+ * `used`). See docs/AUTO_QC.md "Fix samples" and lib/qc/auto-qc-fix.ts.
+ */
+export const autoQcFixes = pgTable(
+  "auto_qc_fixes",
+  {
+    id: id(),
+    businessId: text("business_id")
+      .notNull()
+      .references(() => businesses.id, { onDelete: "restrict" }),
+    orderId: text("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    autoQcId: text("auto_qc_id").references(() => autoQcChecks.id, { onDelete: "set null" }),
+    /** The designer version this fix was painted on. */
+    sourceAssetId: text("source_asset_id")
+      .notNull()
+      .references(() => assets.id, { onDelete: "cascade" }),
+    /** 1-based portrait number on a 2+ portrait order, else null. */
+    portrait: integer("portrait"),
+    /** ready | failed | used */
+    status: text("status").notNull(),
+    r2Key: text("r2_key"),
+    contentType: text("content_type"),
+    width: integer("width"),
+    height: integer("height"),
+    /** [{keys, label, what, box: {x0,y0,x1,y1} as 0..1 of the picture}] */
+    fixed: jsonb("fixed").notNull().default([]),
+    /** [{keys, label, why}] */
+    notFixed: jsonb("not_fixed").notNull().default([]),
+    summary: text("summary"),
+    model: text("model"),
+    engine: text("engine"),
+    usedAssetId: text("used_asset_id").references(() => assets.id, { onDelete: "set null" }),
+    decidedBy: text("decided_by").references(() => users.id, { onDelete: "set null" }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("auto_qc_fixes_order_created_idx").on(t.orderId, t.createdAt),
+    index("auto_qc_fixes_used_asset_idx").on(t.usedAssetId),
+  ],
+);
+
 export const proofs = pgTable(
   "proofs",
   {

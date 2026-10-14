@@ -19,8 +19,9 @@ import {
 } from "@/components/qc/pending-approvals";
 import { AutoQcBadge, AutoQcNotes } from "@/components/qc/auto-qc";
 import { BottomDock } from "@/components/qc/bottom-dock";
+import { AiFixPanel } from "@/components/qc/auto-qc-fix";
 import { useToast } from "@/components/ui";
-import { ArrowRight, Check, X } from "@/components/ui/icons";
+import { ArrowRight, Check, Sparkles, X } from "@/components/ui/icons";
 import { focusRing } from "@/components/ui/styles";
 import type { ApproveItem } from "@/lib/qc/approve-data";
 import { splitChecklistLabel } from "@/lib/qc/checklist";
@@ -81,7 +82,10 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
     setRejecting(true);
   }, [ctx.orderId]);
   const [picked, setPicked] = useState<number[]>([]);
-  const pictures = useQcPictures(ctx.orderId);  const [showBefore, setShowBefore] = useState(false);
+  const pictures = useQcPictures(ctx.orderId);
+  // Which artwork the viewer shows: the new version, the one before it (revisions) or the AI fix (2026-10-14).
+  const [view, setView] = useState<"new" | "before" | "fix">("new");
+  const [attachFix, setAttachFix] = useState(false);
   const [enlarged, setEnlarged] = useState<string | null>(null);
   const [broken, setBroken] = useState<string | null>(null);
 
@@ -107,7 +111,10 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
   const versions = group ? group.versions : allVersions;
   const latest = versions[versions.length - 1] ?? null;
   const before = item.isRevision && versions.length > 1 ? versions[versions.length - 2] : null;
-  const shown = showBefore && before ? before : latest;
+  // The AI fix painted on this portrait's newest version, if there is one (one-portrait orders: the only fix).
+  const fix = item.fixes.find((f) => (group ? (f.portrait ?? 0) === group.n : true) && f.sourceAssetId === latest?.id) ?? null;
+  const shown = view === "fix" && fix?.url ? { url: fix.url } : view === "before" && before ? before : latest;
+  const fixIds = item.fixes.map((f) => f.id);
   const due = dueText(ctx.dueAt);
   const photos = ctx.references.filter((r) => r.url);
 
@@ -166,6 +173,14 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
     goNext(false);
   }
 
+  // "Send AI fix" (Yousif 2026-10-14): the same Stop window, with the fixes the
+  // server turns into the newest versions before the proof goes out.
+  function approveFix() {
+    setError(null);
+    approvalStore.enqueue({ orderId: ctx.orderId, orderNumber: ctx.orderNumber, customerName: ctx.customerName, fixIds });
+    goNext(false);
+  }
+
   async function reject() {
     if (!note.trim()) {
       setError("Write what needs fixing first.");
@@ -177,7 +192,15 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
     }
     setBusy("reject");
     setError(null);
-    const res = await callAction(() => ownerReject({ orderId: ctx.orderId, note, failedKeys: picked, attachmentAssetIds: pictures.assetIds }));
+    const res = await callAction(() =>
+      ownerReject({
+        orderId: ctx.orderId,
+        note,
+        failedKeys: picked,
+        attachmentAssetIds: pictures.assetIds,
+        attachFixIds: attachFix ? fixIds : [],
+      }),
+    );
     if (!res) return;
     if (!res.ok) {
       if (res.code === "stale" || res.code === "claimed") {
@@ -276,7 +299,7 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
                       type="button"
                       onClick={() => {
                         setPortraitN(g.n);
-                        setShowBefore(false);
+                        setView("new");
                       }}
                       aria-pressed={group?.n === g.n}
                       title={g.label || undefined}
@@ -298,23 +321,26 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
                 </div>
               </div>
             ) : null}
-            {before ? (
+            {before || fix ? (
               <div className="flex gap-1 self-start rounded-input bg-canvas p-1" role="group" aria-label="Which version">
                 {[
-                  { k: false, label: "New version" },
-                  { k: true, label: "Before" },
+                  { k: "new" as const, label: before ? "New version" : "Designer's" },
+                  ...(before ? [{ k: "before" as const, label: "Before" }] : []),
+                  ...(fix ? [{ k: "fix" as const, label: "AI fix" }] : []),
                 ].map((b) => (
                   <button
-                    key={b.label}
+                    key={b.k}
                     type="button"
-                    onClick={() => setShowBefore(b.k)}
-                    aria-pressed={showBefore === b.k}
+                    onClick={() => setView(b.k)}
+                    aria-pressed={view === b.k}
                     className={cn(
-                      "min-h-11 rounded-input px-3 text-sm font-medium sm:min-h-9",
+                      "inline-flex min-h-11 items-center gap-1 rounded-input px-3 text-sm font-medium sm:min-h-9",
                       focusRing,
-                      showBefore === b.k ? "bg-surface text-ink shadow-card" : "text-slate",
+                      view === b.k ? "bg-surface text-ink shadow-card" : "text-slate",
+                      b.k === "fix" && view !== b.k && "text-pigment",
                     )}
                   >
+                    {b.k === "fix" ? <Sparkles size={14} /> : null}
                     {b.label}
                   </button>
                 ))}
@@ -339,6 +365,9 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
             ) : (
               <div className="flex h-64 items-center justify-center rounded-card bg-canvas text-sm text-slate">No artwork uploaded yet</div>
             )}
+            {view === "fix" && fix ? (
+              <p className="text-sm text-pigment">AI fix, a suggestion: only the spots listed beside it changed.</p>
+            ) : null}
           </div>
 
           {/* What to judge it against */}
@@ -375,6 +404,12 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
             ) : null}
 
             <AutoQcNotes view={item.autoQc} />
+
+            <AiFixPanel
+              fixes={item.fixes}
+              beforeUrl={(id) => allVersions.find((v) => v.id === id)?.url ?? null}
+              onShow={fix?.url ? () => setView("fix") : undefined}
+            />
 
             <div className="flex flex-col gap-2">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-slate">
@@ -493,6 +528,23 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
               })}
             </div>
             <QcPicturePicker state={pictures} disabled={locked} />
+            {fixIds.length ? (
+              <button
+                type="button"
+                aria-pressed={attachFix}
+                disabled={locked}
+                onClick={() => setAttachFix((v) => !v)}
+                data-testid="attach-ai-fix"
+                className={cn(
+                  "inline-flex min-h-11 items-center gap-2 self-start rounded-input border px-3 text-sm font-medium sm:min-h-9",
+                  focusRing,
+                  attachFix ? "border-pigment bg-pigment-soft text-pigment" : "border-line text-slate",
+                )}
+              >
+                {attachFix ? <Check size={16} /> : <Sparkles size={16} />}
+                {attachFix ? "AI fix added as a picture for the designer" : "Add the AI fix as a picture for the designer"}
+              </button>
+            ) : null}
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
@@ -525,7 +577,19 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
+          // Phone: Send AI fix full width on top of Reject | Approve. Wider: one row, Send AI fix last.
+          <div className={cn("grid grid-cols-2 gap-3", fixIds.length && "sm:grid-cols-3")}>
+            {fixIds.length ? (
+              <button
+                type="button"
+                disabled={locked}
+                onClick={approveFix}
+                data-testid="approve-ai-fix"
+                className={cn("col-span-2 inline-flex h-12 items-center justify-center gap-2 rounded-input bg-pigment text-lg font-semibold text-surface disabled:opacity-60 sm:order-last sm:col-span-1 sm:h-14", focusRing)}
+              >
+                <Sparkles size={20} /> Send AI fix
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={locked}
@@ -543,9 +607,10 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
               disabled={locked || !allVersions.length}
               onClick={approve}
               data-testid="approve"
-              className={cn("inline-flex h-14 items-center justify-center gap-2 rounded-input bg-sage text-lg font-semibold text-surface disabled:opacity-60", focusRing)}
+              className={cn("inline-flex h-14 items-center justify-center gap-2 rounded-input bg-sage text-lg font-semibold text-surface disabled:opacity-60", fixIds.length && "max-sm:text-base", focusRing)}
             >
-              <Check size={20} /> Approve
+              {/* "Approve designer's" only fits half a phone screen without the tick. */}
+              <Check size={20} className={cn(fixIds.length && "max-sm:hidden")} /> {fixIds.length ? "Approve designer's" : "Approve"}
             </button>
           </div>
         )}

@@ -14,8 +14,10 @@ export const maxDuration = 60;
  * ownerApprove server action; a repeat answers "stale" and sends nothing.
  */
 export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => null)) as { orderId?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as { orderId?: unknown; fixIds?: unknown } | null;
   const orderId = typeof body?.orderId === "string" ? body.orderId : "";
+  // "Send AI fix" (2026-10-14): the fix samples the owner chose, applied before the send.
+  const fixIds = Array.isArray(body?.fixIds) ? body.fixIds.filter((f): f is string => typeof f === "string").slice(0, 12) : [];
   if (!/^[0-9a-f-]{36}$/i.test(orderId)) {
     return NextResponse.json({ ok: false, code: "bad_request", message: "Missing order." } satisfies ApproveActionResult, { status: 400 });
   }
@@ -28,6 +30,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, code: "forbidden", message: "Only staff can approve artwork." } satisfies ApproveActionResult, { status: 403 });
   }
   const name = (session.user.name || session.user.email || "Staff").trim();
-  const res = await ownerApproveCore({ id: session.user.id, role }, name.length >= 2 ? name : "Staff", orderId);
+  const res = await ownerApproveCore({ id: session.user.id, role }, name.length >= 2 ? name : "Staff", orderId, { fixIds });
   return NextResponse.json(res);
 }

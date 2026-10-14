@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 
 import { auth } from "@/lib/auth";
-import type { RequestUser } from "@/lib/db";
+import { withUserContext, type RequestUser } from "@/lib/db";
+import { MAX_QC_ATTACHMENTS } from "@/lib/qc/attachments";
+import { fixPictureAssets } from "@/lib/qc/auto-qc-fix";
 import { ownerApproveCore, type ApproveActionResult } from "@/lib/qc/owner-approve";
 import type { ChecklistItem } from "@/lib/qc/checklist";
 import { getQcContext } from "@/lib/qc/data";
@@ -29,10 +31,10 @@ async function requireStaff(): Promise<{ user: RequestUser; name: string } | { e
  * holds for the owner (aiOwnerApproval) is released in the same tap when an
  * owner (admin) approves it: their tap IS the owner approval.
  */
-export async function ownerApprove(orderId: string): Promise<ApproveActionResult> {
+export async function ownerApprove(orderId: string, fixIds?: string[]): Promise<ApproveActionResult> {
   const staff = await requireStaff();
   if ("error" in staff) return staff.error;
-  return ownerApproveCore(staff.user, staff.name, orderId);
+  return ownerApproveCore(staff.user, staff.name, orderId, { fixIds: Array.isArray(fixIds) ? fixIds.filter((f) => typeof f === "string") : [] });
 }
 
 /** Which check a rejection most likely means, from the owner's own words. */
@@ -65,6 +67,8 @@ export async function ownerReject(input: {
   note: string;
   failedKeys: number[];
   attachmentAssetIds?: string[];
+  /** AI fix samples to show the designer as pictures (2026-10-14). */
+  attachFixIds?: string[];
 }): Promise<ApproveActionResult> {
   const staff = await requireStaff();
   if ("error" in staff) return staff.error;
@@ -80,6 +84,13 @@ export async function ownerReject(input: {
   const picked = input.failedKeys.filter((k) => valid.has(k));
   const failedKeys = picked.length ? picked : guessFailedKeys(ctx.checklist.items, note);
 
+  let attachmentAssetIds = input.attachmentAssetIds ?? [];
+  const fixIds = (input.attachFixIds ?? []).filter((f) => typeof f === "string");
+  if (fixIds.length && attachmentAssetIds.length < MAX_QC_ATTACHMENTS) {
+    const added = await withUserContext(user, (tx) => fixPictureAssets(tx, user, input.orderId, fixIds));
+    attachmentAssetIds = [...attachmentAssetIds, ...added].slice(0, MAX_QC_ATTACHMENTS);
+  }
+
   const res = await submitQcFail({
     orderId: input.orderId,
     expectedFrom: "awaiting_qc",
@@ -87,7 +98,7 @@ export async function ownerReject(input: {
     failedKeys,
     reason: note,
     signature: name,
-    attachmentAssetIds: input.attachmentAssetIds,
+    attachmentAssetIds,
   });
   if (!res.ok) return { ok: false, code: res.code, message: res.message };
   revalidatePath("/approve");

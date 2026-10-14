@@ -86,3 +86,36 @@ Returns `{ ok: true, id }`.
 `~/Documents/ai-employee-agent/scripts/alphaos-auto-qc.mjs sweep|order <n>|--dry`, run by the
 alphaos-agent-tick (every 10 min, own lock, backgrounded). Vision judge = Claude CLI on the
 subscription, Fable first, then Opus, then Sonnet. Never touches order state.
+
+## Fix samples (Yousif 2026-10-14)
+
+"On top of identifying the problems ... provide a sample where you have gone and changed up the portrait yourself to
+fix those things ... make sure not to change anything else ... It should only be a suggestion but if I decide to send
+it instead of the designers portrait then that should now be the portrait we work with ... It still needs to run by me
+first." Applies to new orders and revisions (missed touchups) alike.
+
+- The agent repaints ONLY the flagged spots of the designer's newest version, at full print size: each spot is
+  repainted on a crop by the image model, lined up with the original, and pasted back through a feathered mask of
+  what really changed inside that spot's box. Every other pixel is the designer's original. A whole-picture problem
+  (wrong style) is listed under "not fixed", never repainted. Before it is offered, a judge checks every spot (fixed,
+  blends in, anatomy right, nothing else changed) and the ship judge passes the whole picture.
+- Table `auto_qc_fixes` (migration 0057): order, auto_qc_id, source_asset_id (the version painted on), portrait,
+  status `ready` | `failed` | `used`, r2_key (`qc-fix/<orderId>/...`), width/height, `fixed`
+  `[{keys, label, what, box}]` (box = 0..1 of the picture), `not_fixed` `[{keys, label, why}]`, summary, model,
+  engine, used_asset_id, decided_by/at. RLS staff only (designers never read it).
+- Agent API (bearer AGENT_JOBS_TOKEN): `GET /api/agent-qc/fix-queue?limit=4[&order=<n>]` (orders in the QC queue
+  whose CURRENT Auto QC verdict is issues and that have no fix row for that Auto QC yet; full-size signed portrait
+  links), `POST /api/agent-qc/fix-upload {orderId, contentType}` -> `{key, uploadUrl}` (signed PUT, private bucket),
+  `POST /api/agent-qc/fix {orderId, autoQcId, sourceAssetId, portrait, status, key, contentType, width, height, fixed,
+  notFixed, summary, model, engine}`. 409 when the order left QC or the designer uploaded again. A `failed` row means
+  "no clean fix", so the same version is not tried again.
+- /approve: an "AI fix" option in the version toggle, the "AI fix ready" panel (each spot zoomed, designer's vs AI fix,
+  plus what was not fixed), and a "Send AI fix" button above Reject / Approve designer's. Send AI fix = the same Stop
+  window as Approve; the server inserts each fix as the newest `submission` version of its portrait (uploaded by the
+  business's AI Studio user), marks the fix `used`, writes `qc.ai_fix_used`, then runs the normal Approve, so the
+  proof email carries the fixed portrait and later revisions start from it. Alpha then tells the designer
+  (`designer.ai_fix_used`: what changed, that the fixed version is the main file now, a signed link).
+- Reject can carry the AI fix as one of its pictures ("Add the AI fix as a picture for the designer").
+- Agent side: `~/Documents/ai-employee-agent/scripts/alphaos-qc-fix.mjs sweep|order <n>|--input <job.json> --dry`,
+  run by the alphaos-agent-tick after the Auto QC sweep (own lock, backgrounded). Image model: ChatGPT image gen
+  (codex), then the OpenAI image API; never another engine.

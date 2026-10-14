@@ -28,6 +28,7 @@ export type AlphaEventType =
   | "designer.reassigned" // 48 h: moved to another designer (both told)
   | "designer.qc_feedback" // QC failed with pins
   | "designer.qc_fix_urgent" // a failed order was marked urgent: fix clock shortened
+  | "designer.ai_fix_used" // the owner sent the AI's fix of their portrait: it is the order's working file now
   | "va.attention" // something a VA must look at now
   | "customer.silent" // customer has not answered in N days
   | "order.missed_print" // in printing but no provider order

@@ -16,8 +16,8 @@ const calls: string[] = [];
 let answer: CommitResult = { ok: true, title: "Sent" };
 const mk = () =>
   createApprovalStore({
-    commit: async (id) => (calls.push(`commit:${id}`), answer),
-    beacon: async (id) => (calls.push(`beacon:${id}`), answer),
+    commit: async (id, fixIds) => (calls.push(`commit:${id}${fixIds?.length ? `+${fixIds.join("+")}` : ""}`), answer),
+    beacon: async (id, fixIds) => (calls.push(`beacon:${id}${fixIds?.length ? `+${fixIds.join("+")}` : ""}`), answer),
     schedule: (fn, ms) => { const t = { at: clock + ms, fn, dead: false }; tasks.push(t); return t; },
     cancel: (h) => { (h as { dead: boolean }).dead = true; },
     now: () => clock,
@@ -100,5 +100,18 @@ const info = (orderId: string) => ({ orderId, orderNumber: "CPS1", customerName:
   await advance(8000);
   assert.equal(s.getRows()[0].status, "sent");
   assert.equal(s.getRows()[0].delivery, "etsy");
+
+  // "Send AI fix" (2026-10-14): the chosen fix ids ride along on the timed commit and on the flush.
+  calls.length = 0;
+  s = mk();
+  s.enqueue({ ...info(A), fixIds: ["fix-1"] });
+  await advance(8000);
+  assert.deepEqual(calls, [`commit:${A}+fix-1`]);
+  calls.length = 0;
+  s = mk();
+  s.enqueue({ ...info(B), fixIds: ["fix-2", "fix-3"] });
+  s.flush();
+  await advance(0);
+  assert.deepEqual(calls, [`beacon:${B}+fix-2+fix-3`]);
   console.log("approve queue: all checks passed");
 })();

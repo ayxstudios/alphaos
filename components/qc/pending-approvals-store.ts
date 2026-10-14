@@ -16,6 +16,8 @@ export type PendingRow = {
   orderId: string;
   orderNumber: string;
   customerName: string;
+  /** "Send AI fix" (2026-10-14): the fix samples to apply before the send. */
+  fixIds?: string[];
   /** pending = in the Stop window; sending = in flight (or flushed); sent; failed. */
   status: "pending" | "sending" | "sent" | "failed";
   startedAt: number;
@@ -30,9 +32,9 @@ export type StoreEvent = { type: "stale" | "claimed"; row: PendingRow; message: 
 
 export type StoreDeps = {
   /** Server action path with the 30 s timeout and stale-bundle handling. */
-  commit: (orderId: string) => Promise<CommitResult>;
+  commit: (orderId: string, fixIds?: string[]) => Promise<CommitResult>;
   /** keepalive POST used on pagehide; resolves with the answer when the page lives on. */
-  beacon: (orderId: string) => Promise<CommitResult>;
+  beacon: (orderId: string, fixIds?: string[]) => Promise<CommitResult>;
   schedule: (fn: () => void, ms: number) => unknown;
   cancel: (handle: unknown) => void;
   now: () => number;
@@ -90,7 +92,7 @@ export function createApprovalStore(deps: StoreDeps) {
     if (t !== undefined) deps.cancel(t);
     timers.delete(id);
     patch(id, { status: "sending", message: null });
-    deps[via](id).then(
+    deps[via](id, get(id)?.fixIds).then(
       (res) => settle(id, res),
       () => settle(id, { ok: false, code: "network", message: "That didn't go through (connection dropped)." }),
     );
@@ -108,7 +110,7 @@ export function createApprovalStore(deps: StoreDeps) {
     },
     /** Order ids the server still lists as awaiting QC: kept out of the queue. */
     skipIds: () => rows.filter((r) => r.status !== "sent").map((r) => r.orderId),
-    enqueue(info: { orderId: string; orderNumber: string; customerName: string }) {
+    enqueue(info: { orderId: string; orderNumber: string; customerName: string; fixIds?: string[] }) {
       if (get(info.orderId)) return;
       const startedAt = deps.now();
       rows = [...rows, { ...info, status: "pending", startedAt, endsAt: startedAt + grace, message: null }];

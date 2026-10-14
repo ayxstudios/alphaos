@@ -400,6 +400,13 @@
       "when": 1791800000000,
       "tag": "0056_qc_claims",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1791880000000,
+      "tag": "0057_auto_qc_fixes",
+      "breakpoints": true
     }
   ]
 }

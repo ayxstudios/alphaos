@@ -7,6 +7,7 @@ import { buildRevisionHistory, type RevisionHistoryNote } from "@/lib/orders/rev
 import type { OrderStatus } from "@/lib/orders/transitions";
 import { getAutoQcView, latestSlots, slotAssetIds, type AutoQcView } from "./auto-qc";
 import { othersClaims, startIndex, summarizeOthers } from "./claims";
+import { getFixViews, type AutoQcFixView } from "./auto-qc-fix";
 import { getQcContext, getQcQueueIds, type QcContext } from "./data";
 
 /**
@@ -28,6 +29,8 @@ export type ApproveItem = {
   requests: RevisionHistoryNote[];
   /** The newest Auto QC on this order (2026-10-14), or null when none yet. */
   autoQc: AutoQcView | null;
+  /** AI fix samples painted on the current versions (one per portrait at most), newest first. */
+  fixes: AutoQcFixView[];
 };
 
 export async function getApproveQueue(user: RequestUser, skip: string[] = []): Promise<string[]> {
@@ -110,7 +113,8 @@ export async function getApproveItem(user: RequestUser, orderId: string): Promis
       createdAt: r.createdAt.toISOString(),
     }));
     const autoQc = await getAutoQcView(tx, orderId, slotAssetIds(latestSlots(ctx.versions, ctx.portraits)));
-    return { o, requests: buildRevisionHistory(events), autoQc };
+    const fixes = await getFixViews(tx, orderId, ctx.versions, ctx.portraits);
+    return { o, requests: buildRevisionHistory(events), autoQc, fixes };
   });
   const revisionCount = extra.o?.revisionCount ?? 0;
   const isRevision = revisionCount > 0 || extra.requests.length > 0;
@@ -123,5 +127,6 @@ export async function getApproveItem(user: RequestUser, orderId: string): Promis
     round: Math.max(revisionCount, extra.requests.length, isRevision ? 1 : 0),
     requests: extra.requests,
     autoQc: extra.autoQc,
+    fixes: extra.fixes,
   };
 }

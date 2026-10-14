@@ -7,6 +7,7 @@
  *   sendDesignerNudge      24 h with no portrait uploaded
  *   sendDesignerReassigned 48 h: the order moved to someone else (both told)
  *   sendQcFeedback         QC failed: the failed items + a link
+ *   sendAiFixUsed          the owner sent the AI's fix of their portrait instead
  *   sendVaAttention        something a VA must look at now
  *
  * Quiet hours: a brief / nudge / QC feedback that would land inside the
@@ -22,6 +23,7 @@ import { loadDesignerContact, type DesignerContact } from "@/lib/designers/profi
 import { DEFAULT_TIMEZONE, formatInTimezone, isValidTimezone, quietWindowEnd } from "@/lib/designers/quiet-hours";
 import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
 import { LOGIN_FREE_LINK_SECONDS, resolveAttachmentViews } from "@/lib/qc/attachment-urls";
+import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { appUrl } from "@/lib/urls";
 
 type OrderBrief = {
@@ -250,6 +252,54 @@ export async function sendQcFixUrgent(
     toRole: "designer",
     text,
     payload: { links, orderNumber: brief.number, urgent: true, dueAt: input.dueAt.toISOString(), ...contactPayload(contact) },
+  });
+}
+
+/**
+ * Yousif 2026-10-14: the owner sent the AI's fix of this designer's portrait
+ * to the customer instead of their version, and "that should now be the
+ * portrait we work with". Alpha tells the designer what was changed and that
+ * any later revision starts from the fixed file (the newest on their card).
+ * Not urgent, so it waits out quiet hours.
+ */
+export async function sendAiFixUsed(
+  tx: Tx,
+  input: { orderId: string; fixed: string[]; fixKeys: string[]; now?: Date },
+): Promise<string | null> {
+  const now = input.now ?? new Date();
+  const [assignment] = await tx
+    .select({ designerId: assignments.designerId })
+    .from(assignments)
+    .where(and(eq(assignments.orderId, input.orderId), eq(assignments.active, true)))
+    .limit(1);
+  if (!assignment) return null;
+  const [brief, contact] = await Promise.all([
+    loadOrderBrief(tx, input.orderId),
+    loadDesignerContact(tx, assignment.designerId),
+  ]);
+  if (!brief) return null;
+  const links = orderLinks(brief.id);
+  // The board needs a login, so the fixed picture is its own signed link (private bucket, 7 days).
+  const pictures: string[] = [];
+  if (isR2Configured()) {
+    for (const key of input.fixKeys) {
+      try { pictures.push(await presignGet(key, LOGIN_FREE_LINK_SECONDS)); } catch { /* the card still has it */ }
+    }
+  }
+  const parts: string[] = [];
+  parts.push(`Order ${brief.number}: QC found a few things to fix, so we fixed them ourselves and sent the fixed version to the customer.`);
+  if (input.fixed.length) parts.push(`What was changed: ${input.fixed.join("; ")}.`);
+  parts.push("The fixed version is now the main file for this order. If the customer asks for changes, start from the newest version on your card, not your original.");
+  pictures.forEach((url, i) => parts.push(`${pictures.length > 1 ? `Fixed version ${i + 1}` : "Fixed version"}: ${url}`));
+  parts.push(`Open it: ${links.boardUrl}`);
+  return sendAlphaEvent(tx, {
+    type: "designer.ai_fix_used",
+    businessId: brief.businessId,
+    orderId: brief.id,
+    toUserId: assignment.designerId,
+    toRole: "designer",
+    text: parts.join(" "),
+    payload: { links, orderNumber: brief.number, fixed: input.fixed, pictures, ...contactPayload(contact), ...deliverAfterFor(now, contact) },
   });
 }
 

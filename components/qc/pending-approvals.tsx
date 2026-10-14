@@ -23,12 +23,12 @@ const COMMIT_TIMEOUT_MS = 55_000;
 /** Full RSC prefetch: the server render of /approve takes seconds, so Approve and Stop swap from the cache instead. */
 export const FULL_PREFETCH = { kind: PrefetchKind.FULL };
 
-async function viaRoute(orderId: string, keepalive: boolean): Promise<CommitResult> {
+async function viaRoute(orderId: string, keepalive: boolean, fixIds?: string[]): Promise<CommitResult> {
   const res = await fetch("/api/approve/commit", {
     method: "POST",
     keepalive,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ orderId }),
+    body: JSON.stringify(fixIds?.length ? { orderId, fixIds } : { orderId }),
   });
   return (await res.json()) as CommitResult;
 }
@@ -36,10 +36,10 @@ async function viaRoute(orderId: string, keepalive: boolean): Promise<CommitResu
 // Same protections the screen's callAction always had (Yousif 2026-10-14): a
 // dropped connection or a 55 s stall ends with a reason, and a retry is safe
 // because the server answers "Already checked" when the first one landed.
-async function commit(orderId: string): Promise<CommitResult> {
+async function commit(orderId: string, fixIds?: string[]): Promise<CommitResult> {
   try {
     return await Promise.race([
-      ownerApprove(orderId),
+      ownerApprove(orderId, fixIds),
       new Promise<never>((_, fail) => setTimeout(() => fail(new Error("timeout")), COMMIT_TIMEOUT_MS)),
     ]);
   } catch (err) {
@@ -48,7 +48,7 @@ async function commit(orderId: string): Promise<CommitResult> {
     // plain route does the same approve and needs no matching bundle.
     if (/server action/i.test(msg)) {
       try {
-        return await viaRoute(orderId, false);
+        return await viaRoute(orderId, false, fixIds);
       } catch {
         return { ok: false, code: "network", message: "AlphaOS was just updated. Tap Retry." };
       }
@@ -68,7 +68,7 @@ async function commit(orderId: string): Promise<CommitResult> {
 // router.replace + refresh that remounts the screen after every Approve.
 export const approvalStore = createApprovalStore({
   commit,
-  beacon: (orderId) => viaRoute(orderId, true),
+  beacon: (orderId, fixIds) => viaRoute(orderId, true, fixIds),
   schedule: (fn, ms) => setTimeout(fn, ms),
   cancel: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
   now: () => Date.now(),
@@ -150,7 +150,10 @@ function Rows({ rows }: { rows: PendingRow[] }) {
               <p className="min-w-0 flex-1 text-sm text-ink" aria-live="polite">
                 {r.status === "pending" ? (
                   <>
-                    <span className="font-semibold">Approving {r.orderNumber}</span>
+                    <span className="font-semibold">
+                      Approving {r.orderNumber}
+                      {r.fixIds?.length ? " with the AI fix" : ""}
+                    </span>
                     <span className="text-slate"> · sends in {Math.ceil(left / 1000)} s</span>
                   </>
                 ) : r.status === "sending" ? (
