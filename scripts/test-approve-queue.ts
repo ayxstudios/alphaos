@@ -69,6 +69,17 @@ const info = (orderId: string) => ({ orderId, orderNumber: "CPS1", customerName:
   assert.equal(stale, 1);
   assert.deepEqual(s.getRows(), []);
 
+  // Someone else had it open first (lib/qc/claims.ts): same as stale, typed.
+  answer = { ok: false, code: "claimed", message: "Ayser is already checking this one." };
+  s = mk();
+  const seen: string[] = [];
+  s.onEvent((e) => seen.push(e.type));
+  s.enqueue(info(A));
+  await advance(8000);
+  assert.deepEqual(seen, ["claimed"]);
+  assert.deepEqual(s.getRows(), []);
+  assert.deepEqual(s.skipIds(), []);
+
   // Failure keeps the row (still skipped); Retry sends again.
   answer = { ok: false, code: "timeout", message: "No answer" };
   s = mk();

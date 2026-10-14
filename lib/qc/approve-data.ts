@@ -6,6 +6,7 @@ import type { CardEvent } from "@/lib/orders/card-detail";
 import { buildRevisionHistory, type RevisionHistoryNote } from "@/lib/orders/revision-history";
 import type { OrderStatus } from "@/lib/orders/transitions";
 import { getAutoQcView, latestSlots, slotAssetIds, type AutoQcView } from "./auto-qc";
+import { othersClaims, summarizeOthers } from "./claims";
 import { getQcContext, getQcQueueIds, type QcContext } from "./data";
 
 /**
@@ -36,6 +37,32 @@ export async function getApproveQueue(user: RequestUser, skip: string[] = []): P
   if (!skip.length) return ids;
   const hide = new Set(skip);
   return ids.filter((id) => !hide.has(id));
+}
+
+/**
+ * The queue one owner works on /approve (2026-10-14, two owners): the shared
+ * queue minus anything another person has open right now (lib/qc/claims.ts),
+ * so the two of them never land on the same order. `takenBy` = who has the
+ * order asked for with ?o= when it is someone else's; `others` = who else is
+ * checking and how many, for the header.
+ */
+export async function getOwnerApproveQueue(
+  user: RequestUser,
+  skip: string[] = [],
+  asked?: string,
+): Promise<{ ids: string[]; others: { name: string; count: number }[]; takenBy: string | null }> {
+  const [all, live] = await Promise.all([
+    getQcQueueIds(user, "all"),
+    withUserContext(user, (tx) => othersClaims(tx, user.id)),
+  ]);
+  const inQueue = new Set(all);
+  const claims = live.filter((c) => inQueue.has(c.orderId));
+  const hide = new Set([...skip, ...claims.map((c) => c.orderId)]);
+  return {
+    ids: all.filter((id) => !hide.has(id)),
+    others: summarizeOthers(claims),
+    takenBy: (asked && claims.find((c) => c.orderId === asked)?.holder) || null,
+  };
 }
 
 export async function getApproveItem(user: RequestUser, orderId: string): Promise<ApproveItem | null> {

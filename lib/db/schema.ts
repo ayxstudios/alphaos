@@ -867,6 +867,25 @@ export const autoQcChecks = pgTable(
   (t) => [index("auto_qc_checks_order_created_idx").on(t.orderId, t.createdAt)],
 );
 
+// Who has an order open on /approve (migration 0056, lib/qc/claims.ts): the
+// first person to open it keeps it while their page is live; the other
+// owner's queue skips it and their pass or fail is refused.
+export const qcClaims = pgTable(
+  "qc_claims",
+  {
+    orderId: text("order_id")
+      .primaryKey()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    claimedAt: timestamp("claimed_at", { withTimezone: true }).defaultNow().notNull(),
+    /** Last heartbeat from the claimer's screen; stale after CLAIM_TTL_MS. */
+    seenAt: timestamp("seen_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("qc_claims_seen_idx").on(t.seenAt)],
+);
+
 export const proofs = pgTable(
   "proofs",
   {

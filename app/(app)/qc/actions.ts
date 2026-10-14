@@ -24,6 +24,7 @@ import {
   type TemplateKey,
 } from "@/lib/email/templates";
 import { textToHtml } from "@/lib/integrations/gmail/mime";
+import { claimedMessage, claimHolder } from "@/lib/qc/claims";
 import {
   assertQcPassAllowed,
   transition,
@@ -130,6 +131,9 @@ export async function prepareQcEmailPreview(input: {
     if (ctx.order.status !== input.expectedFrom || ctx.order.status !== "awaiting_qc") {
       return { ok: false as const, code: "stale", message: "Someone already checked this one." };
     }
+    // Two owners (lib/qc/claims.ts): the one who opened it first decides it.
+    const holder = await claimHolder(tx, input.orderId, user.id);
+    if (holder) return { ok: false as const, code: "claimed", message: claimedMessage(holder.holder) };
     const proof = await ensureProof(tx, ctx.order);
     const selection = selectProofTemplate(ctx);
     const template = await resolveTemplate(tx, ctx.order.businessId, selection.key);
@@ -200,6 +204,9 @@ export async function confirmQcPassAndSend(input: {
     if (ctx.order.status !== input.expectedFrom || ctx.order.status !== "awaiting_qc") {
       return { ok: false as const, code: "stale", message: "Someone already checked this one." };
     }
+    // Under the row lock: someone else has it open on /approve, so it is theirs.
+    const holder = await claimHolder(tx, input.orderId, user.id);
+    if (holder) return { ok: false as const, code: "claimed", message: claimedMessage(holder.holder) };
     // The transition's own gate (sign-off, authoritative checklist) runs after
     // the send, so check it now: a refused pass must never email the customer.
     try {
@@ -406,6 +413,10 @@ export async function submitQcFail(input: {
   if (!reason) {
     return { ok: false, code: "precondition", message: "Write a note for the designer first." };
   }
+
+  // Two owners (lib/qc/claims.ts): someone else has it open, so it is their call.
+  const holder = await withUserContext(auth, (tx) => claimHolder(tx, input.orderId, auth.id));
+  if (holder) return { ok: false, code: "claimed", message: claimedMessage(holder.holder) };
 
   const failedSet = new Set(failed);
   const itemResults: ItemResults = {};

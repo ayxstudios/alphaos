@@ -18,7 +18,8 @@ export type PendingRow = {
   message: string | null;
 };
 
-export type StoreEvent = { type: "stale"; row: PendingRow; message: string };
+/** stale = already checked; claimed = someone else has it open (lib/qc/claims.ts). */
+export type StoreEvent = { type: "stale" | "claimed"; row: PendingRow; message: string };
 
 export type StoreDeps = {
   /** Server action path with the 30 s timeout and stale-bundle handling. */
@@ -68,9 +69,10 @@ export function createApprovalStore(deps: StoreDeps) {
     if (res.ok) {
       patch(id, { status: "sent", message: null });
       timers.set(id, deps.schedule(() => remove(id), linger));
-    } else if (res.code === "stale") {
+    } else if (res.code === "stale" || res.code === "claimed") {
       remove(id);
-      evSubs.forEach((f) => f({ type: "stale", row, message: res.message }));
+      const type = res.code;
+      evSubs.forEach((f) => f({ type, row, message: res.message }));
     } else {
       patch(id, { status: "failed", message: res.message });
     }

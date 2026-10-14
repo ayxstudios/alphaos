@@ -219,13 +219,20 @@ function visibleRows<T extends { status: string }>(rows: T[]): T[] {
   return rows.filter((r) => r.status === "pending" || r.status === "failed");
 }
 
-/** Toast for an approval the server said was already checked (the row just goes). */
+/**
+ * Toast for an approval the server refused because it was already checked, or
+ * because the other owner had it open first (the row just goes, nothing sent).
+ */
 function useApprovalEvents() {
   const toast = useToast();
   useEffect(
     () =>
       approvalStore.onEvent((e) => {
-        toast({ variant: "warning", title: "Already checked", description: e.message });
+        toast(
+          e.type === "claimed"
+            ? { variant: "warning", title: e.message, description: `${e.row.orderNumber} was not sent.` }
+            : { variant: "warning", title: "Already checked", description: e.message },
+        );
       }),
     [toast],
   );
