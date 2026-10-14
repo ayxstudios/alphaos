@@ -53,8 +53,9 @@ function str(v: unknown, max: number): string {
   return typeof v === "string" ? v.trim().replace(/[–—]/g, "-").slice(0, max) : "";
 }
 
+/** Auto QC check keys (lib/qc/auto-qc.ts); room above 11 so a new check never drops off a fix. */
 function keysOf(v: unknown): number[] {
-  return Array.isArray(v) ? [...new Set(v.map(Number).filter((k) => Number.isInteger(k) && k >= 1 && k <= 11))].sort((a, b) => a - b) : [];
+  return Array.isArray(v) ? [...new Set(v.map(Number).filter((k) => Number.isInteger(k) && k >= 1 && k <= 20))].sort((a, b) => a - b) : [];
 }
 
 function boxOf(v: unknown): FixBox | null {
