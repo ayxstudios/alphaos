@@ -400,6 +400,12 @@ export type StyleDailyLimit = {
   limit: number;
   /** Lower = served first among quota-holding designers for these styles. */
   priority: number;
+  /**
+   * true = once the limit is used today, the designer stays eligible for these
+   * styles like a designer with no quota (ordered by rank, after the
+   * quota-holders) instead of dropping out for the day. Absent = drops out.
+   */
+  overflow?: boolean;
 };
 
 export const designerProfiles = pgTable("designer_profiles", {

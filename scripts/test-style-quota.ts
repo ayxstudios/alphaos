@@ -71,5 +71,39 @@ const plain = rankCandidates(
 );
 check("no-quota ordering unchanged (rank wins)", plain[0]?.designerId === "b");
 
+// Overflow (Yousif 2026-10-14, Slamet paused, his share to Jerome): Jerome's
+// quota group has overflow, Abdul unquota'd rank 2, Jerome rank 3, Slamet at
+// capacity 0. Jerome first while under his limit, then Abdul until Abdul is
+// full, then Jerome again instead of nobody.
+const overflowDay = (jeromeUsed: number, abdulToday: number): Candidate[] => [
+  {
+    ...base,
+    designerId: "jerome",
+    rank: 3,
+    styles: house,
+    styleQuota: { limit: 2, priority: 1, usedToday: jeromeUsed, overflow: true },
+  },
+  { ...base, designerId: "abdul", rank: 2, dailyCapacity: 20, ordersAssignedToday: abdulToday, styles: house, styleQuota: null },
+  { ...base, designerId: "slamet", rank: 4, dailyCapacity: 0, styles: house, styleQuota: null },
+];
+const ofFirst = rankCandidates(overflowDay(0, 0), order);
+check("overflow: under limit -> Jerome first", ofFirst[0]?.designerId === "jerome", ofFirst.map((c) => c.designerId).join(","));
+const ofAbdul = rankCandidates(overflowDay(2, 5), order);
+check("overflow: Jerome at limit -> Abdul next", ofAbdul[0]?.designerId === "abdul" && ofAbdul[1]?.designerId === "jerome");
+const ofBack = rankCandidates(overflowDay(2, 20), order);
+check("overflow: Abdul full -> Jerome again", ofBack[0]?.designerId === "jerome" && ofBack.length === 1);
+check("capacity 0 is never eligible", !ofBack.some((c) => c.designerId === "slamet"));
+const ofCapped = rankCandidates(
+  overflowDay(2, 20).map((c) => (c.designerId === "jerome" ? { ...c, ordersAssignedToday: 15 } : c)),
+  order,
+);
+check("overflow still respects daily capacity", ofCapped.length === 0);
+// Without the flag the old hard stop holds (Jerome out once at his limit).
+const noFlag = rankCandidates(
+  overflowDay(2, 20).map((c) => (c.styleQuota ? { ...c, styleQuota: { ...c.styleQuota, overflow: false } } : c)),
+  order,
+);
+check("no overflow flag: limit is still a hard stop", noFlag.length === 0);
+
 console.log(failed ? `\ntest-style-quota FAILED (${failed})` : "\ntest-style-quota OK");
 process.exit(failed ? 1 : 0);

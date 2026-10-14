@@ -142,8 +142,9 @@ export type Candidate = {
    * business (designer_profiles.style_daily_limits), with how many of today's
    * assignments already fell in the group. Null = no quota for this style:
    * eligible as before, but ordered after quota-holding designers.
+   * overflow = past the limit they stay eligible as if unquota'd (by rank).
    */
-  styleQuota?: { limit: number; priority: number; usedToday: number } | null;
+  styleQuota?: { limit: number; priority: number; usedToday: number; overflow?: boolean } | null;
 };
 
 export type RankedCandidate = Candidate & {
@@ -172,6 +173,7 @@ export function rankCandidates(
   order: { style?: string | null },
 ): RankedCandidate[] {
   const style = order.style?.trim().toLowerCase() || null;
+  const quotaOpen = (c: Candidate) => !c.styleQuota || c.styleQuota.usedToday < c.styleQuota.limit;
 
   const eligible = candidates
     .map((c) => ({
@@ -183,8 +185,9 @@ export function rankCandidates(
       (c) =>
         c.ordersAssignedToday < c.dailyCapacity &&
         (c.maxActiveOrders === 0 || c.wipCount < c.maxActiveOrders) &&
-        // Under the per-style daily quota, when one covers this style.
-        (!c.styleQuota || c.styleQuota.usedToday < c.styleQuota.limit) &&
+        // Under the per-style daily quota, when one covers this style
+        // (an overflow group stays eligible past it, see quotaPriority).
+        (quotaOpen(c) || !!c.styleQuota?.overflow) &&
         // Strict: a styled order goes only to a matching designer.
         (style === null || c.styleMatch),
     );
@@ -192,8 +195,10 @@ export function rankCandidates(
   // Designers holding a per-style quota for this style are served first, in
   // quota priority order (CPS house/venue: Jerome's 1, then Reza's 3, then
   // the unquota'd rest). With no quotas in play every key is equal and the
-  // ordering is unchanged.
-  const quotaPriority = (c: RankedCandidate) => c.styleQuota?.priority ?? Number.MAX_SAFE_INTEGER;
+  // ordering is unchanged. An overflow holder past their limit sorts with the
+  // unquota'd rest, by rank.
+  const quotaPriority = (c: RankedCandidate) =>
+    c.styleQuota && quotaOpen(c) ? c.styleQuota.priority : Number.MAX_SAFE_INTEGER;
   eligible.sort(
     (a, b) =>
       quotaPriority(a) - quotaPriority(b) ||
@@ -283,7 +288,7 @@ export async function loadRankedCandidates(
             g.styles.some((s) => s.trim().toLowerCase() === styleKey),
         ) ?? null
       : null;
-  const quotaFor = new Map<string, { limit: number; priority: number; usedToday: number }>();
+  const quotaFor = new Map<string, NonNullable<Candidate["styleQuota"]>>();
   const holders = roster.filter((r) => groupFor(r.styleDailyLimits));
   if (holders.length) {
     const todayByStyle = await tx
@@ -311,7 +316,12 @@ export async function loadRankedCandidates(
       const used = todayByStyle
         .filter((r) => r.designerId === h.designerId && names.has(r.style?.trim().toLowerCase() ?? ""))
         .reduce((sum, r) => sum + Number(r.n), 0);
-      quotaFor.set(h.designerId, { limit: group.limit, priority: group.priority, usedToday: used });
+      quotaFor.set(h.designerId, {
+        limit: group.limit,
+        priority: group.priority,
+        usedToday: used,
+        overflow: group.overflow === true,
+      });
     }
   }
 
