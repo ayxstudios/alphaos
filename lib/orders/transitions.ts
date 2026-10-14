@@ -32,6 +32,7 @@ import { autoResolveOrderFigures } from "@/lib/orders/figure-auto";
 import { createEarningForCompletion } from "@/lib/orders/earnings";
 import { MAX_QC_ATTACHMENTS, type QcAttachment } from "@/lib/qc/attachments";
 import { sendQcFeedback } from "@/lib/notifications/designer-events";
+import { loadProofFilePick, portraitList } from "@/lib/proofs/files";
 
 export type OrderStatus = (typeof orderStatus.enumValues)[number];
 export type TransitionRole = "admin" | "va" | "designer" | "system";
@@ -247,6 +248,10 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
   }
   if (to === "awaiting_qc") {
     await assertHasSubmission(tx, orderId, order.platformOrderId);
+    await assertEveryPortrait(tx, orderId, order.platformOrderId, "submit");
+  }
+  if (key === "awaiting_qc->awaiting_approval") {
+    await assertEveryPortrait(tx, orderId, order.platformOrderId, "pass");
   }
 
   // QC gate — enforced HERE, not just in the UI/action, so a crafted request
@@ -389,6 +394,29 @@ async function assertFiguresResolved(tx: Tx, orderId: string, platformOrderId: s
       `Cannot complete order ${platformOrderId}: it has an unresolved figure count. Resolve it from Orders first (figure count drives payout).`,
     );
   }
+}
+
+/**
+ * An order of 2+ portraits (two lines, or one line bought twice) moves on only
+ * when every portrait has a file: 4199589633 reached QC with the cat showing
+ * and the dog nowhere (2026-10-14). Which file is which portrait comes from the
+ * same pick the QC screens, Auto QC and the proof email use.
+ */
+async function assertEveryPortrait(
+  tx: Tx,
+  orderId: string,
+  platformOrderId: string,
+  step: "submit" | "pass",
+): Promise<void> {
+  const pick = await loadProofFilePick(tx, orderId);
+  if (pick.mode !== "slots" || !pick.missing.length) return;
+  const gap = pick.missing.map((m) => m.n);
+  const what = `${portraitList(gap)} of ${pick.expected} ${gap.length === 1 ? "has" : "have"} no file yet`;
+  throw new PreconditionError(
+    step === "submit"
+      ? `Cannot submit order ${platformOrderId} to QC: ${what}. Upload ${gap.length === 1 ? "it" : "them"} first.`
+      : `Cannot pass order ${platformOrderId}: ${what}. Send it back to the designer.`,
+  );
 }
 
 async function assertHasSubmission(tx: Tx, orderId: string, platformOrderId: string): Promise<void> {

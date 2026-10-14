@@ -19,7 +19,8 @@ import {
   type CardDetail,
   type CardEvent,
 } from "@/lib/orders/card-detail";
-import { resolveSlotTag } from "@/lib/orders/portraits";
+import { parseSlotKey, resolveSlotTag } from "@/lib/orders/portraits";
+import { loadProofFilePick } from "@/lib/proofs/files";
 import {
   ALLOWED_IMAGE_TYPES,
   MAX_UPLOAD_BYTES,
@@ -203,13 +204,21 @@ export async function saveCardAssetUploads(input: {
   r2Keys: string[];
   /** Which portrait slot (OrderPortrait.key) a submission/final belongs to, on 2+ portrait orders. */
   portraitKey?: string | null;
+  /** Per-file portrait slots, same order as r2Keys (a dog and a cat picked in one go); wins over portraitKey. */
+  portraitKeys?: (string | null)[] | null;
   /** An older open page still sends the bare item id, which is a valid slot key (unit 1). */
   orderItemId?: string | null;
 }): Promise<CardUploadSaveResult> {
   const user = await requireSignedIn();
   if ("error" in user) return { ok: false, message: user.error };
   if (!validAssetType(input.type)) return { ok: false, message: "Choose a valid upload type" };
-  const r2Keys = [...new Set((input.r2Keys ?? []).map((key) => key.trim()).filter(Boolean))].slice(0, 20);
+  // Keep each file's own portrait pick lined up with it through the de-dupe.
+  const picks = new Map<string, string | null>();
+  (input.r2Keys ?? []).forEach((raw, i) => {
+    const key = typeof raw === "string" ? raw.trim() : "";
+    if (key && !picks.has(key)) picks.set(key, input.portraitKeys?.[i] ?? null);
+  });
+  const r2Keys = [...picks.keys()].slice(0, 20);
   if (!input.orderId || r2Keys.length === 0) return { ok: false, message: "Nothing to save" };
 
   try {
@@ -233,12 +242,35 @@ export async function saveCardAssetUploads(input: {
       // A portrait tag must be one of THIS order's portrait slots (an item of
       // this order, a unit within its quantity); anything else is refused rather
       // than silently dropped (a mis-tag misleads QC and the customer's proof
-      // page). Unit 1 is stored as a NULL portrait_unit.
-      let tag: { orderItemId: string; portraitUnit: number | null } | null = null;
-      const portraitKey = input.portraitKey ?? input.orderItemId;
-      if (portraitKey) {
-        tag = await resolveSlotTag(tx, order.id, portraitKey);
-        if (!tag) throw new Error("That portrait is not on this order");
+      // page).
+      type Tag = { orderItemId: string; portraitUnit: number | null };
+      const tags = new Map<string, Tag | null>();
+      const shared = input.portraitKey ?? input.orderItemId;
+      for (const r2Key of r2Keys) {
+        const portraitKey = picks.get(r2Key) ?? shared;
+        let tag: Tag | null = null;
+        if (portraitKey) {
+          tag = await resolveSlotTag(tx, order.id, portraitKey);
+          if (!tag) throw new Error("That portrait is not on this order");
+        }
+        tags.set(r2Key, tag);
+      }
+      // Untagged finished portraits on a 2+ portrait order fill the portraits
+      // that have no file yet, in upload order, when those are all units of one
+      // line (which unit is which does not matter there). Gaps across different
+      // lines stay untagged: the pick matches them by upload order and says so.
+      if (input.type === "submission" || input.type === "final") {
+        const untagged = r2Keys.filter((k) => !tags.get(k));
+        if (untagged.length) {
+          const pick = await loadProofFilePick(tx, order.id);
+          const gaps = pick.mode === "slots" ? pick.missing : [];
+          const lines = new Set(gaps.map((g) => parseSlotKey(g.key)?.itemId));
+          if (gaps.length && lines.size === 1) {
+            for (const [i, r2Key] of untagged.slice(0, gaps.length).entries()) {
+              tags.set(r2Key, await resolveSlotTag(tx, order.id, gaps[i].key));
+            }
+          }
+        }
       }
 
       // Type, size and the bytes themselves (a .png that is really HTML is refused).
@@ -251,8 +283,8 @@ export async function saveCardAssetUploads(input: {
           type: input.type,
           storage: "r2" as const,
           r2Key,
-          orderItemId: tag?.orderItemId ?? null,
-          portraitUnit: tag?.portraitUnit ?? null,
+          orderItemId: tags.get(r2Key)?.orderItemId ?? null,
+          portraitUnit: tags.get(r2Key)?.portraitUnit ?? null,
           uploadedBy: user.id,
         })),
       );

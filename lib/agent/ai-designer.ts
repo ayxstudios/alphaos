@@ -26,7 +26,9 @@ import { getAgentConfig } from "@/lib/agent/config";
 import { openExceptionTx } from "@/lib/agent/exceptions";
 import { sendMessage } from "@/lib/email/dispatch";
 import { createAssignment } from "@/lib/orders/assign";
+import { getOrderPortraits, resolveSlotTag } from "@/lib/orders/portraits";
 import { runTransition, type OrderStatus } from "@/lib/orders/transitions";
+import { loadProofFilePick } from "@/lib/proofs/files";
 import { assetKey, extFor, isR2Configured, presignGet, presignUpload } from "@/lib/storage/r2";
 import { DEV_STORE_PREFIX, writeDevStoreObject } from "@/lib/uploads/store";
 import { appUrl } from "@/lib/urls";
@@ -293,9 +295,18 @@ export type DeliverInput = {
   contentType?: string | null;
   filename?: string | null;
   selfCheck?: string | null;
+  /**
+   * On a 2+ portrait order (two lines, or one line bought twice): which
+   * portrait this file is, its number (1, 2 ...) or slot key. Left out = the
+   * first portrait with no file yet.
+   */
+  portrait?: string | number | null;
 };
 
-export async function deliverJob(orderId: string, input: DeliverInput): Promise<{ status: OrderStatus; assetId: string }> {
+export async function deliverJob(
+  orderId: string,
+  input: DeliverInput,
+): Promise<{ status: OrderStatus; assetId: string; portraitsLeft?: number }> {
   const selfCheck = input.selfCheck?.trim();
   if (!selfCheck) throw new AiJobError(400, "self_check_required", "selfCheck is required: say what you checked against the photos and the brief.");
   const url = input.url?.trim() || null;
@@ -331,15 +342,43 @@ export async function deliverJob(orderId: string, input: DeliverInput): Promise<
       throw new AiJobError(409, "not_claimed", `Claim the job first (state ${o.aiState ?? "none"}, order ${o.status}).`);
     }
     const wasRevision = o.aiState === "revision_claimed";
+    // A 2+ portrait order: the file is the portrait named, else the first one
+    // with no file; the order goes to QC only once every portrait has one.
+    const slots = await getOrderPortraits(tx, orderId);
+    const before = await loadProofFilePick(tx, orderId, slots);
+    let tag: { orderItemId: string; portraitUnit: number | null } | null = null;
+    let portraitN: number | null = null;
+    if (before.mode === "slots") {
+      const asked = input.portrait == null || input.portrait === "" ? null : String(input.portrait);
+      const named = asked ? slots.find((s) => s.key === asked || String(s.n) === asked) : undefined;
+      if (asked && !named) throw new AiJobError(400, "bad_portrait", `portrait must be 1 to ${slots.length} on this order.`);
+      const target = named ?? slots.find((s) => s.key === before.missing[0]?.key);
+      if (target) {
+        tag = await resolveSlotTag(tx, orderId, target.key);
+        portraitN = target.n;
+      }
+    }
     // Same shape as a human upload (saveCardAssetUploads): a 'submission' asset.
+    const slotCols = { orderItemId: tag?.orderItemId ?? null, portraitUnit: tag?.portraitUnit ?? null };
     const [asset] = await tx
       .insert(assets)
       .values(
         stored
-          ? { businessId: o.businessId, orderId, type: "submission", storage: "r2", r2Key: stored.r2Key, uploadedBy: o.agentId }
-          : { businessId: o.businessId, orderId, type: "submission", storage: "cdn", url: url!, uploadedBy: o.agentId },
+          ? { businessId: o.businessId, orderId, type: "submission", storage: "r2", r2Key: stored.r2Key, uploadedBy: o.agentId, ...slotCols }
+          : { businessId: o.businessId, orderId, type: "submission", storage: "cdn", url: url!, uploadedBy: o.agentId, ...slotCols },
       )
       .returning({ id: assets.id });
+    const portraitsLeft = before.mode === "slots" ? before.missing.filter((m) => m.n !== portraitN).length : 0;
+    if (portraitsLeft > 0) {
+      await tx.insert(activityLog).values({
+        businessId: o.businessId,
+        orderId,
+        actorId: o.agentId,
+        action: "ai.delivered",
+        metadata: { selfCheck, assetId: asset.id, portrait: portraitN, portraitsLeft, revision: wasRevision },
+      });
+      return { status: "in_design" as OrderStatus, assetId: asset.id, portraitsLeft };
+    }
     const { status } = await runTransition(tx, SYSTEM_ACTOR, {
       orderId,
       to: "awaiting_qc",

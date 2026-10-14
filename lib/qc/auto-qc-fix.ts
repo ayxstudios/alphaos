@@ -17,7 +17,8 @@ import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { RequestUser, Tx } from "@/lib/db";
 import { activityLog, assets, autoQcFixes, orders } from "@/lib/db/schema";
 import { getAgentDesignerId } from "@/lib/agent/ai-core";
-import { getOrderPortraits } from "@/lib/orders/portraits";
+import { getOrderPortraits, slotKeyOf } from "@/lib/orders/portraits";
+import { loadProofFilePick, type ProofFilePick } from "@/lib/proofs/files";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { AUTO_QC_CHECKS, AUTO_QC_RESULTS, AUTO_QC_VERDICTS, latestSlots, type AutoQcCheck, type AutoQcVerdict } from "./auto-qc";
 import { claimHolder, claimedMessage } from "./claims";
@@ -196,8 +197,12 @@ export function parseFixQcBody(raw: unknown): { ok: true; body: FixQcBody } | { 
 }
 
 /** The newest version of every portrait slot, keyed by slot (null = the order's one portrait / untagged). */
-export function latestBySlot(versions: QcVersion[], portraits: Parameters<typeof latestSlots>[1]): Map<number | null, string> {
-  return new Map(latestSlots(versions, portraits).map((s) => [s.portrait, s.latest.id]));
+export function latestBySlot(
+  versions: QcVersion[],
+  portraits: Parameters<typeof latestSlots>[1],
+  pick?: ProofFilePick,
+): Map<number | null, string> {
+  return new Map(latestSlots(versions, portraits, pick).map((s) => [s.portrait, s.latest.id]));
 }
 
 /**
@@ -210,8 +215,9 @@ export async function getFixViews(
   orderId: string,
   versions: QcVersion[],
   portraits: Parameters<typeof latestSlots>[1],
+  pick?: ProofFilePick,
 ): Promise<AutoQcFixView[]> {
-  const latest = latestBySlot(versions, portraits);
+  const latest = latestBySlot(versions, portraits, pick);
   const sources = [...latest.values()];
   if (!sources.length) return [];
   const rows = await tx
@@ -276,21 +282,31 @@ export async function applyAiFixes(
   // The newest designer version per slot, read inside this transaction with
   // the same grouping as the QC screens (lib/qc/auto-qc.ts latestSlots).
   const versionRows = await tx
-    .select({ id: assets.id, type: assets.type, orderItemId: assets.orderItemId, createdAt: assets.createdAt })
+    .select({
+      id: assets.id,
+      type: assets.type,
+      orderItemId: assets.orderItemId,
+      portraitUnit: assets.portraitUnit,
+      createdAt: assets.createdAt,
+    })
     .from(assets)
     .where(and(eq(assets.orderId, orderId), inArray(assets.type, ["submission", "final"]), isNull(assets.deletedAt)))
-    .orderBy(asc(assets.createdAt));
+    .orderBy(asc(assets.createdAt), asc(assets.id));
   const portraits = await getOrderPortraits(tx, orderId);
-  const portraitNo = new Map(portraits.map((p) => [p.id, p.n]));
-  const versions: QcVersion[] = versionRows.map((v) => ({
-    id: v.id,
-    url: null,
-    type: v.type,
-    uploadedBy: null,
-    createdAt: v.createdAt.toISOString(),
-    portrait: (v.orderItemId && portraitNo.get(v.orderItemId)) || null,
-  }));
-  const latest = latestBySlot(versions, portraits);
+  const pick = await loadProofFilePick(tx, orderId, portraits);
+  const portraitNo = new Map(portraits.map((p) => [p.key, p.n]));
+  const versions: QcVersion[] = versionRows.map((v) => {
+    const slotKey = slotKeyOf({ orderItemId: v.orderItemId, portraitUnit: v.portraitUnit });
+    return {
+      id: v.id,
+      url: null,
+      type: v.type,
+      uploadedBy: null,
+      createdAt: v.createdAt.toISOString(),
+      portrait: pick.mode === "slots" ? (pick.slotOf[v.id] ?? null) : (slotKey && portraitNo.get(slotKey)) || null,
+    };
+  });
+  const latest = latestBySlot(versions, portraits, pick);
   const source = new Map(versionRows.map((v) => [v.id, v]));
   for (const r of rows) {
     // Already applied by an earlier try of this same tap: fine while it is still the newest version.

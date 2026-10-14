@@ -66,7 +66,7 @@ export async function listFixJobs(opts: { limit: number; orderNumber?: string | 
     if (!opts.orderNumber && tried.has(qc.id)) continue;
     const item = await getApproveItem(SYSTEM, id);
     if (!item || item.ctx.status !== "awaiting_qc") continue;
-    const slots = latestSlots(item.ctx.versions, item.ctx.portraits);
+    const slots = latestSlots(item.ctx.versions, item.ctx.portraits, item.ctx.proofFiles);
     if (!slots.length || !sameIds(qc.assetIds, slotAssetIds(slots))) continue; // judged an older upload
     const businessName = await withSystemContext(async (tx) => {
       const [b] = await tx
@@ -147,7 +147,7 @@ export async function saveFix(body: AutoQcFixBody): Promise<SaveFixResult> {
   const item = await getApproveItem(SYSTEM, body.orderId);
   if (!item) return { ok: false, status: 404, error: "order not found" };
   if (item.ctx.status !== "awaiting_qc") return { ok: false, status: 409, error: "stale: the order is no longer waiting for QC" };
-  const latest = latestBySlot(item.ctx.versions, item.ctx.portraits);
+  const latest = latestBySlot(item.ctx.versions, item.ctx.portraits, item.ctx.proofFiles);
   if (latest.get(body.portrait) !== body.sourceAssetId) return { ok: false, status: 409, error: "stale: the designer uploaded a newer version" };
   if (body.status === "ready") {
     try {
@@ -264,7 +264,7 @@ export async function listFixJudgeJobs(opts: { limit: number; orderNumber?: stri
     const item = await getApproveItem(SYSTEM, id);
     if (!item || item.ctx.status !== "awaiting_qc") continue;
     const { ctx } = item;
-    const latest = latestBySlot(ctx.versions, ctx.portraits);
+    const latest = latestBySlot(ctx.versions, ctx.portraits, ctx.proofFiles);
     const sourceIds = [...new Set(rows.map((r) => r.sourceAssetId))];
     const sourceRows = await withSystemContext(async (tx) =>
       tx
@@ -322,7 +322,7 @@ export async function listFixJudgeJobs(opts: { limit: number; orderNumber?: stri
       orderSays: ctx.orderSays,
       references: ctx.references,
       portraits: [],
-      assetIds: slotAssetIds(latestSlots(ctx.versions, ctx.portraits)),
+      assetIds: slotAssetIds(latestSlots(ctx.versions, ctx.portraits, ctx.proofFiles)),
       fixes,
     });
   }

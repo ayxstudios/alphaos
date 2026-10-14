@@ -98,24 +98,36 @@ export type AutoQcView = {
 export type AutoQcSlot = { portrait: number | null; latest: QcVersion; previous: QcVersion | null };
 
 /**
- * The newest version per portrait, the same grouping the Approve screen uses:
- * a 2+ portrait order whose designer tagged uploads is judged per portrait
- * (plus any untagged uploads as their own group); otherwise the order's newest
- * version is the one. Versions arrive oldest first. An untagged 2+ portrait
- * order whose proof email carries several files (`pick`, mode "round") is
- * judged on exactly those files, one slot each in the email's order.
+ * The version per portrait that is judged, shown on Approve and emailed. With
+ * the order's proof-file pick (`pick`, always passed by the QC context) it is
+ * exactly the pick: a single-portrait order's newest upload, or one file per
+ * portrait on a 2+ portrait order (a portrait with no file is simply absent;
+ * the pick names it in `missing`). `previous` is the version before it on the
+ * same portrait, for a revision. Without a pick (an old caller) it falls back
+ * to grouping by tag. Versions arrive oldest first.
  */
 export function latestSlots(versions: QcVersion[], portraits: OrderPortrait[], pick?: ProofFilePick): AutoQcSlot[] {
   const slot = (portrait: number | null, list: QcVersion[]): AutoQcSlot | null =>
     list.length ? { portrait, latest: list[list.length - 1], previous: list.length > 1 ? list[list.length - 2] : null } : null;
-  if (pick?.mode === "round" && pick.files.length >= 2) {
+  if (pick && pick.files.length) {
     const byId = new Map(versions.map((v) => [v.id, v]));
     const picked: AutoQcSlot[] = [];
     for (const file of pick.files) {
       const latest = byId.get(file.assetId);
-      if (latest) picked.push({ portrait: file.n, latest, previous: null });
+      if (!latest) break;
+      const before = versions.filter(
+        (v) =>
+          v.id !== latest.id &&
+          (pick.mode === "single" || v.portrait === file.n) &&
+          Date.parse(v.createdAt) <= Date.parse(latest.createdAt),
+      );
+      picked.push({
+        portrait: pick.mode === "single" ? null : file.n,
+        latest,
+        previous: before.length ? before[before.length - 1] : null,
+      });
     }
-    // A picked file that is not among the versions cannot be judged: fall back to today's grouping.
+    // A picked file that is not among the versions cannot be judged: fall back to grouping.
     if (picked.length === pick.files.length) return picked;
   }
   if (portraits.length >= 2 && versions.some((v) => v.portrait)) {

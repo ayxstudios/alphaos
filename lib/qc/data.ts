@@ -241,13 +241,16 @@ export async function getQcContext(
       .from(assets)
       .leftJoin(users, eq(users.id, assets.uploadedBy))
       .where(and(eq(assets.orderId, orderId), inArray(assets.type, [...SUBMISSION_TYPES]), sql`${assets.deletedAt} is null`))
-      .orderBy(asc(assets.createdAt));
+      .orderBy(asc(assets.createdAt), asc(assets.id));
 
     const resolvedReferences = await Promise.all(
       references.map(async (r) => ({ id: r.id, url: await resolveAssetUrl(r) })),
     );
     const portraits = await getOrderPortraits(tx, orderId);
     const portraitNo = new Map(portraits.map((p) => [p.key, p.n]));
+    // Which portrait each upload stands for comes from the same pick the email
+    // and Auto QC use, so an untagged dog and cat each land on their own portrait.
+    const proofFiles = await loadProofFilePick(tx, orderId, portraits);
     const versions: QcVersion[] = await Promise.all(versionRows.map(async (v) => {
       const slotKey = slotKeyOf({ orderItemId: v.orderItemId, portraitUnit: v.portraitUnit });
       return {
@@ -256,10 +259,10 @@ export async function getQcContext(
         type: v.type,
         uploadedBy: v.uploadedByName ?? v.uploadedByEmail ?? null,
         createdAt: v.createdAt.toISOString(),
-        portrait: (slotKey && portraitNo.get(slotKey)) || null,
+        portrait:
+          proofFiles.mode === "slots" ? (proofFiles.slotOf[v.id] ?? null) : (slotKey && portraitNo.get(slotKey)) || null,
       };
     }));
-    const proofFiles = await loadProofFilePick(tx, orderId, portraits);
 
     const failRows = await tx
       .select({ id: qcChecks.id, reason: qcChecks.reason, attachments: qcChecks.attachments, createdAt: qcChecks.createdAt })

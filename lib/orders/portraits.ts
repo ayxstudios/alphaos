@@ -134,10 +134,12 @@ export async function getOrderPortraits(
 }
 
 /**
- * The slot key an upload belongs to, from its assets columns. order_item_id
- * with a NULL portrait_unit is unit 1 (writers store NULL for unit 1), which
- * keeps every upload tagged before quantities counted on its portrait. Null =
- * the upload is not tagged to a portrait.
+ * The slot key an upload belongs to, from its assets columns. A NULL
+ * portrait_unit reads as unit 1 here (every upload before units counted was
+ * stored that way), but on a line of 2+ portraits a NULL unit only says "one
+ * of this line's portraits": lib/proofs/files.ts matches those by upload
+ * order. Writers store the unit explicitly (resolveSlotTag). Null = the upload
+ * is not tagged to a portrait.
  */
 export function slotKeyOf(tag: { orderItemId: string | null; portraitUnit: number | null }): string | null {
   if (!tag.orderItemId) return null;
@@ -158,8 +160,9 @@ export function parseSlotKey(key: unknown): { itemId: string; unit: number } | n
  * The assets columns to write for an upload tagged with a slot key, or null
  * when the tag does not fit this order (not a slot key, an item of another
  * order, a unit above the item's quantity): the caller refuses the upload
- * rather than store a tag that misleads QC and the customer's email. Unit 1
- * is stored as NULL.
+ * rather than store a tag that misleads QC and the customer's email. The
+ * unit is always stored, unit 1 included, so the file says exactly which
+ * portrait it is even if the line's quantity changes later.
  */
 export async function resolveSlotTag(
   tx: Tx,
@@ -174,5 +177,5 @@ export async function resolveSlotTag(
     .where(and(eq(orderItems.id, parsed.itemId), eq(orderItems.orderId, orderId)))
     .limit(1);
   if (!item || parsed.unit > clampItemQuantity(item.quantity)) return null;
-  return { orderItemId: item.id, portraitUnit: parsed.unit === 1 ? null : parsed.unit };
+  return { orderItemId: item.id, portraitUnit: parsed.unit };
 }

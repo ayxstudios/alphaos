@@ -20,6 +20,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       contentType: str(body.contentType),
       filename: str(body.filename),
       selfCheck: str(body.selfCheck),
+      portrait: typeof body.portrait === "number" ? body.portrait : str(body.portrait),
     });
     return NextResponse.json({ ok: true, orderStatus: res.status, assetId: res.assetId });
   } catch (e) {

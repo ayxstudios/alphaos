@@ -996,7 +996,12 @@ export const proofs = pgTable(
 );
 
 /** One file on a sent proof: the asset and the caption shown beside it. */
-export type ProofFileEntry = { assetId: string; label: string };
+/**
+ * One file a proof email carried. n + slotKey (the portrait it stood for) are
+ * written since 2026-10-14; earlier rows have assetId + label only. The pick
+ * reads slotKey back so a later round knows which untagged file was which.
+ */
+export type ProofFileEntry = { assetId: string; label: string; n?: number; slotKey?: string | null };
 
 /** A revision pin dropped on the preview, in normalised image coordinates.
  *  `p` (1-based portrait number, by item order) says which portrait's preview
