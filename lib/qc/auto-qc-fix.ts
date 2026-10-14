@@ -20,6 +20,7 @@ import { getAgentDesignerId } from "@/lib/agent/ai-core";
 import { getOrderPortraits } from "@/lib/orders/portraits";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { latestSlots } from "./auto-qc";
+import { claimHolder, claimedMessage } from "./claims";
 import type { QcVersion } from "./data";
 
 /** Fix images are full print size (4800 x 6000 and up), so the cap is well above a phone photo's. */
@@ -201,7 +202,10 @@ export type AppliedFix = { fixId: string; assetId: string; portrait: number | nu
  * The owner chose the AI fix (inside their Approve tap): each fix becomes the
  * newest artwork version of its portrait, so the proof, the designer's card
  * and every later revision work from it. Refuses a fix whose designer version
- * is no longer the newest (the designer uploaded again meanwhile).
+ * is no longer the newest (the designer uploaded again meanwhile), and an order
+ * the other owner has open (lib/qc/claims.ts), before anything is written.
+ * Safe to repeat: a fix already applied whose version is still the newest
+ * counts as applied, so Retry after a failed send goes through.
  */
 export async function applyAiFixes(
   tx: Tx,
@@ -211,11 +215,14 @@ export async function applyAiFixes(
 ): Promise<{ ok: true; applied: AppliedFix[] } | { ok: false; code: string; message: string }> {
   const ids = [...new Set(fixIds)].slice(0, 12);
   if (!ids.length) return { ok: true, applied: [] };
-  const [order] = await tx.select({ businessId: orders.businessId }).from(orders).where(eq(orders.id, orderId)).for("update");
+  const [order] = await tx.select({ businessId: orders.businessId, status: orders.status }).from(orders).where(eq(orders.id, orderId)).for("update");
   if (!order) return { ok: false, code: "not_found", message: "This order could not be found." };
+  if (order.status !== "awaiting_qc") return { ok: false, code: "stale", message: "Someone already checked this one." };
+  const holder = await claimHolder(tx, orderId, user.id);
+  if (holder) return { ok: false, code: "claimed", message: claimedMessage(holder.holder) };
   const rows = await tx.select().from(autoQcFixes).where(and(eq(autoQcFixes.orderId, orderId), inArray(autoQcFixes.id, ids)));
-  if (rows.length !== ids.length || rows.some((r) => r.status !== "ready" || !r.r2Key)) {
-    return { ok: false, code: "stale", message: "This AI fix was already used or is gone. Refresh to see the order now." };
+  if (rows.length !== ids.length || rows.some((r) => (r.status !== "ready" && r.status !== "used") || !r.r2Key)) {
+    return { ok: false, code: "stale", message: "This AI fix is gone. Refresh to see the order now." };
   }
   // The newest designer version per slot, read inside this transaction with
   // the same grouping as the QC screens (lib/qc/auto-qc.ts latestSlots).
@@ -237,6 +244,11 @@ export async function applyAiFixes(
   const latest = latestBySlot(versions, portraits);
   const source = new Map(versionRows.map((v) => [v.id, v]));
   for (const r of rows) {
+    // Already applied by an earlier try of this same tap: fine while it is still the newest version.
+    if (r.status === "used") {
+      if (r.usedAssetId && latest.get(r.portrait) === r.usedAssetId) continue;
+      return { ok: false, code: "stale", message: "This AI fix was already used. Refresh to see the order now." };
+    }
     if (!source.has(r.sourceAssetId) || latest.get(r.portrait) !== r.sourceAssetId) {
       return { ok: false, code: "stale_asset", message: "The designer added a newer portrait, so this AI fix no longer applies. Check the new one." };
     }
@@ -245,6 +257,10 @@ export async function applyAiFixes(
   const now = new Date();
   const applied: AppliedFix[] = [];
   for (const r of rows) {
+    if (r.status === "used") {
+      applied.push({ fixId: r.id, assetId: r.usedAssetId!, portrait: r.portrait, fixed: parseFixAreas(r.fixed), key: r.r2Key! });
+      continue;
+    }
     const src = source.get(r.sourceAssetId)!;
     const [asset] = await tx
       .insert(assets)
