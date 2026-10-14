@@ -18,7 +18,11 @@ shipped) and every open exception is OWNED, at all times, by one of:
 2. **The buyer, with a live chase.** `awaiting_photos` with a reachable contact
    and a photo request or reminder in the last 7 days. `awaiting_details` for
    under 2 hours while the automatic gatherers run (intake re-parses every
-   tick; the Etsy buyer-email filler runs every 30 minutes).
+   tick; the Etsy buyer-email filler runs every 30 minutes). When the only
+   gap is the buyer's email, the filler owns it for 12 hours: it reads the
+   address off the Etsy order page, and a desk busy with buyer replies can
+   take hours to give it a turn. Nobody is asked for an email the filler can
+   read (Yousif 2026-10-13).
 3. **Cleared.** Not needed: spam and vendor mail, exceptions whose problem is
    gone, cancelled orders. Closed automatically with a reason.
 4. **Yousif.** Raised on the Alpha line with what is stuck and a
@@ -119,10 +123,11 @@ The 4 hour no-designer wait goes. When `runAutoAssign` finds nobody:
 
 A row (existing exception refreshed, or a new `stuck_order`) for:
 
-- `awaiting_details` or `triage` for over 2 hours: what is missing (buyer
-  email, figure count, style, not in AlphaOS) and what I would do.
+- `awaiting_details` or `triage` for over 2 hours (12 hours when there is
+  no buyer email yet): what is missing (buyer email, figure count, style, not
+  in AlphaOS) and what I would do.
 - `needs_review` for over 2 hours.
-- `awaiting_photos` with no reachable contact for over 2 hours, or no photos 7
+- `awaiting_photos` with no reachable contact for over 12 hours, or no photos 7
   days after the last reminder.
 - `fulfillment_only` with no live parent for over 24 hours.
 - `ready_to_assign` with no designer that the agent may not auto-assign
@@ -141,7 +146,9 @@ A row (existing exception refreshed, or a new `stuck_order`) for:
   last 24 hours, raised at most 3 times. Grace: no_eligible_designer,
   addon_only, stuck_order, designer_backlog 0; reply_unclear, buyer_question,
   unmatched_reply, ai_designer_failed 1h; email_send_failed, intake_unparsed,
-  legacy_order, new_product 2h; photo_count_mismatch never (the buyer is
+  legacy_order, new_product 2h; an intake row whose only gap is an unread
+  buyer email 12h (the filler's window, worded as what I tried, never "Etsy
+  did not share it"); photo_count_mismatch never (the buyer is
   inside the 72h shortfall window; the assigner proceeds after it).
 - Text: "AlphaOS needs you (N)" then one dot line each: "• <shop> <order no>:
   <summary>. <recommendation> <link>". Max 8 lines, then "+N more: <link>".

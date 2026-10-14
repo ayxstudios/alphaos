@@ -40,6 +40,13 @@ const MESSAGE_KINDS = new Set(["reply_unclear", "buyer_question", "email_send_fa
 const NOT_L1 = ["unmatched_reply", "stuck_order", "designer_backlog"];
 /** How long an order may sit in a waiting state before a person must own it. */
 export const WAIT_GRACE_HOURS = 2;
+/**
+ * No buyer email yet: the buyer-email filler reads it off the Etsy order page,
+ * and a shop desk busy with buyer replies can take hours to give it a turn.
+ * The filler owns the gap this long before the owner hears about it (Yousif
+ * 2026-10-13: the email can always be read, never ask a person for it first).
+ */
+export const EMAIL_GRACE_HOURS = 12;
 /** An add-on with no portrait order gets a day for the link to show up. */
 export const ADDON_GRACE_HOURS = 24;
 /** A buyer chase (photo request or reminder) counts as live this long. */
@@ -297,9 +304,9 @@ export function ownerOf(o: OrderFacts, now: Date, opts: { ignoreStuck?: boolean 
   switch (o.status) {
     case "awaiting_details":
     case "triage":
-      return limbo("details", "waiting on order details");
+      return limbo("details", "waiting on order details", o.hasContact ? WAIT_GRACE_HOURS : EMAIL_GRACE_HOURS);
     case "awaiting_photos": {
-      if (!o.hasContact) return limbo("no_contact", "no way to reach the buyer");
+      if (!o.hasContact) return limbo("no_contact", "no way to reach the buyer", EMAIL_GRACE_HOURS);
       const chased = o.lastChaseAt && now.getTime() - o.lastChaseAt.getTime() < CHASE_LIVE_DAYS * 24 * HOUR;
       if (chased) return { bucket: "buyer", why: "photos asked for" };
       return limbo("no_photos", o.lastChaseAt ? "no photos since the last reminder" : "photos never asked for");
@@ -410,12 +417,15 @@ export function stuckWords(
         summary: "waiting on order details for over 2 hours",
         recommendation: o.hasContact
           ? "Open it and fill in what is missing (style, people count, product)."
-          : "Add the buyer's email on the order page, then fill in what is missing.",
+          : "Open it and fill in what is missing (style, people count, product). The buyer's email is still being read from the Etsy order.",
       };
     case "needs_review":
       return { summary: "held for a check before it can go to a designer", recommendation: "Open it, confirm the details, then it goes to a designer." };
     case "no_contact":
-      return { summary: "waiting for photos but there is no email for the buyer", recommendation: "Message the buyer on Etsy for the photos and add their email to the order." };
+      return {
+        summary: `waiting for photos, and I could not read the buyer's email from the Etsy order in ${EMAIL_GRACE_HOURS} hours`,
+        recommendation: "Message the buyer on Etsy for the photos. I keep trying for the email.",
+      };
     case "no_photos":
       return {
         summary: days ? `no photos ${days} day${days === 1 ? "" : "s"} after the last reminder` : "waiting for photos and they were never asked for",

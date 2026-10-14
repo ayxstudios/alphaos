@@ -9,7 +9,7 @@ import { withSystemContext, type Tx } from "@/lib/db";
 import { alphaEvents, businesses, exceptions, orders, shops } from "@/lib/db/schema";
 import { appUrl } from "@/lib/urls";
 import { getAgentConfig } from "./config";
-import { CLOSED_STATUSES } from "./limbo";
+import { CLOSED_STATUSES, EMAIL_GRACE_HOURS } from "./limbo";
 
 const HOUR = 3_600_000;
 
@@ -78,11 +78,30 @@ export type DigestCandidate = {
   createdAt: Date;
   escalatedAt: string | null;
   escalations: number;
+  /** Only the buyer's email is missing: the email filler's window applies, not the kind's. */
+  emailOnly?: boolean;
+};
+
+/**
+ * An intake row whose only gap is an unread buyer email. The buyer-email
+ * filler reads it off the Etsy order page by itself, so the owner never hears
+ * about it inside EMAIL_GRACE_HOURS. A malformed email is a different gap.
+ */
+export function onlyEmailMissing(kind: string, detail: Record<string, unknown>): boolean {
+  if (kind !== "intake_unparsed" || !Array.isArray(detail.missing)) return false;
+  const missing = detail.missing.filter((m): m is string => typeof m === "string");
+  return missing.length > 0 && missing.every((m) => /^customer email \((Etsy did not share|not read from)/i.test(m));
+}
+
+/** The line for an unread email, once the filler's window has passed. */
+export const EMAIL_ONLY_WORDS = {
+  summary: `I could not read the buyer's email from the Etsy order in ${EMAIL_GRACE_HOURS} hours, so the photo link has not gone out`,
+  recommendation: "Message the buyer on Etsy for the photos. I keep trying for the email.",
 };
 
 /** Past its grace, not raised in the last day, raised fewer than MAX_RAISES times. */
 export function isDue(c: DigestCandidate, now: Date): boolean {
-  const grace = c.kind in GRACE_HOURS ? GRACE_HOURS[c.kind] : OTHER_KIND_GRACE_HOURS;
+  const grace = c.emailOnly ? EMAIL_GRACE_HOURS : c.kind in GRACE_HOURS ? GRACE_HOURS[c.kind] : OTHER_KIND_GRACE_HOURS;
   if (grace === null) return false;
   if (now.getTime() - c.createdAt.getTime() < grace * HOUR) return false;
   if (c.escalations >= MAX_RAISES) return false;
@@ -379,6 +398,7 @@ async function dueLines(
       createdAt: r.createdAt,
       escalatedAt: typeof detail.escalatedAt === "string" ? detail.escalatedAt : null,
       escalations: typeof detail.escalations === "number" ? detail.escalations : 0,
+      emailOnly: onlyEmailMissing(r.kind, detail),
     };
     if (!isDue(candidate, now)) continue;
     lines.push({
@@ -389,8 +409,12 @@ async function dueLines(
       kind: r.kind,
       shop: r.shopName ? shortShopLabel(r.shopName) : (firstShop.get(r.businessId) ?? bizName.get(r.businessId) ?? ""),
       number: r.orderId ? r.number : null,
-      summary: r.summary,
-      recommendation: typeof detail.recommendation === "string" ? detail.recommendation : "",
+      summary: candidate.emailOnly ? EMAIL_ONLY_WORDS.summary : r.summary,
+      recommendation: candidate.emailOnly
+        ? EMAIL_ONLY_WORDS.recommendation
+        : typeof detail.recommendation === "string"
+          ? detail.recommendation
+          : "",
       said: MAIL_KINDS.includes(r.kind) ? buyerWords(detail.excerpt) : null,
       link: r.orderId ? appUrl(`/orders/${r.orderId}`) : appUrl("/exceptions"),
       createdAt: r.createdAt,

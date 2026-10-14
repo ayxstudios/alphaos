@@ -30,9 +30,11 @@ import {
   MAX_LINES,
   buyerWords,
   digestText,
+  EMAIL_ONLY_WORDS,
   isDue,
   lineFor,
   mergeLines,
+  onlyEmailMissing,
   plainWords,
   sendOwnerDigest,
   stripOrderPrefix,
@@ -151,8 +153,16 @@ function pureTests() {
   check("owner: photos asked for = the buyer", bucket({ status: "awaiting_photos", lastChaseAt: ago(48) }).bucket === "buyer");
   const noPhotos = bucket({ status: "awaiting_photos", lastChaseAt: ago(24 * 9) });
   check("owner: no photos a week after the reminder = limbo", noPhotos.bucket === "limbo" && noPhotos.reason === "no_photos");
-  const noContact = bucket({ status: "awaiting_photos", hasContact: false });
-  check("owner: no way to reach the buyer = limbo", noContact.bucket === "limbo" && noContact.reason === "no_contact");
+  const noContact = bucket({ status: "awaiting_photos", hasContact: false, enteredAt: ago(13) });
+  check("owner: no way to reach the buyer for 12 h = limbo", noContact.bucket === "limbo" && noContact.reason === "no_contact");
+  check(
+    "owner: details with no buyer email = the email filler still has it",
+    bucket({ status: "awaiting_details", hasContact: false, enteredAt: ago(5) }).bucket === "buyer",
+  );
+  check(
+    "owner: no buyer email yet = the email filler still has it",
+    bucket({ status: "awaiting_photos", hasContact: false, enteredAt: ago(5) }).bucket === "buyer",
+  );
   check("owner: add-on with its portrait order", bucket({ status: "fulfillment_only", parentLive: true }).bucket === "pipeline");
   check("owner: orphan add-on gets a day", bucket({ status: "fulfillment_only", enteredAt: ago(5) }).bucket !== "limbo");
   check("owner: orphan add-on after a day = limbo", bucket({ status: "fulfillment_only", enteredAt: ago(30) }).bucket === "limbo");
@@ -179,12 +189,26 @@ function pureTests() {
   check("order numbers: shop prefix", orderNumbersIn("About PC32132", "and CPS10274").join(",") === "PC32132,CPS10274");
   check("order numbers: none", orderNumbersIn("Hello", "Love the shop").length === 0);
 
-  const cand = (kind: string, hours: number, extra: { escalatedAt?: string | null; escalations?: number } = {}) => ({
+  const cand = (kind: string, hours: number, extra: { escalatedAt?: string | null; escalations?: number; emailOnly?: boolean } = {}) => ({
     kind,
     createdAt: ago(hours),
     escalatedAt: extra.escalatedAt ?? null,
     escalations: extra.escalations ?? 0,
+    emailOnly: extra.emailOnly ?? false,
   });
+  // Yousif 2026-10-13: a buyer's email is read off the Etsy order, never asked of a person first.
+  const emailGap = { missing: ["customer email (not read from the Etsy order page yet)"] };
+  check("email: an unread email alone is the filler's", onlyEmailMissing("intake_unparsed", emailGap));
+  check("email: rows from before the rewording count too", onlyEmailMissing("intake_unparsed", { missing: ["customer email (Etsy did not share it)"] }));
+  check("email: other gaps too = not email only", !onlyEmailMissing("intake_unparsed", { missing: [...emailGap.missing, "style"] }));
+  check("email: a malformed email is not the filler's", !onlyEmailMissing("intake_unparsed", { missing: ['customer email ("a@b" does not look right)'] }));
+  check("email: other kinds never", !onlyEmailMissing("stuck_order", emailGap));
+  check(
+    "due: an unread email waits for the filler's 12 h",
+    !isDue(cand("intake_unparsed", 3, { emailOnly: true }), now) && isDue(cand("intake_unparsed", 13, { emailOnly: true }), now),
+  );
+  check("due: other intake gaps keep 2 h", isDue(cand("intake_unparsed", 3), now));
+  check("words: an unread email never blames Etsy", !/did not share|hides?/i.test(EMAIL_ONLY_WORDS.summary + EMAIL_ONLY_WORDS.recommendation));
   check("due: no designer is raised at once", isDue(cand("no_eligible_designer", 0.1), now));
   check("due: a reply waits an hour first", !isDue(cand("reply_unclear", 0.5), now) && isDue(cand("reply_unclear", 2), now));
   check("due: photo shortfall is never raised", !isDue(cand("photo_count_mismatch", 100), now));

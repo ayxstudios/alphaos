@@ -115,7 +115,7 @@ export function parseIntake(ctx: IntakeContext): IntakeParse {
   if (!productTitle) missing.push("product title");
 
   const customerEmail = (ctx.customerEmail?.trim() || review.buyerEmail?.trim() || "").toLowerCase() || null;
-  if (!customerEmail) missing.push("customer email (Etsy did not share it)");
+  if (!customerEmail) missing.push("customer email (not read from the Etsy order page yet)");
   else if (emailProblem(customerEmail)) missing.push(`customer email ("${customerEmail}" does not look right)`);
   const customerName = ctx.customerName?.trim() || review.buyerName?.trim() || null;
 
