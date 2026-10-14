@@ -5,8 +5,47 @@
  * alone. It is a suggestion: the owner sends it with "Send AI fix", or ignores
  * it and approves or rejects as usual. docs/AUTO_QC.md "Fix samples".
  */
-import type { AutoQcFixView, FixBox } from "@/lib/qc/auto-qc-fix";
+import type { AutoQcFixQc, AutoQcFixView, FixBox } from "@/lib/qc/auto-qc-fix";
 import { cn } from "@/lib/utils";
+
+/**
+ * Auto QC of the fix itself (Yousif 2026-10-14: "The AutoQC should even judge
+ * the AI fix too"): the same judge that checks the designer's version checks
+ * the fix image, and the verdict sits right on the fix so the owner knows it
+ * was checked before tapping Send AI fix.
+ */
+function FixQcBadge({ qc }: { qc: AutoQcFixQc | null }) {
+  const failed = qc?.checks.filter((c) => c.result === "fail") ?? [];
+  const b = !qc
+    ? { text: "Auto QC of this fix pending", tone: "bg-canvas text-slate", title: "The judge checks new fixes every few minutes" }
+    : qc.verdict === "pass"
+      ? { text: "Auto QC'd this fix · looks right", tone: "bg-sage/10 text-sage", title: qc.summary ?? "" }
+      : qc.verdict === "issues"
+        ? { text: `Auto QC'd this fix · ${failed.length || 1} issue${failed.length === 1 ? "" : "s"}`, tone: "bg-rose/10 text-rose", title: qc.summary ?? "" }
+        : { text: "Auto QC'd this fix · couldn't judge", tone: "bg-amber/10 text-amber", title: qc.summary ?? "" };
+  return (
+    <div className="flex flex-col gap-2">
+      <span
+        className={cn("inline-flex max-w-full items-center self-start rounded-input px-2 py-0.5 text-xs font-semibold", b.tone)}
+        title={b.title || undefined}
+        data-testid="ai-fix-qc-badge"
+        data-verdict={qc?.verdict ?? "pending"}
+      >
+        <span className="min-w-0 truncate">{b.text}</span>
+      </span>
+      {failed.length ? (
+        <ul className="flex flex-col gap-1 rounded-card border border-rose/30 bg-rose/5 p-3" aria-label="Problems Auto QC found in the fix">
+          {failed.map((c) => (
+            <li key={c.key} className="break-words text-sm text-ink">
+              <span className="font-semibold text-rose">{c.label}</span>
+              {c.note ? `: ${c.note}` : ""}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
 
 /** The spot with some room around it, so the change reads in context. */
 function padBox(b: FixBox, pad = 0.35): FixBox {
@@ -42,6 +81,7 @@ function FixCard({ fix, beforeUrl, labelled }: { fix: AutoQcFixView; beforeUrl: 
   return (
     <div className="flex flex-col gap-3">
       {labelled ? <p className="text-sm font-semibold text-ink">{fix.portrait ? `Portrait ${fix.portrait}` : "Untagged upload"}</p> : null}
+      <FixQcBadge qc={fix.qc} />
       <ul className="flex flex-col gap-3" aria-label="What the AI changed">
         {fix.fixed.map((a, i) => (
           <li key={i} className="flex flex-col gap-2">

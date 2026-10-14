@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 
 import { countIssues, latestSlots, parseAutoQcBody, sameIds, slotAssetIds } from "../lib/qc/auto-qc";
+import { fixQcOf, parseFixQcBody } from "../lib/qc/auto-qc-fix";
 import type { QcVersion } from "../lib/qc/data";
 
 const v = (id: string, portrait: number | null = null): QcVersion => ({
@@ -88,5 +89,39 @@ assert.ok(!parseAutoQcBody({ ...good, portraits: [{ ...good.portraits[0], checks
 assert.ok(!parseAutoQcBody({ ...good, portraits: [{ ...good.portraits[0], checks: [{ key: 2, result: "ok" }] }] }).ok, "unknown result refused");
 assert.ok(!parseAutoQcBody({ ...good, revision: { done: "maybe" } }).ok, "bad revision refused");
 assert.ok(!parseAutoQcBody(null).ok);
+
+// Auto QC of the AI fix (Yousif 2026-10-14: the Auto QC judges the AI fix too).
+const fixGood = {
+  orderId: "o1",
+  fixId: "f1",
+  verdict: "issues",
+  summary: "The repaired hand still has six fingers.",
+  checks: [
+    { key: 8, result: "fail", note: "Six fingers on the left hand." },
+    { key: 2, result: "pass", note: "" },
+    { key: 99, result: "pass", note: "" }, // unknown keys are dropped, not fatal
+  ],
+  model: "fable",
+};
+const fok = parseFixQcBody(fixGood);
+assert.ok(fok.ok);
+if (fok.ok) {
+  assert.deepEqual(fok.body.checks.map((c) => c.key), [2, 8]);
+  assert.equal(fok.body.checks[1].label, "Hands and fingers");
+}
+assert.ok(!parseFixQcBody({ ...fixGood, fixId: "" }).ok, "missing fixId refused");
+assert.ok(!parseFixQcBody({ ...fixGood, verdict: "approved" }).ok, "unknown verdict refused");
+assert.ok(!parseFixQcBody({ ...fixGood, checks: [] }).ok, "no checks on a judged fix refused");
+assert.ok(parseFixQcBody({ ...fixGood, verdict: "unsure", checks: [] }).ok, "unsure may carry no checks");
+assert.ok(!parseFixQcBody(null).ok);
+
+// The stored row round-trips into the view; unjudged rows stay null.
+const at = new Date("2026-10-14T10:00:00Z");
+const qcView = fixQcOf({ qcVerdict: "pass", qcSummary: "Blends in.", qcChecks: [{ key: 8, label: "", result: "pass", note: "" }], qcAt: at });
+assert.equal(qcView?.verdict, "pass");
+assert.equal(qcView?.checks[0].label, "Hands and fingers");
+assert.equal(qcView?.at, at.toISOString());
+assert.equal(fixQcOf({ qcVerdict: null, qcSummary: null, qcChecks: [], qcAt: null }), null);
+assert.equal(fixQcOf({ qcVerdict: "approved", qcSummary: null, qcChecks: [], qcAt: at }), null, "unknown stored verdict hidden");
 
 console.log("auto-qc: all checks passed");

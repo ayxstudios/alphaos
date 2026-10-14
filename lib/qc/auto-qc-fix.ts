@@ -19,7 +19,7 @@ import { activityLog, assets, autoQcFixes, orders } from "@/lib/db/schema";
 import { getAgentDesignerId } from "@/lib/agent/ai-core";
 import { getOrderPortraits } from "@/lib/orders/portraits";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
-import { latestSlots } from "./auto-qc";
+import { AUTO_QC_CHECKS, AUTO_QC_RESULTS, AUTO_QC_VERDICTS, latestSlots, type AutoQcCheck, type AutoQcVerdict } from "./auto-qc";
 import { claimHolder, claimedMessage } from "./claims";
 import type { QcVersion } from "./data";
 
@@ -31,6 +31,9 @@ export type FixBox = { x0: number; y0: number; x1: number; y1: number };
 export type AutoQcFixArea = { keys: number[]; label: string; what: string; box: FixBox | null };
 /** A flagged problem the AI did not touch, and why (e.g. the whole style is wrong). */
 export type AutoQcFixMiss = { keys: number[]; label: string; why: string };
+
+/** Auto QC's own look at a fix image (Yousif 2026-10-14: the Auto QC judges the AI fix too). */
+export type AutoQcFixQc = { verdict: AutoQcVerdict; summary: string | null; checks: AutoQcCheck[]; at: string };
 
 /** A ready fix as /approve shows it. */
 export type AutoQcFixView = {
@@ -44,6 +47,8 @@ export type AutoQcFixView = {
   notFixed: AutoQcFixMiss[];
   summary: string | null;
   createdAt: string;
+  /** Null until the Auto QC judge has looked at the fix itself. */
+  qc: AutoQcFixQc | null;
 };
 
 export function fixKeyPrefix(orderId: string): string {
@@ -147,6 +152,49 @@ export function parseFixBody(raw: unknown): { ok: true; body: AutoQcFixBody } | 
   };
 }
 
+/** Checks in the auto_qc_checks shape, validated: unknown keys and bad results are dropped. */
+export function parseFixQcChecks(raw: unknown): AutoQcCheck[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AutoQcCheck[] = [];
+  for (const c of raw as Record<string, unknown>[]) {
+    const key = Number(c?.key);
+    const known = AUTO_QC_CHECKS.find((k) => k.key === key);
+    const result = c?.result as AutoQcCheck["result"];
+    if (!known || !AUTO_QC_RESULTS.includes(result)) continue;
+    out.push({ key, label: str(c.label, 120) || known.label, result, note: str(c.note, 600) });
+  }
+  return out.sort((a, b) => a.key - b.key);
+}
+
+/** The fix's own Auto QC, as stored on the row (null until judged). */
+export function fixQcOf(r: { qcVerdict: string | null; qcSummary: string | null; qcChecks: unknown; qcAt: Date | null }): AutoQcFixQc | null {
+  if (!r.qcVerdict || !r.qcAt || !AUTO_QC_VERDICTS.includes(r.qcVerdict as AutoQcVerdict)) return null;
+  return { verdict: r.qcVerdict as AutoQcVerdict, summary: r.qcSummary, checks: parseFixQcChecks(r.qcChecks), at: r.qcAt.toISOString() };
+}
+
+export type FixQcBody = {
+  orderId: string;
+  fixId: string;
+  verdict: AutoQcVerdict;
+  summary: string;
+  checks: AutoQcCheck[];
+  model: string | null;
+};
+
+/** Validate the judge's POST body for the Auto QC of a fix. */
+export function parseFixQcBody(raw: unknown): { ok: true; body: FixQcBody } | { ok: false; error: string } {
+  if (!raw || typeof raw !== "object") return { ok: false, error: "body must be an object" };
+  const r = raw as Record<string, unknown>;
+  const orderId = str(r.orderId, 100);
+  const fixId = str(r.fixId, 100);
+  if (!orderId || !fixId) return { ok: false, error: "orderId and fixId are required" };
+  const verdict = r.verdict as AutoQcVerdict;
+  if (!AUTO_QC_VERDICTS.includes(verdict)) return { ok: false, error: "verdict must be pass, issues or unsure" };
+  const checks = parseFixQcChecks(r.checks);
+  if (verdict !== "unsure" && !checks.length) return { ok: false, error: "checks required unless the judge could not judge" };
+  return { ok: true, body: { orderId, fixId, verdict, summary: str(r.summary, 800), checks, model: str(r.model, 60) || null } };
+}
+
 /** The newest version of every portrait slot, keyed by slot (null = the order's one portrait / untagged). */
 export function latestBySlot(versions: QcVersion[], portraits: Parameters<typeof latestSlots>[1]): Map<number | null, string> {
   return new Map(latestSlots(versions, portraits).map((s) => [s.portrait, s.latest.id]));
@@ -191,6 +239,7 @@ export async function getFixViews(
       notFixed: parseFixMisses(r.notFixed),
       summary: r.summary,
       createdAt: r.createdAt.toISOString(),
+      qc: fixQcOf(r),
     });
   }
   return out;

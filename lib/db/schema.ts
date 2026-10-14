@@ -933,6 +933,13 @@ export const autoQcFixes = pgTable(
     usedAssetId: text("used_asset_id").references(() => assets.id, { onDelete: "set null" }),
     decidedBy: text("decided_by").references(() => users.id, { onDelete: "set null" }),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
+    /** Auto QC of the fix itself (Yousif 2026-10-14): pass | issues | unsure, null until judged. */
+    qcVerdict: text("qc_verdict"),
+    qcSummary: text("qc_summary"),
+    /** [{key, label, result, note}], same shape as auto_qc_checks portraits[].checks. */
+    qcChecks: jsonb("qc_checks").notNull().default([]),
+    qcModel: text("qc_model"),
+    qcAt: timestamp("qc_at", { withTimezone: true }),
     createdAt: createdAt(),
   },
   (t) => [

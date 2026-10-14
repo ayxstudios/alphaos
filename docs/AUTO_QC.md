@@ -116,6 +116,19 @@ first." Applies to new orders and revisions (missed touchups) alike.
   proof email carries the fixed portrait and later revisions start from it. Alpha then tells the designer
   (`designer.ai_fix_used`: what changed, that the fixed version is the main file now, a signed link).
 - Reject can carry the AI fix as one of its pictures ("Add the AI fix as a picture for the designer").
+- STANDING ON EVERY ORDER AND REVISION (Yousif 2026-10-14: "That should be in each and every revision and order"):
+  the fix lane runs for every business, on every order AND every revision in the QC queue whose current Auto QC
+  verdict is `issues` (a missed touchup fails check 11, so an unfinished revision always qualifies). Nothing is
+  sampled or skipped; the sweep works the queue oldest first until every issue order has a fix row (ready or failed).
+- AUTO QC JUDGES THE FIX TOO (Yousif 2026-10-14: "The AutoQC should even judge the AI fix too"): every ready fix
+  gets its own Auto QC pass, the same checks as the designer's version (migration 0058: `qc_verdict`, `qc_summary`,
+  `qc_checks`, `qc_model`, `qc_at` on `auto_qc_fixes`). Endpoints (bearer AGENT_JOBS_TOKEN):
+  `GET /api/agent-qc/fix-judge-queue?limit=4[&order=<n>]` (ready fixes with no verdict yet, on orders still awaiting
+  QC, whose designer version is still the newest; signed fix + source links plus the full judging context) and
+  `POST /api/agent-qc/fix-qc {orderId, fixId, verdict, summary, checks, model}` (notes only, never moves anything;
+  writes `qc.ai_fix_checked`). /approve shows the verdict on each fix card: slate "Auto QC of this fix pending",
+  sage "looks right", rose "N issues" with the failed checks, amber "couldn't judge". The owner still decides;
+  nothing gates Send AI fix.
 - Agent side: `~/Documents/ai-employee-agent/scripts/alphaos-qc-fix.mjs sweep|order <n>|--input <job.json> --dry`,
   run by the alphaos-agent-tick after the Auto QC sweep (own lock, backgrounded). Image model: ChatGPT image gen
   (codex, then ChatGPT on the web); never another engine. Each spot's box is re-read on a close-up before painting,
