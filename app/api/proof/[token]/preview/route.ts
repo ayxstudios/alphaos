@@ -73,10 +73,11 @@ export async function GET(
   }
 
   // ?p=N picks one portrait of a 2+ portrait order (1-based, by item order);
-  // anything that is not a small positive integer is ignored, never trusted.
+  // a p that is not a small positive integer is a bad link, never a fallback.
   const url = new URL(req.url);
   const pRaw = url.searchParams.get("p");
-  const p = pRaw && /^\d{1,2}$/.test(pRaw) && Number(pRaw) >= 1 ? Number(pRaw) : undefined;
+  if (pRaw !== null && !/^[1-9]\d?$/.test(pRaw)) return new Response("Not found", { status: 404 });
+  const p = pRaw === null ? undefined : Number(pRaw);
   const download = url.searchParams.get("download") === "1";
   const source = await getProofImageSource(token, p);
   if (!source) return new Response("Not found", { status: 404 });
