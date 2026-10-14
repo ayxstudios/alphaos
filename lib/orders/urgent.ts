@@ -10,6 +10,7 @@ import { and, desc, eq } from "drizzle-orm";
 
 import type { Tx } from "@/lib/db";
 import { activityLog, assignments, orders, qcChecks } from "@/lib/db/schema";
+import { sendQcFixUrgent } from "@/lib/notifications/designer-events";
 import { businessSlaHours } from "@/lib/orders/assign";
 
 /** Who may mark or clear urgent from the app. Designers and helpers only see it. */
@@ -50,7 +51,8 @@ export type UrgentChange =
  * Yousif 2026-10-14: an urgent revision is due in a few hours. If the order is
  * already back with its designer after a QC fail (in_design, newest QC check a
  * fail), shorten the active assignment's due_at to at most now +
- * urgentRevisionSlaHours. Never lengthens a deadline.
+ * urgentRevisionSlaHours and message the designer at once. Never lengthens a
+ * deadline.
  */
 async function tightenQcFailDeadline(
   tx: Tx,
@@ -66,14 +68,17 @@ async function tightenQcFailDeadline(
     .limit(1);
   if (last?.result !== "fail") return;
   const [a] = await tx
-    .select({ id: assignments.id, dueAt: assignments.dueAt })
+    .select({ id: assignments.id, dueAt: assignments.dueAt, designerId: assignments.designerId })
     .from(assignments)
     .where(and(eq(assignments.orderId, order.id), eq(assignments.active, true)))
     .limit(1);
   if (!a) return;
   const { urgentRevision } = await businessSlaHours(tx, order.businessId);
   const cap = new Date(now.getTime() + urgentRevision * 3600 * 1000);
-  if (!a.dueAt || a.dueAt > cap) await tx.update(assignments).set({ dueAt: cap }).where(eq(assignments.id, a.id));
+  if (a.dueAt && a.dueAt <= cap) return;
+  await tx.update(assignments).set({ dueAt: cap }).where(eq(assignments.id, a.id));
+  // Only when the clock actually got shorter, so re-marking never repeats it.
+  await sendQcFixUrgent(tx, { orderId: order.id, designerId: a.designerId, dueAt: cap, now });
 }
 
 /**

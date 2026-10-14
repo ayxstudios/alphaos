@@ -27,6 +27,7 @@ export type AlphaEventType =
   | "designer.nudge" // 24 h with no submission
   | "designer.reassigned" // 48 h: moved to another designer (both told)
   | "designer.qc_feedback" // QC failed with pins
+  | "designer.qc_fix_urgent" // a failed order was marked urgent: fix clock shortened
   | "va.attention" // something a VA must look at now
   | "customer.silent" // customer has not answered in N days
   | "order.missed_print" // in printing but no provider order

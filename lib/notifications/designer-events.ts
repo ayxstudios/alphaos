@@ -220,6 +220,39 @@ export async function sendDesignerNudge(
   });
 }
 
+/**
+ * Yousif 2026-10-14: an order already back with its designer after a QC fail
+ * was just marked urgent and its fix deadline shortened. Alpha tells the
+ * designer straight away (no quiet-hours hold) instead of waiting for the
+ * chaser's next round.
+ */
+export async function sendQcFixUrgent(
+  tx: Tx,
+  input: { orderId: string; designerId: string; dueAt: Date; now?: Date },
+): Promise<string | null> {
+  const now = input.now ?? new Date();
+  const [brief, contact] = await Promise.all([
+    loadOrderBrief(tx, input.orderId),
+    loadDesignerContact(tx, input.designerId),
+  ]);
+  if (!brief) return null;
+  const links = orderLinks(brief.id);
+  const deadline = qcFeedbackDeadline(input.dueAt, now, contact?.timezone, true);
+  const text =
+    `${deadline?.urgentLine ?? "URGENT: the customer is waiting."} ` +
+    `Order ${brief.number} is now urgent. It is the QC fix you already have, nothing new to read. ` +
+    `Upload the fixed version here: ${links.boardUrl}`;
+  return sendAlphaEvent(tx, {
+    type: "designer.qc_fix_urgent",
+    businessId: brief.businessId,
+    orderId: brief.id,
+    toUserId: input.designerId,
+    toRole: "designer",
+    text,
+    payload: { links, orderNumber: brief.number, urgent: true, dueAt: input.dueAt.toISOString(), ...contactPayload(contact) },
+  });
+}
+
 /** 48 h: the order moved. Told to BOTH designers; an escalation, so no quiet-hours hold. */
 export async function sendDesignerReassigned(
   tx: Tx,
