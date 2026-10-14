@@ -545,7 +545,7 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
       {/* The two buttons, on the very bottom edge of the screen */}
       <BottomDock>
         <PendingApprovalsInline />
-        {item.aiWaiting && !rejecting ? (
+        {item.aiWaiting && !rejecting && !missing.length ? (
           <p className="rounded-input bg-canvas px-3 py-2 text-sm text-slate" data-testid="ai-auto-qc-waiting">
             Auto QC is still checking this AI portrait. Approve opens once it&apos;s done, usually within 10 minutes.
           </p>
