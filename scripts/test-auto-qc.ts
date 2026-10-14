@@ -3,7 +3,7 @@
 // validation. Pure, no database. docs/AUTO_QC.md.
 import assert from "node:assert/strict";
 
-import { countIssues, latestSlots, parseAutoQcBody, sameIds, slotAssetIds } from "../lib/qc/auto-qc";
+import { countIssues, latestSlots, parseAutoQcBody, resolutionTier, sameIds, slotAssetIds } from "../lib/qc/auto-qc";
 import { fixQcOf, parseFixQcBody } from "../lib/qc/auto-qc-fix";
 import type { QcVersion } from "../lib/qc/data";
 
@@ -89,6 +89,21 @@ assert.ok(!parseAutoQcBody({ ...good, portraits: [{ ...good.portraits[0], checks
 assert.ok(!parseAutoQcBody({ ...good, portraits: [{ ...good.portraits[0], checks: [{ key: 2, result: "ok" }] }] }).ok, "unknown result refused");
 assert.ok(!parseAutoQcBody({ ...good, revision: { done: "maybe" } }).ok, "bad revision refused");
 assert.ok(!parseAutoQcBody(null).ok);
+
+// Check 13, Resolution (measured by the judge): accepted, labelled, and the tiers hold either way round.
+const res = parseAutoQcBody({ ...good, portraits: [{ ...good.portraits[0], checks: [{ key: 13, result: "fail", note: "1600 x 2000 px" }] }] });
+assert.ok(res.ok, "check 13 accepted");
+if (res.ok) assert.equal(res.body.portraits[0].checks[0].label, "Resolution");
+assert.equal(resolutionTier(2400, 3000), "ok");
+assert.equal(resolutionTier(3000, 2400), "ok", "landscape counts the same");
+assert.equal(resolutionTier(2399, 3000), "low");
+assert.equal(resolutionTier(2400, 2999), "low");
+assert.equal(resolutionTier(2400, 2400), "low", "a square needs the long side too");
+assert.equal(resolutionTier(3000, 3000), "ok");
+assert.equal(resolutionTier(4800, 6000), "ideal");
+assert.equal(resolutionTier(6000, 4800), "ideal");
+assert.equal(resolutionTier(4800, 5999), "ok");
+assert.equal(resolutionTier(0, 3000), null);
 
 // Auto QC of the AI fix (Yousif 2026-10-14: the Auto QC judges the AI fix too).
 const fixGood = {

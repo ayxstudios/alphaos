@@ -19,6 +19,7 @@ approves, sends, fails or moves an order. It gives the order a badge
 10. Number of hands, people and pets is correct. Nothing added, removed or duplicated. Finger count correct.
 11. (Revisions only) The revision was done correctly and fully, no missed touchups.
 12. Nothing makes it look obviously AI: no extra or missing limbs, fingers, legs, ears or eyes, fused or melted shapes, warped faces, garbled text, impossible anatomy or objects, odd glossy/plastic skin, mismatched details side to side.
+13. Resolution (Yousif 2026-10-14: "resolution should at least be 2400 X 3000 px with the ideal being 4800 px X 6000 px in either horizontal or vertical"). MEASURED, never asked of the model: the judge reads the pixel size of the file itself (the original upload, before any resize). Short side >= 2400 and long side >= 3000 = `pass`; under that = `fail` ("ask the designer for the full-size file"); the note says whether it also meets the 4800 x 6000 ideal. A square file needs 3000 x 3000. Code: `resolutionTier` in lib/qc/auto-qc.ts, mirrored in the judge. Applies to every portrait and to every AI fix image. The AI fix never repaints for it (listed under "not fixed").
 
 Each check result: `pass` | `fail` | `na` (nothing of that kind in the photos, e.g. no tattoos) | `unsure` (cannot tell from the photos).
 

@@ -15,7 +15,10 @@ import { activityLog, assets, autoQcChecks } from "@/lib/db/schema";
 import type { OrderPortrait } from "@/lib/orders/portraits";
 import type { QcVersion } from "./data";
 
-/** Yousif's checks, keys stable (11 applies to revisions only, 12 to every portrait). */
+/**
+ * Yousif's checks, keys stable (11 applies to revisions only, 12 to every portrait). 13 is measured, not judged:
+ * the file's own pixel size against the print minimum (docs/AUTO_QC.md, RESOLUTION_MIN / RESOLUTION_IDEAL).
+ */
 export const AUTO_QC_CHECKS: { key: number; label: string }[] = [
   { key: 1, label: "Portrait style" },
   { key: 2, label: "Rings and jewellery" },
@@ -29,7 +32,25 @@ export const AUTO_QC_CHECKS: { key: number; label: string }[] = [
   { key: 10, label: "Count of people, pets, hands, fingers" },
   { key: 11, label: "Revision done fully" },
   { key: 12, label: "Looks obviously AI" },
+  { key: 13, label: "Resolution" },
 ];
+
+/**
+ * Check 13 (Yousif 2026-10-14): "resolution should at least be 2400 X 3000 px with the ideal being 4800 px X 6000 px
+ * in either horizontal or vertical". Short side against the first number, long side against the second.
+ */
+export const RESOLUTION_MIN = { short: 2400, long: 3000 } as const;
+export const RESOLUTION_IDEAL = { short: 4800, long: 6000 } as const;
+
+/** Where a file's pixel size sits: under the minimum, at least the minimum, or at least the ideal. */
+export function resolutionTier(width: number, height: number): "low" | "ok" | "ideal" | null {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+  const s = Math.min(width, height);
+  const l = Math.max(width, height);
+  if (s >= RESOLUTION_IDEAL.short && l >= RESOLUTION_IDEAL.long) return "ideal";
+  if (s >= RESOLUTION_MIN.short && l >= RESOLUTION_MIN.long) return "ok";
+  return "low";
+}
 
 export const AUTO_QC_VERDICTS = ["pass", "issues", "unsure"] as const;
 export type AutoQcVerdict = (typeof AUTO_QC_VERDICTS)[number];
