@@ -14,7 +14,7 @@ import { headObject, isR2Configured, presignGet, presignUpload } from "@/lib/sto
 import { getApproveItem, getApproveQueue } from "./approve-data";
 import { latestSlots, sameIds, slotAssetIds, type AutoQcPortrait, type AutoQcRevision } from "./auto-qc";
 import { fixKeyPrefix, latestBySlot, MAX_FIX_BYTES, parseFixAreas, parseFixMisses, type AutoQcFixBody, type FixQcBody } from "./auto-qc-fix";
-import type { AutoQcJob } from "./auto-qc-jobs";
+import { portraitCounts, type AutoQcJob } from "./auto-qc-jobs";
 
 const SYSTEM: RequestUser = { id: SYSTEM_ACTOR_ID, role: "admin" };
 /** The agent's own signed download links: long enough for a slow repaint run. */
@@ -100,6 +100,7 @@ export async function listFixJobs(opts: { limit: number; orderNumber?: string | 
       style: ctx.style,
       styleGuessed: ctx.styleGuessed,
       figureCount: ctx.figureCount,
+      ...portraitCounts(ctx.proofFiles),
       isRevision: item.isRevision,
       round: item.round,
       requests: item.requests.map((r) => ({ source: r.kind, who: r.who, text: r.note, items: r.items, pins: r.pins, at: r.at })),
@@ -316,6 +317,7 @@ export async function listFixJudgeJobs(opts: { limit: number; orderNumber?: stri
       style: ctx.style,
       styleGuessed: ctx.styleGuessed,
       figureCount: ctx.figureCount,
+      ...portraitCounts(ctx.proofFiles),
       isRevision: item.isRevision,
       round: item.round,
       requests: item.requests.map((r) => ({ source: r.kind, who: r.who, text: r.note, items: r.items, pins: r.pins, at: r.at })),

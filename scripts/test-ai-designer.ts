@@ -311,6 +311,52 @@ async function main() {
     const dfo = await deliverJob(fo, { base64: PNG, contentType: "image/png", selfCheck: "Redrawn after reassign." });
     check("re-queued job delivers into VA QC", dfo.status === "awaiting_qc" && (await state(fo)).ai === "qc");
 
+    // 9b. A 2+ portrait order (one line bought twice) never goes to the AI: it
+    // draws one portrait per job. An order that became 2 portraits while the AI
+    // held it hands the rest to a person, and the AI's file keeps the owner hold.
+    const mp = await newOrder("multi", STYLE);
+    await q((tx) => tx.update(orderItems).set({ quantity: 2 }).where(eq(orderItems.orderId, mp)));
+    const mpRes = await q((tx) => runAutoAssign(tx, { orderId: mp, businessId, assignedBy: null }));
+    check("2 portraits: intake keeps it away from the agent", mpRes.assigned !== agentId && (await state(mp)).ai === null);
+    const mpTo = await reassignOrder(mp, agentId, admin.id);
+    check("2 portraits: the agent cannot be given it", !mpTo.ok && mpTo.code === "multi_portrait");
+    check("2 portraits: not in the jobs queue", !(await listPendingJobs({ businessId })).some((j) => j.jobId === mp));
+
+    const pa = await newOrder("partial", STYLE);
+    await q((tx) => runAutoAssign(tx, { orderId: pa, businessId, assignedBy: null }));
+    await claimJob(pa);
+    await q((tx) => tx.update(orderItems).set({ quantity: 2 }).where(eq(orderItems.orderId, pa)));
+    const dpa = await deliverJob(pa, { base64: PNG, contentType: "image/png", selfCheck: "First pet drawn." });
+    const stpa = await state(pa);
+    check(
+      "partial AI delivery stays in design, out of the queue",
+      dpa.status === "in_design" && stpa.s === "in_design" && stpa.ai === "failed" && !(await listPendingJobs({ businessId })).some((j) => j.jobId === pa),
+    );
+    const [paEx] = await q((tx) =>
+      tx.select({ kind: exceptions.kind, summary: exceptions.summary }).from(exceptions).where(and(eq(exceptions.orderId, pa), eq(exceptions.status, "open"))),
+    );
+    check("partial AI delivery raises a card naming the portrait still needed", paEx?.kind === "ai_designer_failed" && /Portrait 2 still needs a designer/.test(paEx.summary ?? ""), paEx?.summary ?? "");
+    const [paFile] = await q((tx) => tx.select({ unit: assets.portraitUnit, item: assets.orderItemId }).from(assets).where(and(eq(assets.orderId, pa), eq(assets.type, "submission"))));
+    check("the AI file is tagged as portrait 1", paFile?.unit === 1 && !!paFile.item);
+    check("handed-off order reassigns to a person", (await reassignOrder(pa, human.id, admin.id)).ok && (await state(pa)).ai === null);
+    let gate = "";
+    try {
+      await q((tx) => runTransition(tx, SYS, { orderId: pa, to: "awaiting_qc", expectedFrom: "in_design" }));
+    } catch (e) {
+      gate = (e as Error).message;
+    }
+    check("QC refused while portrait 2 has no file", /Portrait 2 of 2 has no file yet/.test(gate), gate);
+    await q((tx) =>
+      tx.insert(assets).values({
+        businessId, orderId: pa, type: "submission", storage: "cdn", url: "https://example.test/pet-2.png",
+        uploadedBy: human.id, orderItemId: paFile.item, portraitUnit: 2,
+      }),
+    );
+    await q((tx) => runTransition(tx, SYS, { orderId: pa, to: "awaiting_qc", expectedFrom: "in_design" }));
+    check("both portraits in: the order reaches QC", (await state(pa)).s === "awaiting_qc");
+    check("the AI portrait keeps the owner hold after a person finishes", (await q((tx) => ownerReviewRequired(tx, pa, businessId))) === true);
+    check("a person's own order has no owner hold", (await q((tx) => ownerReviewRequired(tx, off, businessId))) === false);
+
     // 10. Reassign away from the agent while queued.
     const ro = await newOrder("reassign", STYLE);
     await q((tx) => runAutoAssign(tx, { orderId: ro, businessId, assignedBy: null }));

@@ -9,6 +9,7 @@ import { and, eq, inArray, isNull, max } from "drizzle-orm";
 import { SYSTEM_ACTOR_ID, withSystemContext, type RequestUser } from "@/lib/db";
 import { assets, autoQcChecks, businesses, orders } from "@/lib/db/schema";
 import { getApproveItem, getApproveQueue } from "./approve-data";
+import type { ProofFilePick } from "@/lib/proofs/files";
 import { insertAutoQc, latestSlots, sameIds, slotAssetIds, type AutoQcBody } from "./auto-qc";
 
 const SYSTEM: RequestUser = { id: SYSTEM_ACTOR_ID, role: "admin" };
@@ -22,6 +23,10 @@ export type AutoQcJob = {
   style: string | null;
   styleGuessed: boolean;
   figureCount: number;
+  /** Separate portraits (files) the order needs; 1 for a one-portrait order. */
+  expectedPortraits: number;
+  /** Portraits with no file yet: the order is not complete, whatever the judge sees. */
+  missingPortraits: { portrait: number; label: string }[];
   isRevision: boolean;
   round: number;
   requests: { source: string; who: string | null; text: string | null; items: string[]; pins: number; at: string }[];
@@ -106,6 +111,7 @@ export async function listAutoQcJobs(opts: { limit: number; orderNumber?: string
       style: ctx.style,
       styleGuessed: ctx.styleGuessed,
       figureCount: ctx.figureCount,
+      ...portraitCounts(ctx.proofFiles),
       isRevision: item.isRevision,
       round: item.round,
       requests: item.requests.map((r) => ({ source: r.kind, who: r.who, text: r.note, items: r.items, pins: r.pins, at: r.at })),
@@ -122,6 +128,12 @@ export async function listAutoQcJobs(opts: { limit: number; orderNumber?: string
     });
   }
   return jobs;
+}
+
+/** How many portraits the judge should expect, and which have no file yet. */
+export function portraitCounts(pick: ProofFilePick): Pick<AutoQcJob, "expectedPortraits" | "missingPortraits"> {
+  if (pick.mode !== "slots") return { expectedPortraits: 1, missingPortraits: [] };
+  return { expectedPortraits: pick.expected, missingPortraits: pick.missing.map((m) => ({ portrait: m.n, label: m.label })) };
 }
 
 export type SaveResult = { ok: true; id: string } | { ok: false; status: number; error: string };

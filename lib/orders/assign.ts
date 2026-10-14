@@ -15,6 +15,7 @@ import { liveOrderWhere } from "@/lib/orders/archive";
 import { sendDesignerBrief } from "@/lib/notifications/designer-events";
 import { findStyle, getAgentDesignerId, markQueuedForAgent } from "@/lib/agent/ai-core";
 import { getAgentConfig } from "@/lib/agent/config";
+import { getOrderPortraits } from "@/lib/orders/portraits";
 
 export const DESIGNER_SLA_HOURS = 24;
 
@@ -372,9 +373,11 @@ export async function runAutoAssign(
     .limit(1);
   const style = item?.style ?? null;
 
-  // A product with the AI designer switched on goes to the agent, not a human.
+  // A product with the AI designer switched on goes to the agent, not a human,
+  // unless the order needs 2+ separate portraits (two lines, or one bought
+  // twice): the AI draws one portrait per job, so those go to a person.
   const styleRow = await findStyle(tx, order.businessId, style);
-  if (styleRow?.aiDesignerEnabled) {
+  if (styleRow?.aiDesignerEnabled && (await getOrderPortraits(tx, order.orderId)).length < 2) {
     const agentId = await getAgentDesignerId(tx, order.businessId);
     if (agentId) {
       await createAssignment(tx, {

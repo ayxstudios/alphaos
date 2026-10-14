@@ -22,7 +22,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       selfCheck: str(body.selfCheck),
       portrait: typeof body.portrait === "number" ? body.portrait : str(body.portrait),
     });
-    return NextResponse.json({ ok: true, orderStatus: res.status, assetId: res.assetId });
+    return NextResponse.json({
+      ok: true,
+      orderStatus: res.status,
+      assetId: res.assetId,
+      ...("portraitsLeft" in res && res.portraitsLeft ? { portraitsLeft: res.portraitsLeft } : {}),
+    });
   } catch (e) {
     return jobError(e);
   }

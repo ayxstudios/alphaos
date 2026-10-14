@@ -28,7 +28,7 @@ import { sendMessage } from "@/lib/email/dispatch";
 import { createAssignment } from "@/lib/orders/assign";
 import { getOrderPortraits, resolveSlotTag } from "@/lib/orders/portraits";
 import { runTransition, type OrderStatus } from "@/lib/orders/transitions";
-import { loadProofFilePick } from "@/lib/proofs/files";
+import { loadProofFilePick, portraitList } from "@/lib/proofs/files";
 import { assetKey, extFor, isR2Configured, presignGet, presignUpload } from "@/lib/storage/r2";
 import { DEV_STORE_PREFIX, writeDevStoreObject } from "@/lib/uploads/store";
 import { appUrl } from "@/lib/urls";
@@ -368,16 +368,33 @@ export async function deliverJob(
           : { businessId: o.businessId, orderId, type: "submission", storage: "cdn", url: url!, uploadedBy: o.agentId, ...slotCols },
       )
       .returning({ id: assets.id });
-    const portraitsLeft = before.mode === "slots" ? before.missing.filter((m) => m.n !== portraitN).length : 0;
-    if (portraitsLeft > 0) {
+    const left = before.mode === "slots" ? before.missing.filter((m) => m.n !== portraitN).map((m) => m.n) : [];
+    if (left.length > 0) {
+      // The AI draws one portrait per job and cannot tell which photos belong
+      // to which portrait, so the rest of a 2+ portrait order goes to a person
+      // (auto-assign already keeps those orders away from the AI). This file
+      // stays as its portrait; the order stays in design, out of the jobs queue.
+      const [{ number }] = await tx
+        .select({ number: sql<string>`coalesce(${orders.platformOrderName}, ${orders.platformOrderId})` })
+        .from(orders)
+        .where(eq(orders.id, orderId));
+      const need = `${portraitList(left)} still ${left.length === 1 ? "needs" : "need"} a designer`;
+      const ex = await openExceptionTx(tx, {
+        businessId: o.businessId,
+        orderId,
+        kind: "ai_designer_failed",
+        summary: `The AI designer drew portrait ${portraitN} of ${before.expected} for order ${number}. ${need}: reassign the order to a person.`,
+        detail: { reason: "multi_portrait", assetId: asset.id, portrait: portraitN, portraitsLeft: left, aiState: o.aiState, orderStatus: o.status },
+      });
+      await tx.update(orders).set({ aiState: "failed", aiClaimedAt: null }).where(eq(orders.id, orderId));
       await tx.insert(activityLog).values({
         businessId: o.businessId,
         orderId,
         actorId: o.agentId,
         action: "ai.delivered",
-        metadata: { selfCheck, assetId: asset.id, portrait: portraitN, portraitsLeft, revision: wasRevision },
+        metadata: { selfCheck, assetId: asset.id, portrait: portraitN, portraitsLeft: left, revision: wasRevision, exceptionId: ex.id },
       });
-      return { status: "in_design" as OrderStatus, assetId: asset.id, portraitsLeft };
+      return { status: "in_design" as OrderStatus, assetId: asset.id, portraitsLeft: left.length };
     }
     const { status } = await runTransition(tx, SYSTEM_ACTOR, {
       orderId,
@@ -433,11 +450,34 @@ export async function failJob(orderId: string, reason: string | null | undefined
 
 /* ------------------------------------------------------- owner approval */
 
-/** True when this order is AI-held and the business wants to approve each AI portrait. */
+/**
+ * True when this order's proof carries an AI portrait and the business wants
+ * to approve each one: the agent holds the order, or a person finished a 2+
+ * portrait order the AI started and the email still carries the AI's file.
+ */
 export async function ownerReviewRequired(tx: Tx, orderId: string, businessId: string): Promise<boolean> {
-  if (!(await isAgentAssigned(tx, orderId))) return false;
+  if (!(await isAgentAssigned(tx, orderId)) && !(await proofHasAiFile(tx, orderId))) return false;
   const [biz] = await tx.select({ agentConfig: businesses.agentConfig }).from(businesses).where(eq(businesses.id, businessId)).limit(1);
   return getAgentConfig(biz).aiOwnerApproval;
+}
+
+/** True when a file the proof email would carry was drawn by the AI designer. */
+async function proofHasAiFile(tx: Tx, orderId: string): Promise<boolean> {
+  const [delivered] = await tx
+    .select({ id: activityLog.id })
+    .from(activityLog)
+    .where(and(eq(activityLog.orderId, orderId), eq(activityLog.action, "ai.delivered")))
+    .limit(1);
+  if (!delivered) return false;
+  const ids = (await loadProofFilePick(tx, orderId)).files.map((f) => f.assetId);
+  if (!ids.length) return false;
+  const [ai] = await tx
+    .select({ id: assets.id })
+    .from(assets)
+    .innerJoin(designerProfiles, eq(designerProfiles.userId, assets.uploadedBy))
+    .where(and(inArray(assets.id, ids), eq(designerProfiles.isAgent, true)))
+    .limit(1);
+  return !!ai;
 }
 
 /** After VA QC passes an AI proof with the proof email held: park it in owner_review. */
@@ -625,6 +665,16 @@ export async function reassignOrder(orderId: string, designerId: string, byUserI
       .limit(1);
     if (current?.designerId === designerId && !(target.isAgent && o.aiState === "failed")) {
       return { ok: true as const, changed: false };
+    }
+    if (target.isAgent) {
+      const portraits = (await getOrderPortraits(tx, orderId)).length;
+      if (portraits >= 2) {
+        return {
+          ok: false as const,
+          code: "multi_portrait",
+          message: `This order needs ${portraits} separate portraits and the AI designer draws one per order. Give it to a person.`,
+        };
+      }
     }
     const wasAgent = current ? await isAgentAssigned(tx, orderId) : false;
     await createAssignment(tx, {
