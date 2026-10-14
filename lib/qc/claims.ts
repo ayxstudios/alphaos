@@ -149,3 +149,22 @@ export function summarizeOthers(
   }
   return [...by.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
+
+/** Index in `ids` to open for ?o=`asked` (lib/qc/approve-data.ts getOwnerApproveQueue). Pure. */
+export function startIndex(
+  all: string[],
+  ids: string[],
+  asked?: string,
+): number {
+  if (!asked || !ids.length) return 0;
+  const at = ids.indexOf(asked);
+  if (at >= 0) return at;
+  const from = all.indexOf(asked);
+  if (from < 0) return 0;
+  const free = new Set(ids);
+  for (let k = 1; k <= all.length; k++) {
+    const id = all[(from + k) % all.length];
+    if (free.has(id)) return ids.indexOf(id);
+  }
+  return 0;
+}

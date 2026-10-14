@@ -5,7 +5,12 @@
 // STAGING_DATABASE_URL; they run inside one transaction that is rolled back.
 import assert from "node:assert/strict";
 
-import { claimedMessage, holderName, summarizeOthers } from "../lib/qc/claims";
+import {
+  claimedMessage,
+  holderName,
+  startIndex,
+  summarizeOthers,
+} from "../lib/qc/claims";
 
 let failed = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -36,6 +41,25 @@ check(
       { name: "Yousif", count: 1 },
     ]),
 );
+
+// Where /approve opens (Skip, ?o= links) when the other owner has orders open.
+const all = ["o1", "o2", "o3", "o4"];
+check(
+  "asked and free: that one",
+  startIndex(all, ["o1", "o2", "o3", "o4"], "o3") === 2,
+);
+check("no ask: the first", startIndex(all, ["o2", "o3"], undefined) === 0);
+check(
+  "asked one taken: the next free after it",
+  startIndex(all, ["o1", "o3", "o4"], "o2") === 1,
+);
+check(
+  "Skip never bounces back to the one skipped",
+  startIndex(all, ["o1", "o4"], "o2") === 1,
+);
+check("wraps around the end", startIndex(all, ["o1", "o2"], "o4") === 0);
+check("asked one gone: the first", startIndex(all, ["o1"], "zz") === 0);
+check("nothing free: 0", startIndex(all, [], "o2") === 0);
 
 class Rollback extends Error {}
 

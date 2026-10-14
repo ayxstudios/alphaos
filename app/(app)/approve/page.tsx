@@ -24,7 +24,7 @@ export default async function ApprovePage({ searchParams }: { searchParams: Prom
 
   const { o, skip } = await searchParams;
   // Approvals still in their Stop window stay out of the queue (an explicitly opened ?o= never hides itself).
-  const { ids: queue, others, takenBy } = await getOwnerApproveQueue(user, parseSkip(skip).filter((id) => id !== o), o);
+  const { ids: queue, start, others, takenBy } = await getOwnerApproveQueue(user, parseSkip(skip).filter((id) => id !== o), o);
   if (queue.length === 0) {
     const busy = others.map((x) => `${x.name} is checking ${x.count === 1 ? "the last one" : `the last ${x.count}`}.`).join(" ");
     return (
@@ -43,7 +43,7 @@ export default async function ApprovePage({ searchParams }: { searchParams: Prom
     );
   }
 
-  const index = o && queue.includes(o) ? queue.indexOf(o) : 0;
+  const index = start;
   const item = await getApproveItem(user, queue[index]);
   if (!item) redirect("/approve");
   const nextId = queue.length > 1 ? queue[(index + 1) % queue.length] : null;
