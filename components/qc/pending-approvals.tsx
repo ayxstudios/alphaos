@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { PrefetchKind } from "next/dist/client/components/router-reducer/router-reducer-types";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
 import { ownerApprove } from "@/app/(app)/approve/actions";
@@ -17,6 +18,8 @@ import {
 export { APPROVE_GRACE_MS };
 
 const COMMIT_TIMEOUT_MS = 30_000;
+/** Full RSC prefetch: the server render of /approve takes seconds, so Approve and Stop swap from the cache instead. */
+export const FULL_PREFETCH = { kind: PrefetchKind.FULL };
 
 async function viaRoute(orderId: string, keepalive: boolean): Promise<CommitResult> {
   const res = await fetch("/api/approve/commit", {
@@ -82,9 +85,14 @@ export function usePendingApprovals(): PendingRow[] {
   return useSyncExternalStore(approvalStore.subscribe, approvalStore.getRows, () => NONE);
 }
 
-/** `/approve?...` with the pending ids kept out of the queue. */
-export function approveHref(orderId: string | null, exclude?: string): string {
+/**
+ * `/approve?...` with the pending ids kept out of the queue. `also` adds one
+ * more id to skip: the order about to be approved, so the page the screen will
+ * move to can be preloaded before the tap (the URL must match exactly).
+ */
+export function approveHref(orderId: string | null, exclude?: string, also?: string): string {
   const skip = approvalStore.skipIds().filter((id) => id !== exclude);
+  if (also && also !== exclude && !skip.includes(also)) skip.push(also);
   const q = new URLSearchParams();
   if (orderId) q.set("o", orderId);
   if (skip.length) q.set("skip", skip.join(","));
@@ -111,6 +119,11 @@ function Rows({ rows }: { rows: PendingRow[] }) {
   const router = useRouter();
   const toast = useToast();
   const now = useNow(rows.some((r) => r.status === "pending"));
+  // Stop brings the order straight back: preload that page while it is pending.
+  const stopHrefs = rows.filter((r) => r.status === "pending").map((r) => approveHref(r.orderId, r.orderId)).join(" ");
+  useEffect(() => {
+    if (stopHrefs) stopHrefs.split(" ").forEach((h) => router.prefetch(h, FULL_PREFETCH));
+  }, [stopHrefs, router]);
 
   return (
     <>
@@ -149,8 +162,8 @@ function Rows({ rows }: { rows: PendingRow[] }) {
                   onClick={() => {
                     if (!approvalStore.stop(r.orderId)) return;
                     toast({ variant: "info", title: "Stopped, nothing sent" });
+                    // Prefetched in full above; no refresh, it would discard that.
                     router.replace(approveHref(r.orderId));
-                    router.refresh();
                   }}
                   className={cn("min-h-11 min-w-11 shrink-0 rounded-input border-2 border-rose px-4 text-sm font-semibold text-rose", focusRing)}
                 >

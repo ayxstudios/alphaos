@@ -8,7 +8,14 @@ import { useEffect, useState, useTransition } from "react";
 
 import { ownerReject } from "@/app/(app)/approve/actions";
 import { QcPicturePicker, useQcPictures } from "@/components/qc/attachment-picker";
-import { approvalStore, approveHref, PendingApprovalsHost, PendingApprovalsInline, usePendingApprovals } from "@/components/qc/pending-approvals";
+import {
+  approvalStore,
+  approveHref,
+  FULL_PREFETCH,
+  PendingApprovalsHost,
+  PendingApprovalsInline,
+  usePendingApprovals,
+} from "@/components/qc/pending-approvals";
 import { AutoQcBadge, AutoQcNotes } from "@/components/qc/auto-qc";
 import { useToast } from "@/components/ui";
 import { ArrowRight, Check, X } from "@/components/ui/icons";
@@ -36,6 +43,13 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
   const router = useRouter();
   const toast = useToast();
   usePendingApprovals(); // re-render when the skip list changes (Skip link)
+  // The page Approve moves to (this order skipped), preloaded so the swap is instant.
+  const afterApprove = approveHref(nextId, undefined, ctx.orderId);
+  useEffect(() => {
+    router.prefetch(afterApprove, FULL_PREFETCH);
+    // Where Stop lands: this same order, pinned. Warm before Approve is tapped.
+    router.prefetch(approveHref(ctx.orderId, ctx.orderId), FULL_PREFETCH);
+  }, [afterApprove, ctx.orderId, router]);
   const [pending, startTransition] = useTransition();
   const [busy, setBusy] = useState<"reject" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,10 +102,13 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [enlarged]);
 
-  function goNext() {
+  // fresh: false only after Approve, whose target URL is new and was fully
+  // prefetched above; a refresh there purged that prefetch and held this
+  // order on screen for ~6 s while the server re-rendered.
+  function goNext(fresh = true) {
     startTransition(() => {
       router.replace(approveHref(nextId));
-      router.refresh();
+      if (fresh) router.refresh();
     });
   }
 
@@ -130,7 +147,7 @@ export function ApproveScreen({ item, position, total, nextId }: Props) {
   function approve() {
     setError(null);
     approvalStore.enqueue({ orderId: ctx.orderId, orderNumber: ctx.orderNumber, customerName: ctx.customerName });
-    goNext();
+    goNext(false);
   }
 
   async function reject() {
