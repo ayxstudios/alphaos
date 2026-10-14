@@ -87,7 +87,7 @@ export async function listAutoQcJobs(opts: { limit: number; orderNumber?: string
     const item = await getApproveItem(SYSTEM, id);
     if (!item) continue;
     const { ctx } = item;
-    const slots = latestSlots(ctx.versions, ctx.portraits);
+    const slots = latestSlots(ctx.versions, ctx.portraits, ctx.proofFiles);
     if (slots.length === 0) continue;
     const businessName = await withSystemContext(async (tx) => {
       const [b] = await tx
@@ -130,7 +130,7 @@ export type SaveResult = { ok: true; id: string } | { ok: false; status: number;
 export async function saveAutoQc(body: AutoQcBody): Promise<SaveResult> {
   const item = await getApproveItem(SYSTEM, body.orderId);
   if (!item) return { ok: false, status: 404, error: "order not found" };
-  const current = slotAssetIds(latestSlots(item.ctx.versions, item.ctx.portraits));
+  const current = slotAssetIds(latestSlots(item.ctx.versions, item.ctx.portraits, item.ctx.proofFiles));
   if (!sameIds(body.assetIds, current)) return { ok: false, status: 409, error: "stale: the artwork changed since this was judged" };
   const id = await withSystemContext(async (tx) => {
     const [o] = await tx.select({ businessId: orders.businessId }).from(orders).where(eq(orders.id, body.orderId));

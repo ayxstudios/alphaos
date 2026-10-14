@@ -467,10 +467,10 @@ function CardUploadPanel({
   // know which is which (Jerome, 2026-10-14).
   const portraits = detail?.portraits ?? [];
   const multiPortrait = portraits.length >= 2;
-  const [portraitId, setPortraitId] = useState<string | null>(null);
+  const [portraitKey, setPortraitKey] = useState<string | null>(null);
   const submissions = (detail?.images ?? []).filter((image) => image.type === "submission");
   const latestSubmission = submissions.at(-1) ?? null;
-  const portraitNo = new Map(portraits.map((p) => [p.id, p.n]));
+  const portraitNo = new Map(portraits.map((p) => [p.key, p.n]));
   // After a send-back (QC fail, revision) the old versions no longer count:
   // the server refuses Submit for QC until a newer version is uploaded.
   const lastSendBack = (detail?.events ?? [])
@@ -523,7 +523,7 @@ function CardUploadPanel({
     }
     // Portraits (submission/final) on a 2+ portrait order must say which one;
     // reference photos stay order-wide.
-    if (multiPortrait && type !== "reference" && !portraitId) {
+    if (multiPortrait && type !== "reference" && !portraitKey) {
       toast({
         variant: "warning",
         title: "Which portrait?",
@@ -596,8 +596,8 @@ function CardUploadPanel({
         type,
         r2Keys: keys,
         // Single-portrait orders tag implicitly; multi-portrait uses the pick.
-        orderItemId:
-          type !== "reference" ? (multiPortrait ? portraitId : (portraits[0]?.id ?? null)) : null,
+        portraitKey:
+          type !== "reference" ? (multiPortrait ? portraitKey : (portraits[0]?.key ?? null)) : null,
       });
       if (!saved.ok) throw new Error(saved.message);
       onSaved(saved.detail);
@@ -751,16 +751,16 @@ function CardUploadPanel({
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {portraits.map((p) => (
               <button
-                key={p.id}
+                key={p.key}
                 type="button"
                 disabled={uploading}
-                aria-pressed={portraitId === p.id}
-                onClick={() => setPortraitId(p.id)}
+                aria-pressed={portraitKey === p.key}
+                onClick={() => setPortraitKey(p.key)}
                 title={p.label || undefined}
                 className={cn(
                   "flex min-h-9 max-w-full items-center rounded-input border px-2.5 py-1.5 text-sm transition-colors motion-hover max-md:min-h-11",
                   focusRing,
-                  portraitId === p.id
+                  portraitKey === p.key
                     ? "border-pigment bg-pigment-soft font-medium text-ink"
                     : "border-line bg-surface text-slate hover:border-slate/40 hover:text-ink",
                 )}
@@ -839,10 +839,10 @@ function CardUploadPanel({
           <p className="mb-2 text-xs font-medium text-ink">Portrait versions ({submissions.length}), newest last</p>
           <div className="flex gap-2 overflow-x-auto pb-1">
             {submissions.map((image, globalIndex) => {
-              const n = image.orderItemId ? portraitNo.get(image.orderItemId) : undefined;
+              const n = image.slotKey ? portraitNo.get(image.slotKey) : undefined;
               // On 2+ portrait orders each portrait counts its own versions and
               // has its own "latest" (Jerome saw one latest across both).
-              const slot = (s: CardImage) => (s.orderItemId ? (portraitNo.get(s.orderItemId) ?? 0) : 0);
+              const slot = (s: CardImage) => (s.slotKey ? (portraitNo.get(s.slotKey) ?? 0) : 0);
               const own = multiPortrait ? submissions.filter((s) => slot(s) === slot(image)) : submissions;
               const index = multiPortrait ? own.indexOf(image) : globalIndex;
               const lastIndex = own.length - 1;
@@ -941,13 +941,14 @@ function Gallery({ images, cover }: { images: CardImage[] | null; cover: string 
 /**
  * The version the customer put their pins on: the newest one from before the
  * latest revision request. Once a fixed version is added, the pins still sit
- * on the proof they were dropped on, not on the fix. With a portrait given,
- * only versions tagged to that portrait count, so a pin dropped on Portrait 2
- * never overlays Portrait 1's image.
+ * on the proof they were dropped on, not on the fix. With an order line given,
+ * only versions tagged to that line (any of its units) count, so a pin dropped
+ * on Portrait 2 never overlays Portrait 1's image.
  */
 function pinnedVersionUrl(detail: CardDetail | null, events: CardEvent[], orderItemId?: string): string | null {
+  const itemOfSlot = new Map((detail?.portraits ?? []).map((p) => [p.key, p.itemId]));
   const versions = (detail?.images ?? []).filter(
-    (img) => img.type === "submission" && (!orderItemId || img.orderItemId === orderItemId),
+    (img) => img.type === "submission" && (!orderItemId || (img.slotKey && itemOfSlot.get(img.slotKey) === orderItemId)),
   );
   const asked = events
     .filter((e) => e.toState === "in_design" && e.fromState === "awaiting_approval")
@@ -979,10 +980,11 @@ function groupPins(
     const p = typeof pin.p === "number" ? pin.p : 0;
     let group = groups.get(p);
     if (!group) {
-      const portrait = p > 0 ? (detail?.portraits ?? [])[p - 1] : undefined;
+      // A pin's number is the customer's proof page numbering: one per order line.
+      const lineItemId = p > 0 ? [...new Set((detail?.portraits ?? []).map((x) => x.itemId))][p - 1] : undefined;
       group = {
         label: p > 0 ? `Portrait ${p}` : null,
-        url: pinnedVersionUrl(detail, events, portrait?.id) ?? pinnedVersionUrl(detail, events),
+        url: pinnedVersionUrl(detail, events, lineItemId) ?? pinnedVersionUrl(detail, events),
         pins: [],
       };
       groups.set(p, group);

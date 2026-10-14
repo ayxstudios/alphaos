@@ -17,7 +17,7 @@ const v = (id: string, portrait: number | null = null): QcVersion => ({
 });
 
 // Single portrait: newest version, previous = the one before.
-let slots = latestSlots([v("a"), v("b"), v("c")], [{ id: "i1", n: 1, label: "" }]);
+let slots = latestSlots([v("a"), v("b"), v("c")], [{ key: "i1", itemId: "i1", unit: 1, n: 1, label: "" }]);
 assert.equal(slots.length, 1);
 assert.equal(slots[0].latest.id, "c");
 assert.equal(slots[0].previous?.id, "b");
@@ -28,8 +28,8 @@ assert.deepEqual(latestSlots([], []), []);
 
 // 2+ portraits with tagged uploads: one slot per portrait, untagged on its own.
 const two = [
-  { id: "i1", n: 1, label: "Dog" },
-  { id: "i2", n: 2, label: "Cat" },
+  { key: "i1", itemId: "i1", unit: 1, n: 1, label: "Dog" },
+  { key: "i2", itemId: "i2", unit: 1, n: 2, label: "Cat" },
 ];
 slots = latestSlots([v("p1a", 1), v("p2a", 2), v("p1b", 1), v("u")], two);
 assert.deepEqual(

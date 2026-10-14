@@ -3,6 +3,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { activityLog, orders, shops, users } from "@/lib/db/schema";
 import type { CardEvent } from "@/lib/orders/card-detail";
+import type { ProofFilePick } from "@/lib/proofs/files";
 import { buildRevisionHistory, type RevisionHistoryNote } from "@/lib/orders/revision-history";
 import type { OrderStatus } from "@/lib/orders/transitions";
 import { aiAwaitingAutoQc } from "./ai-qc-gate";
@@ -34,6 +35,8 @@ export type ApproveItem = {
   fixes: AutoQcFixView[];
   /** An AI Studio portrait whose newest file has no Auto QC yet: Approve stays shut until it has (lib/qc/ai-qc-gate.ts). */
   aiWaiting: boolean;
+  /** The files a proof email carries by default (from the QC context). */
+  proofFiles: ProofFilePick;
 };
 
 export async function getApproveQueue(user: RequestUser, skip: string[] = []): Promise<string[]> {
@@ -115,8 +118,8 @@ export async function getApproveItem(user: RequestUser, orderId: string): Promis
       metadata: (r.metadata as Record<string, unknown> | null) ?? null,
       createdAt: r.createdAt.toISOString(),
     }));
-    const autoQc = await getAutoQcView(tx, orderId, slotAssetIds(latestSlots(ctx.versions, ctx.portraits)));
-    const fixes = await getFixViews(tx, orderId, ctx.versions, ctx.portraits);
+    const autoQc = await getAutoQcView(tx, orderId, slotAssetIds(latestSlots(ctx.versions, ctx.portraits, ctx.proofFiles)));
+    const fixes = await getFixViews(tx, orderId, ctx.versions, ctx.portraits, ctx.proofFiles);
     const aiWaiting = await aiAwaitingAutoQc(tx, orderId);
     return { o, requests: buildRevisionHistory(events), autoQc, fixes, aiWaiting };
   });
@@ -133,5 +136,6 @@ export async function getApproveItem(user: RequestUser, orderId: string): Promis
     autoQc: extra.autoQc,
     fixes: extra.fixes,
     aiWaiting: extra.aiWaiting,
+    proofFiles: ctx.proofFiles,
   };
 }

@@ -4,7 +4,7 @@ import { withUserContext, type RequestUser } from "@/lib/db";
 import { activityLog, assets, assignments, orders, users } from "@/lib/db/schema";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { isDesignerLike } from "@/lib/auth/roles";
-import { getOrderPortraits, type OrderPortrait } from "./portraits";
+import { getOrderPortraits, slotKeyOf, type OrderPortrait } from "./portraits";
 import type { OrderStatus } from "./transitions";
 
 /**
@@ -34,8 +34,8 @@ export type CardImage = {
   url: string;
   uploadedBy: string | null;
   createdAt: string;
-  /** The portrait slot (order item) this upload was tagged with, if any. */
-  orderItemId: string | null;
+  /** The portrait slot (OrderPortrait.key) this upload was tagged with, if any. */
+  slotKey: string | null;
 };
 
 export type CardDetail = {
@@ -140,6 +140,7 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
         r2Key: assets.r2Key,
         createdAt: assets.createdAt,
         orderItemId: assets.orderItemId,
+        portraitUnit: assets.portraitUnit,
         uploadedByName: users.name,
         uploadedByEmail: users.email,
       })
@@ -173,7 +174,7 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
             url,
             uploadedBy: a.uploadedByName ?? (isDesignerLike(user.role) ? null : a.uploadedByEmail) ?? null,
             createdAt: a.createdAt.toISOString(),
-            orderItemId: a.orderItemId ?? null,
+            slotKey: slotKeyOf({ orderItemId: a.orderItemId, portraitUnit: a.portraitUnit }),
           });
         }
       }),

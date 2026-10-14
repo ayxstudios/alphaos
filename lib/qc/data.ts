@@ -14,7 +14,8 @@ import {
   activityLog,
   qcChecks,
 } from "@/lib/db/schema";
-import { getOrderPortraits, type OrderPortrait } from "@/lib/orders/portraits";
+import { getOrderPortraits, slotKeyOf, type OrderPortrait } from "@/lib/orders/portraits";
+import { loadProofFilePick, type ProofFilePick } from "@/lib/proofs/files";
 import type { OrderStatus } from "@/lib/orders/transitions";
 import { resolveChecklist, type ChecklistSnapshot } from "./checklist";
 import { resolveAttachmentViews } from "./attachment-urls";
@@ -86,6 +87,8 @@ export type QcContext = {
   versions: QcVersion[]; // oldest → newest
   /** The order's portrait slots; 2+ means versions are judged per portrait. */
   portraits: OrderPortrait[];
+  /** The files a proof email carries by default; its candidates are all in `versions`. */
+  proofFiles: ProofFilePick;
   checklist: ChecklistSnapshot;
   /** Earlier failed QCs, newest first (only those with a reason or pictures). */
   pastFails: QcPastFail[];
@@ -231,6 +234,7 @@ export async function getQcContext(
         type: assets.type,
         createdAt: assets.createdAt,
         orderItemId: assets.orderItemId,
+        portraitUnit: assets.portraitUnit,
         uploadedByName: users.name,
         uploadedByEmail: users.email,
       })
@@ -243,15 +247,19 @@ export async function getQcContext(
       references.map(async (r) => ({ id: r.id, url: await resolveAssetUrl(r) })),
     );
     const portraits = await getOrderPortraits(tx, orderId);
-    const portraitNo = new Map(portraits.map((p) => [p.id, p.n]));
-    const versions: QcVersion[] = await Promise.all(versionRows.map(async (v) => ({
-      id: v.id,
-      url: await resolveAssetUrl(v),
-      type: v.type,
-      uploadedBy: v.uploadedByName ?? v.uploadedByEmail ?? null,
-      createdAt: v.createdAt.toISOString(),
-      portrait: (v.orderItemId && portraitNo.get(v.orderItemId)) || null,
-    })));
+    const portraitNo = new Map(portraits.map((p) => [p.key, p.n]));
+    const versions: QcVersion[] = await Promise.all(versionRows.map(async (v) => {
+      const slotKey = slotKeyOf({ orderItemId: v.orderItemId, portraitUnit: v.portraitUnit });
+      return {
+        id: v.id,
+        url: await resolveAssetUrl(v),
+        type: v.type,
+        uploadedBy: v.uploadedByName ?? v.uploadedByEmail ?? null,
+        createdAt: v.createdAt.toISOString(),
+        portrait: (slotKey && portraitNo.get(slotKey)) || null,
+      };
+    }));
+    const proofFiles = await loadProofFilePick(tx, orderId, portraits);
 
     const failRows = await tx
       .select({ id: qcChecks.id, reason: qcChecks.reason, attachments: qcChecks.attachments, createdAt: qcChecks.createdAt })
@@ -287,6 +295,7 @@ export async function getQcContext(
       references: resolvedReferences,
       versions,
       portraits,
+      proofFiles,
       pastFails,
       checklist: resolveChecklist({
         checklistVersion: shop?.checklistVersion ?? 1,

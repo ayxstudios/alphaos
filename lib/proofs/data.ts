@@ -167,9 +167,10 @@ export async function getProofImageSource(
     let orderItemId: string | undefined;
     if (portraitN) {
       // Still scoped to the token's order: the item must be one of ITS items.
-      const portrait = (await getOrderPortraits(tx, proof.orderId)).find((p) => p.n === portraitN);
+      // The page numbers its portraits per order line, whatever the quantity.
+      const portrait = (await getOrderPortraits(tx, proof.orderId, { perLine: true })).find((p) => p.n === portraitN);
       if (!portrait) return null;
-      orderItemId = portrait.id;
+      orderItemId = portrait.itemId;
     }
     const asset = await resolvePreviewAsset(tx, proof.orderId, orderItemId);
     if (!asset) return null;
@@ -213,11 +214,11 @@ async function resolvePreviewAsset(
  * per-portrait tagging) keeps the one-image page, so nothing old breaks.
  */
 async function resolvePortraitPreviews(tx: Tx, orderId: string): Promise<ProofPortrait[]> {
-  const portraits = await getOrderPortraits(tx, orderId);
+  const portraits = await getOrderPortraits(tx, orderId, { perLine: true });
   if (portraits.length < 2) return [];
   const previews = await Promise.all(
     // Shop option names can arrive with their own colon ("Number of Pets:: 1").
-    portraits.map(async (p) => ({ n: p.n, label: p.label.replace(/:{2,}/g, ":"), hasPreview: (await resolvePreviewAsset(tx, orderId, p.id)) != null })),
+    portraits.map(async (p) => ({ n: p.n, label: p.label.replace(/:{2,}/g, ":"), hasPreview: (await resolvePreviewAsset(tx, orderId, p.itemId)) != null })),
   );
   return previews.some((p) => p.hasPreview) ? previews : [];
 }

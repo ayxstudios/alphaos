@@ -6,7 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { actingDesignerId, isDesignerLike } from "@/lib/auth/roles";
 import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
-import { activityLog, assets, assignments, orderItems, orders } from "@/lib/db/schema";
+import { activityLog, assets, assignments, orders } from "@/lib/db/schema";
 import {
   transition,
   runTransition,
@@ -19,6 +19,7 @@ import {
   type CardDetail,
   type CardEvent,
 } from "@/lib/orders/card-detail";
+import { resolveSlotTag } from "@/lib/orders/portraits";
 import {
   ALLOWED_IMAGE_TYPES,
   MAX_UPLOAD_BYTES,
@@ -200,7 +201,9 @@ export async function saveCardAssetUploads(input: {
   orderId: string;
   type: CardAssetType;
   r2Keys: string[];
-  /** Which portrait (order item) a submission/final belongs to, on 2+ portrait orders. */
+  /** Which portrait slot (OrderPortrait.key) a submission/final belongs to, on 2+ portrait orders. */
+  portraitKey?: string | null;
+  /** An older open page still sends the bare item id, which is a valid slot key (unit 1). */
   orderItemId?: string | null;
 }): Promise<CardUploadSaveResult> {
   const user = await requireSignedIn();
@@ -227,18 +230,15 @@ export async function saveCardAssetUploads(input: {
         throw new Error("Finished portraits can only be uploaded while the card is in design");
       }
 
-      // A portrait tag must be one of THIS order's items; anything else is
-      // refused rather than silently dropped (a mis-tag misleads QC and the
-      // customer's proof page).
-      let orderItemId: string | null = null;
-      if (input.orderItemId) {
-        const [item] = await tx
-          .select({ id: orderItems.id })
-          .from(orderItems)
-          .where(and(eq(orderItems.id, input.orderItemId), eq(orderItems.orderId, order.id)))
-          .limit(1);
-        if (!item) throw new Error("That portrait is not on this order");
-        orderItemId = item.id;
+      // A portrait tag must be one of THIS order's portrait slots (an item of
+      // this order, a unit within its quantity); anything else is refused rather
+      // than silently dropped (a mis-tag misleads QC and the customer's proof
+      // page). Unit 1 is stored as a NULL portrait_unit.
+      let tag: { orderItemId: string; portraitUnit: number | null } | null = null;
+      const portraitKey = input.portraitKey ?? input.orderItemId;
+      if (portraitKey) {
+        tag = await resolveSlotTag(tx, order.id, portraitKey);
+        if (!tag) throw new Error("That portrait is not on this order");
       }
 
       // Type, size and the bytes themselves (a .png that is really HTML is refused).
@@ -251,7 +251,8 @@ export async function saveCardAssetUploads(input: {
           type: input.type,
           storage: "r2" as const,
           r2Key,
-          orderItemId,
+          orderItemId: tag?.orderItemId ?? null,
+          portraitUnit: tag?.portraitUnit ?? null,
           uploadedBy: user.id,
         })),
       );

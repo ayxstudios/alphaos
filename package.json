@@ -63,7 +63,9 @@
     "test:qc-claims": "tsx scripts/test-qc-claims.ts",
     "test:etsy-proof-queue": "tsx scripts/test-etsy-proof-queue.ts",
     "test:limbo": "tsx scripts/test-limbo.ts",
-    "test:r2-env": "tsx scripts/test-r2-env-guard.ts"
+    "test:r2-env": "tsx scripts/test-r2-env-guard.ts",
+    "test:portrait-slots": "tsx scripts/test-portrait-slots.ts",
+    "test:proof-files": "tsx scripts/test-proof-files.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1102.0",

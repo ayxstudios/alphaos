@@ -13,6 +13,7 @@ import { and, desc, inArray, isNull, max } from "drizzle-orm";
 import type { Tx } from "@/lib/db";
 import { activityLog, assets, autoQcChecks } from "@/lib/db/schema";
 import type { OrderPortrait } from "@/lib/orders/portraits";
+import type { ProofFilePick } from "@/lib/proofs/files";
 import type { QcVersion } from "./data";
 
 /**
@@ -100,11 +101,23 @@ export type AutoQcSlot = { portrait: number | null; latest: QcVersion; previous:
  * The newest version per portrait, the same grouping the Approve screen uses:
  * a 2+ portrait order whose designer tagged uploads is judged per portrait
  * (plus any untagged uploads as their own group); otherwise the order's newest
- * version is the one. Versions arrive oldest first.
+ * version is the one. Versions arrive oldest first. An untagged 2+ portrait
+ * order whose proof email carries several files (`pick`, mode "round") is
+ * judged on exactly those files, one slot each in the email's order.
  */
-export function latestSlots(versions: QcVersion[], portraits: OrderPortrait[]): AutoQcSlot[] {
+export function latestSlots(versions: QcVersion[], portraits: OrderPortrait[], pick?: ProofFilePick): AutoQcSlot[] {
   const slot = (portrait: number | null, list: QcVersion[]): AutoQcSlot | null =>
     list.length ? { portrait, latest: list[list.length - 1], previous: list.length > 1 ? list[list.length - 2] : null } : null;
+  if (pick?.mode === "round" && pick.files.length >= 2) {
+    const byId = new Map(versions.map((v) => [v.id, v]));
+    const picked: AutoQcSlot[] = [];
+    for (const file of pick.files) {
+      const latest = byId.get(file.assetId);
+      if (latest) picked.push({ portrait: file.n, latest, previous: null });
+    }
+    // A picked file that is not among the versions cannot be judged: fall back to today's grouping.
+    if (picked.length === pick.files.length) return picked;
+  }
   if (portraits.length >= 2 && versions.some((v) => v.portrait)) {
     const slots = portraits.map((p) => slot(p.n, versions.filter((v) => v.portrait === p.n)));
     slots.push(slot(null, versions.filter((v) => !v.portrait)));

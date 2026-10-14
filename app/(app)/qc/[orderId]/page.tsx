@@ -30,7 +30,7 @@ export default async function QcPage({
 
   if (!ctx) notFound();
   const autoQc = await withUserContext(user, (tx) =>
-    getAutoQcView(tx, ctx.orderId, slotAssetIds(latestSlots(ctx.versions, ctx.portraits))),
+    getAutoQcView(tx, ctx.orderId, slotAssetIds(latestSlots(ctx.versions, ctx.portraits, ctx.proofFiles))),
   );
 
   return <QcScreen ctx={ctx} queueIds={queueIds} autoQc={autoQc} />;
