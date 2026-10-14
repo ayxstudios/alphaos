@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui";
+import { focusRing } from "@/components/ui/styles";
 import { PROOF_ISSUES } from "@/lib/proofs/issues";
 import type { ProofAnnotation } from "@/lib/db/schema";
 import type { ProofDecision } from "@/lib/proofs/decide";
@@ -73,31 +74,35 @@ export function ProofClient({
       .filter((pin) => (portrait ? pin.p === portrait.n : true));
     return (
       <div className="flex flex-col gap-2">
-      <figure className="relative overflow-hidden rounded-card border border-line bg-canvas shadow-sm">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={src}
-          alt={portrait ? `Portrait ${portrait.n} proof for order ${orderNumber}` : `Portrait proof for order ${orderNumber}`}
-          onClick={(e) => addPin(e, portrait?.n)}
-          className={"block w-full select-none " + (mode === "revise" ? "cursor-crosshair" : "")}
-          draggable={false}
-        />
-        {mine.map((pin) => (
-          <span
-            key={pin.n}
-            className="pointer-events-none absolute flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-pigment text-xs font-semibold text-surface shadow-md ring-2 ring-surface"
-            style={{ left: `${pin.x * 100}%`, top: `${pin.y * 100}%` }}
-          >
-            {pin.n}
-          </span>
-        ))}
-      </figure>
-      <a
-        href={`${src}${portrait ? "&" : "?"}download=1`}
-        className="inline-flex h-11 items-center justify-center rounded-input border border-line bg-surface px-4 text-sm font-semibold text-ink"
-      >
-        {portrait ? `Download portrait ${portrait.n}` : "Download your portrait"}
-      </a>
+        <figure className="relative overflow-hidden rounded-card border border-line bg-canvas shadow-sm">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={src}
+            alt={portrait ? `Portrait ${portrait.n} proof for order ${orderNumber}` : `Portrait proof for order ${orderNumber}`}
+            onClick={(e) => addPin(e, portrait?.n)}
+            className={"block w-full select-none " + (mode === "revise" ? "cursor-crosshair" : "")}
+            draggable={false}
+          />
+          {mine.map((pin) => (
+            <span
+              key={pin.n}
+              className="pointer-events-none absolute flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-pigment text-xs font-semibold text-surface shadow-md ring-2 ring-surface"
+              style={{ left: `${pin.x * 100}%`, top: `${pin.y * 100}%` }}
+            >
+              {pin.n}
+            </span>
+          ))}
+        </figure>
+        <a
+          href={`${src}${portrait ? "&" : "?"}download=1`}
+          className={
+            "inline-flex h-11 items-center justify-center rounded-input border border-line bg-surface px-4 text-sm font-semibold text-ink " +
+            "transition-[background-color,border-color] duration-[120ms] hover:border-slate/40 hover:bg-canvas " +
+            focusRing
+          }
+        >
+          {portrait ? `Download portrait ${portrait.n}` : "Download your portrait"}
+        </a>
       </div>
     );
   }

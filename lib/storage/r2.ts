@@ -96,9 +96,27 @@ export function presignUpload(opts: { key: string; contentType: string }): Promi
   );
 }
 
-/** A short-lived presigned GET for reading a private object (thumbnails, previews). */
-export function presignGet(key: string, expiresIn = GET_TTL_SECONDS): Promise<string> {
-  return getSignedUrl(client(), new GetObjectCommand({ Bucket: bucket(), Key: key }), { expiresIn });
+/**
+ * A short-lived presigned GET for reading a private object (thumbnails, previews).
+ * `response` overrides the headers R2 answers with (e.g. an attachment
+ * Content-Disposition so the browser saves the file under a proper name).
+ */
+export function presignGet(
+  key: string,
+  expiresIn = GET_TTL_SECONDS,
+  response?: { contentDisposition?: string; contentType?: string; cacheControl?: string },
+): Promise<string> {
+  return getSignedUrl(
+    client(),
+    new GetObjectCommand({
+      Bucket: bucket(),
+      Key: key,
+      ResponseContentDisposition: response?.contentDisposition,
+      ResponseContentType: response?.contentType,
+      ResponseCacheControl: response?.cacheControl,
+    }),
+    { expiresIn },
+  );
 }
 
 export async function headObject(key: string): Promise<{
