@@ -11,6 +11,7 @@ import {
   pgTable,
   pgView,
   primaryKey,
+  smallint,
   text,
   timestamp,
   uniqueIndex,
@@ -733,8 +734,14 @@ export const orderItems = pgTable(
     // and re-resolve must not recompute it.
     styleLocked: boolean("style_locked").notNull().default(false),
     productType: productType("product_type").notNull(),
+    // How many portraits this line is for (the Etsy/Shopify line quantity,
+    // capped at 20 on import). One line x quantity N = N portrait slots.
+    quantity: integer("quantity").notNull().default(1),
   },
-  (t) => [index("order_items_order_idx").on(t.orderId)],
+  (t) => [
+    index("order_items_order_idx").on(t.orderId),
+    check("order_items_quantity_ck", sql`${t.quantity} >= 1`),
+  ],
 );
 
 /** A structured variant option / line-item property pair. */
@@ -757,6 +764,9 @@ export const assets = pgTable(
     orderItemId: text("order_item_id").references(() => orderItems.id, {
       onDelete: "set null",
     }),
+    // Which unit of a quantity>1 order line this upload is for. NULL = unit 1.
+    // Only meaningful when order_item_id is set (see lib/orders/portraits.ts).
+    portraitUnit: smallint("portrait_unit"),
     type: assetType("type").notNull(),
     storage: assetStorage("storage").notNull(),
     url: text("url"),
@@ -777,6 +787,7 @@ export const assets = pgTable(
       "assets_storage_location_ck",
       sql`(${t.storage} = 'cdn' and ${t.url} is not null and ${t.r2Key} is null) or (${t.storage} = 'r2' and ${t.r2Key} is not null and ${t.url} is null)`,
     ),
+    check("assets_portrait_unit_ck", sql`${t.portraitUnit} is null or ${t.portraitUnit} >= 1`),
   ],
 );
 
@@ -976,10 +987,16 @@ export const proofs = pgTable(
     failedItems: jsonb("failed_items").$type<string[]>(),
     annotations: jsonb("annotations").$type<ProofAnnotation[]>(),
     revisionNotes: text("revision_notes"),
+    // The ordered files this proof/QC email showed, one entry per portrait.
+    // NULL on every proof sent before this column existed (one file, as always).
+    files: jsonb("files").$type<ProofFileEntry[]>(),
     createdAt: createdAt(),
   },
   (t) => [index("proofs_order_idx").on(t.orderId)],
 );
+
+/** One file on a sent proof: the asset and the caption shown beside it. */
+export type ProofFileEntry = { assetId: string; label: string };
 
 /** A revision pin dropped on the preview, in normalised image coordinates.
  *  `p` (1-based portrait number, by item order) says which portrait's preview

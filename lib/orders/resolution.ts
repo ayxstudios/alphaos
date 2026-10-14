@@ -4,6 +4,7 @@ import { withUserContext, type RequestUser } from "@/lib/db";
 import { getShopCredentials } from "@/lib/db/credentials";
 import { orders, orderItems, shops, activityLog, assets, assignments, printJobs } from "@/lib/db/schema";
 import { runAutoAssign } from "./assign";
+import { clampItemQuantity } from "./item-quantity";
 import {
   applyStyleFigureDefault,
   resolveFigureCount,
@@ -302,6 +303,7 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
             style,
             styleLocked: !!locked,
             productType: pickType(priorType.get(li.sku ?? li.title ?? ""), lineProductType(li), li.sku ?? li.title),
+            quantity: clampItemQuantity(li.quantity),
           });
         }
       } else {

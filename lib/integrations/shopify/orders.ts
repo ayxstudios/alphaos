@@ -13,6 +13,7 @@ import { resolveFigureCount } from "./figures";
 import { listBusinessStyles, matchStyle } from "@/lib/designers/styles";
 import { classifyOrder, photoRequestEnabled } from "../classify";
 import { reconcileManualOrder } from "@/lib/orders/reconcile";
+import { clampItemQuantity } from "@/lib/orders/item-quantity";
 import { runAutoAssign } from "@/lib/orders/assign";
 import { isBeforeBackfillCutoff } from "@/lib/orders/archive";
 import { failJobRun, finishJobRun, JOB_NAMES, startJobRun } from "@/lib/jobs/ledger";
@@ -504,6 +505,7 @@ export async function importShopifyOrder(args: {
               rawVariations: i.input,
               style: matchStyle(i.li.title, i.li.sku, businessStyles),
               productType: i.kind.productType,
+              quantity: clampItemQuantity(i.li.quantity),
             })),
           )
           .returning({ id: orderItems.id })

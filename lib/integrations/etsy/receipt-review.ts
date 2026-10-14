@@ -1,5 +1,6 @@
 import { decodeHtmlEntities } from "./html-entities";
 import { resolveProductType, type ProductTypeResolution } from "../figures";
+import { clampItemQuantity } from "../../orders/item-quantity";
 
 // Words in a LISTING TITLE that name a made, shipped thing outright (the Print &
 // Ship add-on, a mug, a canvas). Deliberately narrower than figures.ts
@@ -283,6 +284,8 @@ export type EtsyImportItem = {
   options: { name: string; value: string }[];
   rawVariations: EtsyVariationPair[];
   productType: "physical" | "digital";
+  /** Etsy's quantity for this transaction (floored, 1 to 20): one portrait per unit. */
+  quantity: number;
 };
 
 export function etsyImportItems(rawImport: unknown): EtsyImportItem[] {
@@ -303,6 +306,7 @@ export function etsyImportItems(rawImport: unknown): EtsyImportItem[] {
       options: variations.map((v) => ({ name: v.label, value: v.value })),
       rawVariations: variations,
       productType: fulfillment ?? "digital",
+      quantity: clampItemQuantity(rawTx.quantity),
     }];
   });
 }

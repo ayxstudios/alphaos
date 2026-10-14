@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 
 import type { Tx } from "@/lib/db";
 import { orders, orderItems, assets, activityLog, type ProductOption } from "@/lib/db/schema";
+import { clampItemQuantity } from "@/lib/orders/item-quantity";
 
 /**
  * Reconciliation of a VA-entered manual order with its later platform import.
@@ -37,6 +38,7 @@ export async function reconcileManualOrder(
       options: ProductOption[];
       rawVariations: unknown;
       productType: "physical" | "digital";
+      quantity?: number;
     }[];
   },
 ): Promise<{ reconciled: boolean; orderId?: string }> {
@@ -118,6 +120,8 @@ export type ImportItem = {
   options: ProductOption[];
   rawVariations: unknown;
   productType: "physical" | "digital";
+  /** The platform's quantity for this line (portraits to draw); absent = 1. */
+  quantity?: number;
 };
 
 const optionsKey = (options: ProductOption[] | null | undefined) =>
@@ -138,7 +142,7 @@ export async function mergeImportItems(
   args: { businessId: string; orderId: string; importItems: ImportItem[] },
 ): Promise<{ inserted: number; filled: number }> {
   const existing = await tx
-    .select({ id: orderItems.id, options: orderItems.options })
+    .select({ id: orderItems.id, options: orderItems.options, quantity: orderItems.quantity })
     .from(orderItems)
     .where(eq(orderItems.orderId, args.orderId))
     .for("update");
@@ -151,6 +155,7 @@ export async function mergeImportItems(
     options: item.options.length ? item.options : null,
     rawVariations: item.rawVariations,
     productType: item.productType,
+    quantity: clampItemQuantity(item.quantity),
   });
 
   if (!existing.length) {
@@ -175,6 +180,16 @@ export async function mergeImportItems(
         .set({ options: item.options, rawVariations: item.rawVariations })
         .where(eq(orderItems.id, row.id));
       filled++;
+    }
+  }
+  // One row for one transaction is an unambiguous pairing, so the receipt's
+  // quantity goes onto it (a VA-first manual order is born with quantity 1 and
+  // nobody sets it by hand). Any other shape has no pairing we can trust, so the
+  // row keeps the quantity it has.
+  if (existing.length === 1 && args.importItems.length === 1 && args.importItems[0].quantity !== undefined) {
+    const quantity = clampItemQuantity(args.importItems[0].quantity);
+    if (existing[0].quantity !== quantity) {
+      await tx.update(orderItems).set({ quantity }).where(eq(orderItems.id, existing[0].id));
     }
   }
   const room = Math.max(0, args.importItems.length - existing.length);

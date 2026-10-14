@@ -371,6 +371,7 @@ async function importReceipt(args: {
           options: item.options.length ? item.options : null,
           rawVariations: item.rawVariations,
           productType: item.productType,
+          quantity: item.quantity,
         })),
       );
     }
