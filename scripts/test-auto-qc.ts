@@ -84,7 +84,7 @@ if (ok.ok) {
 }
 assert.ok(!parseAutoQcBody({ ...good, verdict: "approved" }).ok, "unknown verdict refused");
 assert.ok(!parseAutoQcBody({ ...good, assetIds: [] }).ok, "no asset ids refused");
-assert.ok(!parseAutoQcBody({ ...good, portraits: [{ ...good.portraits[0], checks: [{ key: 12, result: "pass" }] }] }).ok, "unknown key refused");
+assert.ok(!parseAutoQcBody({ ...good, portraits: [{ ...good.portraits[0], checks: [{ key: 99, result: "pass" }] }] }).ok, "unknown key refused");
 assert.ok(!parseAutoQcBody({ ...good, portraits: [{ ...good.portraits[0], checks: [{ key: 2, result: "ok" }] }] }).ok, "unknown result refused");
 assert.ok(!parseAutoQcBody({ ...good, revision: { done: "maybe" } }).ok, "bad revision refused");
 assert.ok(!parseAutoQcBody(null).ok);
