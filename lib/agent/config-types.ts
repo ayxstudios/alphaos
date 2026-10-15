@@ -89,6 +89,8 @@ export type AgentConfigInput = {
   emailSignature?: { text: string; html: string } | null;
   /** How drafted answers sign off, e.g. "Regards,\nBrianna" (the shop's persona). Default: "Warm regards," + the team. */
   replySignOff?: string | null;
+  /** One warm Etsy review ask by email to a buyer who writes that she loves the finished portrait (lib/agent/review-ask.ts). */
+  reviewAskEnabled?: boolean;
   /**
    * The AlphaOS user who hears about anything stuck (docs/NO_LIMBO.md L5): the
    * owner digest goes to this person only. Unset = every admin.

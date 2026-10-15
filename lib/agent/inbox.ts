@@ -50,6 +50,7 @@ import { draftAnswerToQuestion } from "./answer";
 import { getAgentConfig } from "./config";
 import { openExceptionTx, type ExceptionKind } from "./exceptions";
 import { mailRecommendation, screenNewMailTx } from "./junk-mail";
+import { orderHasPhysicalItem, queueReviewAsk, reviewAskBlocker } from "./review-ask";
 
 /** Activity actions that mark an inbound message as handled by the agent. */
 // agent.mail_cleared: junk the no-limbo screen cleared before it became a card (./junk-mail.ts).
@@ -77,6 +78,8 @@ export type InboxReport = {
   classified: number;
   approvalsApplied: number;
   revisionsApplied: number;
+  /** Review-ask emails queued to happy Etsy buyers (./review-ask.ts). */
+  reviewAsksQueued: number;
   answersDrafted: number;
   /** Replies handed to a human (reply_unclear or buyer_question). */
   repliesEscalated: number;
@@ -104,6 +107,7 @@ export function emptyInboxReport(): InboxReport {
     classified: 0,
     approvalsApplied: 0,
     revisionsApplied: 0,
+    reviewAsksQueued: 0,
     answersDrafted: 0,
     repliesEscalated: 0,
     unmatchedChecked: 0,
@@ -124,7 +128,7 @@ class DryRunRollback extends Error {
 }
 
 type Bump = (apply: (r: InboxReport) => void) => void;
-type Ctx = { dryRun: boolean; now: Date; report: InboxReport };
+type Ctx = { dryRun: boolean; now: Date; report: InboxReport; reviewAsk: boolean };
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -221,6 +225,8 @@ type StoredClassification = {
   intent: ReplyIntent;
   confidence: number;
   rationale: string;
+  /** Buyer sounds delighted (review-ask signal); absent on classifications stored before 2026-10-15. */
+  happy: boolean;
   strippedText: string;
 };
 
@@ -235,6 +241,7 @@ function storedClassification(metadata: unknown): StoredClassification | null {
     intent: r.intent as ReplyIntent,
     confidence: r.confidence,
     rationale: typeof r.rationale === "string" ? r.rationale : "",
+    happy: r.happy === true,
     strippedText: typeof r.strippedText === "string" ? r.strippedText : "",
   };
 }
@@ -277,9 +284,9 @@ export async function runInboxPass(
   opts: InboxPassOptions = {},
 ): Promise<InboxReport> {
   const report = emptyInboxReport();
-  const ctx: Ctx = { dryRun: !!opts.dryRun, now: opts.now ?? new Date(), report };
-  const outOfTime = opts.outOfTime ?? (() => false);
   const cfg = getAgentConfig(business);
+  const ctx: Ctx = { dryRun: !!opts.dryRun, now: opts.now ?? new Date(), report, reviewAsk: cfg.reviewAskEnabled };
+  const outOfTime = opts.outOfTime ?? (() => false);
   const lookback = new Date(ctx.now.getTime() - cfg.inboxLookbackHours * HOUR);
   const enabledAt = cfg.inboxEnabledAt ? new Date(cfg.inboxEnabledAt) : null;
   // Never reach back past the moment the switch went on (no backlog flood).
@@ -358,6 +365,40 @@ async function repliesStep(
     ctx.report.repliesChecked += 1;
     await handleReply(ctx, row, threshold);
   }
+}
+
+/**
+ * The one Etsy review ask for a delighted buyer whose portrait is complete
+ * (./review-ask.ts). Quiet when the business has it off, when the gate says no,
+ * when she already had hers, or when there is no address.
+ */
+async function maybeReviewAsk(
+  tx: Tx,
+  bump: Bump,
+  input: {
+    order: { id: string; businessId: string; customerId: string | null; status: string; source: string; platformOrderId: string; platformOrderName: string | null };
+    c: { intent: ReplyIntent; happy: boolean };
+    msg: { gmailThreadId: string | null; address: string | null };
+    row: ReplyRow;
+    ctx: Ctx;
+  },
+): Promise<void> {
+  const { order, c, msg, row, ctx } = input;
+  if (!ctx.reviewAsk || !c.happy) return;
+  const physical = await orderHasPhysicalItem(tx, order.id);
+  if (reviewAskBlocker({ source: order.source, status: order.status, physical, happy: c.happy, intent: c.intent })) return;
+  const [biz] = await tx.select({ name: businesses.name }).from(businesses).where(eq(businesses.id, order.businessId)).limit(1);
+  const [cust] = order.customerId
+    ? await tx.select({ email: customers.email, firstName: customers.firstName }).from(customers).where(eq(customers.id, order.customerId)).limit(1)
+    : [null];
+  const email = cust?.email ?? msg.address?.trim() ?? null;
+  if (!biz || !email) return;
+  const id = await queueReviewAsk(tx, {
+    order,
+    ctx: { email, firstName: cust?.firstName ?? "there", businessName: biz.name },
+    inReplyTo: { id: row.id, subject: row.subject, gmailThreadId: msg.gmailThreadId },
+  });
+  if (id) bump((r) => (r.reviewAsksQueued += 1));
 }
 
 async function handleReply(ctx: Ctx, row: ReplyRow, threshold: number): Promise<void> {
@@ -452,6 +493,7 @@ async function handleReply(ctx: Ctx, row: ReplyRow, threshold: number): Promise<
         status: orders.status,
         platformOrderId: orders.platformOrderId,
         platformOrderName: orders.platformOrderName,
+        source: orders.source,
       })
       .from(orders)
       .where(eq(orders.id, row.orderId))
@@ -499,6 +541,8 @@ async function handleReply(ctx: Ctx, row: ReplyRow, threshold: number): Promise<
           if (decision === "approved") r.approvalsApplied += 1;
           else r.revisionsApplied += 1;
         });
+        // A delighted approval of a finished Etsy portrait earns the one review ask.
+        if (decision === "approved") await maybeReviewAsk(tx, bump, { order: { ...order, status: "approved" }, c: c!, msg, row, ctx });
         return;
       }
       illegal = `the agent could not apply it (${failure})`;
@@ -528,6 +572,18 @@ async function handleReply(ctx: Ctx, row: ReplyRow, threshold: number): Promise<
       await logAgent(tx, ref, "agent.reply_escalated", { messageId: row.id, kind: "buyer_question", exceptionId });
       bump((r) => (r.repliesEscalated += 1));
       return;
+    }
+
+    // 3a. A delighted thank-you on a finished Etsy order asks nothing: it is the
+    //     buyer's goodbye. Queue the one review ask when she is owed it and mark
+    //     the reply handled; a thanks never needs a human or a thank-you loop.
+    if (c?.happy && c.intent === "unclear" && !illegal && order.source === "etsy") {
+      const physical = await orderHasPhysicalItem(tx, order.id);
+      if (!reviewAskBlocker({ source: order.source, status: order.status, physical, happy: true, intent: c.intent })) {
+        await maybeReviewAsk(tx, bump, { order, c, msg, row, ctx });
+        await logAgent(tx, ref, "agent.reply_applied", { messageId: row.id, intent: c.intent, confidence: c.confidence, decision: "thanks" });
+        return;
+      }
     }
 
     // 3. Anything else: below the bar, unclear, or not applicable now.

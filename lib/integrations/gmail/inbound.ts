@@ -871,6 +871,7 @@ export function mergeReplyClassification(metadata: unknown, classification: Repl
       intent: classification.intent,
       confidence: classification.confidence,
       rationale: classification.rationale,
+      happy: classification.happy === true,
       strippedText: classification.strippedText,
       classifiedAt: new Date().toISOString(),
     },

@@ -432,7 +432,8 @@ export function mockClassifierAnswer(replyText: string): string {
     confidence = 0.72;
     rationale = "Customer asks a question without approving or requesting changes.";
   }
-  return JSON.stringify({ intent, confidence, rationale });
+  const happy = /love|amazing|perfect|beautiful|thank you so much|made my day|cry|obsessed|awesome/.test(t) && intent !== "revision_request";
+  return JSON.stringify({ intent, confidence, happy, rationale });
 }
 
 export function mockNarrative(prompt: string): string {

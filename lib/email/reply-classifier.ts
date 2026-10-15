@@ -4,6 +4,8 @@ export type ReplyClassification = {
   intent: ReplyIntent;
   confidence: number;
   rationale: string;
+  /** The buyer sounds genuinely delighted (love it, amazing, thank you so much): the review-ask signal (lib/agent/review-ask.ts). */
+  happy: boolean;
   strippedText: string;
   model: string;
 };
@@ -46,6 +48,7 @@ export async function classifyProofReply(input: {
     return {
       intent: "unclear",
       confidence: 0,
+      happy: false,
       rationale: "No new reply text remained after quoted email content was removed.",
       strippedText: "",
       model: "quote-stripper",
@@ -68,13 +71,14 @@ function buildPrompt(input: { subject: string | null; strippedText: string }): s
   return [
     "Classify this customer reply to a portrait proof email.",
     "Use only the new reply text below. Quoted prior email has already been removed.",
-    "Return strict JSON only, with keys: intent, confidence, rationale.",
+    "Return strict JSON only, with keys: intent, confidence, happy, rationale.",
     "intent must be one of: approval, revision_request, question, unclear.",
     "approval means the customer clearly approves the portrait/proof and wants to proceed/ship/print.",
     "revision_request means the customer asks for any visual change or correction.",
     "question means they ask a question without clearly approving or requesting changes.",
     "unclear means ambiguous, mixed, empty, or not enough information.",
     "confidence is a number from 0 to 1.",
+    "happy is true only when the customer sounds genuinely delighted with the portrait (love it, amazing, made me cry, thank you so much); a plain ok or a reply that asks for anything is false.",
     "Keep rationale under 140 characters.",
     "",
     `Subject: ${input.subject ?? ""}`,
@@ -87,7 +91,7 @@ function parseClassification(text: string): Omit<ReplyClassification, "strippedT
   const raw = extractJson(text);
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as { intent?: unknown; confidence?: unknown; rationale?: unknown };
+    const parsed = JSON.parse(raw) as { intent?: unknown; confidence?: unknown; happy?: unknown; rationale?: unknown };
     if (
       parsed.intent !== "approval" &&
       parsed.intent !== "revision_request" &&
@@ -100,6 +104,7 @@ function parseClassification(text: string): Omit<ReplyClassification, "strippedT
     return {
       intent: parsed.intent,
       confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0,
+      happy: parsed.happy === true || parsed.happy === "true",
       rationale: typeof parsed.rationale === "string" ? parsed.rationale.slice(0, 240) : "",
     };
   } catch {
