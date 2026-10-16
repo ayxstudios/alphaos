@@ -130,3 +130,12 @@ Ask: "For orders that don't have email in alphaOS you should still find a way to
 - [ ] land under integrate:alphaos, prod CLI deploy on alphaos-kappa (worktree .vercel/project.json = prj_o9jxHFw46R17KuV2V6DkmqaygF3V, scope team_hdxl43AlgWsesgr06UyM3Lnk, VERCEL_TOKEN_VISION)
 - [ ] agent: the shop desk sends queued etsy proofs as an Etsy message, then marks the row sent (messages.sent_at, proofs.sent_at, activity etsy.sent)
 - [ ] reply to Yousif (dot points)
+
+## 2026-10-16 wrong-file stop false refusals (Yousif: "fix it for him so he doesn't have this anymore", designer Jerome)
+Branch task/wrongfile-fp, worktree alphaos-wt-wrongfile-fp. Jerome's submits were refused "This file looks like artwork on order 4196318663 / #CPS10287".
+- Cause: the 9x8 dHash of a CPS watercolour is mostly the shared paper; about 28% of real uploads came within 10 bits of another order's art. Staff-attached references (old proofs for a revision, art carried over from Trello) also counted as "the customer's photo".
+- [x] 33f3b93 second look: 64x80 ink signature (migration 0061 assets.fine_sig); block only when dHash <= 10 AND ink difference <= 0.2; references = customer-sent only. Agent Auto QC got the same two looks (ai-employee-agent c891a886)
+- [x] prod: 0061 column applied; backfill hashed the CDN references, then 1021 R2 files (8 unreadable); fine_sig on 543/547 R2 submissions and every hashable reference
+- [x] 5d5fdf1 backfill stops before hashing when it cannot read stored files (an inherited R2_* from the agent shell had skipped 1024 files silently)
+- [x] proof on prod, every check rolled back: Jerome's 25 uploads and the 4 refused orders' current art all pass; 60 days of artwork vs same-order references = 10 lookalikes, all staff-attached (2 revision proofs, carried-over art on 4196536586 / 4181693839 / cancelled 4196607816, old-proof revision 4189043031, and PC32132's file). PC32132's file now only warns here (landscape on a portrait order); Auto QC's orientation backstop blocks it at QC pass / Approve, and a copy of a sibling's AlphaOS art still blocks (ink 0.000)
+- [ ] land under integrate:alphaos, prod CLI deploy, catch-up backfill; Jerome re-presses submit on 4201598491 and 4204380102
