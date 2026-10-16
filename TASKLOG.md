@@ -140,3 +140,14 @@ Branch task/wrongfile-fp, worktree alphaos-wt-wrongfile-fp. Jerome's submits wer
 - [x] proof on prod, every check rolled back: Jerome's 25 uploads and the 4 refused orders' current art all pass; 60 days of artwork vs same-order references = 10 lookalikes, all staff-attached (2 revision proofs, carried-over art on 4196536586 / 4181693839 / cancelled 4196607816, old-proof revision 4189043031, and PC32132's file). PC32132's file now only warns here (landscape on a portrait order); Auto QC's orientation backstop blocks it at QC pass / Approve, and a copy of a sibling's AlphaOS art still blocks (ink 0.000)
 - [x] landed 16 Oct 19:23 AEST under integrate:alphaos: main ddd5e64, prod CLI deploy alphaos-r32gndx1j aliased to alphaos-kappa (migration 0061 recorded, live /api/agent-qc/siblings returns fineSig)
 - [ ] catch-up hash backfill after landing; Jerome re-presses submit on 4201598491 and 4204380102
+
+## 2026-10-16 Disney routing + designer pay (Yousif 18:42, chat 64828303487194@lid)
+Ask: Mar takes no new orders unless over $300 (PixArt BOGO); Wahyu 6 a day across CPS + PixArt, then 1 each to Febri, then Mar; pay $5/figure Disney pet, $1 CPS people / watercolor house / watercolor pet, Jerome $1.50; "how much should Abdul's invoice be this week".
+Branch task/designer-pay-2026-10-16, worktree alphaos-wt-designer-pay.
+- [x] StyleDailyLimit gains businessIds (one quota across shops), orderTotalOver + currency (value gate: only orders over the amount), newOrdersOnly (a rescue or reassignment does not use up the day's count); the ranker counts today's first assignments per order across the pool
+- [x] orders.order_total + order_currency (migration 0062): Etsy rows backfilled from raw_import grandtotal; Shopify import + webhook read totalPriceSet.shopMoney; a reconciled manual order gets its total filled, never overwritten; unknown total never passes a gate
+- [x] earnings pay max(style rate, designer_profiles.per_figure_rate floor); a floor never prices an unpriced style
+- [x] tests: test:style-quota (day walk: big order to Mar, small ones wahyu x6, febri x2, then mar; rescue not counted), test:limbo (pooled + gated groups), test:earnings (floor cases); full ci-local = the same 8 known failures as base d6b3499 (6 demo-db suites, email-dedupe demo, security pre-send sign-off)
+- [ ] land under integrate:alphaos, prod CLI deploy, migration 0062 verified
+- [ ] prod data: style rates, Jerome floor 1.50, Wahyu/Febri/Mar groups (snapshots in ai-employee-agent var/alphaos-roster/), open Shopify order totals
+- [ ] agent: scripts/designer-invoice.mjs (weekly invoice per designer)
