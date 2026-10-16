@@ -11,6 +11,7 @@ import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { autoSendRepliesOn } from "../lib/agent/outbox";
 import { runAgentTick, type AgentBusinessReport } from "../lib/agent/autopilot";
 import { withSystemContext } from "../lib/db";
+import { installMockTransport } from "../lib/mock/transport";
 import {
   activityLog,
   assets,
@@ -23,6 +24,13 @@ import {
   orders,
   shops,
 } from "../lib/db/schema";
+
+// Mock Google + Anthropic from the first tick. Before 2026-10-16 the mock only
+// went in on the first Gmail send (mid tick 1), so the proof-replies pass
+// (clean slating P6 item 4) had its tick-1 classifier calls fail against the real
+// API and only decided the demo's proof replies on tick 2, which broke the
+// "tick 2 is a no-op" check. In production tick 1 does that work itself.
+installMockTransport();
 
 const BUSINESS_NAME = "Northlight Portraits";
 const PREFIX = "agenttest-";
