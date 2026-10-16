@@ -77,10 +77,11 @@ const CSS = `
 .eye-open:hover{background:rgba(159,216,255,.1)}
 @media (max-width:639px){
 .eye-top{flex-direction:column;gap:10px;padding:14px 14px 8px}
-.eye-chips{flex-wrap:nowrap;overflow-x:auto;justify-content:flex-start;width:100%;margin:0 -14px;padding:0 14px 2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.eye-chips{flex-wrap:nowrap;overflow-x:auto;justify-content:flex-start;width:calc(100% + 28px);margin:0 -14px;padding:0 0 2px 14px;scroll-padding:0 40px 0 14px;scrollbar-width:none;-webkit-overflow-scrolling:touch;-webkit-mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 34px),transparent);mask-image:linear-gradient(90deg,#000 0,#000 calc(100% - 34px),transparent)}
+.eye-chips::after{content:"";flex:none;width:44px}
 .eye-chips::-webkit-scrollbar{display:none}
 .eye-chip{min-height:40px;flex:none}
-.eye-panel{left:0;width:100%;height:55dvh;border-left:0;border-top:1px solid rgba(130,170,255,.25);border-radius:18px 18px 0 0;transform:translateY(104%);box-shadow:0 -18px 50px rgba(0,0,0,.5)}
+.eye-panel{left:0;right:0;top:auto!important;bottom:0;width:100%;height:55dvh;max-height:55dvh;border-left:0;border-top:1px solid rgba(130,170,255,.25);border-radius:18px 18px 0 0;transform:translateY(104%);box-shadow:0 -18px 50px rgba(0,0,0,.5)}
 .eye-panel.open{transform:none}
 .eye-ph{padding-top:16px}
 }
@@ -94,7 +95,7 @@ function fmtClock(d: Date) {
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" }).toLowerCase();
 }
 
-function Panel({ o, open, top, onClose }: { o: EyeOrder | null; open: boolean; top: number; onClose: () => void }) {
+function Panel({ o, open, top, onClose }: { o: EyeOrder | null; open: boolean; top: number | undefined; onClose: () => void }) {
   const [now, setNow] = useState(0);
   useEffect(() => {
     setNow(Date.now());
@@ -242,7 +243,7 @@ export function EyeClient({ initial }: { initial: EyeData | null }) {
       const compact = w < 640;
       const th = topRef.current?.offsetHeight ?? (compact ? 120 : 72);
       setTopH(th);
-      eng.resize(w, h, { top: th, bottom: 36, reserveRight: !compact && w >= 900 ? 300 : 0, compact });
+      eng.resize(w, h, { top: th, bottom: 36, reserveRight: 0, compact });
     };
     fit();
     eng.setData(dataRef.current, true);
@@ -421,7 +422,7 @@ export function EyeClient({ initial }: { initial: EyeData | null }) {
         </div>
       )}
 
-      <Panel o={shown} open={!!selectedId} top={compactLay ? 0 : topH} onClose={() => setSelectedId(null)} />
+      <Panel o={shown} open={!!selectedId} top={compactLay ? undefined : topH} onClose={() => setSelectedId(null)} />
 
       <div className={`eye-ticker${paused ? " paused" : ""}`} onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)} onTouchStart={() => setPaused((p) => !p)}>
         {mounted && ev ? (

@@ -14,7 +14,7 @@ import {
   proofs,
   users,
 } from "@/lib/db/schema";
-import { liveOrderWhere } from "@/lib/orders/archive";
+import { archivedUnfinishedWhere, liveOrderWhere } from "@/lib/orders/archive";
 import { stageTimer } from "@/lib/orders/stage-timers";
 import { stageLabel } from "@/lib/agent/overview";
 
@@ -192,8 +192,10 @@ export async function getEyeData(scope: RequestUser, nowInput: Date = new Date()
       .leftJoin(assignments, and(eq(assignments.orderId, orders.id), eq(assignments.active, true)))
       .leftJoin(users, eq(users.id, assignments.designerId))
       .where(
+        // Live orders, plus archived orders that are still owed: a bulk archive sweep
+        // is not "done" and used to hide whole shops' backlogs from the Eye.
         and(
-          liveOrderWhere(),
+          or(liveOrderWhere(), archivedUnfinishedWhere()),
           or(
             notInArray(orders.status, [...CLOSED, "shipped"]),
             and(inArray(orders.status, [...OUT]), gte(orders.updatedAt, recentCut)),
@@ -318,7 +320,10 @@ export async function getEyeData(scope: RequestUser, nowInput: Date = new Date()
         stageStartedAt: since.toISOString(),
         now,
       });
-      const stageOver = !!timer.isOverdue;
+      // Delayed = past the order's own due date. Only an order with NO due date
+      // falls back to the stage clock, and only when a real transition into this
+      // stage was logged (a backfilled order's updatedAt says nothing about delay).
+      const stageOver = !o.dueAt && !!timer.isOverdue && !!transBy.get(o.id)?.get(o.status);
       const dueOver = !!o.dueAt && o.dueAt.getTime() < now.getTime();
       const delayed = !finished && (stageOver || dueOver);
       const overdueHours = !finished && dueOver ? Math.round(((now.getTime() - (o.dueAt as Date).getTime()) / 3600000) * 10) / 10 : 0;
@@ -380,6 +385,14 @@ export async function getEyeData(scope: RequestUser, nowInput: Date = new Date()
       printing: open.filter((o) => o.stage.n === 4).length,
       completedToday: out.filter((o) => o.stage.n === 5 && new Date(enteredBy.get(o.id) ?? 0) >= startToday).length,
     };
+    // Any shop that has orders but is missing from the businesses read still gets a sector.
+    const known = new Set(biz.map((b) => b.id));
+    for (const o of out) {
+      if (!known.has(o.businessId)) {
+        known.add(o.businessId);
+        biz.push({ id: o.businessId, name: o.business || "Shop" });
+      }
+    }
     const businesses_ = biz.map((b) => ({ id: b.id, name: b.name, openCount: open.filter((o) => o.businessId === b.id).length }));
 
     const events: EyeEvent[] = feed.map((f) => ({

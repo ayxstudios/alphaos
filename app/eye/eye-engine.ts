@@ -8,8 +8,11 @@ import {
   hash01,
   healthOf,
   matchesFilter,
+  radialStagger,
   radiusAt,
   ringRadii,
+  slotFor,
+  densityScale,
   truncate,
   type EyeFilter,
   type Health,
@@ -32,7 +35,10 @@ type Node = {
   o: EyeOrder;
   bi: number;
   u: number;
+  uT: number;
   jr: number;
+  jrT: number;
+  gc: number;
   ph: number;
   ri: number;
   riFrom: number;
@@ -49,6 +55,7 @@ type Node = {
   x: number;
   y: number;
   a: number;
+  dens: number;
 };
 
 export type LayoutInfo = { cx: number; cy: number; R: number; coreR: number; compact: boolean };
@@ -123,7 +130,8 @@ export function createEngine(opts: EngineOpts) {
   let bizIds: string[] = [];
   let bizName: string[] = [];
   let bizOpen: number[] = [];
-  let bizLabel: string[] = [];
+  const lblHalf = [0, 0, 0, 0, 0, 0];
+  let bizLabel: string[][] = [];
   let bizLabelW: number[] = [];
   const bizIndex = new Map<string, number>();
   let tgt0 = new Float64Array(0);
@@ -156,8 +164,9 @@ export function createEngine(opts: EngineOpts) {
     const margin = compact ? 34 : 70;
     const availW = W - opt.reserveRight;
     const availH = H - opt.top - opt.bottom;
-    cx = availW / 2;
-    R = Math.max(60, Math.min(cx - margin, availH / 2 - margin));
+    // Centred in the viewport with a slight left lean on wide screens (the detail panel overlays on the right).
+    cx = availW / 2 - (compact ? 0 : availW * 0.03);
+    R = Math.max(60, Math.min(Math.min(cx, availW - cx) - margin, availH / 2 - margin));
     cy = compact ? Math.max(opt.top + margin + R - 6, opt.top + availH * 0.4) : opt.top + availH / 2;
     ringRadii(R, compact, rr);
     coreR = rr[0] * 0.8;
@@ -257,19 +266,46 @@ export function createEngine(opts: EngineOpts) {
       g.stroke();
     }
     const size = compact ? 7.5 : 9.5;
-    for (let i = 0; i < 6; i++) ringLabel(g, STAGE_NAMES[i], rr[i] + 2.5, -Math.PI / 2, size);
+    g.font = `500 ${size}px ${fontFamily}`;
+    for (let i = 0; i < 6; i++) {
+      const tw = g.measureText(STAGE_NAMES[i]).width + STAGE_NAMES[i].length * size * 0.28;
+      lblHalf[i] = tw / 2 + 7;
+      ringLabel(g, STAGE_NAMES[i], rr[i] + 2.5, -Math.PI / 2, size);
+    }
+  }
+
+  /** Half-width in px of the label wedge at a (fractional) ring index. */
+  function labelHalf(ri: number): number {
+    const i = Math.max(0, Math.min(5, Math.round(ri)));
+    return Math.abs(ri - i) < 0.6 ? lblHalf[i] : 0;
   }
 
   function measureLabels() {
     ctx.font = `600 ${compact ? 9 : 11}px ${fontFamily}`;
-    bizLabelW = bizLabel.map((s) => ctx.measureText(s).width + s.length * (compact ? 1.2 : 1.8));
+    const track = compact ? 1.2 : 1.8;
+    bizLabelW = bizLabel.map((lines) => Math.max(...lines.map((s) => ctx.measureText(s).width + s.length * track)));
   }
 
   /* ---------- data ---------- */
 
   function setBusinessLabels() {
-    const max = compact ? 13 : 24;
-    bizLabel = bizName.map((n) => truncate(n.toUpperCase(), max));
+    // Phone: split a long shop name over two lines instead of clipping it.
+    const max = compact ? 12 : 24;
+    bizLabel = bizName.map((n) => {
+      const up = n.toUpperCase().trim();
+      const words = up.split(/\s+/);
+      if (!compact || up.length <= max || words.length < 2) return [truncate(up, compact ? 14 : max)];
+      let best = 1;
+      let gap = Infinity;
+      for (let k = 1; k < words.length; k++) {
+        const d = Math.abs(words.slice(0, k).join(" ").length - words.slice(k).join(" ").length);
+        if (d < gap) {
+          gap = d;
+          best = k;
+        }
+      }
+      return [truncate(words.slice(0, best).join(" "), 14), truncate(words.slice(best).join(" "), 14)];
+    });
   }
 
   function recomputeMatch() {
@@ -326,7 +362,10 @@ export function createEngine(opts: EngineOpts) {
           o,
           bi,
           u: 0.1 + 0.8 * hash01(o.id, 1),
+          uT: 0.5,
           jr: hash01(o.id, 2) * 2 - 1,
+          jrT: 0,
+          gc: 1,
           ph: hash01(o.id, 3) * TAU,
           ri: stage,
           riFrom: stage,
@@ -343,6 +382,7 @@ export function createEngine(opts: EngineOpts) {
           x: cx,
           y: cy,
           a: 0,
+          dens: 1,
         };
         if (initial) {
           n.born = now + hash01(o.id, 4) * 1300;
@@ -383,8 +423,37 @@ export function createEngine(opts: EngineOpts) {
       else kept.push(n);
     }
     nodes = kept.concat(added);
+    spreadNodes(added);
     if (hover && !byId.has(hover.id)) hover = null;
     recomputeMatch();
+  }
+
+  /**
+   * Spread the nodes sharing one ring arc evenly (a stable order by id, so a node
+   * keeps its place as others come and go) and stagger them in depth.
+   */
+  function spreadNodes(fresh: Node[]) {
+    const groups = new Map<string, Node[]>();
+    for (const n of nodes) {
+      if (n.dying) continue;
+      const k = `${n.bi}:${n.riTo}`;
+      const l = groups.get(k);
+      if (l) l.push(n);
+      else groups.set(k, [n]);
+    }
+    const isFresh = new Set(fresh);
+    groups.forEach((list) => {
+      list.sort((a, b) => hash01(a.id, 9) - hash01(b.id, 9));
+      list.forEach((n, rank) => {
+        n.uT = slotFor(rank, list.length);
+        n.jrT = radialStagger(rank);
+        n.gc = list.length;
+        if (isFresh.has(n)) {
+          n.u = n.uT;
+          n.jr = n.jrT;
+        }
+      });
+    });
   }
 
   /* ---------- frame ---------- */
@@ -460,11 +529,21 @@ export function createEngine(opts: EngineOpts) {
       if (left + w > W - 6) left = W - 6 - w;
       x = left;
       ctx.textAlign = "left";
-      ctx.fillStyle = "rgba(205,225,255,0.82)";
-      ctx.fillText(bizLabel[i], x, y);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = BG;
+      ctx.lineJoin = "round";
+      const lines = bizLabel[i];
+      for (let k = 0; k < lines.length; k++) {
+        const ly = y + k * (sub + 1) - ((lines.length - 1) * (sub + 1)) / 2;
+        ctx.strokeText(lines[k], x, ly);
+        ctx.fillStyle = "rgba(205,225,255,0.82)";
+        ctx.fillText(lines[k], x, ly);
+      }
+      const oy = y + ((lines.length - 1) * (sub + 1)) / 2 + sub + 1;
       ctx.font = `500 ${sub - 1}px ${fontFamily}`;
+      ctx.strokeText(`${bizOpen[i]} open`, x, oy);
       ctx.fillStyle = "rgba(150,175,220,0.55)";
-      ctx.fillText(`${bizOpen[i]} open`, x, y + sub + 1);
+      ctx.fillText(`${bizOpen[i]} open`, x, oy);
       ctx.font = `600 ${compact ? 9 : 11}px ${fontFamily}`;
     }
 
@@ -510,14 +589,25 @@ export function createEngine(opts: EngineOpts) {
         else n.ri = n.riFrom;
       }
       const bi = n.bi < nb ? n.bi : 0;
-      const r = radiusAt(rr, n.ri) + n.jr * jit;
+      const ease = Math.min(1, dt * 3);
+      n.u += (n.uT - n.u) * ease;
+      n.jr += (n.jrT - n.jr) * ease;
+      const wide = n.gc > 14 ? 1.25 : 1;
+      const r = radiusAt(rr, n.ri) + n.jr * jit * wide;
       const s0 = cur0[bi];
       const sw = cur1[bi] - s0;
       const drift = calm ? 0 : Math.sin(now * 0.0001 + n.ph) * Math.min(6 / r, sw * 0.04);
-      const a = s0 + sw * n.u + drift;
+      let a = s0 + sw * n.u + drift;
+      // keep clear of the ring labels at 12 o'clock
+      const hw = labelHalf(n.ri) / r;
+      if (hw > 0) {
+        const dd = ((((a + Math.PI / 2 + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
+        if (Math.abs(dd) < hw) a += (dd >= 0 ? hw : -hw) - dd;
+      }
       n.a = a;
       n.x = cx + Math.cos(a) * r;
       n.y = cy + Math.sin(a) * r;
+      n.dens = densityScale(sw * r, n.gc, nodeR * 7 * 0.62);
       const target = n.match ? 1 : 0.1;
       n.fm += (target - n.fm) * Math.min(1, dt * 7);
     }
@@ -599,7 +689,8 @@ export function createEngine(opts: EngineOpts) {
       const base = life * n.fm * tw;
       if (base < 0.01) continue;
       const urgent = n.o.urgent;
-      let d = nodeR * 7 * (urgent ? 1.3 : 1);
+      // Crowded rings get a smaller glow so colours stay readable; the unhappy red keeps most of its size.
+      let d = nodeR * 7 * (urgent ? 1.3 : 1) * (n.h === 0 ? Math.max(0.88, n.dens) : n.dens);
       const f = n.hT ? Math.min(1, (now - n.hT) / 1200) : 1;
       if (n.h === 1 && !calm) d *= 1 + 0.1 * Math.sin(now * 0.0035 + n.ph);
       if (n.h === 0) {

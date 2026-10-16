@@ -67,9 +67,10 @@ export type Sectors = { s0: number[]; s1: number[] };
 
 /**
  * Split the circle into one sector per business. Width follows the count with a
- * floor so a quiet shop is still visible. Starts at 12 o'clock.
+ * floor so a quiet shop is still visible. Starts just after 12 o'clock, leaving
+ * a clear wedge there for the ring labels.
  */
-export function computeSectors(counts: number[], gap = 0.035, minFrac = 0.06): Sectors {
+export function computeSectors(counts: number[], gap = 0.035, minFrac = 0.06, topGap = 0.2): Sectors {
   const n = counts.length;
   const s0: number[] = [];
   const s1: number[] = [];
@@ -79,8 +80,10 @@ export function computeSectors(counts: number[], gap = 0.035, minFrac = 0.06): S
   const floor = Math.min(minFrac, 0.9 / n);
   const raw = counts.map((c) => Math.max(floor, total > 0 ? Math.max(c, 0) / total : 1 / n));
   const sum = raw.reduce((a, b) => a + b, 0);
-  const avail = TAU - n * g;
-  let a = -Math.PI / 2 + g / 2;
+  // A wider wedge is left clear at 12 o'clock for the ring labels.
+  const tg = n > 0 ? topGap : 0;
+  const avail = TAU - n * g - tg;
+  let a = -Math.PI / 2 + g / 2 + tg / 2;
   for (let i = 0; i < n; i++) {
     const w = (raw[i] / sum) * avail;
     s0.push(a);
@@ -138,4 +141,25 @@ export function ageText(ms: number): string {
 
 export function truncate(s: string, max: number): string {
   return s.length > max ? s.slice(0, Math.max(1, max - 1)).trimEnd() + "…" : s;
+}
+
+/**
+ * Golden-angle slot in [0.06, 0.94] for the rank-th of count nodes sharing a
+ * ring arc: even coverage with no stacking, stable as count grows.
+ */
+export function slotFor(rank: number, count: number): number {
+  if (count <= 1) return 0.5;
+  return 0.06 + 0.88 * ((rank + 0.5) / count);
+}
+
+/** Radial stagger in [-1, 1] so neighbours on one ring alternate in depth. */
+export function radialStagger(rank: number): number {
+  return ((rank * 0.7548776662) % 1) * 2 - 1;
+}
+
+/** Glow scale for a ring arc: shrinks as spacing between neighbours tightens. */
+export function densityScale(arcPx: number, count: number, nominalPx: number): number {
+  if (count <= 1) return 1;
+  const spacing = arcPx / count;
+  return Math.max(0.5, Math.min(1, spacing / nominalPx));
 }

@@ -1,6 +1,6 @@
 // Run: node --experimental-strip-types app/eye/eye-math.check.mjs
 import assert from "node:assert/strict";
-import { hash01, computeSectors, ringRadii, radiusAt, healthOf, matchesFilter, nearestIndex, ageText, truncate, sentimentWords } from "./eye-math.ts";
+import { hash01, computeSectors, ringRadii, radiusAt, healthOf, matchesFilter, nearestIndex, ageText, truncate, sentimentWords, slotFor, radialStagger, densityScale } from "./eye-math.ts";
 
 const TAU = Math.PI * 2;
 // hash is stable, in range, and spreads
@@ -43,3 +43,12 @@ assert.equal(ageText(30000), "just now"); assert.equal(ageText(125 * 60000), "2h
 assert.equal(truncate("abcdefghij", 5), "abcd…");
 assert.equal(sentimentWords("neutral"), "buyer is quiet");
 console.log("eye-math: all assertions passed");
+
+// even spread, stagger bounds, density scale
+for (const c of [1, 2, 7, 60]) {
+  let prev = -1;
+  for (let r = 0; r < c; r++) { const u = slotFor(r, c); assert.ok(u >= 0.06 && u <= 0.94 && u > prev); prev = u; const j = radialStagger(r); assert.ok(j >= -1 && j <= 1); }
+}
+assert.equal(densityScale(500, 1, 14), 1);
+assert.ok(densityScale(100, 50, 14) === 0.5 && densityScale(1000, 5, 14) === 1);
+console.log("eye-math ok");
