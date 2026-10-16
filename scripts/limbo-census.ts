@@ -39,6 +39,7 @@ async function main() {
     );
     for (const o of c.limboOrders.slice(0, 30)) console.log(`  limbo ${o.number} (${o.status}): ${o.why}`);
     if (c.limboOrders.length > 30) console.log(`  +${c.limboOrders.length - 30} more`);
+    if (c.archivedUnfinished) console.log(`  archived but still owed: ${c.archivedUnfinished}`);
     if (!plan) continue;
     const mail = await clearUnmatchedReplies(b.id, { now, dryRun: true });
     const ai = await handFailedAiToDesigners(b.id, { now, dryRun: true });

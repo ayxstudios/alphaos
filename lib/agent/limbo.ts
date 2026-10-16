@@ -22,6 +22,8 @@ import {
   users,
 } from "@/lib/db/schema";
 import { businessSlaHours, loadRankedCandidates } from "@/lib/orders/assign";
+import { archivedUnfinishedWhere } from "@/lib/orders/archive";
+import { buyerWordsWhere } from "@/lib/reminders/buyer-replied";
 import { reassignOrder } from "./ai-designer";
 import { agentOrderScope } from "./scope";
 import { openExceptionTx } from "./exceptions";
@@ -388,7 +390,16 @@ export type LimboCensus = {
   withOwner: number;
   limbo: number;
   limboOrders: { id: string; number: string; status: string; why: string }[];
+  /**
+   * Archived but still owed (clean slating audit 2026-10-16): counted apart so
+   * the live numbers above keep their meaning. List capped at
+   * ARCHIVED_UNFINISHED_LIST; the full list is GET /api/alpha/archived-open.
+   */
+  archivedUnfinished: number;
+  archivedUnfinishedOrders: { id: string; number: string; status: string; archivedAt: string; buyerWroteSinceArchive: boolean }[];
 };
+
+export const ARCHIVED_UNFINISHED_LIST = 20;
 
 /** L6: who owns every live order of one business (read-only). */
 export async function getLimboCensus(businessId: string, opts: { now?: Date } = {}): Promise<LimboCensus> {
@@ -406,7 +417,32 @@ export async function getLimboCensus(businessId: string, opts: { now?: Date } = 
       withOwner: 0,
       limbo: 0,
       limboOrders: [],
+      archivedUnfinished: 0,
+      archivedUnfinishedOrders: [],
     };
+    const archived = await tx
+      .select({
+        id: orders.id,
+        name: orders.platformOrderName,
+        platformOrderId: orders.platformOrderId,
+        status: orders.status,
+        archivedAt: orders.archivedAt,
+        // Table names spelled out: drizzle leaves columns unqualified in the
+        // select list of a single-table query, which would bind them to messages.
+        buyerWrote: sql<boolean>`exists (select 1 from messages where messages.order_id = orders.id
+          and ${buyerWordsWhere()} and messages.created_at > orders.archived_at)`,
+      })
+      .from(orders)
+      .where(and(eq(orders.businessId, businessId), archivedUnfinishedWhere()))
+      .orderBy(sql`${orders.dueAt} asc nulls last`);
+    c.archivedUnfinished = archived.length;
+    c.archivedUnfinishedOrders = archived.slice(0, ARCHIVED_UNFINISHED_LIST).map((a) => ({
+      id: a.id,
+      number: a.name ?? a.platformOrderId,
+      status: a.status,
+      archivedAt: new Date(a.archivedAt!).toISOString(),
+      buyerWroteSinceArchive: !!a.buyerWrote,
+    }));
     for (const o of facts) {
       const w = ownerOf(o, now);
       if (w.bucket === "designer") c.withDesigner++;

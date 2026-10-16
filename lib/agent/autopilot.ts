@@ -49,6 +49,7 @@ import { emptyInboxReport, runInboxPass, type InboxReport } from "./inbox";
 import { runOutboxPass, type OutboxReport } from "./outbox";
 import { runProofRepliesPass, type ProofRepliesReport } from "./proof-replies";
 import { rebalanceBusiness } from "./rebalance";
+import { reopenArchivedWithBuyerWords } from "@/lib/orders/reopen";
 import { runNotStartedPass } from "./not-started";
 import { parseIntake } from "./intake";
 import { findCatalogStyle, registerUnindexedProduct } from "./legacy-intake";
@@ -165,6 +166,8 @@ export type NoLimboReport = {
   backlogsClosed: number;
   /** Orders the AI designer failed on, given to a person. */
   aiHandedOver: number;
+  /** Archived, still-owed orders a buyer wrote about since, now back on the boards. */
+  reopenedByBuyer: number;
   census: LimboCensus | null;
 };
 
@@ -386,6 +389,9 @@ async function noLimboStep(ctx: TickCtx, businessId: string, assignOn: boolean):
   // (assigning, so only with the assign switch on), then L1, L4, the backlog
   // lines, the census.
   const mail = await attempt("junk mail", () => clearUnmatchedReplies(businessId, { now, dryRun }));
+  // L10: buyer words on an archived, still-owed order bring it back before the
+  // watch and the census look (lib/orders/reopen.ts).
+  const reopened = await attempt("reopen archived", () => reopenArchivedWithBuyerWords(businessId, { dryRun }));
   const handover = assignOn ? await attempt("ai handover", () => handFailedAiToDesigners(businessId, { now, dryRun })) : null;
   const stale = await attempt("auto close", () => autoCloseStaleExceptions(businessId, { now, dryRun }));
   const watch = await attempt("waiting orders", () => watchWaitingStates(businessId, { now, dryRun }));
@@ -404,6 +410,7 @@ async function noLimboStep(ctx: TickCtx, businessId: string, assignOn: boolean):
     stuckClosed: watch?.closed ?? 0,
     backlogsClosed: backlogsClosed ?? 0,
     aiHandedOver: handover?.handed ?? 0,
+    reopenedByBuyer: reopened?.reopened.length ?? 0,
     census,
   };
 }

@@ -21,6 +21,7 @@ import { classifyProofReply, type ReplyClassification } from "@/lib/email/reply-
 import { adoptSenderAsCustomer, matchOrderBySubject } from "@/lib/email/link-reply";
 import { resolveSuppressionReason } from "@/lib/email/suppression";
 import { normalizeOrderNumber } from "@/lib/orders/reconcile";
+import { reopenArchivedOnBuyerWords } from "@/lib/orders/reopen";
 import { GmailClient } from "./client";
 import { GmailApiError, GmailReauthRequiredError } from "./errors";
 import { isEtsyNotificationSender, parseEtsyEmail, type ParsedEtsyEmail } from "./etsy-mail";
@@ -493,6 +494,9 @@ async function attachMessage(
         action: "message.received",
         metadata: { channel: "email", subject, gmailThreadId: msg.threadId, linkedBy },
       });
+      // The buyer wrote about an archived, still-owed order: it is live again
+      // (lib/orders/reopen.ts, clean slating audit 2026-10-16).
+      if (!suppression) await reopenArchivedOnBuyerWords(tx, { orderId: threadMatch.orderId, messageId: inserted?.id ?? null, via: "email" });
     }
 
     // Raise a notification for every VA + admin so a reply gets triaged.
@@ -760,6 +764,9 @@ async function attachEtsyNotification(businessId: string, gmailMessageId: string
         action: "message.received",
         metadata: { channel: "etsy", kind: parsed.kind, etsyLink: parsed.link },
       });
+      // A conversation message (not a sale or review notice) revives an
+      // archived, still-owed order the same way an email does.
+      if (parsed.kind === "message") await reopenArchivedOnBuyerWords(tx, { orderId: match.orderId, messageId: inserted?.id ?? null, via: "etsy" });
     }
 
     const staff = await tx

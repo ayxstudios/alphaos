@@ -4,6 +4,7 @@ import { desc, eq } from "drizzle-orm";
 import { isAlphaCaller } from "@/lib/alpha/auth";
 import { withSystemContext } from "@/lib/db";
 import { activityLog, assignments, customers, orderItems, orders, printJobs, shops, users } from "@/lib/db/schema";
+import { ARCHIVE_FINISHED_STATUSES } from "@/lib/orders/archive";
 
 export const runtime = "nodejs";
 
@@ -29,6 +30,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
         rawImport: orders.rawImport,
         revisionCount: orders.revisionCount,
         createdAt: orders.createdAt,
+        archivedAt: orders.archivedAt,
+        archiveReason: orders.archiveReason,
         customerFirst: customers.firstName,
         customerLast: customers.lastName,
         customerEmail: customers.email,
@@ -52,7 +55,10 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string 
     const customer = audience === "designer" ? { firstName: o.customerFirst } : { firstName: o.customerFirst, lastName: o.customerLast, email: o.customerEmail };
     const { customerFirst: _a, customerLast: _b, customerEmail: _c, ...rest } = o;
     void _a; void _b; void _c;
-    return { ...rest, customer, items, assignments: assigns, printJobs: prints, activity: log };
+    // Archived is not done (clean slating audit 2026-10-16): say plainly when an
+    // archived order is still owed, so Alpha never reads it as finished.
+    const archivedUnfinished = !!o.archivedAt && !(ARCHIVE_FINISHED_STATUSES as readonly string[]).includes(o.status);
+    return { ...rest, archivedUnfinished, customer, items, assignments: assigns, printJobs: prints, activity: log };
   });
   if (!data) return NextResponse.json({ error: "not found" }, { status: 404 });
   return NextResponse.json(data);

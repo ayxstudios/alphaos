@@ -4,6 +4,7 @@ import { and, count, eq, gte, inArray, isNull, lt } from "drizzle-orm";
 import { isAlphaCaller } from "@/lib/alpha/auth";
 import { withSystemContext } from "@/lib/db";
 import { alphaEvents, assignments, businesses, messages, orders, printJobs, users } from "@/lib/db/schema";
+import { archivedUnfinishedWhere } from "@/lib/orders/archive";
 
 export const runtime = "nodejs";
 
@@ -25,6 +26,18 @@ export async function GET(req: NextRequest) {
       .select({ businessId: orders.businessId, n: count() })
       .from(orders)
       .where(and(isNull(orders.archivedAt), lt(orders.dueAt, now), inArray(orders.status, ["awaiting_photos", "ready_to_assign", "in_design", "awaiting_qc", "awaiting_approval", "approved", "printing", "awaiting_details"])))
+      .groupBy(orders.businessId);
+    // Archived but still owed (clean slating audit 2026-10-16): apart from
+    // byStatus/overdue so the live numbers keep their meaning.
+    const archivedUnfinished = await tx
+      .select({ businessId: orders.businessId, status: orders.status, n: count() })
+      .from(orders)
+      .where(archivedUnfinishedWhere())
+      .groupBy(orders.businessId, orders.status);
+    const archivedUnfinishedOverdue = await tx
+      .select({ businessId: orders.businessId, n: count() })
+      .from(orders)
+      .where(and(archivedUnfinishedWhere(), lt(orders.dueAt, now)))
       .groupBy(orders.businessId);
     const newLast24h = await tx.select({ businessId: orders.businessId, n: count() }).from(orders).where(gte(orders.createdAt, dayAgo)).groupBy(orders.businessId);
     const shippedLast24h = await tx.select({ businessId: orders.businessId, n: count() }).from(orders).where(and(inArray(orders.status, ["shipped", "delivered", "complete"]), gte(orders.updatedAt, dayAgo))).groupBy(orders.businessId);
@@ -52,7 +65,7 @@ export async function GET(req: NextRequest) {
       .where(gte(alphaEvents.createdAt, dayAgo))
       .groupBy(alphaEvents.type);
     const biz = await tx.select({ id: businesses.id, name: businesses.name }).from(businesses);
-    return { generatedAt: now.toISOString(), businesses: biz, byStatus, overdue, newLast24h, shippedLast24h, lateDesigners, unansweredMessages, printWaitingOver3d: printWaiting[0]?.n ?? 0, alphaDecisions };
+    return { generatedAt: now.toISOString(), businesses: biz, byStatus, overdue, archivedUnfinished, archivedUnfinishedOverdue, newLast24h, shippedLast24h, lateDesigners, unansweredMessages, printWaitingOver3d: printWaiting[0]?.n ?? 0, alphaDecisions };
   });
   return NextResponse.json(out);
 }

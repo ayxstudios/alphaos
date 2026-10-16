@@ -12,6 +12,7 @@ import { assignments, businesses, orders, printJobs, users, designerProfiles } f
 import { getTodayQueue } from "@/lib/orders/today-queue";
 import { getMyWeek } from "@/lib/designers/my-week";
 import { DUE_STATUSES } from "@/lib/home/shared";
+import { archivedUnfinishedWhere } from "@/lib/orders/archive";
 
 const DAY = 24 * 3_600_000;
 
@@ -99,7 +100,7 @@ async function buildAdminSnapshot(user: RequestUser, businessId: string): Promis
     withUserContext(user, async (tx) => {
       const now = new Date();
       const dayAgo = new Date(now.getTime() - DAY);
-      const [[newLast24h], [shippedLast24h], [overdue], printRows, bizRows] = await Promise.all([
+      const [[newLast24h], [shippedLast24h], [overdue], printRows, bizRows, [archived]] = await Promise.all([
         tx.select({ n: count() }).from(orders).where(and(eq(orders.businessId, businessId), gte(orders.createdAt, dayAgo))),
         tx
           .select({ n: count() })
@@ -113,6 +114,9 @@ async function buildAdminSnapshot(user: RequestUser, businessId: string): Promis
           .where(and(eq(orders.businessId, businessId), isNull(orders.archivedAt), lt(orders.dueAt, now), inArray(orders.status, DUE_STATUSES))),
         tx.select({ status: printJobs.status, n: count() }).from(printJobs).where(eq(printJobs.businessId, businessId)).groupBy(printJobs.status),
         tx.select({ name: businesses.name }).from(businesses).where(eq(businesses.id, businessId)).limit(1),
+        // Archived but still owed (clean slating audit 2026-10-16), apart from
+        // overdue so Home and the Overdue tab still agree with it.
+        tx.select({ n: count() }).from(orders).where(and(eq(orders.businessId, businessId), archivedUnfinishedWhere())),
       ]);
       return {
         newLast24h: Number(newLast24h?.n ?? 0),
@@ -120,6 +124,7 @@ async function buildAdminSnapshot(user: RequestUser, businessId: string): Promis
         overdue: Number(overdue?.n ?? 0),
         printJobsByStatus: Object.fromEntries(printRows.map((r) => [r.status ?? "unknown", Number(r.n)])),
         businessName: bizRows[0]?.name ?? null,
+        archivedUnfinished: Number(archived?.n ?? 0),
       };
     }),
   ]);
@@ -137,6 +142,7 @@ async function buildAdminSnapshot(user: RequestUser, businessId: string): Promis
     designerLoad,
     ordersByStatus,
     printJobsByStatus: extra.printJobsByStatus,
+    archivedUnfinished: extra.archivedUnfinished,
   };
 }
 

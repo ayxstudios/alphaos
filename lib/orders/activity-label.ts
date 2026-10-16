@@ -26,6 +26,7 @@ const LABELS: Record<string, string> = {
   "order.same_buyer_noted": "Buyer's other orders noted",
   "order.marked_urgent": "Marked urgent",
   "order.cleared_urgent": "No longer urgent",
+  "order.reopened_by_buyer": "Reopened: the buyer wrote",
   "order.shipping_address_saved": "Shipping address saved",
   "order.reresolved": "Details re-checked",
   "order.reconciled": "Reconciled with the shop",

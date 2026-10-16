@@ -246,3 +246,33 @@ assignment a login had placed (all 199 pins that day were the "Alpha VA" and
 - This supersedes the 2026-10-07 "auto-reassignment is off" note in
   `lib/notifications/designer-sweep.ts` for not-started work only; anything
   that shows a start still stays with its designer.
+
+## L10 Archived is not done: a buyer writing reopens it (2026-10-16)
+
+Clean slating audit (deck af027ad3beb2831a, item 5): 86 archived orders were
+still owed (PixArt 66, CPS 20; mostly the "pre 2026-10-03" sweep and the
+backfill cutoff) and sat outside every live check. Nancy Lane PC32186 asked
+"has my order shipped?" after hers was archived.
+
+- An archived order is finished only when its status says so (delivered,
+  shipped, complete, cancelled): `archivedUnfinishedWhere()` in
+  lib/orders/archive.ts.
+- Buyer words (an email reply, an Etsy conversation message; never a sale
+  notice) on an archived, still-owed order clear the archive at once
+  (`reopenArchivedOnBuyerWords`, lib/orders/reopen.ts, called from the Gmail
+  poll) and on every tick for words that arrived another way
+  (`reopenArchivedWithBuyerWords`, noLimbo report `reopenedByBuyer`). Only
+  words newer than the archive count. Timeline: `order.reopened_by_buyer`.
+- Reopening never marks the order urgent and never writes to the buyer:
+  urgent pulls a legacy order into the agent's scope, which can mail a
+  photo-shortfall ask about work the old process may have finished. Urgency
+  stays a person's or the agent's call.
+- Archived on purpose with nothing owed (reason starts "Duplicate placeholder"
+  or "Not needed", or says "ignore this order") stays archived; it is listed
+  with `settled: true`.
+- Counted apart so the live numbers keep their meaning: census
+  `archivedUnfinished` (+ first 20), rundown `archivedUnfinished` and
+  `archivedUnfinishedOverdue`, admin snapshot `archivedUnfinished`, order API
+  `archivedAt`/`archiveReason`/`archivedUnfinished`, and the full list at
+  GET /api/alpha/archived-open[?business=]. These are for knowing; nothing
+  sweeps these buyers (no bulk outreach to legacy buyers).
