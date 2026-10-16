@@ -10,6 +10,7 @@ import { withSystemContext, type RequestUser } from "../lib/db";
 import {
   assignments,
   assets,
+  designerProfiles,
   earnings,
   orderItems,
   orders,
@@ -22,7 +23,12 @@ import { transition, OrderTransitionError } from "../lib/orders/transitions";
 import { DEFAULT_CHECKLIST } from "../lib/qc/checklist";
 
 let failures = 0;
-const cleanup = { orderIds: [] as string[], styleIds: [] as string[] };
+const cleanup = {
+  orderIds: [] as string[],
+  styleIds: [] as string[],
+  // Designer floors changed by the test, restored at the end.
+  floors: [] as { userId: string; rate: string | null }[],
+};
 
 function report(name: string, pass: boolean, detail: string) {
   console.log(`${pass ? "PASS" : "FAIL"}  ${name}`);
@@ -131,6 +137,9 @@ async function cleanupRows() {
     for (const orderId of cleanup.orderIds) await tx.delete(earnings).where(eq(earnings.orderId, orderId));
     for (const orderId of cleanup.orderIds) await tx.delete(orders).where(eq(orders.id, orderId));
     for (const styleId of cleanup.styleIds) await tx.delete(styles).where(eq(styles.id, styleId));
+    for (const f of cleanup.floors.splice(0).reverse()) {
+      await tx.update(designerProfiles).set({ perFigureRate: f.rate }).where(eq(designerProfiles.userId, f.userId));
+    }
   });
 }
 
@@ -342,6 +351,67 @@ async function main() {
       "setting the style's rate resolves the blocked earning at that rate",
       resolved.ok && rows[0].status === "pending" && rows[0].rate === "7.00" && rows[0].amount === "28.00",
       `resolved=${resolved.ok}, status=${rows[0]?.status}, rate=${rows[0]?.rate}, amount=${rows[0]?.amount}`,
+    );
+
+    // A designer's floor (designer_profiles.per_figure_rate, Yousif 2026-10-16:
+    // Jerome gets $1.50 where the rate is $1) raises a lower style rate, never
+    // lowers a higher one, and never prices an unpriced style.
+    const floorStyleName = `Floor Payout Test ${Date.now()}`;
+    await createStyle(ctx.businessId, floorStyleName, "1.00");
+    await withSystemContext(async (tx) => {
+      const [p] = await tx
+        .select({ rate: designerProfiles.perFigureRate })
+        .from(designerProfiles)
+        .where(eq(designerProfiles.userId, ctx.d2))
+        .limit(1);
+      if (!p) throw new Error("Need a designer profile for the second designer");
+      cleanup.floors.push({ userId: ctx.d2, rate: p.rate });
+      await tx.update(designerProfiles).set({ perFigureRate: "1.50" }).where(eq(designerProfiles.userId, ctx.d2));
+    });
+    const floorOrderId = await createOrder({
+      businessId: ctx.businessId,
+      shopId: ctx.shopId,
+      designerId: ctx.d2,
+      status: "approved",
+      style: floorStyleName,
+      figureCount: 2,
+    });
+    const noFloor = await withSystemContext((tx) => calculateOrderEarning(tx, floorOrderId, ctx.businessId));
+    report(
+      "without a designer the style rate stands",
+      noFloor.rate === "1.00" && noFloor.amount === "2.00",
+      `rate=${noFloor.rate}, amount=${noFloor.amount}`,
+    );
+    await transition(va, { orderId: floorOrderId, to: "complete", expectedFrom: "approved" });
+    rows = await earningRows(floorOrderId);
+    report(
+      "a designer floor raises a lower style rate on completion",
+      rows.length === 1 && rows[0].designerId === ctx.d2 && rows[0].rate === "1.50" && rows[0].amount === "3.00",
+      `rows=${rows.length}, rate=${rows[0]?.rate}, amount=${rows[0]?.amount}`,
+    );
+    const highOrderId = await createOrder({
+      businessId: ctx.businessId,
+      shopId: ctx.shopId,
+      designerId: ctx.d2,
+      status: "approved",
+      style: styleName,
+      figureCount: 1,
+    });
+    const high = await withSystemContext((tx) => calculateOrderEarning(tx, highOrderId, ctx.businessId, ctx.d2));
+    report("a floor never lowers a higher style rate", high.rate === "10.00" && high.amount === "10.00", `rate=${high.rate}, amount=${high.amount}`);
+    const unpricedOrderId = await createOrder({
+      businessId: ctx.businessId,
+      shopId: ctx.shopId,
+      designerId: ctx.d2,
+      status: "approved",
+      style: `No Such Style ${Date.now()}`,
+      figureCount: 1,
+    });
+    const unpriced = await withSystemContext((tx) => calculateOrderEarning(tx, unpricedOrderId, ctx.businessId, ctx.d2));
+    report(
+      "a floor never prices an unpriced style",
+      unpriced.status === "blocked" && unpriced.amount == null,
+      `status=${unpriced.status}, amount=${unpriced.amount}`,
     );
 
     const noItemOrderId = await createOrder({

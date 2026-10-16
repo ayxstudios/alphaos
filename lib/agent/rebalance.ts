@@ -100,6 +100,7 @@ async function moveOne(
     businessId: input.businessId,
     style: item?.style ?? null,
     excludeDesignerId: input.from.designerId,
+    orderId: input.order.orderId,
   });
   // Same ranking as assignment, minus anyone who is away right now.
   const target = ranked.find((c) => !input.awayIds.has(c.designerId));

@@ -112,6 +112,8 @@ export type GqlOrder = {
     phone: string | null;
   } | null;
   lineItems: { nodes: GqlLineItem[] };
+  // Grand total in the shop's currency (routing: value-gated quota groups).
+  totalPriceSet?: { shopMoney: { amount: string; currencyCode: string } } | null;
 };
 
 export type GqlOrdersResponse = {

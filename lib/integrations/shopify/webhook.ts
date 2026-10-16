@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
+import { shopifyMoneyTotal } from "@/lib/orders/order-total";
+
 import type { NormalizedVariation } from "../figures";
 import { isUrl, type NormalizedOrder } from "./orders";
 
@@ -35,6 +37,10 @@ export type ShopifyWebhookOrder = {
   email: string | null;
   customer?: { first_name: string | null; last_name: string | null; email: string | null } | null;
   line_items: RestLineItem[];
+  // Grand total: total_price is in the shop's currency (`currency`).
+  total_price?: string | null;
+  currency?: string | null;
+  total_price_set?: { shop_money?: { amount?: string | null; currency_code?: string | null } | null } | null;
 };
 
 /**
@@ -52,6 +58,11 @@ export function normalizeWebhookOrder(payload: ShopifyWebhookOrder): NormalizedO
     email: payload.email ?? payload.customer?.email ?? null,
     firstName: payload.customer?.first_name ?? null,
     lastName: payload.customer?.last_name ?? null,
+    total: shopifyMoneyTotal(
+      payload.total_price_set?.shop_money?.amount != null
+        ? { amount: payload.total_price_set.shop_money.amount, currencyCode: payload.total_price_set.shop_money.currency_code }
+        : { amount: payload.total_price, currencyCode: payload.currency },
+    ),
     lineItems: (payload.line_items ?? []).map((li) => {
       const props = li.properties ?? [];
       return {

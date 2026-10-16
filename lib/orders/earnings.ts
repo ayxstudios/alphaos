@@ -3,6 +3,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { Tx } from "@/lib/db";
 import {
   assignments,
+  designerProfiles,
   earnings,
   orderItems,
   styles,
@@ -36,10 +37,17 @@ export function currentPeriod(date = new Date()): string {
   return date.toISOString().slice(0, 7);
 }
 
+/**
+ * `designerId` brings in the designer's own floor (designer_profiles
+ * per_figure_rate): a priced style pays max(style rate, floor) per figure
+ * (Yousif 2026-10-16: Jerome gets $1.50 where the rate is $1). The floor never
+ * prices an unpriced style.
+ */
 export async function calculateOrderEarning(
   tx: Tx,
   orderId: string,
   businessId: string,
+  designerId?: string | null,
 ): Promise<EarningCalculation> {
   const items = await tx
     .select({
@@ -69,6 +77,14 @@ export async function calculateOrderEarning(
         .where(and(eq(styles.businessId, businessId), inArray(styles.name, styleNames)))
     : [];
   const ratesByStyle = new Map(styleRows.map((style) => [style.name.toLowerCase(), centsFromRate(style.perFigureRate)]));
+  const [designer] = designerId
+    ? await tx
+        .select({ perFigureRate: designerProfiles.perFigureRate })
+        .from(designerProfiles)
+        .where(eq(designerProfiles.userId, designerId))
+        .limit(1)
+    : [];
+  const floorCents = centsFromRate(designer?.perFigureRate ?? null);
 
   let totalFigures = 0;
   let totalCents = 0;
@@ -82,9 +98,9 @@ export async function calculateOrderEarning(
     let blockedReason: string | undefined;
     let cents: number | null = null;
 
-    // Pay comes only from the style's own per-figure rate (owner sets each
-    // style's rate; 2026-10-04: only the Disney pet style has one so far).
-    // Anything unpriced blocks the earning until its rate is set.
+    // Pay comes from the style's own per-figure rate (owner sets each style's
+    // rate), raised to the designer's floor when they have one. Anything
+    // unpriced blocks the earning until its rate is set.
     if (item.figureCount == null) {
       blockedReason = "Missing figure count.";
     } else if (!item.style?.trim()) {
@@ -92,6 +108,7 @@ export async function calculateOrderEarning(
     } else {
       cents = ratesByStyle.get(item.style.trim().toLowerCase()) ?? null;
       if (cents == null) blockedReason = `Style "${item.style}" needs a per-figure rate.`;
+      else if (floorCents != null) cents = Math.max(cents, floorCents);
     }
 
     if (blockedReason) {
@@ -153,7 +170,7 @@ export async function createEarningForCompletion(
     .where(and(eq(assignments.orderId, orderId), eq(assignments.active, true)));
   if (!assignment) return;
 
-  const calculation = await calculateOrderEarning(tx, orderId, businessId);
+  const calculation = await calculateOrderEarning(tx, orderId, businessId, assignment.designerId);
   await tx
     .insert(earnings)
     .values({
@@ -177,13 +194,13 @@ export async function recalculateBlockedEarning(
   businessId: string,
 ): Promise<{ ok: true; amount: string } | { ok: false; message: string }> {
   const [earning] = await tx
-    .select({ orderId: earnings.orderId, status: earnings.status })
+    .select({ orderId: earnings.orderId, status: earnings.status, designerId: earnings.designerId })
     .from(earnings)
     .where(and(eq(earnings.id, earningId), eq(earnings.businessId, businessId)));
   if (!earning) return { ok: false, message: "Earning not found" };
   if (earning.status !== "blocked") return { ok: false, message: "Only blocked earnings can be resolved" };
 
-  const calculation = await calculateOrderEarning(tx, earning.orderId, businessId);
+  const calculation = await calculateOrderEarning(tx, earning.orderId, businessId, earning.designerId);
   if (calculation.status === "blocked" || !calculation.amount) {
     return { ok: false, message: calculation.blockedReason ?? "Earning is still blocked" };
   }

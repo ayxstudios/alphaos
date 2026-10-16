@@ -407,6 +407,27 @@ export type StyleDailyLimit = {
    * quota-holders) instead of dropping out for the day. Absent = drops out.
    */
   overflow?: boolean;
+  /**
+   * More businesses sharing this ONE pool with businessId: the limit counts
+   * across all of them (Yousif 2026-10-16: Wahyu 6 a day across CPS and
+   * PixArt together). Absent = businessId only.
+   */
+  businessIds?: string[];
+  /**
+   * Value gate: only orders whose total (orders.order_total, shop currency) is
+   * above this match the group; an unknown total never does. With a low
+   * priority it hands big orders to this designer first (Mar takes the PixArt
+   * BOGO orders over AUD 300 and otherwise only what nobody else can).
+   */
+  orderTotalOver?: number;
+  /** With orderTotalOver: the total must be in this currency ("AUD"). */
+  currency?: string;
+  /**
+   * true = only orders this designer is the FIRST to get count toward the
+   * limit; a reassignment or rescue never uses it up. Absent = every
+   * assignment today counts.
+   */
+  newOrdersOnly?: boolean;
 };
 
 export const designerProfiles = pgTable("designer_profiles", {
@@ -627,6 +648,11 @@ export const orders = pgTable(
     // Raw platform payload kept for reference — e.g. the full Etsy receipt so a
     // VA can read the personalization / note-to-seller while completing details.
     rawImport: jsonb("raw_import"),
+    // The order's grand total in the shop's currency at import (Shopify
+    // totalPriceSet.shopMoney, Etsy receipt grandtotal; migration 0062). Null =
+    // unknown (manual, Trello, legacy). Read by value-gated quota groups.
+    orderTotal: numeric("order_total", { precision: 12, scale: 2 }),
+    orderCurrency: text("order_currency"),
     // Incremented on rework (QC fail / customer revision -> in_design) in the same
     // transaction as the transition. Distinguishes In Design from Revisions on the
     // boards without scanning activity_log. 0 = first pass.

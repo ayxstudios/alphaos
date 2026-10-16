@@ -16,6 +16,7 @@ import { reconcileManualOrder } from "@/lib/orders/reconcile";
 import { clampItemQuantity } from "@/lib/orders/item-quantity";
 import { runAutoAssign } from "@/lib/orders/assign";
 import { isBeforeBackfillCutoff } from "@/lib/orders/archive";
+import { fillOrderTotal, orderTotalColumns, shopifyMoneyTotal, type OrderTotal } from "@/lib/orders/order-total";
 import { failJobRun, finishJobRun, JOB_NAMES, startJobRun } from "@/lib/jobs/ledger";
 import {
   normalizeShopifyAddress,
@@ -92,6 +93,8 @@ export type NormalizedOrder = {
   // Shopify's own fulfilment state at read time. Undefined on the REST webhook
   // payload (a brand-new order is open work by definition).
   platformState?: "open" | "fulfilled" | "cancelled";
+  // Grand total in the shop's currency (orders.order_total); null = not read.
+  total?: OrderTotal | null;
 };
 
 /**
@@ -145,6 +148,7 @@ query($cursor: String, $q: String) {
       cancelledAt
       email
       customer { firstName lastName email }
+      totalPriceSet { shopMoney { amount currencyCode } }
       shippingAddress {
         firstName
         lastName
@@ -464,7 +468,10 @@ export async function importShopifyOrder(args: {
       customerId,
       photoUrls: order.lineItems.flatMap((li) => li.photoUrls),
     });
-    if (rec.reconciled) return "reconciled";
+    if (rec.reconciled) {
+      await fillOrderTotal(tx, rec.orderId, order.total);
+      return "reconciled";
+    }
 
     const inserted = await tx
       .insert(orders)
@@ -482,6 +489,7 @@ export async function importShopifyOrder(args: {
         needsReview,
         archivedAt,
         archiveReason: archived ? "Imported before shop backfill cutoff" : null,
+        ...orderTotalColumns(order.total),
       })
       .onConflictDoNothing({ target: [orders.shopId, orders.platformOrderId] })
       .returning({ id: orders.id });
@@ -640,6 +648,7 @@ query($id: ID!) {
     cancelledAt
     email
     customer { firstName lastName email }
+    totalPriceSet { shopMoney { amount currencyCode } }
     shippingAddress {
       firstName
       lastName
@@ -714,6 +723,7 @@ export function normalizeGraphqlOrder(o: GqlOrder): NormalizedOrder {
     firstName: o.customer?.firstName ?? null,
     lastName: o.customer?.lastName ?? null,
     shippingAddress: normalizeShopifyAddress(o.shippingAddress),
+    total: shopifyMoneyTotal(o.totalPriceSet?.shopMoney),
     platformState: o.cancelledAt
       ? "cancelled"
       : o.displayFulfillmentStatus === "FULFILLED"

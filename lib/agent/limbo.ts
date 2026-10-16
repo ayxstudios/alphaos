@@ -781,11 +781,18 @@ async function humanRoster(tx: Tx, businessId: string): Promise<RosterRow[]> {
 const norm = (s: string) => s.trim().toLowerCase();
 const draws = (r: Pick<RosterRow, "styles">, style: string) => (r.styles ?? []).some((s) => norm(s) === norm(style));
 
-/** A per-style daily quota covering this style in this business, if the designer has one. */
+/**
+ * A per-style daily quota covering this style in this business (its businessId
+ * or businessIds pool), if the designer has one. A value-gated group
+ * (orderTotalOver) only says who gets big orders first: it is not a daily
+ * throttle, so it never counts here.
+ */
 export function styleQuotaLimit(limits: unknown, style: string, businessId: string): number | null {
   if (!Array.isArray(limits)) return null;
-  for (const g of limits as { limit?: unknown; styles?: unknown; businessId?: unknown }[]) {
-    if (!g || (g.businessId && g.businessId !== businessId)) continue;
+  for (const g of limits as { limit?: unknown; styles?: unknown; businessId?: unknown; businessIds?: unknown; orderTotalOver?: unknown }[]) {
+    if (!g || g.orderTotalOver != null) continue;
+    const pool = [g.businessId, ...(Array.isArray(g.businessIds) ? g.businessIds : [])].filter(Boolean);
+    if (pool.length && !pool.includes(businessId)) continue;
     if (Array.isArray(g.styles) && g.styles.some((s) => typeof s === "string" && norm(s) === norm(style))) {
       const n = Number(g.limit);
       return Number.isFinite(n) ? n : null;

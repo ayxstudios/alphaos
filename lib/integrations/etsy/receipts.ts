@@ -8,6 +8,7 @@ import { shops, orders, orderItems, customers, activityLog } from "@/lib/db/sche
 import { queueStageEmail } from "@/lib/email/dispatch";
 import { reconcileManualOrder } from "@/lib/orders/reconcile";
 import { isBeforeBackfillCutoff } from "@/lib/orders/archive";
+import { etsyReceiptTotal, fillOrderTotal, orderTotalColumns } from "@/lib/orders/order-total";
 import { normalizeEtsyReceiptAddress, upsertOrderShippingAddress } from "@/lib/shipping/address";
 import { failJobRun, finishJobRun, JOB_NAMES, startJobRun } from "@/lib/jobs/ledger";
 import { etsyImportItems } from "./receipt-review";
@@ -332,6 +333,7 @@ async function importReceipt(args: {
         source: "platform",
         address: shippingAddress,
       });
+      await fillOrderTotal(tx, rec.orderId, etsyReceiptTotal(receipt));
       return "reconciled";
     }
 
@@ -353,6 +355,7 @@ async function importReceipt(args: {
         rawImport: receipt,
         archivedAt,
         archiveReason: archived ? "Imported before shop backfill cutoff" : null,
+        ...orderTotalColumns(etsyReceiptTotal(receipt)),
       })
       .onConflictDoNothing({ target: [orders.shopId, orders.platformOrderId] })
       .returning({ id: orders.id });

@@ -10,12 +10,14 @@ import {
   orders,
   orderItems,
   earnings,
+  type StyleDailyLimit,
 } from "@/lib/db/schema";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { sendDesignerBrief } from "@/lib/notifications/designer-events";
 import { findStyle, getAgentDesignerId, markQueuedForAgent } from "@/lib/agent/ai-core";
 import { getAgentConfig } from "@/lib/agent/config";
 import { getOrderPortraits } from "@/lib/orders/portraits";
+import { loadOrderTotal, toOrderTotal, type OrderTotal } from "@/lib/orders/order-total";
 
 export const DESIGNER_SLA_HOURS = 24;
 
@@ -212,15 +214,78 @@ export function rankCandidates(
   return eligible;
 }
 
+/** The businesses a quota group's ONE pool spans: businessId plus any businessIds. */
+export function quotaPool(g: Pick<StyleDailyLimit, "businessId" | "businessIds">): string[] {
+  return [...new Set([g.businessId, ...(g.businessIds ?? [])].filter((b): b is string => !!b))];
+}
+
+/** A value-gated group (orderTotalOver) only takes orders above its line; an unknown total never qualifies. */
+export function passesValueGate(
+  g: Pick<StyleDailyLimit, "orderTotalOver" | "currency">,
+  total: OrderTotal | null | undefined,
+): boolean {
+  if (g.orderTotalOver == null) return true;
+  if (!total || !Number.isFinite(total.amount)) return false;
+  if (g.currency && (total.currency ?? "").trim().toUpperCase() !== g.currency.trim().toUpperCase()) return false;
+  return total.amount > g.orderTotalOver;
+}
+
+/**
+ * The designer's quota group for this order: the first group whose pool holds
+ * the order's business, whose styles hold its style (any case) and whose value
+ * gate the order passes. Null = no quota for this order.
+ */
+export function quotaGroupFor(
+  limits: StyleDailyLimit[] | null | undefined,
+  order: { businessId: string; style: string | null; total?: OrderTotal | null },
+): StyleDailyLimit | null {
+  const key = order.style?.trim().toLowerCase() || null;
+  if (!key) return null;
+  return (
+    (limits ?? []).find(
+      (g) =>
+        quotaPool(g).includes(order.businessId) &&
+        g.styles.some((s) => s.trim().toLowerCase() === key) &&
+        passesValueGate(g, order.total),
+    ) ?? null
+  );
+}
+
+/** One of a designer's assignments today, as a quota group sees it. */
+export type QuotaUse = {
+  assignmentId: string;
+  businessId: string;
+  style: string | null;
+  total: OrderTotal | null;
+  /** No earlier assignment exists for the order: a new order, not a reassignment or rescue. */
+  firstForOrder: boolean;
+};
+
+/** How many of today's assignments fall in the group: its pool, its styles, its value gate, new orders only when set. */
+export function quotaUsed(group: StyleDailyLimit, uses: QuotaUse[]): number {
+  const pool = new Set(quotaPool(group));
+  const names = new Set(group.styles.map((s) => s.trim().toLowerCase()));
+  const counted = new Set<string>();
+  for (const u of uses) {
+    if (!pool.has(u.businessId) || !names.has(u.style?.trim().toLowerCase() ?? "")) continue;
+    if (group.newOrdersOnly && !u.firstForOrder) continue;
+    if (!passesValueGate(group, u.total)) continue;
+    counted.add(u.assignmentId);
+  }
+  return counted.size;
+}
+
 /**
  * Ranked, eligible candidates for a business + style, straight from the DB.
  * Shared by auto-assign (entry into ready_to_assign) and the SLA-sweep
  * reassign step (48 h, no submission) — `excludeDesignerId` drops the
  * currently-assigned designer so a reassignment never picks the same person.
+ * `orderId` lets value-gated quota groups read the order's total; without it
+ * (or with an unknown total) no value gate matches.
  */
 export async function loadRankedCandidates(
   tx: Tx,
-  input: { businessId: string; style: string | null; excludeDesignerId?: string | null },
+  input: { businessId: string; style: string | null; excludeDesignerId?: string | null; orderId?: string | null },
 ): Promise<RankedCandidate[]> {
   const roster = await tx
     .select({
@@ -278,50 +343,54 @@ export async function loadRankedCandidates(
   }
 
   // Per-style daily quota usage: for each designer whose style_daily_limits
-  // holds a group covering this order's style in this business, count today's
-  // assignments (this business only) whose order style falls inside the group.
-  const styleKey = input.style?.trim().toLowerCase() || null;
-  const groupFor = (limits: (typeof roster)[number]["styleDailyLimits"]) =>
-    styleKey
-      ? (limits ?? []).find(
-          (g) =>
-            g.businessId === input.businessId &&
-            g.styles.some((s) => s.trim().toLowerCase() === styleKey),
-        ) ?? null
-      : null;
+  // holds a group covering this order (its business pool, its style, its value
+  // gate), count today's assignments in that pool whose order style falls
+  // inside the group (only an order's first assignment when newOrdersOnly).
+  const total = input.orderId ? await loadOrderTotal(tx, input.orderId) : null;
   const quotaFor = new Map<string, NonNullable<Candidate["styleQuota"]>>();
-  const holders = roster.filter((r) => groupFor(r.styleDailyLimits));
+  const holders = roster.flatMap((r) => {
+    const group = quotaGroupFor(r.styleDailyLimits, { businessId: input.businessId, style: input.style, total });
+    return group ? [{ designerId: r.designerId, group }] : [];
+  });
   if (holders.length) {
-    const todayByStyle = await tx
+    const today = await tx
       .select({
+        assignmentId: assignments.id,
         designerId: assignments.designerId,
+        businessId: assignments.businessId,
         style: orderItems.style,
-        n: sql<number>`count(distinct ${assignments.id})::int`,
+        total: orders.orderTotal,
+        currency: orders.orderCurrency,
+        firstForOrder: sql<boolean>`not exists (select 1 from assignments p where p.order_id = ${assignments.orderId} and (p.created_at < ${assignments.assignedAt} or (p.created_at = ${assignments.assignedAt} and p.id < ${assignments.id})))`,
       })
       .from(assignments)
       .innerJoin(orderItems, eq(orderItems.orderId, assignments.orderId))
+      .innerJoin(orders, eq(orders.id, assignments.orderId))
       .where(
         and(
           inArray(
             assignments.designerId,
             holders.map((h) => h.designerId),
           ),
-          eq(assignments.businessId, input.businessId),
+          inArray(assignments.businessId, [...new Set(holders.flatMap((h) => quotaPool(h.group)))]),
           gte(assignments.assignedAt, sql`date_trunc('day', now())`),
         ),
-      )
-      .groupBy(assignments.designerId, orderItems.style);
+      );
     for (const h of holders) {
-      const group = groupFor(h.styleDailyLimits)!;
-      const names = new Set(group.styles.map((s) => s.trim().toLowerCase()));
-      const used = todayByStyle
-        .filter((r) => r.designerId === h.designerId && names.has(r.style?.trim().toLowerCase() ?? ""))
-        .reduce((sum, r) => sum + Number(r.n), 0);
+      const uses: QuotaUse[] = today
+        .filter((r) => r.designerId === h.designerId)
+        .map((r) => ({
+          assignmentId: r.assignmentId,
+          businessId: r.businessId,
+          style: r.style,
+          total: toOrderTotal(r.total, r.currency),
+          firstForOrder: r.firstForOrder === true,
+        }));
       quotaFor.set(h.designerId, {
-        limit: group.limit,
-        priority: group.priority,
-        usedToday: used,
-        overflow: group.overflow === true,
+        limit: h.group.limit,
+        priority: h.group.priority,
+        usedToday: quotaUsed(h.group, uses),
+        overflow: h.group.overflow === true,
       });
     }
   }
@@ -396,7 +465,7 @@ export async function runAutoAssign(
     }
   }
 
-  const ranked = await loadRankedCandidates(tx, { businessId: order.businessId, style });
+  const ranked = await loadRankedCandidates(tx, { businessId: order.businessId, style, orderId: order.orderId });
   if (!ranked.length) return { assigned: null };
   const chosen = ranked[0].designerId;
 
@@ -418,7 +487,7 @@ export async function runAutoAssign(
  */
 export async function findNextEligibleDesigner(
   tx: Tx,
-  input: { businessId: string; style: string | null; excludeDesignerId: string },
+  input: { businessId: string; style: string | null; excludeDesignerId: string; orderId?: string | null },
 ): Promise<string | null> {
   const ranked = await loadRankedCandidates(tx, input);
   return ranked[0]?.designerId ?? null;

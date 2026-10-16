@@ -277,6 +277,10 @@ function pureTests() {
   const limits = [{ businessId: "b1", styles: ["House", "Venue"], limit: 1, priority: 1 }];
   check("quota: covers its styles, any case", styleQuotaLimit(limits, "house", "b1") === 1);
   check("quota: other business or style = none", styleQuotaLimit(limits, "house", "b2") === null && styleQuotaLimit(limits, "Pets", "b1") === null);
+  const pooled = [{ businessId: "b1", businessIds: ["b1", "b2"], styles: ["Cartoon"], limit: 6, priority: 1 }];
+  check("quota: a pooled group covers every business in its pool", styleQuotaLimit(pooled, "cartoon", "b2") === 6 && styleQuotaLimit(pooled, "cartoon", "b3") === null);
+  const valueGated = [{ businessId: "b1", styles: ["Cartoon"], orderTotalOver: 300, currency: "AUD", limit: 15, priority: 0 }];
+  check("quota: a value-gated group is not a daily throttle", styleQuotaLimit(valueGated, "cartoon", "b1") === null);
 }
 
 // ---------------------------------------------------------------------------
