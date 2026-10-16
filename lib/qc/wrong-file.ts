@@ -174,7 +174,7 @@ async function withHash(tx: Tx, row: AssetRow): Promise<AssetRow> {
   return { ...row, ...cols };
 }
 
-async function loadAssets(tx: Tx, ids: string[]): Promise<AssetRow[]> {
+export async function loadAssets(tx: Tx, ids: string[]): Promise<AssetRow[]> {
   if (!ids.length) return [];
   const rows = await tx
     .select({ id: assets.id, storage: assets.storage, url: assets.url, r2Key: assets.r2Key, dhash: assets.dhash, width: assets.width, height: assets.height })

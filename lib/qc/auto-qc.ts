@@ -67,6 +67,9 @@ export type AutoQcPortrait = {
   summary: string;
   checks: AutoQcCheck[];
 };
+export const AUTO_QC_WRONG_FILE_KINDS = ["reference", "other_order", "subject_count", "orientation", "product"] as const;
+/** The judge's "this is not this order's artwork" finding (docs/AUTO_QC.md, Wrong-file stop). */
+export type AutoQcWrongFile = { kind: (typeof AUTO_QC_WRONG_FILE_KINDS)[number]; note: string };
 export type AutoQcRevision = { done: "yes" | "partly" | "no"; missed: string[]; note: string };
 
 export type AutoQcBody = {
@@ -77,6 +80,7 @@ export type AutoQcBody = {
   portraits: AutoQcPortrait[];
   revision: AutoQcRevision | null;
   model: string | null;
+  wrongFile: AutoQcWrongFile | null;
 };
 
 /** What the screens show: the newest row and whether it judged the current artwork. */
@@ -87,6 +91,7 @@ export type AutoQcView = {
   portraits: AutoQcPortrait[];
   revision: AutoQcRevision | null;
   model: string | null;
+  wrongFile: AutoQcWrongFile | null;
   createdAt: string;
   /** False when the designer uploaded again after this check (a re-check is due). */
   current: boolean;
@@ -193,6 +198,16 @@ export function parseAutoQcBody(raw: unknown): { ok: true; body: AutoQcBody } | 
     const missed = Array.isArray(rv.missed) ? rv.missed.map((m) => str(m, 300)).filter(Boolean).slice(0, 20) : [];
     revision = { done, missed, note: str(rv.note, 600) };
   }
+  let wrongFile: AutoQcWrongFile | null = null;
+  if (r.wrongFile != null) {
+    if (typeof r.wrongFile !== "object") return { ok: false, error: "wrongFile must be an object or null" };
+    const w = r.wrongFile as Record<string, unknown>;
+    const kind = w.kind as AutoQcWrongFile["kind"];
+    if (!AUTO_QC_WRONG_FILE_KINDS.includes(kind)) return { ok: false, error: `wrongFile.kind must be one of ${AUTO_QC_WRONG_FILE_KINDS.join(", ")}` };
+    const note = str(w.note, 400);
+    if (!note) return { ok: false, error: "wrongFile.note required" };
+    wrongFile = { kind, note };
+  }
   return {
     ok: true,
     body: {
@@ -203,8 +218,16 @@ export function parseAutoQcBody(raw: unknown): { ok: true; body: AutoQcBody } | 
       portraits,
       revision,
       model: str(r.model, 60) || null,
+      wrongFile,
     },
   };
+}
+
+function wrongFileOf(raw: unknown): AutoQcWrongFile | null {
+  const w = raw as { kind?: unknown; note?: unknown } | null;
+  if (!w || typeof w !== "object" || typeof w.note !== "string" || !w.note) return null;
+  const kind = AUTO_QC_WRONG_FILE_KINDS.find((k) => k === w.kind);
+  return kind ? { kind, note: w.note } : null;
 }
 
 export function countIssues(portraits: AutoQcPortrait[]): number {
@@ -234,6 +257,7 @@ export async function getAutoQcViews(
       portraits,
       revision: (r.revision as AutoQcRevision | null) ?? null,
       model: r.model,
+      wrongFile: wrongFileOf(r.wrongFile),
       createdAt: r.createdAt.toISOString(),
       current: sameIds(r.assetIds, current.get(r.orderId) ?? []),
       issues: countIssues(portraits),
@@ -261,6 +285,7 @@ export async function insertAutoQc(tx: Tx, businessId: string, body: AutoQcBody)
       portraits: body.portraits,
       revision: body.revision,
       model: body.model,
+      wrongFile: body.wrongFile,
     })
     .returning({ id: autoQcChecks.id });
   await tx.insert(activityLog).values({

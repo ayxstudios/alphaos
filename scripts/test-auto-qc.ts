@@ -90,6 +90,18 @@ assert.ok(!parseAutoQcBody({ ...good, portraits: [{ ...good.portraits[0], checks
 assert.ok(!parseAutoQcBody({ ...good, revision: { done: "maybe" } }).ok, "bad revision refused");
 assert.ok(!parseAutoQcBody(null).ok);
 
+// Wrong-file stop: optional wrongFile {kind, note}|null, stored as given; bad shapes refused.
+const wf = parseAutoQcBody({ ...good, wrongFile: { kind: "other_order", note: "This is the PC32131 two-person landscape" } });
+assert.ok(wf.ok);
+if (wf.ok) assert.deepEqual(wf.body.wrongFile, { kind: "other_order", note: "This is the PC32131 two-person landscape" });
+const nowf = parseAutoQcBody({ ...good, wrongFile: null });
+assert.ok(nowf.ok);
+if (nowf.ok) assert.equal(nowf.body.wrongFile, null);
+const absent = parseAutoQcBody(good);
+if (absent.ok) assert.equal(absent.body.wrongFile, null);
+assert.ok(!parseAutoQcBody({ ...good, wrongFile: { kind: "banana", note: "x" } }).ok, "unknown wrongFile kind refused");
+assert.ok(!parseAutoQcBody({ ...good, wrongFile: { kind: "product", note: "" } }).ok, "wrongFile note required");
+
 // Check 13, Resolution (measured by the judge): accepted, labelled, and the tiers hold either way round.
 const res = parseAutoQcBody({ ...good, portraits: [{ ...good.portraits[0], checks: [{ key: 13, result: "fail", note: "1600 x 2000 px" }] }] });
 assert.ok(res.ok, "check 13 accepted");
