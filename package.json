@@ -72,7 +72,8 @@
     "test:image-hash": "tsx scripts/test-image-hash.ts",
     "test:wrong-file": "tsx scripts/test-wrong-file.ts",
     "test:qc-overdue": "tsx scripts/test-qc-overdue.ts",
-    "test:proof-replies": "tsx scripts/test-proof-replies.ts"
+    "test:proof-replies": "tsx scripts/test-proof-replies.ts",
+    "test:not-started": "tsx scripts/test-not-started.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1102.0",

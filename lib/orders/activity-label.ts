@@ -9,6 +9,7 @@ const LABELS: Record<string, string> = {
   "order.assigned": "Assigned",
   "agent.assigned": "Assigned by the agent",
   "agent.rebalanced": "Agent moved it to another designer",
+  "agent.not_started_moved": "Agent moved it: not started in time",
   "agent.photo_shortfall_drafted": "Agent drafted a photo request",
   "agent.exception_opened": "Agent raised an exception",
   "agent.etsy_details_completed": "Agent completed the order details",

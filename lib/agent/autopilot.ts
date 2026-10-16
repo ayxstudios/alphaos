@@ -49,6 +49,7 @@ import { emptyInboxReport, runInboxPass, type InboxReport } from "./inbox";
 import { runOutboxPass, type OutboxReport } from "./outbox";
 import { runProofRepliesPass, type ProofRepliesReport } from "./proof-replies";
 import { rebalanceBusiness } from "./rebalance";
+import { runNotStartedPass } from "./not-started";
 import { parseIntake } from "./intake";
 import { findCatalogStyle, registerUnindexedProduct } from "./legacy-intake";
 import {
@@ -133,6 +134,10 @@ export type AgentBusinessReport = {
   skippedNeedsReview: number;
   /** Not-yet-started orders moved off an over-capacity or away designer. */
   rebalanced: number;
+  /** Orders nobody started notStartedMoveHours after assignment, moved to a designer with room (./not-started.ts). */
+  notStartedMoved?: number;
+  /** Orders past that clock left where they are (admin pin, no style, moved enough, nobody with room). */
+  notStartedKept?: number;
   /** Approved orders looked at for a print draft (agentConfig.printDrafts). */
   printChecked?: number;
   /** Gelato draft orders set up (dry run: would be set up), waiting for a person in Gelato. */
@@ -276,6 +281,18 @@ export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTi
         for (const e of rb.errors) report.errors.push(e);
       } catch (e) {
         report.errors.push({ orderId: "", message: `rebalance: ${errorMessage(e)}` });
+      }
+    }
+    // Not started 24 h after assignment: to a designer with room (clean slating
+    // audit 2026-10-16: Abdul 103, Jerome 89, Mar 57 open while orders sat untouched).
+    if (biz.assign && !outOfTime()) {
+      try {
+        const ns = await runNotStartedPass(biz.id, { dryRun, now, outOfTime });
+        report.notStartedMoved = ns.moves.length;
+        report.notStartedKept = ns.keptPinned + ns.keptNoStyle + ns.keptMovedEnough + ns.noTarget;
+        for (const e of ns.errors) report.errors.push(e);
+      } catch (e) {
+        report.errors.push({ orderId: "", message: `not started: ${errorMessage(e)}` });
       }
     }
     if (biz.assign && getAgentConfig(biz).printDrafts && !outOfTime()) await printDraftStep(ctx, biz.id, outOfTime);

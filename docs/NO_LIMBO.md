@@ -221,3 +221,28 @@ inbox pass only ran where `agentInboxEnabled` was on (PixArt alone).
   drafted `proof_reminder` (archived draft, `email.proof_reminder_withdrawn`)
   when the buyer wrote after the proof, the proof was decided or the order
   moved on; the agent outbox withdraws such drafts instead of holding them.
+
+## L9 Not started in a day = a designer with room (2026-10-16)
+
+Clean slating audit 2026-10-16: Abdul (103 open), Jerome (89) and Mar (57)
+held orders for days that nobody had started, while the rebalance only moved
+work off designers who were over capacity or away and skipped every
+assignment a login had placed (all 199 pins that day were the "Alpha VA" and
+"VA Team" logins).
+
+- `lib/agent/not-started.ts` `runNotStartedPass`, every tick with the assign
+  switch on, after the rebalance. An order still `ready_to_assign` (Start never
+  pressed), first pass, with no submission and no timeline row by the assigned
+  designer since the assignment, `agent_config.notStartedMoveHours` (default
+  24, 0 = off) after it was assigned, goes to the top of the assigner's own
+  ranking (`loadRankedCandidates`: style, business, daily limit, max active,
+  per-style quota, rank) minus anyone away or at their open-order limit. Both
+  designers hear it on the `designer.reassigned` road, the new one gets the
+  brief, `agent.not_started_moved` on the timeline. The new deadline never
+  passes the buyer's date.
+- Kept where it is: in_design (somebody said it started), an assignment an
+  admin placed by hand, no style, nobody with room, or already moved twice by
+  this pass (then the stuck-order watch and the digest raise it).
+- This supersedes the 2026-10-07 "auto-reassignment is off" note in
+  `lib/notifications/designer-sweep.ts` for not-started work only; anything
+  that shows a start still stays with its designer.
