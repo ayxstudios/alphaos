@@ -31,7 +31,8 @@ export type AutoQcJob = {
   round: number;
   requests: { source: string; who: string | null; text: string | null; items: string[]; pins: number; at: string }[];
   orderSays: unknown;
-  references: { id: string; url: string | null }[];
+  /** fromCustomer false = staff attached it (often the last proof, for a revision): not the customer's photo. */
+  references: { id: string; url: string | null; fromCustomer?: boolean }[];
   portraits: {
     portrait: number | null;
     label: string;

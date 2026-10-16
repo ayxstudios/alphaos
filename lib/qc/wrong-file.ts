@@ -4,15 +4,20 @@
  * same picture as another file it must not be is refused on designer submit and
  * on QC pass; staff can override with a reason, designers cannot.
  *
- * Compared with dHash hamming distance (lib/qc/image-hash.ts), at most
- * SAME_PICTURE_DISTANCE bits apart = the same picture:
- *   reference   the customer's own photo on THIS order (the designer sent it back)   BLOCKS
+ * Same picture = both looks agree (lib/qc/image-hash.ts samePicture): the dHash
+ * within SAME_PICTURE_DISTANCE bits AND the 64x80 fine signature within
+ * SAME_PICTURE_INK_DIFF. The dHash alone also matched different drawings on the
+ * same paper (designer Jerome's CPS watercolours, 16 Oct: about 28% of real
+ * uploads), so it only picks the candidates and the ink decides:
+ *   reference   a photo the customer sent on THIS order (the designer sent it back);
+ *               references staff attached do not count: often the last proof,
+ *               given to the designer for a revision that rightly looks like it   BLOCKS
  *   other_order the newest artwork of the buyer's other orders                       BLOCKS
  *   recent_art  any artwork on another order of the business hashed in 30 days       BLOCKS
  *   orientation the file's shape contradicts the portrait/landscape ordered          WARNS
  *   auto_qc     Auto QC's judge reported wrongFile for this file                     BLOCKS
- * Files with no hash (PDF, HEIC, corrupt, not backfilled) are never matched and
- * never blocked.
+ * Files with no hash or no fine signature (PDF, HEIC, corrupt, not backfilled)
+ * are never matched and never blocked.
  */
 import { and, desc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 
@@ -21,7 +26,7 @@ import { withSystemContext, type RequestUser, type Tx } from "@/lib/db";
 import { activityLog, assets, autoQcChecks, orderItems, orders } from "@/lib/db/schema";
 import { orderNumberOf, loadSameBuyerContext, orientationOf } from "@/lib/orders/same-buyer";
 import { hashColumnsFor } from "@/lib/qc/asset-hash";
-import { SAME_PICTURE_DISTANCE, aspectOf, hamming } from "@/lib/qc/image-hash";
+import { SAME_PICTURE_DISTANCE, aspectOf, hamming, samePicture } from "@/lib/qc/image-hash";
 
 export const WRONG_FILE_OVERRIDE_ACTION = "order.wrong_file_override";
 export const RECENT_ART_DAYS = 30;
@@ -37,6 +42,8 @@ export type WrongFileReason = {
   matchAssetId?: string;
   matchOrderNumber?: string;
   distance?: number;
+  /** Share of inked pixels that differ (lib/qc/image-hash.ts inkDifference). */
+  inkDiff?: number;
 };
 
 export type WrongFileResult = { blocked: boolean; reasons: WrongFileReason[] };
@@ -45,31 +52,38 @@ export type WrongFileResult = { blocked: boolean; reasons: WrongFileReason[] };
 // Pure core (tested without a database)
 // ---------------------------------------------------------------------------
 
-export type HashedFile = { assetId: string; dhash: string | null; width?: number | null; height?: number | null };
-export type MatchCandidate = { assetId: string; dhash: string | null; orderNumber?: string };
+export type HashedFile = { assetId: string; dhash: string | null; fineSig?: string | null; width?: number | null; height?: number | null };
+export type MatchCandidate = { assetId: string; dhash: string | null; fineSig?: string | null; orderNumber?: string };
+/** A reference file; fromCustomer false = staff attached it, so it is never compared. */
+export type ReferenceCandidate = MatchCandidate & { fromCustomer?: boolean };
 
 export type WrongFileInput = {
   target: HashedFile;
-  references: MatchCandidate[];
+  references: ReferenceCandidate[];
   siblings: MatchCandidate[];
   recent: MatchCandidate[];
   expectedOrientation: "portrait" | "landscape" | null;
 };
 
-function nearest(target: string, list: MatchCandidate[]): { c: MatchCandidate; distance: number } | null {
-  let best: { c: MatchCandidate; distance: number } | null = null;
+type Match = { c: MatchCandidate; distance: number; inkDiff: number };
+
+/** The candidate both looks call the same picture as the target, closest drawing first. */
+function nearest(target: HashedFile, list: MatchCandidate[]): Match | null {
+  let best: Match | null = null;
   for (const c of list) {
-    const d = hamming(target, c.dhash);
-    if (d <= SAME_PICTURE_DISTANCE && (!best || d < best.distance)) best = { c, distance: d };
+    const same = samePicture(target, c);
+    if (same && (!best || same.inkDiff < best.inkDiff)) best = { c, ...same };
   }
   return best;
 }
+
+const round3 = (n: number) => Math.round(n * 1000) / 1000;
 
 export function evaluateWrongFile(input: WrongFileInput): WrongFileResult {
   const reasons: WrongFileReason[] = [];
   const { target } = input;
   if (target.dhash) {
-    const ref = nearest(target.dhash, input.references);
+    const ref = nearest(target, input.references.filter((r) => r.fromCustomer !== false));
     if (ref) {
       reasons.push({
         kind: "reference",
@@ -77,10 +91,11 @@ export function evaluateWrongFile(input: WrongFileInput): WrongFileResult {
         assetId: target.assetId,
         matchAssetId: ref.c.assetId,
         distance: ref.distance,
+        inkDiff: round3(ref.inkDiff),
       });
     }
     const used = new Set<string>();
-    const sib = nearest(target.dhash, input.siblings);
+    const sib = nearest(target, input.siblings);
     if (sib) {
       used.add(sib.c.assetId);
       reasons.push({
@@ -90,9 +105,10 @@ export function evaluateWrongFile(input: WrongFileInput): WrongFileResult {
         matchAssetId: sib.c.assetId,
         matchOrderNumber: sib.c.orderNumber,
         distance: sib.distance,
+        inkDiff: round3(sib.inkDiff),
       });
     }
-    const rec = nearest(target.dhash, input.recent.filter((c) => !used.has(c.assetId)));
+    const rec = nearest(target, input.recent.filter((c) => !used.has(c.assetId)));
     if (rec && !sib) {
       reasons.push({
         kind: "recent_art",
@@ -101,6 +117,7 @@ export function evaluateWrongFile(input: WrongFileInput): WrongFileResult {
         matchAssetId: rec.c.assetId,
         matchOrderNumber: rec.c.orderNumber,
         distance: rec.distance,
+        inkDiff: round3(rec.inkDiff),
       });
     }
   }
@@ -163,24 +180,80 @@ export async function currentArtworkIds(tx: Tx, orderId: string): Promise<string
   return out;
 }
 
-type AssetRow = { id: string; storage: "cdn" | "r2"; url: string | null; r2Key: string | null; dhash: string | null; width: number | null; height: number | null };
+type AssetRow = {
+  id: string;
+  storage: "cdn" | "r2";
+  url: string | null;
+  r2Key: string | null;
+  dhash: string | null;
+  fineSig: string | null;
+  width: number | null;
+  height: number | null;
+};
 
-/** The stored hash, or one computed now and saved (a file uploaded before migration 0060). */
+const ASSET_COLUMNS = {
+  id: assets.id,
+  storage: assets.storage,
+  url: assets.url,
+  r2Key: assets.r2Key,
+  dhash: assets.dhash,
+  fineSig: assets.fineSig,
+  width: assets.width,
+  height: assets.height,
+};
+
+/** Files one check may give a fine signature on the spot; the backfill does the rest, and a file without one cannot match. */
+const HASH_ON_THE_SPOT = 8;
+/** Recent artworks within dHash reach that get the second look, nearest first. */
+const RECENT_SECOND_LOOKS = 100;
+
+/** The stored hashes, or ones computed now and saved (a file uploaded before migration 0060 or 0061). */
 async function withHash(tx: Tx, row: AssetRow): Promise<AssetRow> {
-  if (row.dhash) return row;
+  if (row.dhash && row.fineSig) return row;
   const cols = await hashColumnsFor(row);
   if (!cols.dhash) return row;
   await tx.update(assets).set(cols).where(eq(assets.id, row.id));
   return { ...row, ...cols };
 }
 
-export async function loadAssets(tx: Tx, ids: string[]): Promise<AssetRow[]> {
+/** Rows as stored, nothing computed. */
+async function storedRows(tx: Tx, ids: string[]): Promise<AssetRow[]> {
   if (!ids.length) return [];
-  const rows = await tx
-    .select({ id: assets.id, storage: assets.storage, url: assets.url, r2Key: assets.r2Key, dhash: assets.dhash, width: assets.width, height: assets.height })
+  return tx
+    .select(ASSET_COLUMNS)
     .from(assets)
     .where(and(inArray(assets.id, ids), isNull(assets.deletedAt)));
-  return Promise.all(rows.map((r) => withHash(tx, r)));
+}
+
+/** Rows with both looks, computing (and saving) whatever is missing. */
+export async function loadAssets(tx: Tx, ids: string[]): Promise<AssetRow[]> {
+  return Promise.all((await storedRows(tx, ids)).map((r) => withHash(tx, r)));
+}
+
+/** Rows with a dHash, hashing the ones stored before migration 0060. */
+async function withDhash(tx: Tx, rows: AssetRow[]): Promise<AssetRow[]> {
+  return Promise.all(rows.map((r) => (r.dhash ? r : withHash(tx, r))));
+}
+
+/**
+ * The candidates within dHash reach of the target, nearest first, ready for the
+ * second look: one with no fine signature yet gets it now (and saved) while
+ * the per-check budget lasts; past the budget it simply cannot match.
+ */
+async function inReach(tx: Tx, target: AssetRow, rows: AssetRow[], budget: { left: number }): Promise<AssetRow[]> {
+  if (!target.dhash || !target.fineSig) return [];
+  const near = rows
+    .map((r) => ({ r, d: hamming(target.dhash, r.dhash) }))
+    .filter((x) => x.d <= SAME_PICTURE_DISTANCE)
+    .sort((a, b) => a.d - b.d)
+    .map((x) => x.r);
+  return Promise.all(
+    near.map((r) => {
+      if (r.fineSig || budget.left <= 0) return r;
+      budget.left--;
+      return withHash(tx, r);
+    }),
+  );
 }
 
 /** The whole check inside a transaction that can see every order of the business (system context). */
@@ -193,19 +266,37 @@ export async function checkWrongFileTx(tx: Tx, orderId: string, assetId: string)
     .where(eq(orders.id, orderId))
     .limit(1);
   if (!order) return { blocked: false, reasons: [] };
+  const budget = { left: HASH_ON_THE_SPOT };
 
-  const refRows = await tx
-    .select({ id: assets.id, storage: assets.storage, url: assets.url, r2Key: assets.r2Key, dhash: assets.dhash, width: assets.width, height: assets.height })
-    .from(assets)
-    .where(and(eq(assets.orderId, orderId), eq(assets.type, "reference"), isNull(assets.deletedAt)))
-    .limit(30);
-  const references = (await Promise.all(refRows.map((r) => withHash(tx, r)))).map((r) => ({ assetId: r.id, dhash: r.dhash }));
-
+  // The buyer's other orders first: the incident road, so they get the budget first.
   const ctx = await loadSameBuyerContext(tx, orderId, { artwork: true });
   const sibIds = (ctx?.others ?? []).map((o) => o.artworkAssetId).filter((v): v is string => !!v);
   const sibNumbers = new Map((ctx?.others ?? []).filter((o) => o.artworkAssetId).map((o) => [o.artworkAssetId as string, o.number]));
-  const siblings = (await loadAssets(tx, sibIds)).map((r) => ({ assetId: r.id, dhash: r.dhash, orderNumber: sibNumbers.get(r.id) }));
+  const siblings = (await inReach(tx, target, await withDhash(tx, await storedRows(tx, sibIds)), budget)).map((r) => ({
+    assetId: r.id,
+    dhash: r.dhash,
+    fineSig: r.fineSig,
+    orderNumber: sibNumbers.get(r.id),
+  }));
 
+  // Only photos the customer sent (uploaded_by null: the upload link or an importer).
+  const refRows = await tx
+    .select({ ...ASSET_COLUMNS, uploadedBy: assets.uploadedBy })
+    .from(assets)
+    .where(and(eq(assets.orderId, orderId), eq(assets.type, "reference"), isNull(assets.deletedAt)))
+    .limit(30);
+  const customerRefs = await withDhash(
+    tx,
+    refRows.filter((r) => r.uploadedBy === null),
+  );
+  const references = (await inReach(tx, target, customerRefs, budget)).map((r) => ({
+    assetId: r.id,
+    dhash: r.dhash,
+    fineSig: r.fineSig,
+    fromCustomer: true,
+  }));
+
+  // Recent artwork: scan the dHashes, then the second look for the nearest.
   const since = new Date(Date.now() - RECENT_ART_DAYS * 24 * 3600 * 1000);
   const recentRows = await tx
     .select({
@@ -228,7 +319,21 @@ export async function checkWrongFileTx(tx: Tx, orderId: string, assetId: string)
     )
     .orderBy(desc(assets.createdAt))
     .limit(20000);
-  const recent = recentRows.map((r) => ({ assetId: r.id, dhash: r.dhash, orderNumber: orderNumberOf(r) }));
+  const nearIds = target.fineSig
+    ? recentRows
+        .map((r) => ({ id: r.id, d: hamming(target.dhash, r.dhash) }))
+        .filter((x) => x.d <= SAME_PICTURE_DISTANCE)
+        .sort((a, b) => a.d - b.d)
+        .slice(0, RECENT_SECOND_LOOKS)
+        .map((x) => x.id)
+    : [];
+  const recentNumbers = new Map(recentRows.map((r) => [r.id, orderNumberOf(r)]));
+  const recent = (await inReach(tx, target, await storedRows(tx, nearIds), budget)).map((r) => ({
+    assetId: r.id,
+    dhash: r.dhash,
+    fineSig: r.fineSig,
+    orderNumber: recentNumbers.get(r.id),
+  }));
 
   const lineRows = await tx
     .select({
@@ -245,7 +350,7 @@ export async function checkWrongFileTx(tx: Tx, orderId: string, assetId: string)
     .limit(60);
 
   return evaluateWrongFile({
-    target: { assetId: target.id, dhash: target.dhash, width: target.width, height: target.height },
+    target: { assetId: target.id, dhash: target.dhash, fineSig: target.fineSig, width: target.width, height: target.height },
     references,
     siblings,
     recent,
@@ -324,7 +429,15 @@ export async function wrongFileGate(
         reason,
         via: input.via,
         kinds: [...new Set(reasons.map((r) => r.kind))],
-        matches: reasons.map((r) => ({ kind: r.kind, assetId: r.assetId, matchAssetId: r.matchAssetId, matchOrderNumber: r.matchOrderNumber, distance: r.distance, note: r.note })),
+        matches: reasons.map((r) => ({
+          kind: r.kind,
+          assetId: r.assetId,
+          matchAssetId: r.matchAssetId,
+          matchOrderNumber: r.matchOrderNumber,
+          distance: r.distance,
+          inkDiff: r.inkDiff,
+          note: r.note,
+        })),
       },
     });
     return null;

@@ -2,13 +2,13 @@ import { imageHashOf, type ImageHash } from "@/lib/qc/image-hash";
 import { readStoredObject } from "@/lib/uploads/store";
 
 /** The columns a new assets row gets for the wrong-file stop; all null when the file cannot be hashed. */
-export type HashColumns = { dhash: string | null; width: number | null; height: number | null };
+export type HashColumns = { dhash: string | null; width: number | null; height: number | null; fineSig: string | null };
 
-const NONE: HashColumns = { dhash: null, width: null, height: null };
+const NONE: HashColumns = { dhash: null, width: null, height: null, fineSig: null };
 const MAX_BYTES = 30 * 1024 * 1024;
 
 function columns(h: ImageHash | null): HashColumns {
-  return h ? { dhash: h.dhash, width: h.width, height: h.height } : NONE;
+  return h ? { dhash: h.dhash, width: h.width, height: h.height, fineSig: h.fineSig } : NONE;
 }
 
 /** Bytes of an uploaded or linked file, or null when it cannot be read in time. */

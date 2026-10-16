@@ -428,6 +428,13 @@
       "when": 1791960000000,
       "tag": "0060_wrong_file_stop",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1791970000000,
+      "tag": "0061_wrong_file_fine_sig",
+      "breakpoints": true
     }
   ]
 }

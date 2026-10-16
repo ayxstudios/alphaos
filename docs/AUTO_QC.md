@@ -187,13 +187,15 @@ first." Applies to new orders and revisions (missed touchups) alike.
 
 ## Wrong-file stop (incident 16 Oct 2026)
 
-PixArt PC32132 (Saiya alone, portrait) was delivered the PC32131 Parker + Saiya landscape file: the designer put one order's artwork on the buyer's other order. Code: `lib/qc/wrong-file.ts`, hashing in `lib/qc/image-hash.ts` and `lib/qc/asset-hash.ts`, migration 0060.
+PixArt PC32132 (Saiya alone, portrait) was delivered the PC32131 Parker + Saiya landscape file: the designer put one order's artwork on the buyer's other order. Code: `lib/qc/wrong-file.ts`, hashing in `lib/qc/image-hash.ts` and `lib/qc/asset-hash.ts`, migrations 0060 and 0061.
 
-**Hashing.** Every new upload (designer submission, customer reference, order creation, AI Studio, AI fix) gets a 64-bit dHash (9x8 greyscale) plus width and height in `assets.dhash/width/height`. Two files at most 10 bits apart are the same picture. Anything that is not a decodable image (PDF, HEIC where sharp has no decoder, corrupt, too big, fetch failed) gets no hash and is never matched and never blocks. A file with no hash yet (uploaded before 0060) is hashed lazily the first time it is compared.
+**Hashing.** Every new upload (designer submission, customer reference, order creation, AI Studio, AI fix) gets a 64-bit dHash (9x8 greyscale), a fine signature (64x80 greyscale, `g64x80:` + base64, migration 0061) plus width and height in `assets.dhash/fine_sig/width/height`. Anything that is not a decodable image (PDF, HEIC where sharp has no decoder, corrupt, too big, fetch failed) gets no hash and is never matched and never blocks. A file with no hash yet (uploaded before 0060) is hashed lazily the first time it is compared.
 
-**What blocks** (`checkWrongFile(orderId, assetId)` returns `{ blocked, reasons: [{ kind, note, matchAssetId?, matchOrderNumber?, distance? }] }`):
+**Same picture = two looks agree** (`samePicture` in `lib/qc/image-hash.ts`, since 16 Oct): the dHashes at most 10 bits apart AND an ink difference of at most 0.2. The ink difference is the share of inked pixels (more than 20 grey levels off each file's own paper colour, the median of its 2-pixel border) whose ink differs by more than 32 levels. Why: on a shared paper texture the 9x8 dHash is mostly paper, and on 16 Oct it tied about 28% of real uploads (designer Jerome's CPS watercolours, refused as "artwork on order 4196318663 / #CPS10287") to some other order's art. Measured on production files: copies, resizes, JPEG and PNG re-exports 0.000, a 1% crop 0.06 to 0.15, a changed name band 0.12; 364 different pictures the dHash called the same 0.35 to 0.94 (Jerome's 0.80 to 0.83). A missing fine signature is no match (fail-open). One check gives at most 8 files a fine signature on the spot (and saves it): the buyer's other orders first, then the customer photos, then the 100 nearest recent artworks; the backfill does the rest.
 
-- `reference`: the file matches one of this order's own customer photos.
+**What blocks** (`checkWrongFile(orderId, assetId)` returns `{ blocked, reasons: [{ kind, note, matchAssetId?, matchOrderNumber?, distance?, inkDiff? }] }`):
+
+- `reference`: the file matches one of this order's own customer photos. Only references the customer sent count (`uploaded_by` null: the upload link or an importer). A reference staff attached is often the last proof, given to the designer for a revision that rightly looks like it, so it is never compared.
 - `other_order`: the file matches the newest artwork of one of the buyer's other orders.
 - `recent_art`: the file matches any artwork in the business hashed in the last 30 days on a different order.
 - `auto_qc`: the newest Auto QC row for the file carries `wrongFile` (below).
@@ -206,15 +208,15 @@ PixArt PC32132 (Saiya alone, portrait) was delivered the PC32131 Parker + Saiya 
 
 **Auto QC `wrongFile`.** `POST /api/agent-qc/result` accepts an optional top-level `wrongFile: { kind: reference|other_order|subject_count|orientation|product, note } | null`, stored in `auto_qc_checks.wrong_file`. The badge on /approve and /qc leads with a red "Wrong file: <note>", and Approve is refused while the newest check for that file carries it, unless staff give the override reason. Other unknown values are still rejected.
 
-**Judge helper.** `GET /api/agent-qc/siblings?orderId=<uuid>` (bearer `AGENT_JOBS_TOKEN`) returns `{ orderId, siblings: [{ orderNumber, productLine, stage, newestArtwork: { assetId, url, dhash, width, height } | null }] }`. `url` is a signed link valid 10 minutes. No buyer email, surname or address. The judge should fetch it and report `wrongFile` when the file is another order's.
+**Judge helper.** `GET /api/agent-qc/siblings?orderId=<uuid>` (bearer `AGENT_JOBS_TOKEN`) returns `{ orderId, siblings: [{ orderNumber, productLine, stage, newestArtwork: { assetId, url, dhash, fineSig, width, height } | null }] }`. `url` is a signed link valid 10 minutes. No buyer email, surname or address. The judge should fetch it and report `wrongFile` when the file is another order's.
 
-**Backfill (run once after 0060 is applied; not run by the code):**
+**Backfill (run once after 0060, and again after 0061, is applied; not run by the code):**
 
 ```
 BACKFILL_DB_URL=<owner connection string> npx tsx scripts/backfill-asset-hashes.ts --dry-run
 BACKFILL_DB_URL=<owner connection string> npx tsx scripts/backfill-asset-hashes.ts            # last 60 days
 ```
 
-Flags: `--days N` (default 60), `--limit N` (default 5000). It needs the R2 env and hashes newest first.
+Flags: `--days N` (default 60), `--limit N` (default 5000), `--concurrency N` (default 6). It needs the R2 env and hashes newest first; a row missing either the dHash or the fine signature is redone.
 
 **Fail-open.** A failed lookup in `checkWrongFile` is logged and reads as "not blocked": it must never stop real work.

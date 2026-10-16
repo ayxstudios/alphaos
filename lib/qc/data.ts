@@ -28,6 +28,8 @@ import type { ProductOption } from "@/lib/db/schema";
 export type QcImage = {
   id: string;
   url: string | null;
+  /** References only: true when the customer sent it (upload link or importer), false when staff attached it. */
+  fromCustomer?: boolean;
 };
 
 export type QcVersion = {
@@ -219,7 +221,7 @@ export async function getQcContext(
 
     // Reference photos (left pane).
     const references = await tx
-      .select({ id: assets.id, url: assets.url, storage: assets.storage, r2Key: assets.r2Key })
+      .select({ id: assets.id, url: assets.url, storage: assets.storage, r2Key: assets.r2Key, uploadedBy: assets.uploadedBy })
       .from(assets)
       .where(and(eq(assets.orderId, orderId), eq(assets.type, "reference"), sql`${assets.deletedAt} is null`))
       .orderBy(asc(assets.createdAt));
@@ -244,7 +246,7 @@ export async function getQcContext(
       .orderBy(asc(assets.createdAt), asc(assets.id));
 
     const resolvedReferences = await Promise.all(
-      references.map(async (r) => ({ id: r.id, url: await resolveAssetUrl(r) })),
+      references.map(async (r) => ({ id: r.id, url: await resolveAssetUrl(r), fromCustomer: r.uploadedBy === null })),
     );
     const portraits = await getOrderPortraits(tx, orderId);
     const portraitNo = new Map(portraits.map((p) => [p.key, p.n]));

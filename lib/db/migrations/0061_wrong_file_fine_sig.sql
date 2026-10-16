@@ -1,0 +1,13 @@
+-- Wrong-file stop, second look (16 Oct 2026: designer Jerome's CPS watercolours
+-- were refused as "artwork on order ..." they had nothing to do with). The dHash
+-- alone matched about 28% of real uploads to some other order's art: on a shared
+-- paper texture the 9x8 thumbnail is mostly paper. A dHash match now has to be
+-- confirmed on the drawing itself before anything is refused.
+--
+--   assets.fine_sig   64x80 greyscale thumbnail as "g64x80:" + base64
+--                     (lib/qc/image-hash.ts inkDifference); NULL = not computed
+--                     yet (scripts/backfill-asset-hashes.ts), and a file without
+--                     one is never matched
+-- Add-only, nullable and idempotent: code from before this migration keeps
+-- working while a deploy rolls out. No new table, so no new grants or policies.
+ALTER TABLE "assets" ADD COLUMN IF NOT EXISTS "fine_sig" text;

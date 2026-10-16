@@ -783,6 +783,9 @@ export const assets = pgTable(
     dhash: text("dhash"),
     width: integer("width"),
     height: integer("height"),
+    // Second look (migration 0061): 64x80 greyscale thumbnail, "g64x80:" + base64,
+    // that confirms a dHash match on the drawing itself; NULL = not computed yet.
+    fineSig: text("fine_sig"),
     createdAt: createdAt(),
   },
   (t) => [

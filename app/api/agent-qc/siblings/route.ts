@@ -16,8 +16,8 @@ const SIGNED_URL_SECONDS = 600;
  * The buyer's other orders and the newest artwork on each, so the Auto QC
  * judge can see whether the file under review is really another order's. Each
  * sibling: { orderNumber, productLine, stage, newestArtwork: { assetId, url
- * (signed, ten minutes), dhash, width, height } | null }. No buyer email,
- * surname or address. See docs/AUTO_QC.md, Wrong-file stop.
+ * (signed, ten minutes), dhash, fineSig, width, height } | null }. No buyer
+ * email, surname or address. See docs/AUTO_QC.md, Wrong-file stop.
  */
 export async function GET(req: NextRequest) {
   const denied = rejectUnlessAgent(req);
@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
         orderNumber: o.number,
         productLine: o.productLine,
         stage: o.stage,
-        newestArtwork: f ? { assetId: f.id, url, dhash: f.dhash, width: f.width, height: f.height } : null,
+        newestArtwork: f ? { assetId: f.id, url, dhash: f.dhash, fineSig: f.fineSig, width: f.width, height: f.height } : null,
       };
     }),
   );
