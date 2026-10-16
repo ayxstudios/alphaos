@@ -148,6 +148,6 @@ Branch task/designer-pay-2026-10-16, worktree alphaos-wt-designer-pay.
 - [x] orders.order_total + order_currency (migration 0062): Etsy rows backfilled from raw_import grandtotal; Shopify import + webhook read totalPriceSet.shopMoney; a reconciled manual order gets its total filled, never overwritten; unknown total never passes a gate
 - [x] earnings pay max(style rate, designer_profiles.per_figure_rate floor); a floor never prices an unpriced style
 - [x] tests: test:style-quota (day walk: big order to Mar, small ones wahyu x6, febri x2, then mar; rescue not counted), test:limbo (pooled + gated groups), test:earnings (floor cases); full ci-local = the same 8 known failures as base d6b3499 (6 demo-db suites, email-dedupe demo, security pre-send sign-off)
-- [ ] land under integrate:alphaos, prod CLI deploy, migration 0062 verified
+- [x] landed 16 Oct 19:41 AEDT under integrate:alphaos: main 60fd2a3, prod CLI deploy dpl_2oVt13sX3hdpb2YkreFLW5pJyoJU aliased to alphaos-kappa (migration 0062 recorded; 2319/2319 Etsy orders have a total, 7 over AUD 300; Shopify rows wait for the agent backfill)
 - [ ] prod data: style rates, Jerome floor 1.50, Wahyu/Febri/Mar groups (snapshots in ai-employee-agent var/alphaos-roster/), open Shopify order totals
 - [ ] agent: scripts/designer-invoice.mjs (weekly invoice per designer)
