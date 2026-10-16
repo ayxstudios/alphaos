@@ -37,6 +37,7 @@ import {
   businesses,
   customers,
   designerBusinesses,
+  designerProfiles,
   exceptions,
   messages,
   orderItems,
@@ -310,6 +311,52 @@ async function main() {
     check("re-queued job claimable", (await state(fo)).ai === "claimed");
     const dfo = await deliverJob(fo, { base64: PNG, contentType: "image/png", selfCheck: "Redrawn after reassign." });
     check("re-queued job delivers into VA QC", dfo.status === "awaiting_qc" && (await state(fo)).ai === "qc");
+
+    // 9a. With the assign switch on, a failed job goes straight to a person who
+    // draws the style, confirmed (their brief queued) before the AI card closes.
+    // Nicole Butterfield, CPS 4201282854 (2026-10-14): it sat on AI Studio for
+    // two days because the hand-over only ran when someone reassigned it.
+    const [was] = await q((tx) =>
+      tx
+        .select({ assign: businesses.agentAssignEnabled, styles: designerProfiles.styles })
+        .from(businesses)
+        .innerJoin(designerProfiles, eq(designerProfiles.userId, human.id))
+        .where(eq(businesses.id, businessId)),
+    );
+    await q(async (tx) => {
+      await tx.update(businesses).set({ agentAssignEnabled: true }).where(eq(businesses.id, businessId));
+      await tx.update(designerProfiles).set({ styles: [...(was.styles ?? []), STYLE] }).where(eq(designerProfiles.userId, human.id));
+    });
+    try {
+      const ho = await newOrder("handover", STYLE);
+      await q((tx) => runAutoAssign(tx, { orderId: ho, businessId, assignedBy: null }));
+      await claimJob(ho);
+      const fh = await failJob(ho, "Photo too dark to draw");
+      const sth = await state(ho);
+      const [holder] = await q((tx) =>
+        tx.select({ designerId: assignments.designerId }).from(assignments).where(and(eq(assignments.orderId, ho), eq(assignments.active, true))),
+      );
+      check(
+        "assign on: a failed job goes straight to a person",
+        !!fh.handedTo && holder?.designerId === human.id && sth.ai === null && sth.s === "in_design",
+        JSON.stringify({ handedTo: fh.handedTo, sth }),
+      );
+      const [hex] = await q((tx) => tx.select({ status: exceptions.status, note: exceptions.resolutionNote }).from(exceptions).where(eq(exceptions.id, fh.exceptionId)));
+      check("assign on: the AI card closes as given to that person", hex?.status === "resolved" && hex.note === `auto: given to ${fh.handedTo}`, JSON.stringify(hex));
+      const handLog = (await act(ho, "agent.ai_failed_handed_over"))[0];
+      check(
+        "assign on: the hand-over is logged as confirmed, with the AI's reason",
+        (handLog?.metadata as { confirmed?: boolean; reason?: string })?.confirmed === true &&
+          (handLog?.metadata as { reason?: string }).reason === "Photo too dark to draw" &&
+          handLog.actorId === null,
+        JSON.stringify(handLog?.metadata),
+      );
+    } finally {
+      await q(async (tx) => {
+        await tx.update(businesses).set({ agentAssignEnabled: was.assign }).where(eq(businesses.id, businessId));
+        await tx.update(designerProfiles).set({ styles: was.styles }).where(eq(designerProfiles.userId, human.id));
+      });
+    }
 
     // 9b. A 2+ portrait order (one line bought twice) never goes to the AI: it
     // draws one portrait per job. An order that became 2 portraits while the AI

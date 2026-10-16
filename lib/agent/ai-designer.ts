@@ -307,7 +307,7 @@ export type DeliverInput = {
 export async function deliverJob(
   orderId: string,
   input: DeliverInput,
-): Promise<{ status: OrderStatus; assetId: string; portraitsLeft?: number }> {
+): Promise<{ status: OrderStatus; assetId: string; portraitsLeft?: number; handedTo?: string | null }> {
   const selfCheck = input.selfCheck?.trim();
   if (!selfCheck) throw new AiJobError(400, "self_check_required", "selfCheck is required: say what you checked against the photos and the brief.");
   const url = input.url?.trim() || null;
@@ -337,7 +337,7 @@ export async function deliverJob(
     }
   }
 
-  return withSystemContext(async (tx) => {
+  const out: { status: OrderStatus; assetId: string; portraitsLeft?: number } = await withSystemContext(async (tx) => {
     const o = await loadHeldOrder(tx, orderId);
     if ((o.aiState !== "claimed" && o.aiState !== "revision_claimed") || o.status !== "in_design") {
       throw new AiJobError(409, "not_claimed", `Claim the job first (state ${o.aiState ?? "none"}, order ${o.status}).`);
@@ -419,12 +419,37 @@ export async function deliverJob(
     });
     return { status, assetId: asset.id };
   });
+  // A 2+ portrait order: the portraits still missing go to a person now.
+  if (out.portraitsLeft) return { ...out, handedTo: await handOverAfterAiFailure(orderId) };
+  return out;
 }
 
-export async function failJob(orderId: string, reason: string | null | undefined): Promise<{ exceptionId: string }> {
+/**
+ * After the AI gives up, the order goes straight to a person (./limbo.ts
+ * handFailedAiOrder, assign switch on). Before 2026-10-16 it stayed on AI
+ * Studio until someone reassigned it by hand, and Nicole Butterfield's order
+ * (CPS 4201282854) sat there for two days. Never throws: the AI's own result
+ * is already saved, and the tick's no-limbo pass retries every minute.
+ * Returns the person's name, or null when it stayed.
+ */
+async function handOverAfterAiFailure(orderId: string): Promise<string | null> {
+  try {
+    const { handFailedAiOrder } = await import("./limbo");
+    const out = await handFailedAiOrder(orderId);
+    return out?.handed ? (out.name ?? "a designer") : null;
+  } catch (e) {
+    console.error(`[ai-designer] hand-over after AI failure on ${orderId} failed:`, e);
+    return null;
+  }
+}
+
+export async function failJob(
+  orderId: string,
+  reason: string | null | undefined,
+): Promise<{ exceptionId: string; handedTo: string | null }> {
   const why = reason?.trim();
   if (!why) throw new AiJobError(400, "reason_required", "reason is required.");
-  return withSystemContext(async (tx) => {
+  const out = await withSystemContext(async (tx) => {
     const o = await loadHeldOrder(tx, orderId);
     if (o.aiState === "qc" || o.aiState === "owner_review" || o.aiState === "with_buyer") {
       throw new AiJobError(409, "not_failable", `Job already delivered (state ${o.aiState}).`);
@@ -440,7 +465,7 @@ export async function failJob(orderId: string, reason: string | null | undefined
       summary: `The AI designer could not finish order ${number}: ${why.slice(0, 200)}`,
       detail: { reason: why, aiState: o.aiState, orderStatus: o.status },
     });
-    // failed = out of the jobs queue but still held by the agent, so a person can reassign it.
+    // failed = out of the jobs queue; the hand-over below gives it to a person.
     await tx.update(orders).set({ aiState: "failed", aiClaimedAt: null }).where(eq(orders.id, orderId));
     await tx.insert(activityLog).values({
       businessId: o.businessId,
@@ -451,6 +476,7 @@ export async function failJob(orderId: string, reason: string | null | undefined
     });
     return { exceptionId: ex.id };
   });
+  return { ...out, handedTo: await handOverAfterAiFailure(orderId) };
 }
 
 /* ------------------------------------------------------- owner approval */
@@ -642,8 +668,14 @@ export type ReassignResult = { ok: true; changed: boolean } | { ok: false; code:
  * The one reassignment path, for any order including AI-queued ones. Moving an
  * order away from the agent removes it from the jobs queue (ai_state cleared,
  * assignment deactivated); moving it to the agent queues it as a job.
+ * `dueAtHours` sets the new designer's deadline (default: the business SLA).
  */
-export async function reassignOrder(orderId: string, designerId: string, byUserId: string | null): Promise<ReassignResult> {
+export async function reassignOrder(
+  orderId: string,
+  designerId: string,
+  byUserId: string | null,
+  opts: { dueAtHours?: number } = {},
+): Promise<ReassignResult> {
   return withSystemContext(async (tx) => {
     const [o] = await tx
       .select({ id: orders.id, businessId: orders.businessId, status: orders.status, aiState: orders.aiState })
@@ -687,6 +719,7 @@ export async function reassignOrder(orderId: string, designerId: string, byUserI
       businessId: o.businessId,
       designerId,
       assignedBy: byUserId,
+      dueAtHours: opts.dueAtHours,
       reason: wasAgent ? "Reassigned from the AI designer." : null,
     });
     await tx.insert(activityLog).values({

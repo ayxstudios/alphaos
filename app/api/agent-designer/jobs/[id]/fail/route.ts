@@ -12,7 +12,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const body = (await req.json().catch(() => null)) as { reason?: unknown } | null;
   try {
     const res = await failJob(id, typeof body?.reason === "string" ? body.reason : null);
-    return NextResponse.json({ ok: true, exceptionId: res.exceptionId });
+    // handedTo: the person the order went to straight away (null = it stayed, the owner hears).
+    return NextResponse.json({ ok: true, exceptionId: res.exceptionId, handedTo: res.handedTo });
   } catch (e) {
     return jobError(e);
   }

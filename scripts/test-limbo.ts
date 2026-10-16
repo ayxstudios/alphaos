@@ -16,10 +16,12 @@ import {
   autoCloseStaleExceptions,
   getLimboCensus,
   handFailedAiToDesigners,
+  handoverDueHours,
   isReactionOnly,
   ownerOf,
   pickOverflowDesigner,
   staleReason,
+  stuckWords,
   styleQuotaLimit,
   styleSimilarity,
   watchWaitingStates,
@@ -121,6 +123,27 @@ function pureTests() {
     "L1 AI failed: a person has it",
     staleReason(facts({ kind: "ai_designer_failed", status: "in_design", activeAssignment: true, activeIsAgent: false })) === "a designer has it",
   );
+  // Nicole Butterfield, CPS 4201282854 (2026-10-14): AI Studio holding an order
+  // it gave up on is nobody, so her photo-count card must not close.
+  const aiHold = { status: "in_design", activeAssignment: true, activeIsAgent: true, aiFailedHold: true };
+  check("L1 photos: an AI hold the AI gave up on stays open", staleReason(facts({ kind: "photo_count_mismatch", ...aiHold })) === null);
+  check("L1 no designer: an AI hold the AI gave up on stays open", staleReason(facts({ kind: "no_eligible_designer", ...aiHold })) === null);
+  check("L1 add-on: an AI hold the AI gave up on stays open", staleReason(facts({ kind: "addon_only", ...aiHold })) === null);
+  check(
+    "L1 photos: AI Studio still drawing it is a designer",
+    staleReason(facts({ kind: "photo_count_mismatch", status: "in_design", activeAssignment: true, activeIsAgent: true })) ===
+      "went to a designer with the photos it had",
+  );
+
+  const due = { slaHours: 24, urgentHours: 3 };
+  check("handover hours: the SLA when the buyer's date is far", handoverDueHours({ ...due, orderDueAt: new Date(now.getTime() + 100 * HOUR) }, now) === 24);
+  check("handover hours: never past the buyer's date", handoverDueHours({ ...due, orderDueAt: new Date(now.getTime() + 10 * HOUR) }, now) === 10);
+  check("handover hours: already due = the urgent SLA", handoverDueHours({ ...due, orderDueAt: ago(5) }, now) === 3);
+  check("handover hours: no buyer date = the SLA", handoverDueHours({ ...due, orderDueAt: null }, now) === 24);
+  check(
+    "handover hours: overflow adds a day per full day of queue",
+    handoverDueHours({ ...due, orderDueAt: null, overflowQueue: 7, dailyCapacity: 3 }, now) === 72,
+  );
 
   check("reaction: Gmail emoji reaction", isReactionOnly(reaction));
   check("reaction: Outlook wording", isReactionOnly("Sam reacted to your message"));
@@ -135,6 +158,7 @@ function pureTests() {
     inScope: true,
     enteredAt: ago(5),
     activeAssignment: false,
+    aiFailedHold: false,
     hasContact: true,
     lastChaseAt: null,
     parentLive: false,
@@ -168,6 +192,17 @@ function pureTests() {
   check("owner: orphan add-on after a day = limbo", bucket({ status: "fulfillment_only", enteredAt: ago(30) }).bucket === "limbo");
   check("owner: its own stuck row is ignored when judging it", bucket({ openKinds: ["stuck_order"] }, { ignoreStuck: true }).bucket === "limbo");
   check("owner: held for a check = limbo", bucket({ needsReview: true }).bucket === "limbo");
+  const aiGaveUp = bucket({ status: "in_design", activeAssignment: true, aiFailedHold: true, enteredAt: ago(30) });
+  check("owner: AI Studio holding an order it gave up on = limbo, not a designer", aiGaveUp.bucket === "limbo" && aiGaveUp.reason === "no_designer", JSON.stringify(aiGaveUp));
+  check(
+    "owner: the same with its AI-failed card open = with the owner",
+    bucket({ status: "in_design", activeAssignment: true, aiFailedHold: true, openKinds: ["ai_designer_failed"] }).bucket === "owner",
+  );
+  check(
+    "stuck words: an AI hold says the AI could not draw it",
+    stuckWords("no_designer", { status: "in_design", lastChaseAt: null, hasContact: true, style: "Watercolor Pets", aiFailedHold: true }, null, now).summary ===
+      "the AI designer could not draw it and no person has it",
+  );
 
   const mail = (from: string, subject: string, excerpt: string) => classifyUnmatchedMail({ from, subject, excerpt });
   const pitch = mail("Growth Team <hello@scalefast.io>", "Partnership proposal for your store", "Hi there, we have an affiliate offer that can grow your sales.");
@@ -571,24 +606,82 @@ async function dbTests() {
 
   const o6 = await mkOrder({ status: "in_design", hoursAgo: 30, aiState: "failed" });
   await assign(o6.id, ids.ai);
+  // The buyer's date is 6 h away: the person gets 6 h, not the 24 h SLA.
+  await withSystemContext((tx) => tx.update(orders).set({ dueAt: new Date(now.getTime() + 6 * HOUR) }).where(eq(orders.id, o6.id)));
   const e7 = await mkException({ orderId: o6.id, kind: "ai_designer_failed", summary: `Order #${o6.number}: AI could not finish it`, detail: { reason: "photo download 404" }, hoursAgo: 5 });
   const o7 = await mkOrder({ status: "in_design", hoursAgo: 30, aiState: "failed", style: "Line Art", title: "Storybook Portrait" });
   await assign(o7.id, ids.ai);
   const e8 = await mkException({ orderId: o7.id, kind: "ai_designer_failed", summary: `Order #${o7.number}: AI could not finish it`, hoursAgo: 5 });
+  // Nicole Butterfield's shape (CPS 4201282854, 2026-10-14): the AI gave up, a
+  // person closed the AI card without moving the order, and the photo-count
+  // card was closed as "went to a designer". Nobody draws its style either.
+  const o9 = await mkOrder({ status: "in_design", hoursAgo: 30, aiState: "failed", style: "Charcoal Sketch", title: "Charcoal Portrait" });
+  await assign(o9.id, ids.ai);
+  const e9 = await mkException({ orderId: o9.id, kind: "ai_designer_failed", summary: `Order #${o9.number}: AI could not finish it`, detail: { reason: "too few photos" }, hoursAgo: 20 });
+  await withSystemContext((tx) => tx.update(exceptions).set({ status: "resolved", resolvedAt: ago(19), resolutionNote: "looked at it" }).where(eq(exceptions.id, e9)));
+  const limboBefore = await getLimboCensus(ids.biz, { now });
+  check(
+    "census: an AI hold with no card open is limbo, not with a designer",
+    limboBefore.limboOrders.some((o) => o.number === o9.number && o.why.startsWith("the AI designer gave up")),
+    JSON.stringify(limboBefore.limboOrders),
+  );
+  const e10 = await mkException({ orderId: o9.id, kind: "photo_count_mismatch", summary: `Order #${o9.number}: 2 pets, 1 photo`, hoursAgo: 20 });
+  const l1Again = await autoCloseStaleExceptions(ids.biz, { now });
+  check("L1 keeps the photo card on an order the AI gave up on", (await exceptionRow(e10)).status === "open" && !l1Again.ids.includes(e10), JSON.stringify(l1Again.byReason));
+
   const aiDry = await handFailedAiToDesigners(ids.biz, { now, dryRun: true });
-  check("AI handover dry run", aiDry.handed === 1 && aiDry.kept === 1 && (await activeDesigner(o6.id)) === ids.ai, JSON.stringify(aiDry));
+  check(
+    "AI handover dry run",
+    aiDry.handed === 1 && aiDry.kept === 2 && aiDry.reopened === 1 && (await activeDesigner(o6.id)) === ids.ai && !(await openOn(o9.id, "ai_designer_failed")),
+    JSON.stringify(aiDry),
+  );
   const ai = await handFailedAiToDesigners(ids.biz, { now });
-  check("AI handover result", ai.handed === 1 && ai.kept === 1 && ai.closedIds.join() === e7, JSON.stringify(ai));
+  check("AI handover result", ai.handed === 1 && ai.kept === 2 && ai.reopened === 1 && ai.closedIds.join() === e7, JSON.stringify(ai));
   const [o6Row] = await withSystemContext((tx) => tx.select({ aiState: orders.aiState }).from(orders).where(eq(orders.id, o6.id)));
-  check("AI handover: a person holds it, off the AI queue", (await activeDesigner(o6.id)) === ids.bea && o6Row?.aiState === null);
+  // The assigner's own ranking picks: Sol (rank 1, a free slot today) before Bea.
+  check("AI handover: the assigner's pick holds it, off the AI queue", (await activeDesigner(o6.id)) === ids.sol && o6Row?.aiState === null);
   const r7 = await exceptionRow(e7);
-  check("AI handover: its row closes", r7.status === "resolved" && r7.note === "auto: given to Bea", String(r7.note));
+  check("AI handover: its row closes", r7.status === "resolved" && r7.note === "auto: given to Sol", String(r7.note));
+  const [handLog] = await withSystemContext((tx) =>
+    tx
+      .select({ metadata: activityLog.metadata })
+      .from(activityLog)
+      .where(and(eq(activityLog.orderId, o6.id), eq(activityLog.action, "agent.ai_failed_handed_over"))),
+  );
+  const briefs = await withSystemContext((tx) =>
+    tx
+      .select({ id: alphaEvents.id })
+      .from(alphaEvents)
+      .where(and(eq(alphaEvents.orderId, o6.id), eq(alphaEvents.type, "designer.brief"), eq(alphaEvents.toUserId, ids.sol))),
+  );
+  const handMeta = (handLog?.metadata ?? {}) as { confirmed?: boolean; reason?: string; dueAtHours?: number };
+  check(
+    "AI handover: confirmed landed (Sol's brief queued), with the AI's reason",
+    handMeta.confirmed === true && handMeta.reason === "photo download 404" && briefs.length === 1,
+    JSON.stringify(handMeta),
+  );
+  const [o6Assignment] = await withSystemContext((tx) =>
+    tx.select({ dueAt: assignments.dueAt }).from(assignments).where(and(eq(assignments.orderId, o6.id), eq(assignments.active, true))),
+  );
+  const dueGap = Math.abs((o6Assignment?.dueAt?.getTime() ?? 0) - (now.getTime() + 6 * HOUR));
+  check("AI handover: the person's deadline never passes the buyer's date", dueGap < 10 * 60_000, `${Math.round(dueGap / 60_000)} min off`);
   const r8 = await exceptionRow(e8);
   check(
     "AI handover: nobody draws it = what to do instead",
     r8.status === "open" && String(r8.detail.recommendation).startsWith("Nobody draws Line Art."),
     String(r8.detail.recommendation),
   );
+  const reopened = await openOn(o9.id, "ai_designer_failed");
+  check(
+    "AI handover: a closed AI card on an order nobody has opens again, with what to do",
+    !!reopened && reopened.detail.reopened === true && reopened.detail.reason === "too few photos" && String(reopened.detail.recommendation).startsWith("Nobody draws Charcoal Sketch."),
+    JSON.stringify(reopened?.detail ?? null),
+  );
+  const aiAgain = await handFailedAiToDesigners(ids.biz, { now });
+  check("AI handover: a second pass opens nothing new", aiAgain.handed === 0 && aiAgain.kept === 2 && aiAgain.reopened === 0, JSON.stringify(aiAgain));
+
+  const o8 = await mkOrder({ status: "in_design", hoursAgo: 3 });
+  await assign(o8.id, ids.bea);
   await withSystemContext((tx) => tx.update(designerProfiles).set({ maxActiveOrders: 1 }).where(eq(designerProfiles.userId, ids.bea)));
   check("overflow: a designer at max work in flight is skipped", (await withSystemContext((tx) => pickOverflowDesigner(tx, ids.biz, STYLE))) === null);
   await withSystemContext((tx) => tx.update(designerProfiles).set({ maxActiveOrders: 0 }).where(eq(designerProfiles.userId, ids.bea)));

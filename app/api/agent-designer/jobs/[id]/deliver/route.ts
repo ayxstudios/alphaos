@@ -26,7 +26,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
       ok: true,
       orderStatus: res.status,
       assetId: res.assetId,
-      ...("portraitsLeft" in res && res.portraitsLeft ? { portraitsLeft: res.portraitsLeft } : {}),
+      ...("portraitsLeft" in res && res.portraitsLeft ? { portraitsLeft: res.portraitsLeft, handedTo: res.handedTo ?? null } : {}),
     });
   } catch (e) {
     return jobError(e);
