@@ -112,6 +112,14 @@ export function describeEvent(e: CardEvent, viewerRole?: "admin" | "va" | "desig
           ? `Auto QC'd: ${issues} issue${issues === 1 ? "" : "s"} found`
           : "Auto QC'd: couldn't judge";
     }
+    case "qc.overdue_urgent":
+    case "qc.backup_approver": {
+      // QC overdue (lib/agent/qc-overdue.ts, 2026-10-16) is between the owners,
+      // never shown to designers.
+      if (designer) return null;
+      const who = typeof e.metadata?.toName === "string" && e.metadata.toName ? e.metadata.toName : "the owners";
+      return e.action === "qc.overdue_urgent" ? `flagged QC as overdue: URGENT sent to ${who}` : `passed QC to ${who} as backup approver`;
+    }
     case "order.ready_to_assign":
       return "moved this to Ready to assign";
     case "order.in_design":

@@ -33,6 +33,17 @@ async function main() {
   const safe = getAgentConfig({ agentConfig: { agentFrom: "2026-09-30T14:00:00Z", maxAutoSendsPerHour: 5000, printDrafts: "yes" } });
   check("safety keys validated", safe.agentFrom === "2026-09-30T14:00:00Z" && safe.maxAutoSendsPerHour === 30 && safe.printDrafts === false);
   check("junk cutoff dropped", getAgentConfig({ agentConfig: { agentFrom: "soon" } }).agentFrom === null);
+  // Owner QC overdue (lib/agent/qc-overdue.ts, clean slating audit 2026-10-16).
+  check(
+    "owner QC defaults: URGENT at 12 h, backup 2 h later, backup = the other owner",
+    d.ownerQcSlaHours === 12 && d.ownerQcBackupAfterHours === 2 && d.qcBackupApproverUserId === null,
+  );
+  const qcKeys = getAgentConfig({ agentConfig: { ownerQcSlaHours: 6, ownerQcBackupAfterHours: 500, qcBackupApproverUserId: "  user-1 " } });
+  check(
+    "owner QC keys validated",
+    qcKeys.ownerQcSlaHours === 6 && qcKeys.ownerQcBackupAfterHours === 2 && qcKeys.qcBackupApproverUserId === "user-1",
+  );
+  check("owner QC junk dropped", getAgentConfig({ agentConfig: { ownerQcSlaHours: "soon", qcBackupApproverUserId: 7 } }).ownerQcSlaHours === 12);
   const sig = getAgentConfig({ agentConfig: { emailSignature: { text: "Shop | shop.co", html: "<b>Shop</b> | shop.co" } } }).emailSignature;
   check("signature kept when well formed", sig?.text === "Shop | shop.co" && d.emailSignature === null);
   check("junk signature dropped", getAgentConfig({ agentConfig: { emailSignature: { text: "x" } } }).emailSignature === null);

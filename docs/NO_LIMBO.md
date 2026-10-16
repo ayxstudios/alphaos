@@ -161,3 +161,38 @@ A row (existing exception refreshed, or a new `stuck_order`) for:
 `getLimboCensus()` per business: with a designer, waiting on the buyer,
 raised to Yousif, limbo (target 0), and the limbo order numbers. On the tick
 report and `scripts/limbo-census.ts` (read-only).
+
+## L7 Owner QC never waits unseen (lib/agent/qc-overdue.ts, 2026-10-16)
+
+Clean slating audit 2026-10-16: Ami Multani #CPS10282 and Audrea Sanchez
+4196536586 sat in `awaiting_qc` 61 h and 64 h, and #CPS10292 (an AI portrait
+held for the owner on /day) 62 h, with nobody told. /approve hid the first two
+(placed before CPS's to-do start), so `todoOrderScope` now always carries
+`awaiting_qc`: artwork handed in inside AlphaOS is this process's work.
+
+Every tick (`runQcOverduePass`, after the per-business steps, before the L5
+digest) watches each portrait waiting on an owner: `awaiting_qc`, or
+`awaiting_approval` with `ai_state = owner_review`. Not archived.
+
+- The wait starts at the latest real entry to `awaiting_qc` (a
+  `from_state` other than `awaiting_qc`, so a details edit is not a new wait),
+  or the latest `ai.owner_review_queued`.
+- `ownerQcSlaHours` (agent_config, default 12) after that: ONE URGENT to
+  `ownerUserId` (unset = every admin), on the L5 road: an `owner.question` Alpha
+  event with `payload.source = "qc_overdue"`. Stamp: `qc.overdue_urgent`.
+- `ownerQcBackupAfterHours` (default 2) after the URGENT, still unchecked: one
+  message to the backup approver. Stamp: `qc.backup_approver`.
+- Backup approver: `qcBackupApproverUserId` when it is an active admin other
+  than the owner; else the other owner, worked out from the last 30 days of QC
+  decisions (most on this business, then on any). Nobody with no QC history,
+  unless they are the one other admin. No owner set = no backup unless named.
+  Never an invented person.
+- Stamps count only for the current wait, so a portrait that goes back to
+  design and returns starts a new clock. An order someone has open on /approve
+  (fresh `qc_claims` row) is left to them. One message per person per hour;
+  each holds every due line ("*URGENT* N portraits waiting for your QC over
+  12 h", one dot line per order with its /approve or /day link).
+- Read only for the agent: `GET /api/agent-qc/overdue[?all=1][&businessId=]`
+  (bearer AGENT_JOBS_TOKEN): `{ now, count, items: [{ orderId, orderNumber,
+  shop, businessId, kind, enteredAt, hours, overdue, urgentSentAt,
+  backupSentAt, next, open, owner, backup, link }] }`.

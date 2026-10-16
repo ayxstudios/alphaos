@@ -40,6 +40,9 @@ export const AGENT_CONFIG_DEFAULTS: AgentConfig = {
   replySignOff: null,
   reviewAskEnabled: true,
   ownerUserId: null,
+  ownerQcSlaHours: 12,
+  ownerQcBackupAfterHours: 2,
+  qcBackupApproverUserId: null,
   designerSlaHours: 24,
   revisionSlaHours: 24,
   qcFailSlaHours: 12,
@@ -113,6 +116,10 @@ export function getAgentConfig(business: { agentConfig?: unknown } | null | unde
     replySignOff: typeof raw.replySignOff === "string" && raw.replySignOff.trim() && raw.replySignOff.length <= 200 ? raw.replySignOff : null,
     reviewAskEnabled: typeof raw.reviewAskEnabled === "boolean" ? raw.reviewAskEnabled : AGENT_CONFIG_DEFAULTS.reviewAskEnabled,
     ownerUserId: typeof raw.ownerUserId === "string" && raw.ownerUserId.trim() ? raw.ownerUserId.trim() : null,
+    ownerQcSlaHours: num(raw.ownerQcSlaHours, 1, 168, AGENT_CONFIG_DEFAULTS.ownerQcSlaHours),
+    ownerQcBackupAfterHours: num(raw.ownerQcBackupAfterHours, 0.5, 72, AGENT_CONFIG_DEFAULTS.ownerQcBackupAfterHours),
+    qcBackupApproverUserId:
+      typeof raw.qcBackupApproverUserId === "string" && raw.qcBackupApproverUserId.trim() ? raw.qcBackupApproverUserId.trim() : null,
   };
 }
 

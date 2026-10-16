@@ -96,4 +96,24 @@ export type AgentConfigInput = {
    * owner digest goes to this person only. Unset = every admin.
    */
   ownerUserId?: string | null;
+  /**
+   * Hours a portrait may wait for the owner's QC (/approve, or an AI portrait
+   * held for the owner on /day) before ONE URGENT goes to ownerUserId
+   * (lib/agent/qc-overdue.ts). Default 12, allowed 1-168. Ami Multani
+   * #CPS10282 and Audrea Sanchez 4196536586 waited 61 h and 64 h unseen
+   * (clean slating audit, 2026-10-16).
+   */
+  ownerQcSlaHours?: number;
+  /**
+   * Hours after that URGENT before a portrait still unchecked goes to the
+   * backup approver. Default 2, allowed 0.5-72.
+   */
+  ownerQcBackupAfterHours?: number;
+  /**
+   * Who checks an overdue portrait when the owner has not (an active admin).
+   * Unset (or not an active admin) = the other owner: the active admin, not
+   * ownerUserId, who QCs this business most (then any business). Nobody with
+   * no QC history is picked unless they are the only other admin.
+   */
+  qcBackupApproverUserId?: string | null;
 };

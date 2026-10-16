@@ -66,6 +66,7 @@ import {
 } from "./limbo";
 import { clearUnmatchedReplies, type ClearMailResult } from "./junk-mail";
 import { sendOwnerDigest, type OwnerDigestResult } from "./owner-digest";
+import { runQcOverduePass, type QcOverdueResult } from "./qc-overdue";
 
 /** How long a customer has to answer the shortfall email before a human is asked. */
 export const PHOTO_SHORTFALL_GRACE_HOURS = 72;
@@ -166,6 +167,9 @@ export type AgentTickReport = {
   /** True when the time budget ran out before every order was looked at. */
   truncated: boolean;
   businesses: AgentBusinessReport[];
+  /** Portraits waiting too long for the owner's QC: one URGENT, then the backup approver (./qc-overdue.ts). */
+  qcOverdue?: QcOverdueResult;
+  qcOverdueError?: string;
   /** The one owner message this tick (docs/NO_LIMBO.md L5). */
   digest?: OwnerDigestResult;
   digestError?: string;
@@ -293,6 +297,18 @@ export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTi
     if (!outOfTime()) await noLimboStep(ctx, biz.id, biz.assign);
   }
 
+  // Portraits waiting on an owner's QC past ownerQcSlaHours: one URGENT, then
+  // the backup approver (clean slating audit 2026-10-16: Ami Multani #CPS10282
+  // and Audrea Sanchez 4196536586 waited 61 h and 64 h unseen). Cheap, so it
+  // runs even when the order budget ran out, like the digest below.
+  let qcOverdue: QcOverdueResult | undefined;
+  let qcOverdueError: string | undefined;
+  try {
+    qcOverdue = await runQcOverduePass({ now: opts.now ?? new Date(), dryRun, businessIds: bizRows.map((b) => b.id) });
+  } catch (e) {
+    qcOverdueError = errorMessage(e);
+  }
+
   // One owner message for everything still stuck, every business together.
   // Cheap, so it runs even when the order budget ran out (the cron's
   // maxDuration has room past the budget).
@@ -312,6 +328,8 @@ export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTi
     finishedAt: new Date().toISOString(),
     truncated,
     businesses: reports,
+    qcOverdue,
+    ...(qcOverdueError ? { qcOverdueError } : {}),
     digest,
     ...(digestError ? { digestError } : {}),
   };

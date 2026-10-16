@@ -18,8 +18,14 @@ function todoFromFor(businessId: SQL | typeof orders.businessId | typeof message
 
 // An URGENT order (lib/orders/urgent.ts) is on the to-do lists whatever its date:
 // a buyer chasing an old order is today's work.
+//
+// So is artwork waiting for QC: a designer handed it in inside AlphaOS, so it is
+// this process's work however old the order is. Ami Multani #CPS10282 and
+// Audrea Sanchez 4196536586 (placed before CPS's to-do start) sat in
+// awaiting_qc 61 h and 64 h because /approve never showed them (clean slating
+// audit, 2026-10-16).
 export function todoOrderScope(): SQL {
-  return sql`(${orders.urgentAt} is not null or coalesce(${orders.placedAt}, ${orders.createdAt}) >= ${todoFromFor(orders.businessId)})`;
+  return sql`(${orders.urgentAt} is not null or ${orders.status} = 'awaiting_qc' or coalesce(${orders.placedAt}, ${orders.createdAt}) >= ${todoFromFor(orders.businessId)})`;
 }
 
 export function todoMessageScope(): SQL {

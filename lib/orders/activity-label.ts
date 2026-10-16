@@ -29,6 +29,8 @@ const LABELS: Record<string, string> = {
   "order.reconciled": "Reconciled with the shop",
   "order.reclassified": "Order type changed",
   "order.awaiting_qc": "Awaiting QC",
+  "qc.overdue_urgent": "QC overdue: owner alerted",
+  "qc.backup_approver": "QC passed to the backup approver",
   "order.wrong_file_override": "Wrong-file stop overridden",
   "order.awaiting_approval": "Awaiting approval",
   "order.fulfillment_only": "Fulfilment only",

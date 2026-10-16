@@ -68,6 +68,11 @@ order even if already judged (for re-runs).
 }] }
 ```
 
+`GET /api/agent-qc/overdue[?all=1][&businessId=<uuid>]`
+Portraits waiting on an owner's QC past `ownerQcSlaHours` (default 12; `all=1` = every one waiting), oldest
+first, with the URGENT and backup hand-over times, the owner, the backup approver and the link. Read only:
+the tick sends the messages (docs/NO_LIMBO.md L7, clean slating audit 2026-10-16).
+
 `POST /api/agent-qc/result` body: `{ orderId, assetIds, verdict, summary, portraits, revision, model }`
 Refuses (409) when assetIds no longer match the order's latest versions (designer re-uploaded mid-judge).
 Returns `{ ok: true, id }`.

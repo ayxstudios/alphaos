@@ -70,7 +70,8 @@
     "test:review-ask": "tsx scripts/test-review-ask.ts",
     "test:same-buyer": "tsx scripts/test-same-buyer.ts",
     "test:image-hash": "tsx scripts/test-image-hash.ts",
-    "test:wrong-file": "tsx scripts/test-wrong-file.ts"
+    "test:wrong-file": "tsx scripts/test-wrong-file.ts",
+    "test:qc-overdue": "tsx scripts/test-qc-overdue.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1102.0",
