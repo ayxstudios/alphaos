@@ -17,11 +17,13 @@ import {
   designerBusinesses,
   designerProfiles,
   exceptions,
+  orderItems,
   orders,
   shops,
   users,
 } from "@/lib/db/schema";
 import { businessSlaHours, loadRankedCandidates } from "@/lib/orders/assign";
+import { loadReworkHold, reworkBound, reworkKeeper, reworkOwnerName, type ReworkHold } from "@/lib/orders/rework";
 import { archivedUnfinishedWhere } from "@/lib/orders/archive";
 import { buyerWordsWhere } from "@/lib/reminders/buyer-replied";
 import { reassignOrder } from "./ai-designer";
@@ -988,6 +990,35 @@ export async function pickHumanDesigner(tx: Tx, businessId: string, style: strin
 }
 
 /**
+ * A revision or failed QC none of its own designers can take back (left,
+ * switched off, AI Studio off for the style): what the owner reads, with who
+ * the assigner would pick next. It moves only on their yes (Yousif 2026-10-16).
+ */
+export async function reworkHeldNote(
+  tx: Tx,
+  businessId: string,
+  orderId: string,
+  hold: ReworkHold,
+): Promise<{ headline: string; owner: string | null; suggest: string | null; recommendation: string }> {
+  const [item] = await tx
+    .select({ style: orderItems.style })
+    .from(orderItems)
+    .where(and(eq(orderItems.orderId, orderId), sql`${orderItems.style} is not null`))
+    .limit(1);
+  const owner = await reworkOwnerName(tx, hold);
+  const pick = await pickHumanDesigner(tx, businessId, item?.style ?? null);
+  const who = owner ?? "its designer";
+  return {
+    headline: `a revision of ${who}'s work and ${who} cannot take it back`,
+    owner,
+    suggest: pick?.name ?? null,
+    recommendation: pick
+      ? `It is a revision, so it moves only with your yes: give it to ${pick.name ?? "the next designer"} on the order page, or say who.`
+      : `It is a revision, so it moves only with your yes: say who redoes it${item?.style ? ` (nobody else draws ${item.style} right now)` : ""}.`,
+  };
+}
+
+/**
  * Hours the person taking over from the AI gets: the business's designer SLA
  * (moved out by their queue on an overflow pick, as assignStep does), never
  * past the buyer's date, and never under the urgent revision SLA (an order
@@ -1107,10 +1138,22 @@ const round1 = (n: number) => Math.round(n * 10) / 10;
  * the owner digest raises it.
  */
 async function handOverOne(businessId: string, h: FailedAiHold, now: Date, dryRun: boolean): Promise<AiHandoverOutcome> {
-  const { pick, sla } = await withSystemContext(async (tx) => ({
-    pick: await pickHumanDesigner(tx, businessId, h.style),
-    sla: await businessSlaHours(tx, businessId),
-  }));
+  // A revision or failed QC goes only to the person who drew it; with nobody
+  // like that it waits for the owner's yes (Yousif 2026-10-16), never the ranking.
+  const { pick, sla, reworkNote } = await withSystemContext(async (tx) => {
+    const hold = await loadReworkHold(tx, h.orderId);
+    const bound = reworkBound(hold);
+    const drew = bound ? await reworkKeeper(tx, businessId, hold, { humanOnly: true }) : null;
+    return {
+      pick: !bound
+        ? await pickHumanDesigner(tx, businessId, h.style)
+        : drew
+          ? { designerId: drew.designerId, name: drew.name, overflow: false, queue: 0, dailyCapacity: 0 }
+          : null,
+      reworkNote: bound && !drew ? (await reworkHeldNote(tx, businessId, h.orderId, hold)).recommendation : null,
+      sla: await businessSlaHours(tx, businessId),
+    };
+  });
   let failed: string | null = null;
   if (pick) {
     const dueAtHours = handoverDueHours(
@@ -1178,7 +1221,7 @@ async function handOverOne(businessId: string, h: FailedAiHold, now: Date, dryRu
   return withSystemContext(async (tx) => {
     const recommendation = failed
       ? `Give it to ${pick?.name ?? "a designer"} on the order page: ${failed}.`
-      : await noDesignerRecommendation(tx, businessId, h.style, h.product);
+      : (reworkNote ?? (await noDesignerRecommendation(tx, businessId, h.style, h.product)));
     if (dryRun) return { orderId: h.orderId, handed: false as const, recommendation, exceptionId: h.exceptionId, reopened: !h.exceptionId };
     if (h.exceptionId) {
       if (h.recommendation !== recommendation) {

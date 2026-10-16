@@ -65,6 +65,7 @@ import {
   linkAddonTx,
   noDesignerRecommendation,
   pickOverflowDesigner,
+  reworkHeldNote,
   watchWaitingStates,
   type LimboCensus,
 } from "./limbo";
@@ -928,11 +929,22 @@ async function assignStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
         return;
       }
 
-      const { assigned } = await runAutoAssign(tx, { orderId: order.id, businessId: order.businessId, assignedBy: null });
+      const { assigned, reworkHeld } = await runAutoAssign(tx, { orderId: order.id, businessId: order.businessId, assignedBy: null });
       if (assigned) {
         await logAgent(tx, order, "agent.assigned", { designerId: assigned, via: "agent_autopilot" });
         bump((r) => (r.assigned += 1));
         await backlogCheck(tx, order, assigned, ctx.now);
+        return;
+      }
+
+      // A revision or failed QC its own designers cannot take back waits for
+      // the owner's yes: never the overflow pick below (Yousif 2026-10-16).
+      if (reworkHeld) {
+        bump((r) => (r.noEligibleDesigner += 1));
+        const note = await reworkHeldNote(tx, order.businessId, order.id, reworkHeld);
+        await raise(tx, bump, ctx.now, order, "no_eligible_designer",
+          `Order #${orderLabel(order)} is ${note.headline}: say who takes it`,
+          { rework: true, revisionCount: reworkHeld.revisionCount, drewBy: note.owner, suggest: note.suggest, recommendation: note.recommendation });
         return;
       }
 

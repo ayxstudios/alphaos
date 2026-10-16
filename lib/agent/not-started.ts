@@ -17,9 +17,10 @@
 //   - the order is still ready_to_assign (Start was never pressed; designers
 //     press it, 259 times in the week before the audit). in_design counts as
 //     started whoever set it: a VA or owner setting it means someone said so.
-//   - first pass (revisionCount 0), no submission uploaded since this
-//     assignment, and no timeline row by the assigned designer since it (a
-//     comment, an upload, anything they did on the order).
+//   - first pass (revisionCount 0), no submission on file (a drawn order is a
+//     revision and stays with its designer, Yousif 2026-10-16), and no
+//     timeline row by the assigned designer since this assignment (a comment,
+//     an upload, anything they did on the order).
 //   - the assignment is older than the clock.
 // Kept where it is: an assignment an admin (owner) placed by hand, an order with
 // no style (nobody guesses a style), and an order this pass already moved
@@ -129,7 +130,7 @@ export async function loadNotStarted(tx: Tx, businessId: string, olderThan: Date
         agentOrderScope(),
         ...(orderId ? [eq(orders.id, orderId)] : []),
         sql`not exists (select 1 from ${assets} s where s.order_id = ${orders.id} and s.type = 'submission'
-          and s.deleted_at is null and s.created_at >= ${assignments.assignedAt})`,
+          and s.deleted_at is null)`,
         sql`not exists (select 1 from ${activityLog} l where l.order_id = ${orders.id}
           and l.actor_id = ${assignments.designerId} and l.created_at >= ${assignments.assignedAt})`,
       ),

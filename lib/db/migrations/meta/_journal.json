@@ -442,6 +442,13 @@
       "when": 1791980000000,
       "tag": "0062_order_total",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1791990000000,
+      "tag": "0063_rework_stays",
+      "breakpoints": true
     }
   ]
 }

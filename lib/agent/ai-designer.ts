@@ -26,6 +26,7 @@ import { getAgentConfig } from "@/lib/agent/config";
 import { openExceptionTx } from "@/lib/agent/exceptions";
 import { sendMessage } from "@/lib/email/dispatch";
 import { createAssignment, disneyRefusal } from "@/lib/orders/assign";
+import { adminApproval, loadReworkHold, reworkAllows, reworkStaysMessage } from "@/lib/orders/rework";
 import { getOrderPortraits, resolveSlotTag } from "@/lib/orders/portraits";
 import { runTransition, type OrderStatus } from "@/lib/orders/transitions";
 import { loadProofFilePick, portraitList } from "@/lib/proofs/files";
@@ -669,12 +670,16 @@ export type ReassignResult = { ok: true; changed: boolean } | { ok: false; code:
  * order away from the agent removes it from the jobs queue (ai_state cleared,
  * assignment deactivated); moving it to the agent queues it as a job.
  * `dueAtHours` sets the new designer's deadline (default: the business SLA).
+ * A revision or failed QC moves to someone new only with an owner's approval
+ * (Yousif 2026-10-16): an admin making the move, or `ownerApproved` (who, and
+ * their words) from a caller acting on an owner's yes. Anyone else is refused
+ * with code rework_stays.
  */
 export async function reassignOrder(
   orderId: string,
   designerId: string,
   byUserId: string | null,
-  opts: { dueAtHours?: number } = {},
+  opts: { dueAtHours?: number; ownerApproved?: string | null } = {},
 ): Promise<ReassignResult> {
   return withSystemContext(async (tx) => {
     const [o] = await tx
@@ -705,6 +710,12 @@ export async function reassignOrder(
     }
     const notDisney = await disneyRefusal(tx, orderId, designerId);
     if (notDisney) return { ok: false as const, code: "disney_only", message: notDisney };
+    const hold = await loadReworkHold(tx, orderId);
+    let approvedBy: string | null = null;
+    if (!reworkAllows(hold, designerId)) {
+      approvedBy = opts.ownerApproved?.trim() || (await adminApproval(tx, byUserId));
+      if (!approvedBy) return { ok: false as const, code: "rework_stays", message: await reworkStaysMessage(tx, hold) };
+    }
     if (target.isAgent) {
       const portraits = (await getOrderPortraits(tx, orderId)).length;
       if (portraits >= 2) {
@@ -723,13 +734,20 @@ export async function reassignOrder(
       assignedBy: byUserId,
       dueAtHours: opts.dueAtHours,
       reason: wasAgent ? "Reassigned from the AI designer." : null,
+      ownerApproved: approvedBy,
     });
     await tx.insert(activityLog).values({
       businessId: o.businessId,
       orderId,
       actorId: byUserId,
       action: current ? "order.reassigned" : "order.assigned",
-      metadata: { designerId, via: "reassign_order", ...(wasAgent ? { fromAi: true } : {}), ...(target.isAgent ? { toAi: true } : {}) },
+      metadata: {
+        designerId,
+        via: "reassign_order",
+        ...(wasAgent ? { fromAi: true } : {}),
+        ...(target.isAgent ? { toAi: true } : {}),
+        ...(approvedBy ? { reworkMoveApprovedBy: approvedBy } : {}),
+      },
     });
     if (target.isAgent) {
       // A revision in progress stays a revision job; anything else is a fresh job.

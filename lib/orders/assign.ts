@@ -18,6 +18,16 @@ import { findStyle, getAgentDesignerId, markQueuedForAgent } from "@/lib/agent/a
 import { getAgentConfig } from "@/lib/agent/config";
 import { getOrderPortraits } from "@/lib/orders/portraits";
 import { loadOrderTotal, toOrderTotal, type OrderTotal } from "@/lib/orders/order-total";
+import {
+  loadReworkHold,
+  reworkAllows,
+  reworkBound,
+  reworkKeeper,
+  reworkStaysMessage,
+  ReworkStaysError,
+  setReworkMoveApproval,
+  type ReworkHold,
+} from "@/lib/orders/rework";
 
 export const DESIGNER_SLA_HOURS = 24;
 
@@ -140,11 +150,20 @@ export async function createAssignment(
     assignedBy: string | null;
     dueAtHours?: number;
     reason?: string | null;
+    /** An owner's yes (who, and their words) to move a revision or failed QC to someone new (lib/orders/rework.ts). */
+    ownerApproved?: string | null;
   },
 ): Promise<{ assignmentId: string; dueAt: Date }> {
   // Hard stop: a Disney order never goes to a designer who does not draw Disney.
   const refusal = await disneyRefusal(tx, input.orderId, input.designerId);
   if (refusal) throw new DisneyOnlyError(refusal);
+
+  // Hard stop: a revision or failed QC stays with the designer who has it or
+  // drew it unless an owner approved the move (Yousif 2026-10-16).
+  const approval = input.ownerApproved?.trim() || null;
+  const hold = await loadReworkHold(tx, input.orderId);
+  const needsApproval = !reworkAllows(hold, input.designerId);
+  if (needsApproval && !approval) throw new ReworkStaysError(await reworkStaysMessage(tx, hold));
 
   const hours = input.dueAtHours ?? (await businessSlaHours(tx, input.businessId)).order;
   const dueAt = new Date(Date.now() + hours * 60 * 60 * 1000);
@@ -153,6 +172,8 @@ export async function createAssignment(
     .update(assignments)
     .set({ active: false })
     .where(and(eq(assignments.orderId, input.orderId), eq(assignments.active, true)));
+  // The approval opens the database guard (migration 0063) for this one insert only.
+  if (needsApproval && approval) await setReworkMoveApproval(tx, approval);
   const [row] = await tx
     .insert(assignments)
     .values({
@@ -164,6 +185,7 @@ export async function createAssignment(
       active: true,
     })
     .returning({ id: assignments.id });
+  if (needsApproval) await setReworkMoveApproval(tx, "");
 
   // The AI Studio agent has no phone or chat: it reads its jobs from the API.
   const [profile] = await tx
@@ -490,11 +512,15 @@ export async function loadRankedCandidates(
  * ranks them, and assigns the top one (deactivating any prior active
  * assignment). If nobody is eligible the order stays ready_to_assign with no
  * active assignment — it surfaces in the VA "Unassigned" tab.
+ *
+ * A revision or failed QC never goes through the ranking: it goes back to the
+ * designer who has it or drew it, at any load (keepRework). When none of them
+ * can take it the order waits with reworkHeld set, for an owner to say who does.
  */
 export async function runAutoAssign(
   tx: Tx,
   order: { orderId: string; businessId: string; assignedBy: string | null },
-): Promise<{ assigned: string | null }> {
+): Promise<{ assigned: string | null; reworkHeld?: ReworkHold }> {
   const [item] = await tx
     .select({ style: orderItems.style })
     .from(orderItems)
@@ -502,32 +528,17 @@ export async function runAutoAssign(
     .limit(1);
   const style = item?.style ?? null;
 
+  const hold = await loadReworkHold(tx, order.orderId);
+  if (reworkBound(hold)) return keepRework(tx, order, hold, style);
+
   // A product with the AI designer switched on goes to the agent, not a human,
   // unless the order needs 2+ separate portraits (two lines, or one bought
   // twice): the AI draws one portrait per job, so those go to a person. A
   // Disney order never goes to the agent, only to a Disney designer.
-  const styleRow = await findStyle(tx, order.businessId, style);
-  if (
-    styleRow?.aiDesignerEnabled &&
-    !(await loadIsDisneyOrder(tx, order.orderId)) &&
-    (await getOrderPortraits(tx, order.orderId)).length < 2
-  ) {
-    const agentId = await getAgentDesignerId(tx, order.businessId);
-    if (agentId) {
-      await createAssignment(tx, {
-        orderId: order.orderId,
-        businessId: order.businessId,
-        designerId: agentId,
-        assignedBy: order.assignedBy,
-      });
-      await markQueuedForAgent(tx, {
-        orderId: order.orderId,
-        businessId: order.businessId,
-        byUserId: order.assignedBy,
-        via: "auto_assign",
-      });
-      return { assigned: agentId };
-    }
+  const agentId = await aiDesignerFor(tx, order.businessId, order.orderId, style);
+  if (agentId) {
+    await queueForAgent(tx, order, agentId);
+    return { assigned: agentId };
   }
 
   const ranked = await loadRankedCandidates(tx, { businessId: order.businessId, style, orderId: order.orderId });
@@ -542,6 +553,86 @@ export async function runAutoAssign(
   });
 
   return { assigned: chosen };
+}
+
+/** The business's AI Studio when the AI may draw this order (style switched on, not Disney, one portrait); else null. */
+async function aiDesignerFor(tx: Tx, businessId: string, orderId: string, style: string | null): Promise<string | null> {
+  const styleRow = await findStyle(tx, businessId, style);
+  if (!styleRow?.aiDesignerEnabled) return null;
+  if (await loadIsDisneyOrder(tx, orderId)) return null;
+  if ((await getOrderPortraits(tx, orderId)).length >= 2) return null;
+  return getAgentDesignerId(tx, businessId);
+}
+
+async function queueForAgent(
+  tx: Tx,
+  order: { orderId: string; businessId: string; assignedBy: string | null },
+  agentId: string,
+): Promise<void> {
+  await createAssignment(tx, {
+    orderId: order.orderId,
+    businessId: order.businessId,
+    designerId: agentId,
+    assignedBy: order.assignedBy,
+  });
+  await markQueuedForAgent(tx, {
+    orderId: order.orderId,
+    businessId: order.businessId,
+    byUserId: order.assignedBy,
+    via: "auto_assign",
+  });
+}
+
+const REWORK_REASON = "This revision stays with you.";
+
+/**
+ * runAutoAssign for a revision or failed QC (Yousif 2026-10-16): back to the
+ * designer who has it or drew it, never to the ranking and never to AI Studio
+ * unless AI Studio drew it. Already theirs = same row and deadline, and a
+ * brief so they know it is ready again (not when they moved it back
+ * themselves). Nobody of theirs can take it = reworkHeld, for an owner.
+ */
+async function keepRework(
+  tx: Tx,
+  order: { orderId: string; businessId: string; assignedBy: string | null },
+  hold: ReworkHold,
+  style: string | null,
+): Promise<{ assigned: string | null; reworkHeld?: ReworkHold }> {
+  const keeper = await reworkKeeper(tx, order.businessId, hold);
+  if (!keeper) return { assigned: null, reworkHeld: hold };
+
+  if (keeper.isAgent) {
+    const agentId = await aiDesignerFor(tx, order.businessId, order.orderId, style);
+    if (agentId !== keeper.designerId) return { assigned: null, reworkHeld: hold };
+    await queueForAgent(tx, order, agentId);
+    return { assigned: agentId };
+  }
+
+  if (await disneyRefusal(tx, order.orderId, keeper.designerId)) return { assigned: null, reworkHeld: hold };
+  const [active] = await tx
+    .select({ designerId: assignments.designerId, dueAt: assignments.dueAt })
+    .from(assignments)
+    .where(and(eq(assignments.orderId, order.orderId), eq(assignments.active, true)))
+    .limit(1);
+  if (active?.designerId === keeper.designerId) {
+    if (order.assignedBy !== keeper.designerId) {
+      await sendDesignerBrief(tx, { orderId: order.orderId, designerId: keeper.designerId, dueAt: active.dueAt, reason: REWORK_REASON });
+    }
+    return { assigned: keeper.designerId };
+  }
+
+  // Back on their board on a revision clock (capped for an urgent order), as resetRevisionDeadline sets it.
+  const sla = await businessSlaHours(tx, order.businessId);
+  const [o] = await tx.select({ urgentAt: orders.urgentAt }).from(orders).where(eq(orders.id, order.orderId)).limit(1);
+  await createAssignment(tx, {
+    orderId: order.orderId,
+    businessId: order.businessId,
+    designerId: keeper.designerId,
+    assignedBy: order.assignedBy,
+    dueAtHours: o?.urgentAt ? Math.min(sla.revision, sla.urgentRevision) : sla.revision,
+    reason: REWORK_REASON,
+  });
+  return { assigned: keeper.designerId };
 }
 
 /**
