@@ -27,7 +27,7 @@ import { loadReworkHold, reworkBound, reworkKeeper, reworkOwnerName, type Rework
 import { archivedUnfinishedWhere } from "@/lib/orders/archive";
 import { buyerWordsWhere } from "@/lib/reminders/buyer-replied";
 import { reassignOrder } from "./ai-designer";
-import { agentOrderScope } from "./scope";
+import { agentOrderScope, legacyQuiet } from "./scope";
 import { openExceptionTx } from "./exceptions";
 
 const HOUR = 3_600_000;
@@ -279,6 +279,12 @@ export type OrderFacts = {
   /** Kinds of the open exceptions on this order. */
   openKinds: string[];
   style: string | null;
+  /**
+   * A legacy order its buyer has not reached out on (scope.ts legacyQuiet):
+   * the watch raises nothing on it and the census counts it apart (owner,
+   * 2026-10-17: do not open cans of worms unless the customer reaches out).
+   */
+  legacyQuiet?: boolean;
 };
 
 export type Owner =
@@ -369,6 +375,7 @@ async function loadOrderFacts(tx: Tx, businessId: string): Promise<OrderFacts[]>
       openKinds: sql<string[]>`coalesce((select array_agg(e.kind) from exceptions e
         where e.order_id = ${orders.id} and e.status = 'open'), '{}'::text[])`,
       style: sql<string | null>`(select i.style from order_items i where i.order_id = ${orders.id} and i.style is not null order by i.id limit 1)`,
+      legacyQuiet: sql<boolean>`${legacyQuiet()}`,
     })
     .from(orders)
     .leftJoin(customers, eq(customers.id, orders.customerId))
@@ -376,6 +383,7 @@ async function loadOrderFacts(tx: Tx, businessId: string): Promise<OrderFacts[]>
   return rows.map((r) => ({
     ...r,
     aiFailedHold: !!r.aiFailedHold,
+    legacyQuiet: !!r.legacyQuiet,
     enteredAt: new Date(r.enteredAt),
     lastChaseAt: r.lastChaseAt ? new Date(r.lastChaseAt) : null,
     openKinds: r.openKinds ?? [],
@@ -392,6 +400,12 @@ export type LimboCensus = {
   withOwner: number;
   limbo: number;
   limboOrders: { id: string; number: string; status: string; why: string }[];
+  /**
+   * Nobody owns them, but they are legacy orders their buyer has not reached
+   * out on: the agent leaves them alone, so they are not limbo to chase (owner,
+   * 2026-10-17). Counted here so the live numbers still add up.
+   */
+  legacyQuietLimbo: number;
   /**
    * Archived but still owed (clean slating audit 2026-10-16): counted apart so
    * the live numbers above keep their meaning. List capped at
@@ -419,6 +433,7 @@ export async function getLimboCensus(businessId: string, opts: { now?: Date } = 
       withOwner: 0,
       limbo: 0,
       limboOrders: [],
+      legacyQuietLimbo: 0,
       archivedUnfinished: 0,
       archivedUnfinishedOrders: [],
     };
@@ -451,6 +466,7 @@ export async function getLimboCensus(businessId: string, opts: { now?: Date } = 
       else if (w.bucket === "buyer") c.waitingOnBuyer++;
       else if (w.bucket === "pipeline") c.inPipeline++;
       else if (w.bucket === "owner") c.withOwner++;
+      else if (o.legacyQuiet) c.legacyQuietLimbo++;
       else {
         c.limbo++;
         c.limboOrders.push({ id: o.id, number: o.number, status: o.status, why: w.why });
@@ -559,6 +575,10 @@ export async function watchWaitingStates(
     for (const f of facts) {
       const w = ownerOf(f, now, { ignoreStuck: true });
       if (w.bucket !== "limbo") continue;
+      // Owner, 2026-10-17: a legacy order its buyer has not reached out on is not
+      // raised (no stuck_order row, so no owner digest line). A row an earlier tick
+      // opened stays open; owner-digest.ts skips it and the staff lists still show it.
+      if (f.legacyQuiet) continue;
       res.limbo++;
       const suggestion = ["not_assigned", "no_designer"].includes(w.reason) ? await suggestDesigner(tx, businessId, f.style) : null;
       const words = stuckWords(w.reason, f, suggestion, now);
@@ -1085,6 +1105,10 @@ async function loadFailedAiHolds(tx: Tx, businessId: string, orderId?: string): 
       and(
         eq(orders.businessId, businessId),
         orderId ? eq(orders.id, orderId) : undefined,
+        // The tick sweep leaves a legacy order its buyer has not reached out on alone
+        // (owner, 2026-10-17); the hand-over right after the AI gives up (orderId) is
+        // part of a job already running and still goes.
+        orderId ? undefined : sql`not ${legacyQuiet()}`,
         sql`${orders.archivedAt} is null`,
         sql`${orders.aiState} = 'failed'`,
         sql`${orders.status}::text in ('ready_to_assign', 'in_design')`,

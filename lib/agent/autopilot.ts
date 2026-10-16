@@ -41,7 +41,7 @@ import type { EtsyIntegrationConfig, EtsyTransaction } from "@/lib/integrations/
 import { businessSlaHours, createAssignment, runAutoAssign } from "@/lib/orders/assign";
 import { classifyOrder, isNonPortraitLine, type ClassifyConfig } from "@/lib/integrations/classify";
 import { liveOrderWhere } from "@/lib/orders/archive";
-import { agentOrderScope } from "./scope";
+import { agentOrderScope, legacyQuiet } from "./scope";
 import { completeOrderDetailsCore } from "@/lib/orders/complete-details";
 
 import { computeCompleteness } from "./completeness";
@@ -721,6 +721,8 @@ async function completenessStep(ctx: TickCtx, businessId: string, outOfTime: () 
           inArray(orders.status, ["awaiting_photos", "ready_to_assign"]),
           liveOrderWhere(),
           agentOrderScope(),
+          // Legacy orders its buyer has not reached out on get no shortfall email (owner, 2026-10-17).
+          sql`not ${legacyQuiet()}`,
           sql`${photoCount} > 0`,
         ),
       )
@@ -856,6 +858,8 @@ async function assignStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
           eq(orders.status, "ready_to_assign"),
           liveOrderWhere(),
           agentOrderScope(),
+          // A designer is not pinged about a legacy order its buyer has not reached out on (owner, 2026-10-17).
+          sql`not ${legacyQuiet()}`,
           sql`not exists (select 1 from ${assignments} where ${assignments.orderId} = ${orders.id} and ${assignments.active})`,
         ),
       )

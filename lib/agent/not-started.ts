@@ -40,7 +40,7 @@ import { sendDesignerReassigned } from "@/lib/notifications/designer-events";
 import { loadCapacityModel } from "./capacity";
 import { getAgentConfig } from "./config";
 import { handoverDueHours } from "./limbo";
-import { agentOrderScope } from "./scope";
+import { agentOrderScope, legacyQuiet } from "./scope";
 
 const HOUR = 60 * 60 * 1000;
 /** Moves this pass makes on one order before leaving it to a person. */
@@ -128,6 +128,9 @@ export async function loadNotStarted(tx: Tx, businessId: string, olderThan: Date
         eq(orders.revisionCount, 0),
         liveOrderWhere(),
         agentOrderScope(),
+        // A legacy order its buyer has not reached out on stays where it is: moving it
+        // pings a designer about a thread the owner told us to leave alone (2026-10-17).
+        sql`not ${legacyQuiet()}`,
         ...(orderId ? [eq(orders.id, orderId)] : []),
         sql`not exists (select 1 from ${assets} s where s.order_id = ${orders.id} and s.type = 'submission'
           and s.deleted_at is null)`,

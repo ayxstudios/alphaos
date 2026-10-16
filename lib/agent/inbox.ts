@@ -45,7 +45,7 @@ import {
 import { mergeReplyClassification } from "@/lib/integrations/gmail/inbound";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { detectMentionedOrders } from "@/lib/orders/same-buyer";
-import { agentOrderScope } from "./scope";
+import { agentOrderScope, legacyQuiet } from "./scope";
 import { proofUrl } from "@/lib/urls";
 
 import { draftAnswerToQuestion } from "./answer";
@@ -755,6 +755,9 @@ async function reminderStep(
           eq(orders.status, "awaiting_approval"),
           liveOrderWhere(),
           agentOrderScope(),
+          // A legacy order its buyer has not reached out on is not chased (owner,
+          // 2026-10-17): the silence is ours to leave alone until she writes.
+          sql`not ${legacyQuiet()}`,
           // An AI portrait held for the owner has no sent proof to remind about.
           sql`${orders.aiState} is distinct from 'owner_review'`,
         ),

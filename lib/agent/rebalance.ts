@@ -11,7 +11,7 @@ import { withSystemContext, type Tx } from "@/lib/db";
 import { activityLog, assets, assignments, businesses, orderItems, orders, users } from "@/lib/db/schema";
 import { createAssignment, loadRankedCandidates } from "@/lib/orders/assign";
 import { liveOrderWhere } from "@/lib/orders/archive";
-import { agentOrderScope } from "./scope";
+import { agentOrderScope, legacyQuiet } from "./scope";
 import { stageTimer } from "@/lib/orders/stage-timers";
 
 import { loadCapacityModel, type DesignerLoad } from "./capacity";
@@ -75,6 +75,8 @@ async function movableOrders(tx: Tx, businessId: string, designerId: string): Pr
         eq(orders.revisionCount, 0),
         liveOrderWhere(),
         agentOrderScope(),
+        // Legacy orders its buyer has not reached out on are not shuffled between designers (owner, 2026-10-17).
+        sql`not ${legacyQuiet()}`,
         sql`not exists (select 1 from ${assets} where ${assets.orderId} = ${orders.id} and ${assets.type} = 'submission' and ${assets.deletedAt} is null)`,
       ),
     )

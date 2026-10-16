@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, lte } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 
 import { withSystemContext, type Tx } from "@/lib/db";
 import { orders, orderItems, proofs, reminderFires } from "@/lib/db/schema";
@@ -6,7 +6,7 @@ import { queuePhotoReminder, queueStageEmail } from "@/lib/email/dispatch";
 import { approveProof } from "@/lib/proofs/decide";
 import { proofUrl } from "@/lib/urls";
 import { sendAlphaEvent } from "@/lib/alpha/client";
-import { agentOrderScope } from "@/lib/agent/scope";
+import { agentOrderScope, legacyQuiet } from "@/lib/agent/scope";
 import { buyerRepliedSince } from "./buyer-replied";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -68,6 +68,11 @@ async function claim(
  * our terms, so print/ship isn't held hostage by an unresponsive customer —
  * digital orders are never auto-approved). Safe to call as often as you like;
  * every side effect is claimed exactly once via reminder_fires.
+ *
+ * A legacy order its buyer has not reached out on (legacyQuiet, scope.ts) gets
+ * none of the four: no photo or proof reminder, no silent alert, and above all
+ * no auto-approve of a proof the buyer never saw this month. Nothing is
+ * claimed for it, so the day it is no longer quiet it starts its own clock.
  */
 export async function runRemindersSweep(opts: { businessIds?: string[]; now?: Date } = {}): Promise<RemindersSweepResult> {
   const now = opts.now ?? new Date();
@@ -99,6 +104,7 @@ export async function runRemindersSweep(opts: { businessIds?: string[]; now?: Da
           eq(orders.status, "awaiting_photos"),
           isNull(orders.archivedAt),
           agentOrderScope(),
+          sql`not ${legacyQuiet()}`,
           lte(orders.createdAt, photoCutoff),
           ...(bizFilter ? [bizFilter] : []),
         ),
@@ -144,6 +150,7 @@ export async function runRemindersSweep(opts: { businessIds?: string[]; now?: Da
           eq(orders.status, "awaiting_approval"),
           isNull(orders.archivedAt),
           agentOrderScope(),
+          sql`not ${legacyQuiet()}`,
           ...(bizFilter ? [bizFilter] : []),
         ),
       ),

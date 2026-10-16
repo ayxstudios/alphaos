@@ -10,6 +10,7 @@ import { alphaEvents, businesses, exceptions, orders, shops } from "@/lib/db/sch
 import { appUrl } from "@/lib/urls";
 import { getAgentConfig } from "./config";
 import { CLOSED_STATUSES, EMAIL_GRACE_HOURS } from "./limbo";
+import { legacyQuiet } from "./scope";
 
 const HOUR = 3_600_000;
 
@@ -372,6 +373,9 @@ async function dueLines(
       and(
         inArray(exceptions.businessId, businessIds),
         eq(exceptions.status, "open"),
+        // LEGACY QUIET (owner, 2026-10-17): a legacy order its buyer has not reached out
+        // on raises nothing, a row an earlier tick opened included; her own mail still does.
+        or(isNull(exceptions.orderId), inArray(exceptions.kind, ["reply_unclear", "buyer_question", "unmatched_reply", "legacy_order"]), sql`not ${legacyQuiet()}`),
         // A tick that ran out of time may not have closed these yet; never raise them.
         or(
           isNull(exceptions.orderId),
