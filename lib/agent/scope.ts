@@ -81,7 +81,7 @@ export function legacyQuiet(): SQL {
       select 1 from activity_log lq_a
       where lq_a.order_id = ${orders.id} and lq_a.created_at >= ${LEGACY_BEFORE}::timestamptz
         and lq_a.actor_id is null and lq_a.action in ('order.approved', 'order.in_design')
-        and lq_a.metadata->>'via' = 'proof_portal'
+        and lq_a.metadata->>'via' in ('proof_portal', 'agent_chat')
     )
     and not (
       coalesce(${orders.urgentAt} >= ${LEGACY_BEFORE}::timestamptz, false)

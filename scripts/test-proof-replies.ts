@@ -81,6 +81,10 @@ async function order(o: { proofHoursAgo: number; physical?: boolean; status?: ty
         source: "manual",
         uploadToken: randomUUID(),
         createdAt: ago(o.proofHoursAgo + 48),
+        // Placed after the legacy cutoff (lib/agent/scope.ts, 12 Oct 2026), so the
+        // hands-off rule for untouched legacy orders never silences these as the
+        // calendar moves on.
+        placedAt: new Date(Math.max(ago(o.proofHoursAgo + 48).getTime(), Date.parse("2026-10-12T12:00:00Z"))),
       })
       .returning({ id: orders.id });
     await tx.insert(orderItems).values({

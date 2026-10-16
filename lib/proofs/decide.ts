@@ -69,6 +69,9 @@ export async function approveProof(
 export async function requestRevision(
   token: string,
   input: RevisionInput,
+  // Where her words came from when the agent lands them for her (an Etsy chat:
+  // lib/orders/agent-revision.ts); the proof page itself passes nothing.
+  opts: { via?: string; by?: string | null } = {},
 ): Promise<ProofActionResult> {
   const issueKeys = sanitizeIssueKeys(input.issueKeys);
   const note =
@@ -95,7 +98,8 @@ export async function requestRevision(
       // QC-only safeguard), so log the customer's detail under distinct keys
       // that survive into the activity_log entry.
       metadata: {
-        via: "proof_portal",
+        via: opts.via ?? "proof_portal",
+        ...(opts.by ? { requestedBy: opts.by } : {}),
         revisionReason: reason,
         revisionIssues: issueLabels(issueKeys),
         annotationCount: annotations.length,

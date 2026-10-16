@@ -27,8 +27,8 @@ export type RevisionHistoryNote = {
   pins: number;
 };
 
-/** Revisions that reach the card straight from the customer: the proof page, or their email applied by the agent. */
-const CUSTOMER_VIA = new Set(["proof_portal", "agent_inbox"]);
+/** Revisions that reach the card straight from the customer: the proof page, their email applied by the agent, or their Etsy chat landed by the agent. */
+const CUSTOMER_VIA = new Set(["proof_portal", "agent_inbox", "agent_chat"]);
 
 function str(value: unknown): string {
   return typeof value === "string" ? value.replace(/\r\n?/g, "\n").trim() : "";
