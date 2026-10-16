@@ -4,8 +4,9 @@
 // legal). Every write is one activity row; system writes, so actor_id is null.
 import { and, eq, inArray, sql } from "drizzle-orm";
 
-import { withSystemContext, type Tx } from "@/lib/db";
-import { activityLog, businesses, exceptions } from "@/lib/db/schema";
+import { SYSTEM_ACTOR_ID, withSystemContext, type Tx } from "@/lib/db";
+import { activityLog, businesses, exceptions, messages } from "@/lib/db/schema";
+import { applyReplyClassificationDecision, type SystemReplyActor } from "@/lib/email/reply-decisions";
 import { appUrl } from "@/lib/urls";
 import { autoResolveTx } from "./limbo";
 import {
@@ -241,5 +242,67 @@ export async function raiseToOwner(id: string, kinds: OwnerTag[], note: string, 
       metadata: { exceptionId: id, kind: row.kind, kinds, note },
     });
     return { ok: true, status: "open", changed: true };
+  });
+}
+
+const SYSTEM: SystemReplyActor = { id: SYSTEM_ACTOR_ID, role: "system" };
+const REPLY_KINDS = new Set(["reply_unclear", "buyer_question"]);
+
+/**
+ * The agent read a buyer reply the inbox could not place and says what it is:
+ * her yes, or the changes she wants. It lands on the order exactly as the inbox
+ * lands a clear reply (lib/email/reply-decisions.ts, via "agent_needs_you"),
+ * then the row closes with the agent's note. Only for a proof that is out for
+ * approval; any other reply is answered and then resolved.
+ */
+export async function decideByAgent(
+  id: string,
+  decision: "approved" | "revision",
+  note: string,
+  opts: { reason?: string | null; now?: Date } = {},
+): Promise<DeskResult> {
+  const now = opts.now ?? new Date();
+  return withSystemContext(async (tx) => {
+    const [row] = await tx
+      .select({ id: exceptions.id, businessId: exceptions.businessId, orderId: exceptions.orderId, kind: exceptions.kind, status: exceptions.status, detail: exceptions.detail })
+      .from(exceptions)
+      .where(eq(exceptions.id, id));
+    if (!row) return { ok: false, error: "not found" };
+    if (row.status !== "open") return { ok: true, status: row.status, changed: false };
+    if (!REPLY_KINDS.has(row.kind)) return { ok: false, error: `a ${row.kind.replace(/_/g, " ")} row has no buyer reply to decide` };
+    const detail = (row.detail ?? {}) as Record<string, unknown>;
+    const messageId = typeof detail.messageId === "string" ? detail.messageId : null;
+    if (!messageId) return { ok: false, error: "the row carries no message to decide" };
+    const reason = decision === "revision" ? opts.reason?.trim() || (typeof detail.excerpt === "string" ? buyerWords(detail.excerpt, 1200) : null) || undefined : undefined;
+    let error: string | null = null;
+    try {
+      // Savepoint: a refused decision leaves nothing behind.
+      await tx.transaction(async (sp) => {
+        // A reply the classifier never read gets the agent's reading, which is what the decision rests on.
+        const read = { intent: decision === "approved" ? "approval" : "revision_request", confidence: 1, by: "agent_needs_you", at: now.toISOString() };
+        await sp
+          .update(messages)
+          .set({ metadata: sql`coalesce(${messages.metadata}, '{}'::jsonb) || ${JSON.stringify({ replyClassification: read })}::jsonb` })
+          .where(and(eq(messages.id, messageId), sql`${messages.metadata}->'replyClassification' is null`));
+        const res = await applyReplyClassificationDecision(sp, SYSTEM, messageId, decision, { via: "agent_needs_you", revisionReason: reason });
+        if (!res.ok) throw new Error(res.message);
+      });
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    }
+    if (error) return { ok: false, error };
+    const done = await tx
+      .update(exceptions)
+      .set({ status: "resolved", resolvedAt: now, resolvedBy: null, resolutionNote: `agent: ${note}` })
+      .where(and(eq(exceptions.id, id), eq(exceptions.status, "open")))
+      .returning({ id: exceptions.id });
+    await tx.insert(activityLog).values({
+      businessId: row.businessId,
+      orderId: row.orderId,
+      actorId: null,
+      action: "agent.exception_resolved",
+      metadata: { exceptionId: id, kind: row.kind, note, decision },
+    });
+    return { ok: true, status: "resolved", changed: done.length > 0 };
   });
 }

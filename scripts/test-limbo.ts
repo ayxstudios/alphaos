@@ -42,7 +42,7 @@ import {
   stripOrderPrefix,
   type DigestLine,
 } from "../lib/agent/owner-digest";
-import { closeNothingLeft, listNeedsYou, noteByAgent, raiseToOwner, resolveByAgent, takeForAgent } from "../lib/agent/needs-you-desk";
+import { closeNothingLeft, decideByAgent, listNeedsYou, noteByAgent, raiseToOwner, resolveByAgent, takeForAgent } from "../lib/agent/needs-you-desk";
 import { withSystemContext } from "../lib/db";
 import * as schema from "../lib/db/schema";
 import {
@@ -839,13 +839,34 @@ async function dbTests() {
     toOwner.ok && handedText.includes(`${o12.number}:`) && handedText.includes("I recommend she pays the US$15 difference") && handedText.includes("*Money back.*"),
     handedText,
   );
+  // decide: an unclear reply read by the agent lands on the proof like a clear one.
+  const decideRow = async (status: Parameters<typeof mkOrder>[0]["status"], body: string) => {
+    const o = await mkOrder({ status, hoursAgo: 10 });
+    const [m] = await withSystemContext((tx) =>
+      tx
+        .insert(messages)
+        .values({ businessId: ids.biz, orderId: o.id, direction: "inbound", channel: "email", status: "received", address: `buyer-${o.number}@example.test`, subject: "Re: your proof", body, createdAt: ago(2) })
+        .returning({ id: messages.id }),
+    );
+    const id = await mkException({ orderId: o.id, kind: "reply_unclear", summary: `Buyer reply on order ${o.number} needs a human`, detail: { excerpt: body, messageId: m.id }, hoursAgo: 2 });
+    return { o, id };
+  };
+  const orderStatus = async (orderId: string) => (await withSystemContext((tx) => tx.select({ s: orders.status }).from(orders).where(eq(orders.id, orderId))))[0]?.s;
+  const yes = await decideRow("awaiting_approval", "Yes that's fine");
+  const dy = await decideByAgent(yes.id, "approved", "She said yes to the proof");
+  const ry = await exceptionRow(yes.id);
+  check("decide: her yes approves the proof and closes the row", dy.ok && (await orderStatus(yes.o.id)) === "approved" && ry.status === "resolved" && ry.note === "agent: She said yes to the proof", JSON.stringify({ dy, s: await orderStatus(yes.o.id), ry }));
+  const late = await decideRow("in_design", "Yes that's fine");
+  const dl = await decideByAgent(late.id, "approved", "x");
+  check("decide: refused when no proof is out, row left open", !dl.ok && (await exceptionRow(late.id)).status === "open" && (await orderStatus(late.o.id)) === "in_design", JSON.stringify(dl));
+  check("decide: only a buyer reply row", !(await decideByAgent(n5, "approved", "x")).ok);
   const deskLog = await withSystemContext((tx) =>
     tx
       .select({ action: activityLog.action })
       .from(activityLog)
       .where(and(eq(activityLog.businessId, ids.biz), sql`${activityLog.action} in ('agent.exception_resolved', 'agent.exception_to_owner')`)),
   );
-  check("desk: one activity row per resolve and per hand-over", deskLog.length === 2, JSON.stringify(deskLog));
+  check("desk: one activity row per resolve, decision and hand-over", deskLog.length === 3, JSON.stringify(deskLog));
 }
 
 // The app login may not delete activity_log rows (it is append-only), so the

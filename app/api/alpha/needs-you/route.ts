@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { isAlphaCaller } from "@/lib/alpha/auth";
 import { isOwnerTag } from "@/lib/agent/needs-you";
-import { listNeedsYou, noteByAgent, raiseToOwner, resolveByAgent, takeForAgent } from "@/lib/agent/needs-you-desk";
+import { decideByAgent, listNeedsYou, noteByAgent, raiseToOwner, resolveByAgent, takeForAgent } from "@/lib/agent/needs-you-desk";
 
 export const runtime = "nodejs";
 
@@ -16,6 +16,8 @@ export const runtime = "nodejs";
  * POST {op:"take", limit?}                     the agent's due rows, stamped as taken.
  * POST {op:"resolve", id, note}                done: resolved with the note.
  * POST {op:"note", id, note}                   where it got to; the owner sees it if the agent gives up.
+ * POST {op:"decide", id, decision, reason?, note}  a buyer reply read: "approved" (her yes) or "revision"
+ *                                              (reason = the changes) lands on a proof out for approval, row closed.
  * POST {op:"owner", id, kinds:[...], note}     hand it to an owner: upset | refund | legal | revision.
  */
 export async function GET(req: NextRequest) {
@@ -51,10 +53,15 @@ export async function POST(req: NextRequest) {
   let r;
   if (op === "resolve") r = await resolveByAgent(id, note);
   else if (op === "note") r = await noteByAgent(id, note);
+  else if (op === "decide") {
+    const decision = body?.decision;
+    if (decision !== "approved" && decision !== "revision") return NextResponse.json({ ok: false, error: "decision: approved | revision" }, { status: 400 });
+    r = await decideByAgent(id, decision, note, { reason: text(body?.reason) });
+  }
   else if (op === "owner") {
     const kinds = Array.isArray(body?.kinds) ? body.kinds.filter(isOwnerTag) : [];
     if (!kinds.length) return NextResponse.json({ ok: false, error: "kinds: one or more of upset, refund, legal, revision" }, { status: 400 });
     r = await raiseToOwner(id, kinds, note);
-  } else return NextResponse.json({ ok: false, error: "op: take | resolve | note | owner" }, { status: 400 });
-  return NextResponse.json(r, { status: r.ok ? 200 : 404 });
+  } else return NextResponse.json({ ok: false, error: "op: take | resolve | note | decide | owner" }, { status: 400 });
+  return NextResponse.json(r, { status: r.ok ? 200 : r.error === "not found" ? 404 : 409 });
 }
