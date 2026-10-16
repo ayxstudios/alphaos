@@ -19,11 +19,20 @@ export const LABEL_CLASS: Record<LabelTone, string> = {
   urgent: "bg-rose text-surface",
 };
 
+/** "Same buyer: also PC32131" for a card whose buyer has other orders: the first two numbers, then "+N". */
+export function sameBuyerLabel(numbers: string[]): string {
+  const shown = numbers.slice(0, 2);
+  const more = numbers.length - shown.length;
+  return `Same buyer: also ${shown.join(", ")}${more > 0 ? ` +${more}` : ""}`;
+}
+
 /** The coloured pills shown on the card and in the modal header — one system. */
 export function cardLabels(card: BoardCard): CardLabel[] {
   const labels: CardLabel[] = [];
   // First and loudest: a buyer is chasing this one.
   if (card.urgent) labels.push({ text: "Urgent", tone: "urgent" });
+  // One buyer, several orders: next to the urgent pill, so nobody mixes up their files.
+  if (card.sameBuyerNumbers.length) labels.push({ text: sameBuyerLabel(card.sameBuyerNumbers), tone: "amber" });
   if (card.source === "manual") labels.push({ text: "Manual", tone: "amber" });
   else if (card.source === "etsy") labels.push({ text: "Etsy", tone: "neutral" });
   else if (card.source === "shopify") labels.push({ text: "Shopify", tone: "neutral" });
@@ -140,6 +149,8 @@ export function describeEvent(e: CardEvent, viewerRole?: "admin" | "va" | "desig
       return "updated the order details";
     case "order.tracking_added":
       return "added tracking";
+    case "order.same_buyer_noted":
+      return "noted that this customer has other orders";
     case "email.sent":
       return "emailed the customer";
     case "order.on_hold":

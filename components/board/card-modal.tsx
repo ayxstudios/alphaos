@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { cn, styleLabel } from "@/lib/utils";
 import { Avatar, Button, CopyButton, CopyField, Disclosure, StatusChip, useToast } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
-import { AlertTriangle, Brush, Camera, Check, X } from "@/components/ui/icons";
+import { AlertTriangle, Brush, Camera, Check, Users, X } from "@/components/ui/icons";
 import { Countdown } from "./countdown";
 import { RevisionHistory } from "./revision-history";
 import {
@@ -213,6 +213,21 @@ export function CardModal({
                 )}
               </div>
             </div>
+            {/* One buyer, several orders: said before anything is uploaded, so
+                the other order's file never goes on this card. */}
+            {card.sameBuyer && (
+              <div
+                role="note"
+                data-testid="same-buyer-note"
+                className="flex items-start gap-2 rounded-input border border-amber/40 bg-amber/5 p-3 text-sm text-ink"
+              >
+                <Users size={15} className="mt-0.5 shrink-0 text-amber" />
+                <p className="min-w-0 break-words">
+                  <span className="font-semibold">Same buyer. </span>
+                  {card.sameBuyer}
+                </p>
+              </div>
+            )}
             <CardUploadPanel
               card={card}
               viewerRole={viewerRole}
@@ -1130,6 +1145,9 @@ function FeedItem({ event, viewerRole }: { event: CardEvent; viewerRole: ViewerR
   const failed = Array.isArray(event.metadata?.failedItems)
     ? (event.metadata!.failedItems as string[])
     : [];
+  // The note left when this order's brief went out: the sentence it carried.
+  const buyerNote =
+    event.action === "order.same_buyer_noted" && typeof event.metadata?.sentence === "string" ? event.metadata.sentence : null;
 
   return (
     <div className="flex gap-2.5">
@@ -1147,6 +1165,7 @@ function FeedItem({ event, viewerRole }: { event: CardEvent; viewerRole: ViewerR
           </ul>
         )}
         {reason && <p className="mt-0.5 text-xs italic text-slate">&ldquo;{reason}&rdquo;</p>}
+        {buyerNote && <p className="mt-0.5 text-xs text-slate">{buyerNote}</p>}
       </div>
     </div>
   );

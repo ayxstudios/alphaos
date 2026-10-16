@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
 import { getApproveItem, getOwnerApproveQueue } from "@/lib/qc/approve-data";
+import { getSameBuyerView } from "@/lib/orders/same-buyer-view";
 import { PendingApprovalsHost } from "@/components/qc/pending-approvals";
 import { parseSkip } from "@/components/qc/pending-approvals-store";
 import { ApproveScreen } from "@/components/qc/approve-screen";
@@ -44,7 +45,8 @@ export default async function ApprovePage({ searchParams }: { searchParams: Prom
   }
 
   const index = start;
-  const item = await getApproveItem(user, queue[index]);
+  // The buyer's other orders load in their own connection beside the order (one buyer, several orders).
+  const [item, sameBuyer] = await Promise.all([getApproveItem(user, queue[index]), getSameBuyerView(user, queue[index])]);
   if (!item) redirect("/approve");
   const nextId = queue.length > 1 ? queue[(index + 1) % queue.length] : null;
 
@@ -57,6 +59,7 @@ export default async function ApprovePage({ searchParams }: { searchParams: Prom
       nextId={nextId}
       others={others}
       takenBy={takenBy}
+      sameBuyer={sameBuyer}
     />
   );
 }

@@ -47,6 +47,8 @@ export function OrderCard({
     if (card.qcFail) urgent.push({ text: "QC failed", tone: "rose" });
     if (card.customerRevision) urgent.push({ text: "Revision", tone: "pigment" });
     if (!card.figuresResolved) urgent.push({ text: "Figures ?", tone: "amber" });
+    // One buyer, several orders: a short pill; the other numbers are in the card that opens.
+    if (card.sameBuyerNumbers.length) urgent.push({ text: "Same buyer", tone: "amber" });
     return (
       <div
         onClick={onOpen}

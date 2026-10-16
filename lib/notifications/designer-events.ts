@@ -21,6 +21,7 @@ import { sendAlphaEvent } from "@/lib/alpha/client";
 import { assignments, customerPublic, orderItems, orders, proofs, qcChecks } from "@/lib/db/schema";
 import { loadDesignerContact, type DesignerContact } from "@/lib/designers/profile";
 import { DEFAULT_TIMEZONE, formatInTimezone, isValidTimezone, quietWindowEnd } from "@/lib/designers/quiet-hours";
+import { recordSameBuyerForDesigner } from "@/lib/orders/same-buyer";
 import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
 import { LOGIN_FREE_LINK_SECONDS, resolveAttachmentViews } from "@/lib/qc/attachment-urls";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
@@ -147,6 +148,10 @@ export async function sendDesignerBrief(
     loadDesignerContact(tx, input.designerId),
   ]);
   if (!brief) return null;
+  // One buyer, several orders: when this buyer has other orders the designer is
+  // told so (order numbers and products only, never a name, email or address),
+  // and the same note is kept on the order for the board card. Null otherwise.
+  const sameBuyer = await recordSameBuyerForDesigner(tx, brief.id);
 
   const lines: string[] = [];
   lines.push(`New order for you: ${brief.number}.`);
@@ -155,6 +160,7 @@ export async function sendDesignerBrief(
   const opts = optionsText(brief.options);
   if (opts) lines.push(`Options: ${opts}.`);
   if (brief.notes) lines.push(`Notes: ${brief.notes}`);
+  if (sameBuyer) lines.push(sameBuyer);
   if (brief.customerFirstName) lines.push(`Customer: ${brief.customerFirstName}.`);
   lines.push(
     input.dueAt
@@ -178,6 +184,7 @@ export async function sendDesignerBrief(
       style: brief.style,
       figureCount: brief.figureCount,
       options: brief.options,
+      sameBuyer,
       dueAt: input.dueAt?.toISOString() ?? null,
       dueAtLocal: input.dueAt ? formatInTimezone(input.dueAt, contact?.timezone) : null,
       ...contactPayload(contact),

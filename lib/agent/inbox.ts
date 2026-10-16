@@ -43,10 +43,12 @@ import {
 } from "@/lib/email/reply-classifier";
 import { mergeReplyClassification } from "@/lib/integrations/gmail/inbound";
 import { liveOrderWhere } from "@/lib/orders/archive";
+import { detectMentionedOrders } from "@/lib/orders/same-buyer";
 import { agentOrderScope } from "./scope";
 import { proofUrl } from "@/lib/urls";
 
 import { draftAnswerToQuestion } from "./answer";
+import { buyerOrdersForReply, namedOrdersAdvice, noteMentionedOrders } from "./buyer-orders";
 import { getAgentConfig } from "./config";
 import { openExceptionTx, type ExceptionKind } from "./exceptions";
 import { mailRecommendation, screenNewMailTx } from "./junk-mail";
@@ -402,12 +404,16 @@ async function maybeReviewAsk(
 }
 
 async function handleReply(ctx: Ctx, row: ReplyRow, threshold: number): Promise<void> {
+  // An email on one order's thread can be about another order of the same buyer:
+  // read their other orders once, for both prompts and for the notes below.
+  const buyer = await buyerOrdersForReply(withSystemContext, row.orderId);
+
   // Network calls happen before the transaction opens.
   let classification = storedClassification(row.metadata);
   let fresh: Awaited<ReturnType<typeof classifyProofReply>> = null;
   if (!classification && anthropicFeaturesEnabled()) {
     try {
-      fresh = await classifyProofReply({ subject: row.subject, body: row.body ?? "" });
+      fresh = await classifyProofReply({ subject: row.subject, body: row.body ?? "", buyerOrders: buyer?.block });
     } catch {
       fresh = null;
     }
@@ -444,6 +450,7 @@ async function handleReply(ctx: Ctx, row: ReplyRow, threshold: number): Promise<
           orderStage: stageWords(facts.status),
           question: cleaned,
           signOff: getAgentConfig(facts).replySignOff,
+          buyerOrders: buyer?.block,
         });
       } catch {
         answer = null;
@@ -503,6 +510,16 @@ async function handleReply(ctx: Ctx, row: ReplyRow, threshold: number): Promise<
     const orderNo = order.platformOrderName ?? order.platformOrderId;
     const c = classification;
     const classifier = c ? { intent: c.intent, confidence: c.confidence, rationale: c.rationale } : null;
+
+    // The reply names another order of this buyer: that order's timeline shows
+    // the buyer wrote about it, and a human reading an escalation is told.
+    const named = buyer
+      ? detectMentionedOrders([row.subject, cleaned, c?.rationale].filter(Boolean).join("\n"), buyer.context.others)
+      : [];
+    if (named.length) {
+      await noteMentionedOrders(tx, { businessId: row.businessId, messageId: row.id, from: { id: order.id, number: orderNo }, mentioned: named });
+    }
+    const namesOthers = named.length ? namedOrdersAdvice(named) : null;
 
     // 1. Clear approval or revision request on a proof that is out for approval.
     const decision: ReplyDecision | null =
@@ -567,7 +584,7 @@ async function handleReply(ctx: Ctx, row: ReplyRow, threshold: number): Promise<
       const exceptionId = await raise(tx, bump, ref, "buyer_question", `Buyer question on order ${orderNo}`, {
         messageId: row.id,
         excerpt: excerptOf(cleaned),
-        suggested: null,
+        suggested: namesOthers,
       });
       await logAgent(tx, ref, "agent.reply_escalated", { messageId: row.id, kind: "buyer_question", exceptionId });
       bump((r) => (r.repliesEscalated += 1));
@@ -591,7 +608,7 @@ async function handleReply(ctx: Ctx, row: ReplyRow, threshold: number): Promise<
       messageId: row.id,
       excerpt: excerptOf(cleaned),
       classifier,
-      suggested: suggestionFor(c, order.status, threshold, illegal),
+      suggested: [suggestionFor(c, order.status, threshold, illegal), namesOthers].filter(Boolean).join(" "),
     });
     await logAgent(tx, ref, "agent.reply_escalated", {
       messageId: row.id,

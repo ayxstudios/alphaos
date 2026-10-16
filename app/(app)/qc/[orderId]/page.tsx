@@ -6,6 +6,7 @@ import { getQcContext, getQcQueueIds } from "@/lib/qc/data";
 import { QcScreen } from "@/components/qc/qc-screen";
 import { withUserContext } from "@/lib/db";
 import { getAutoQcView, latestSlots, slotAssetIds } from "@/lib/qc/auto-qc";
+import { getSameBuyerView } from "@/lib/orders/same-buyer-view";
 
 export const dynamic = "force-dynamic";
 
@@ -23,9 +24,11 @@ export default async function QcPage({
   const { orderId } = await params;
   const { selected } = await loadShellData(user);
 
-  const [ctx, queueIds] = await Promise.all([
+  // The buyer's other orders load in their own connection beside the QC reads (one buyer, several orders).
+  const [ctx, queueIds, sameBuyer] = await Promise.all([
     getQcContext(user, orderId),
     getQcQueueIds(user, selected.id),
+    getSameBuyerView(user, orderId),
   ]);
 
   if (!ctx) notFound();
@@ -33,5 +36,5 @@ export default async function QcPage({
     getAutoQcView(tx, ctx.orderId, slotAssetIds(latestSlots(ctx.versions, ctx.portraits, ctx.proofFiles))),
   );
 
-  return <QcScreen ctx={ctx} queueIds={queueIds} autoQc={autoQc} />;
+  return <QcScreen ctx={ctx} queueIds={queueIds} autoQc={autoQc} sameBuyer={sameBuyer} />;
 }

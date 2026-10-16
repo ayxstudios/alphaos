@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
 
+import { buyerOrdersForReply } from "@/lib/agent/buyer-orders";
 import { auth } from "@/lib/auth";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { activityLog, customers, messages, orders, proofs } from "@/lib/db/schema";
@@ -271,7 +272,9 @@ export async function linkReplyToOrder(messageId: string, orderId: string): Prom
   // an order awaiting approval, suggest approve / revise on the order page.
   const { message_: m, order: o } = linked;
   if (!m.suppressedAt && o.status === "awaiting_approval" && anthropicFeaturesEnabled()) {
-    const classification = await classifyProofReply({ subject: m.subject, body: m.body ?? "" }).catch(() => null);
+    // A buyer with several orders can write about another one: tell the classifier which orders they have.
+    const buyer = await buyerOrdersForReply((fn) => withUserContext(user, fn), o.id);
+    const classification = await classifyProofReply({ subject: m.subject, body: m.body ?? "", buyerOrders: buyer?.block }).catch(() => null);
     if (classification) {
       const metadata = mergeReplyClassification(m.metadata, classification);
       await withUserContext(user, async (tx) => {

@@ -21,6 +21,7 @@ const LABELS: Record<string, string> = {
   "order.created_manual": "Created by hand",
   "order.details_updated": "Details updated",
   "order.tracking_added": "Tracking added",
+  "order.same_buyer_noted": "Buyer's other orders noted",
   "order.marked_urgent": "Marked urgent",
   "order.cleared_urgent": "No longer urgent",
   "order.shipping_address_saved": "Shipping address saved",
@@ -54,4 +55,18 @@ export function activityLabel(action: string): string {
   const words = action.replace(/^order\./, "").replace(/[._]+/g, " ").trim();
   if (!words) return "Updated";
   return words.charAt(0).toUpperCase() + words.slice(1).replace(/\bqc\b/gi, "QC");
+}
+
+/**
+ * One plain line of extra detail for an activity row whose label alone would
+ * mislead, or null. A buyer's reply that came in on another of their orders'
+ * threads but names this order reads "Message received" with no hint of that,
+ * so it says which thread it came in on (lib/agent/buyer-orders.ts writes it).
+ */
+export function activityDetail(action: string, metadata: Record<string, unknown> | null | undefined): string | null {
+  if (action !== "message.received" || !metadata || metadata.linkedBy !== "mention") return null;
+  const from = typeof metadata.fromOrderNumber === "string" ? metadata.fromOrderNumber.trim() : "";
+  return from
+    ? `A reply on ${from} names this order. Check which order they mean.`
+    : "A reply on another order of this buyer names this order. Check which order they mean.";
 }

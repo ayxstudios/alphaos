@@ -67,6 +67,8 @@ import { optionsSummary } from "@/lib/orders/options-summary";
 import { OrderRevisionForm } from "@/components/orders/order-revision-form";
 import { OrderReassignForm } from "@/components/orders/order-reassign-form";
 import { OrderStyleSetter } from "@/components/orders/order-style-setter";
+import { SameBuyerCard } from "@/components/orders/same-buyer";
+import { getSameBuyerView } from "@/lib/orders/same-buyer-view";
 import { TrackingCompleteForm } from "@/components/orders/tracking-complete-form";
 import { OrderCompleteButton } from "@/components/orders/order-complete-button";
 import { ReplyClassificationSuggestion } from "@/components/orders/reply-classification-suggestion";
@@ -77,7 +79,7 @@ import { styles as stylesTable } from "@/lib/db/schema";
 import { currentMatchForProduct, countOrdersForProduct } from "@/lib/orders/style-learning";
 import { formatAt } from "@/lib/time";
 import { sizedImageUrl } from "@/lib/images";
-import { activityLabel } from "@/lib/orders/activity-label";
+import { activityDetail, activityLabel } from "@/lib/orders/activity-label";
 import { PrintShipCard } from "./print-card";
 import { QuickReassign } from "@/components/orders/quick-reassign";
 import { OrderUrgentToggle } from "@/components/orders/order-urgent-toggle";
@@ -420,7 +422,9 @@ export default async function OrderDetailPage({
       .orderBy(desc(proofs.createdAt))
       .limit(1),
   );
-  const pending = [itemsP, assignmentP, qcP, printP, timelineP, detailP, proofP];
+  // One buyer, several orders: the buyer's other orders (staff only), in their own connection beside the rest.
+  const sameBuyerP = getSameBuyerView(user, id);
+  const pending = [itemsP, assignmentP, qcP, printP, timelineP, detailP, proofP, sameBuyerP];
   // A hidden or missing order 404s before these are awaited; never leave them unhandled.
   for (const promise of pending) promise.catch(() => {});
 
@@ -496,8 +500,8 @@ export default async function OrderDetailPage({
       : null;
   });
 
-  const [items, assignment, qcRows, printRows, timelineRows, detail, designers, proofRows, shopifyMedia, styleSetter] =
-    await Promise.all([itemsP, assignmentP, qcP, printP, timelineP, detailP, designersP, proofP, shopifyMediaP, styleSetterP]);
+  const [items, assignment, qcRows, printRows, timelineRows, detail, designers, proofRows, shopifyMedia, styleSetter, sameBuyer] =
+    await Promise.all([itemsP, assignmentP, qcP, printP, timelineP, detailP, designersP, proofP, shopifyMediaP, styleSetterP, sameBuyerP]);
 
   const timeline = staffView ? timelineRows : [];
   const customerName = staffView
@@ -731,6 +735,8 @@ export default async function OrderDetailPage({
           styles={styleSetter.styles}
         />
       )}
+
+      <SameBuyerCard view={sameBuyer} />
 
       {order.notes && (
         <div className="rounded-card bg-surface p-4 shadow-card">
@@ -1177,6 +1183,9 @@ export default async function OrderDetailPage({
                           </span>
                         </div>
                         {event.body && <p className="mt-2 whitespace-pre-wrap text-sm text-ink">{event.body}</p>}
+                        {!event.body && activityDetail(event.action, event.metadata) && (
+                          <p className="mt-1 text-sm text-slate">{activityDetail(event.action, event.metadata)}</p>
+                        )}
                         {!event.body && event.fromState !== event.toState && (
                           <p className="mt-1 text-sm text-slate">
                             {event.fromState ? stateLabel(event.fromState) : "Created"} → {event.toState ? stateLabel(event.toState) : "Updated"}

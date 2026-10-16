@@ -16,6 +16,13 @@ export type AnswerDraftInput = {
   question: string;
   /** The exact closing lines (agentConfig.replySignOff); default "Warm regards," + the team. */
   signOff?: string | null;
+  /**
+   * The buyer's orders block (lib/orders/same-buyer.ts buyerOrdersPromptBlock):
+   * this order's product line, their other orders and the rule not to answer
+   * about one order with another's status, file or proof. Absent when the buyer
+   * has only this order, and the prompt is then unchanged.
+   */
+  buyerOrders?: string | null;
 };
 
 export async function draftAnswerToQuestion(input: AnswerDraftInput): Promise<string | null> {
@@ -28,6 +35,7 @@ export async function draftAnswerToQuestion(input: AnswerDraftInput): Promise<st
     input.signOff?.trim() || `Warm regards,\nThe ${input.businessName} Team`,
     `Customer first name: ${input.firstName ?? "there"}`,
     `Order: ${input.orderNumber} (${input.orderStage})`,
+    ...(input.buyerOrders ? [input.buyerOrders] : []),
     `Question: ${input.question}`,
   ].join("\n");
   const completion = await completeText(prompt, {

@@ -42,6 +42,12 @@ export function stripQuotedReplyText(input: string): string {
 export async function classifyProofReply(input: {
   subject: string | null;
   body: string;
+  /**
+   * The buyer's orders block (lib/orders/same-buyer.ts buyerOrdersPromptBlock),
+   * given when they have more than one order so a reply on one order's thread
+   * that is about another is read as such. Absent = the prompt is unchanged.
+   */
+  buyerOrders?: string | null;
 }): Promise<ReplyClassification | null> {
   const strippedText = stripQuotedReplyText(input.body);
   if (!strippedText) {
@@ -55,7 +61,7 @@ export async function classifyProofReply(input: {
     };
   }
 
-  const completion = await completeText(buildPrompt({ subject: input.subject, strippedText }), {
+  const completion = await completeText(buildPrompt({ subject: input.subject, strippedText, buyerOrders: input.buyerOrders ?? null }), {
     maxTokens: 160,
     timeoutMs: REQUEST_TIMEOUT_MS,
     relayTimeoutMs: RELAY_TIMEOUT_MS,
@@ -67,7 +73,7 @@ export async function classifyProofReply(input: {
   return { ...parsed, strippedText, model: completion.model };
 }
 
-function buildPrompt(input: { subject: string | null; strippedText: string }): string {
+function buildPrompt(input: { subject: string | null; strippedText: string; buyerOrders: string | null }): string {
   return [
     "Classify this customer reply to a portrait proof email.",
     "Use only the new reply text below. Quoted prior email has already been removed.",
@@ -80,6 +86,13 @@ function buildPrompt(input: { subject: string | null; strippedText: string }): s
     "confidence is a number from 0 to 1.",
     "happy is true only when the customer sounds genuinely delighted with the portrait (love it, amazing, made me cry, thank you so much); a plain ok or a reply that asks for anything is false.",
     "Keep rationale under 140 characters.",
+    ...(input.buyerOrders
+      ? [
+          "",
+          input.buyerOrders,
+          "If the reply is about a different order than this email's order, say which order number it is about in the rationale.",
+        ]
+      : []),
     "",
     `Subject: ${input.subject ?? ""}`,
     "Reply:",

@@ -67,7 +67,8 @@
     "test:portrait-slots": "tsx scripts/test-portrait-slots.ts",
     "test:proof-files": "tsx scripts/test-proof-files.ts",
     "test:proof-multi": "tsx scripts/test-proof-multi.ts",
-    "test:review-ask": "tsx scripts/test-review-ask.ts"
+    "test:review-ask": "tsx scripts/test-review-ask.ts",
+    "test:same-buyer": "tsx scripts/test-same-buyer.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1102.0",

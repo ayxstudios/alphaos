@@ -23,7 +23,9 @@ import { AiFixPanel } from "@/components/qc/auto-qc-fix";
 import { useToast } from "@/components/ui";
 import { ArrowRight, Check, Sparkles, X } from "@/components/ui/icons";
 import { focusRing } from "@/components/ui/styles";
+import { SameBuyerStrip } from "@/components/orders/same-buyer";
 import { portraitList } from "@/lib/orders/portrait-list";
+import type { SameBuyerView } from "@/lib/orders/same-buyer-view";
 import type { ApproveItem } from "@/lib/qc/approve-data";
 import { splitChecklistLabel } from "@/lib/qc/checklist";
 import { cn } from "@/lib/utils";
@@ -37,6 +39,8 @@ type Props = {
   others: { name: string; count: number }[];
   /** Set when ?o= asked for an order someone else has open. */
   takenBy: string | null;
+  /** This order in a line plus the buyer's other orders (one buyer, several orders). */
+  sameBuyer?: SameBuyerView | null;
 };
 
 function dueText(iso: string | null): { text: string; late: boolean } | null {
@@ -51,7 +55,7 @@ function whenText(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 }
 
-export function ApproveScreen({ item, position, total, nextId, others, takenBy }: Props) {
+export function ApproveScreen({ item, position, total, nextId, others, takenBy, sameBuyer = null }: Props) {
   const { ctx } = item;
   const router = useRouter();
   const toast = useToast();
@@ -319,6 +323,7 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy }
             {/\p{L}/u.test(ctx.customerName) ? ` · ${ctx.customerName}` : ""}
             {ctx.designerName ? ` · by ${ctx.designerName}` : ""}
           </p>
+          <SameBuyerStrip view={sameBuyer} />
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">

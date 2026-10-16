@@ -10,6 +10,8 @@ import { Check, XCircle } from "@/components/ui/icons";
 import { shortcutFor, type ItemResults } from "@/lib/qc/checklist";
 import { portraitList } from "@/lib/orders/portrait-list";
 import type { QcContext } from "@/lib/qc/data";
+import { SameBuyerStrip } from "@/components/orders/same-buyer";
+import type { SameBuyerView } from "@/lib/orders/same-buyer-view";
 import {
   confirmQcPassAndSend,
   prepareQcEmailPreview,
@@ -33,11 +35,14 @@ export function QcScreen({
   ctx,
   queueIds,
   autoQc = null,
+  sameBuyer = null,
 }: {
   ctx: QcContext;
   queueIds: string[];
   /** The newest Auto QC (2026-10-14): notes only, the VA/owner still decides. */
   autoQc?: AutoQcView | null;
+  /** This order in a line plus the buyer's other orders, so the wrong order's file is not judged. */
+  sameBuyer?: SameBuyerView | null;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -351,6 +356,8 @@ export function QcScreen({
           {ctx.proofFiles.missing.length > 1 ? "them" : "it"}.
         </div>
       ) : null}
+
+      <SameBuyerStrip view={sameBuyer} />
 
       <div className="grid grid-cols-1 flex-1 gap-3 xl:min-h-[38rem] xl:grid-cols-[minmax(0,1fr)_380px]">
         <CompareViewer

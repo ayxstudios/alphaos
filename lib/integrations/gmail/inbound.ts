@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { and, desc, eq, ilike, inArray, isNotNull, or, sql } from "drizzle-orm";
 
+import { buyerOrdersForReply } from "@/lib/agent/buyer-orders";
 import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
 import { withSystemContext, type Tx } from "@/lib/db";
 import { getBusinessGmailCredentials } from "@/lib/db/credentials";
@@ -797,7 +798,10 @@ async function attachEtsyNotification(businessId: string, gmailMessageId: string
 }
 
 async function classifyAndStoreReply(attached: AttachedMessage): Promise<void> {
-  const classification = await classifyProofReply({ subject: attached.subject, body: attached.body });
+  // A buyer with several orders can write about another one on this thread: the
+  // classifier is told which orders they have (nothing extra when they have one).
+  const buyer = attached.orderId ? await buyerOrdersForReply(withSystemContext, attached.orderId) : null;
+  const classification = await classifyProofReply({ subject: attached.subject, body: attached.body, buyerOrders: buyer?.block });
   if (!classification) {
     logInbound(attached.businessId, { event: "reply_classification_unavailable", messageId: attached.messageId });
     return;

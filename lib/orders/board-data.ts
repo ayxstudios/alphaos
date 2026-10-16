@@ -26,6 +26,14 @@ import { loadProofFilePick } from "@/lib/proofs/files";
 import { sizedImageUrl } from "@/lib/images";
 import { personalizationOf } from "@/lib/orders/options-summary";
 import {
+  loadDesignerSiblings,
+  productLineOf,
+  sameBuyerSentence,
+  type BuyerAnchor,
+  type DesignerSafeSibling,
+  type LineItem,
+} from "@/lib/orders/same-buyer";
+import {
   COMPLETE_COLUMN_MAX,
   COMPLETE_COLUMN_WINDOW_DAYS,
   SENT_BACK_FROM,
@@ -96,6 +104,15 @@ export type BoardCard = {
   /** Marked URGENT (lib/orders/urgent.ts): pill on the card, sorted first. */
   urgent: boolean;
   urgentReason: string | null;
+  /**
+   * One buyer, several orders: one plain sentence naming the buyer's OTHER
+   * orders (number, product, delivered or not) and telling the designer to
+   * keep them apart. Null when the buyer has no other order. Order numbers and
+   * products only, never a name, email or address (lib/orders/same-buyer.ts).
+   */
+  sameBuyer: string | null;
+  /** The other orders' numbers, for the short chip on the card. */
+  sameBuyerNumbers: string[];
 };
 
 type OrderRow = {
@@ -128,6 +145,35 @@ function boardThumbnailUrl(url: string): string {
   return url.includes("picsum.photos") ? url.replace(/\/900\/900$/, "/400/400") : sizedImageUrl(url, 640);
 }
 
+/**
+ * One buyer, several orders: the designer-safe siblings of each card's order
+ * (lib/orders/same-buyer.ts). Its own read-only transaction, started beside
+ * enrich()'s two others so the board waits no longer for it. It is an extra,
+ * so a failure leaves the cards without the note rather than failing the board.
+ */
+async function sameBuyerSiblings(user: RequestUser, rows: OrderRow[]): Promise<Map<string, DesignerSafeSibling[]>> {
+  const anchors: BuyerAnchor[] = rows.map((o) => ({
+    id: o.id,
+    businessId: o.businessId,
+    number: o.platformOrderName ?? o.platformOrderId,
+    customerId: o.customerId,
+    notes: o.notes,
+  }));
+  try {
+    return await withUserContext(user, (tx) => loadDesignerSiblings(tx, anchors));
+  } catch (err) {
+    console.log(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "warn",
+        event: "board_same_buyer_failed",
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+    return new Map();
+  }
+}
+
 async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]> {
   if (!rows.length) return [];
   const viewerRole = user.role;
@@ -139,9 +185,10 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
   // known from `rows`), so none depends on another's result. A transaction is
   // ONE connection, so queries "in parallel" on it still go over the wire one
   // after another (docs/PERF.md: the ~5 s board). The queries are therefore
-  // split over two read-only transactions that run side by side; each sets its
-  // own RLS GUCs (withUserContext), so scoping is unchanged.
-  const [[items, refs, customerRows], [failRows, revRows, vaRevisionRows, submissionRows]] = await Promise.all([
+  // split over read-only transactions that run side by side (two here, a third
+  // for the same-buyer note below); each sets its own RLS GUCs (withUserContext),
+  // so scoping is unchanged.
+  const [[items, refs, customerRows], [failRows, revRows, vaRevisionRows, submissionRows], siblingsByOrder] = await Promise.all([
     withUserContext(user, (tx) => Promise.all([
     tx
       .select({
@@ -149,6 +196,8 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
         figureCount: orderItems.figureCount,
         style: orderItems.style,
         title: orderItems.title,
+        variation: orderItems.variation,
+        sku: orderItems.sku,
         options: orderItems.options,
         quantity: orderItems.quantity,
       })
@@ -217,6 +266,7 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
           .where(and(inArray(assets.orderId, revisionIds), eq(assets.type, "submission"), isNull(assets.deletedAt)))
       : Promise.resolve([]),
     ])),
+    sameBuyerSiblings(user, rows),
   ]);
   // Ready for QC: the newest portrait version is newer than the last send-back.
   const lastSendBack = new Map<string, number>();
@@ -347,6 +397,32 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
     }
   }
 
+  // One buyer, several orders: each card's sentence and the other orders'
+  // numbers, from the siblings read above and this order's own product line.
+  const lineItems = new Map<string, LineItem[]>();
+  for (const it of items) {
+    const line: LineItem = {
+      title: it.title,
+      variation: it.variation,
+      sku: it.sku,
+      options: it.options,
+      figureCount: it.figureCount,
+      style: it.style,
+      quantity: it.quantity,
+    };
+    const list = lineItems.get(it.orderId);
+    if (list) list.push(line);
+    else lineItems.set(it.orderId, [line]);
+  }
+  const sameBuyer = new Map<string, { sentence: string; numbers: string[] }>();
+  for (const o of rows) {
+    const siblings = siblingsByOrder.get(o.id);
+    if (!siblings?.length) continue;
+    const productLine = productLineOf(lineItems.get(o.id) ?? []) || null;
+    const sentence = sameBuyerSentence({ number: o.platformOrderName ?? o.platformOrderId, productLine }, siblings);
+    if (sentence) sameBuyer.set(o.id, { sentence, numbers: siblings.map((x) => x.number) });
+  }
+
   const iso = (d: Date | null) => (d ? d.toISOString() : null);
   return rows.map((o) => ({
     orderId: o.id,
@@ -372,6 +448,8 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
     readyForQc: o.status === "in_design" && readyForQc.has(o.id),
     urgent: !!o.urgentAt,
     urgentReason: o.urgentAt ? o.urgentReason : null,
+    sameBuyer: sameBuyer.get(o.id)?.sentence ?? null,
+    sameBuyerNumbers: sameBuyer.get(o.id)?.numbers ?? [],
   }));
 }
 
