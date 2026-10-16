@@ -7,13 +7,17 @@
  *   BACKFILL_DB_URL=<owner connection> npx tsx scripts/backfill-asset-hashes.ts --dry-run
  *   BACKFILL_DB_URL=<owner connection> npx tsx scripts/backfill-asset-hashes.ts [--days 60] [--limit 5000] [--concurrency 6]
  *
- * Needs the R2 env (R2_* as in .env.local) to read stored files. Owner
- * connection only (RLS would hide rows from app_user); the URL is read from
- * BACKFILL_DB_URL alone so it never falls back to another database. Safe to
- * repeat: only rows missing a hash or a fine signature are touched, one small UPDATE per file (no
- * long transaction), and a file that cannot be decoded (PDF, HEIC, deleted,
+ * Needs the R2 env (R2_* as in .env.local) to read stored files, and stops
+ * before hashing anything when it cannot read them: on 16 Oct an R2_* inherited
+ * from the parent shell (another app's bucket) made every stored file look
+ * unreadable and 1024 were skipped without a word. Owner connection only (RLS
+ * would hide rows from app_user); the URL is read from BACKFILL_DB_URL alone so
+ * it never falls back to another database. Safe to repeat: only rows missing a
+ * hash or a fine signature are touched, one small UPDATE per file (no long
+ * transaction), and a file that cannot be decoded (PDF, HEIC, deleted,
  * unreachable) is skipped and counted, never an error.
  */
+import "./load-env";
 import { and, desc, gte, isNull, or } from "drizzle-orm";
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-serverless";
@@ -23,11 +27,26 @@ import { eq, inArray, sql } from "drizzle-orm";
 import * as schema from "../lib/db/schema";
 import { assets, orders } from "../lib/db/schema";
 import { hashColumnsFor } from "../lib/qc/asset-hash";
+import { readStoredHead } from "../lib/uploads/store";
 
 function argNum(flag: string, fallback: number): number {
   const i = process.argv.indexOf(flag);
   const n = i >= 0 ? Number(process.argv[i + 1]) : NaN;
   return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+/** Null when any of these stored files can be read (one deleted object never stops the run), else why none could. */
+async function whyUnreadable(keys: string[]): Promise<string | null> {
+  let why: string | null = null;
+  for (const key of keys) {
+    try {
+      await readStoredHead(key, 16);
+      return null;
+    } catch (e) {
+      why = e instanceof Error ? e.message : String(e);
+    }
+  }
+  return why;
 }
 
 async function main() {
@@ -60,6 +79,13 @@ async function main() {
       )
       .orderBy(desc(assets.createdAt))
       .limit(limit);
+    const why = await whyUnreadable(rows.flatMap((r) => (r.storage === "r2" && r.r2Key ? [r.r2Key] : [])).slice(0, 3));
+    if (why) {
+      throw new Error(
+        `cannot read stored files with these R2 settings (${why}). Nothing was hashed. ` +
+          "An R2_* already set in the parent shell wins over .env.local and --env-file.",
+      );
+    }
     let hashed = 0;
     let skipped = 0;
     let next = 0;

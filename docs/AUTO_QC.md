@@ -217,6 +217,6 @@ BACKFILL_DB_URL=<owner connection string> npx tsx scripts/backfill-asset-hashes.
 BACKFILL_DB_URL=<owner connection string> npx tsx scripts/backfill-asset-hashes.ts            # last 60 days
 ```
 
-Flags: `--days N` (default 60), `--limit N` (default 5000), `--concurrency N` (default 6). It needs the R2 env and hashes newest first; a row missing either the dHash or the fine signature is redone.
+Flags: `--days N` (default 60), `--limit N` (default 5000), `--concurrency N` (default 6). It needs the R2 env and hashes newest first; a row missing either the dHash or the fine signature is redone. It stops before hashing anything when it cannot read stored files: an `R2_*` already set in the parent shell wins over `.env.local` and `--env-file` (on 16 Oct the agent's own bucket did, and 1024 files were skipped as unreadable until this check existed).
 
 **Fail-open.** A failed lookup in `checkWrongFile` is logged and reads as "not blocked": it must never stop real work.
