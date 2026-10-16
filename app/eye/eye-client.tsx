@@ -10,6 +10,14 @@ import { makeSyntheticData } from "./eye-synthetic";
 
 const POLL_MS = 45_000;
 
+const EMPTY_DATA: EyeData = {
+  generatedAt: new Date(0).toISOString(),
+  businesses: [],
+  totals: { open: 0, delayed: 0, urgent: 0, waitingOnBuyer: 0, unhappy: 0, printing: 0, completedToday: 0 },
+  orders: [],
+  events: [],
+};
+
 const CHIPS: { key: EyeFilter; label: string; color: string; count: (d: EyeData) => number }[] = [
   { key: "delayed", label: "Delayed", color: HEALTH_COLOR.amber, count: (d) => d.totals.delayed },
   { key: "unhappy", label: "Unhappy", color: HEALTH_COLOR.unhappy, count: (d) => d.totals.unhappy },
@@ -28,6 +36,9 @@ const CSS = `
 .eye-sub{margin-top:7px;font-size:12px;color:rgba(170,195,235,.7);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .eye-clock{font-variant-numeric:tabular-nums;color:rgba(200,220,255,.85)}
 .eye-stale{color:#ffb347}
+.eye-demo{display:inline-block;margin-left:12px;padding:2px 8px;border-radius:999px;border:1px solid rgba(255,179,71,.6);color:#ffb347;font-size:10px;font-weight:600;letter-spacing:.2em;vertical-align:1px}
+.eye-down{position:absolute;z-index:3;left:50%;transform:translateX(-50%);text-align:center;max-width:min(420px,86vw);font-size:12px;line-height:1.5;color:rgba(190,210,245,.8);pointer-events:none}
+.eye-down em{display:block;font-style:normal;color:rgba(150,175,220,.6);margin-top:2px}
 .eye-chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .eye-chip{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 14px;border-radius:999px;border:1px solid rgba(130,170,255,.2);background:rgba(10,16,34,.72);color:#cfe3ff;font:inherit;font-size:12px;cursor:pointer;white-space:nowrap;backdrop-filter:blur(6px);transition:border-color .2s,background .2s,opacity .2s}
 .eye-chip:hover{border-color:rgba(160,200,255,.5)}
@@ -173,9 +184,12 @@ function Panel({ o, open, top, onClose }: { o: EyeOrder | null; open: boolean; t
   );
 }
 
-export function EyeClient({ initial }: { initial: EyeData }) {
-  const [data, setData] = useState<EyeData>(initial);
+export function EyeClient({ initial }: { initial: EyeData | null }) {
+  const [data, setData] = useState<EyeData>(initial ?? EMPTY_DATA);
+  const [everOk, setEverOk] = useState(initial !== null);
+  const [demo, setDemo] = useState(false);
   const [lastOk, setLastOk] = useState<number>(0);
+  const [lastTried, setLastTried] = useState<number>(0);
   const [failed, setFailed] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [tick, setTick] = useState(0);
@@ -202,6 +216,7 @@ export function EyeClient({ initial }: { initial: EyeData }) {
   useEffect(() => {
     setMounted(true);
     setLastOk(Date.now());
+    setLastTried(Date.now());
     const t = setInterval(() => setTick((n) => n + 1), 1000);
     return () => clearInterval(t);
   }, []);
@@ -246,16 +261,17 @@ export function EyeClient({ initial }: { initial: EyeData }) {
     };
   }, []);
 
-  // dev-only synthetic feed: /eye?synthetic=500
+  // synthetic demo feed: /eye?synthetic=500 (admin-only page, so allowed in production too)
   useEffect(() => {
-    if (process.env.NODE_ENV === "production") return;
     const raw = new URLSearchParams(window.location.search).get("synthetic");
     if (raw === null) return;
     const n = Number(raw);
     if (!Number.isFinite(n) || n < 0) return;
     synthetic.current = true;
     nextInitial.current = true;
-    setData(makeSyntheticData(Math.min(n, 5000)));
+    setDemo(true);
+    setEverOk(true);
+    setData(makeSyntheticData(Math.min(n, 600)));
   }, []);
 
   // push data into the engine
@@ -285,13 +301,16 @@ export function EyeClient({ initial }: { initial: EyeData }) {
       setData(d);
       setLastOk(Date.now());
       setFailed(false);
+      setEverOk(true);
     } catch {
       setFailed(true);
     } finally {
+      setLastTried(Date.now());
       clearTimeout(to);
     }
   }, []);
   useEffect(() => {
+    if (initial === null) void poll();
     const t = setInterval(poll, POLL_MS);
     const vis = () => {
       if (!document.hidden && Date.now() - lastOkRef.current > POLL_MS) poll();
@@ -301,6 +320,7 @@ export function EyeClient({ initial }: { initial: EyeData }) {
       clearInterval(t);
       document.removeEventListener("visibilitychange", vis);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [poll]);
   useEffect(() => {
     lastOkRef.current = lastOk;
@@ -330,7 +350,9 @@ export function EyeClient({ initial }: { initial: EyeData }) {
 
   const staleMin = mounted && lastOk ? Math.floor((Date.now() - lastOk) / 60000) : 0;
   void tick;
-  const showStale = failed || staleMin >= 2;
+  const down = !everOk;
+  const triedMin = mounted && lastTried ? Math.floor((Date.now() - lastTried) / 60000) : 0;
+  const showStale = !demo && !down && (failed || staleMin >= 2);
   const shops = data.businesses.length;
   const compactLay = lay?.compact ?? false;
   const coreNumSize = lay ? Math.max(20, Math.min(54, lay.coreR * 0.9)) : 36;
@@ -342,7 +364,10 @@ export function EyeClient({ initial }: { initial: EyeData }) {
 
       <div className="eye-top" ref={topRef}>
         <div>
-          <div className="eye-title">THE ALL SEEING EYE</div>
+          <div className="eye-title">
+            THE ALL SEEING EYE
+            {demo && <span className="eye-demo">DEMO DATA</span>}
+          </div>
           <div className="eye-sub">
             <span className="eye-clock">{mounted ? fmtClock(new Date()) : " "}</span>
             <span>
@@ -370,8 +395,23 @@ export function EyeClient({ initial }: { initial: EyeData }) {
 
       {lay && (
         <div className="eye-core" style={{ left: lay.cx, top: lay.cy }}>
-          <b style={{ fontSize: coreNumSize }}>{data.totals.open}</b>
-          <span>WATCHING</span>
+          {down ? (
+            <>
+              <b style={{ fontSize: Math.max(14, coreNumSize * 0.4), fontWeight: 400, letterSpacing: ".12em" }}>resting</b>
+            </>
+          ) : (
+            <>
+              <b style={{ fontSize: coreNumSize }}>{data.totals.open}</b>
+              <span>WATCHING</span>
+            </>
+          )}
+        </div>
+      )}
+
+      {down && lay && (
+        <div className="eye-down" style={{ top: lay.cy + lay.coreR + 28 }}>
+          The Eye can{"'"}t reach AlphaOS right now. It reconnects automatically.
+          <em>last tried {triedMin < 1 ? "moments" : `${triedMin}m`} ago</em>
         </div>
       )}
 

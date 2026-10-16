@@ -12,6 +12,10 @@ export async function GET() {
   if (session.user.role !== "admin") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403, headers: { "Cache-Control": "no-store" } });
   }
-  const data = await getEyeData({ id: session.user.id, role: session.user.role });
-  return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
+  try {
+    const data = await getEyeData({ id: session.user.id, role: session.user.role });
+    return NextResponse.json(data, { headers: { "Cache-Control": "no-store" } });
+  } catch {
+    return NextResponse.json({ error: "db_unavailable" }, { status: 503, headers: { "Cache-Control": "no-store" } });
+  }
 }
