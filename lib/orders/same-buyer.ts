@@ -195,6 +195,29 @@ function countText(line: LineItem): string {
   return `${n} ${noun}${n === 1 ? "" : "s"}${names ? `: ${clip(names, 40)}` : ""}`;
 }
 
+/**
+ * The orientation an order was bought in ("portrait" or "landscape") from its
+ * lines' orientation/layout option, else from notes that say "portrait
+ * orientation" or "landscape orientation". Null when it is not stated, mixed
+ * between lines, or square.
+ */
+export function orientationOf(lines: LineItem[], notes?: string | null): "portrait" | "landscape" | null {
+  const found = new Set<"portrait" | "landscape">();
+  const norm = (v: string): "portrait" | "landscape" | null => {
+    const w = v.toLowerCase();
+    return w === "portrait" || w === "vertical" ? "portrait" : w === "landscape" || w === "horizontal" ? "landscape" : null;
+  };
+  for (const l of lines) {
+    const hit = ORIENTATION_VALUE.exec(optionValue(l.options, ORIENTATION_NAME))?.[1];
+    const o = hit ? norm(hit) : null;
+    if (o) found.add(o);
+  }
+  if (found.size === 1) return [...found][0];
+  if (found.size > 1) return null;
+  const note = /\b(portrait|landscape)\s+orientation\b/i.exec(notes ?? "")?.[1];
+  return note ? norm(note) : null;
+}
+
 function lineText(line: LineItem): string {
   const orientation = optionValue(line.options, ORIENTATION_NAME);
   const title = shortTitle(line.title) || "Portrait";
