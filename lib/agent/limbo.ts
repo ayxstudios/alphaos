@@ -56,6 +56,12 @@ export const EMAIL_GRACE_HOURS = 12;
 export const ADDON_GRACE_HOURS = 24;
 /** A buyer chase (photo request or reminder) counts as live this long. */
 export const CHASE_LIVE_DAYS = 7;
+/**
+ * A stuck_order the agent resolved stays resolved this long while nothing
+ * happens on the order; then it is looked at again. A person's call holds
+ * until something happens (decisionHolds).
+ */
+export const AGENT_DECISION_DAYS = 7;
 
 // ---------------------------------------------------------------------------
 // L1: stale exceptions close themselves
@@ -285,7 +291,35 @@ export type OrderFacts = {
    * 2026-10-17: do not open cans of worms unless the customer reaches out).
    */
   legacyQuiet?: boolean;
+  /**
+   * The latest call a person or the agent made on this order's stuck_order row
+   * (resolved by hand, not closed by the watch itself), with the reason it was
+   * raised for.
+   */
+  decision?: { at: Date; reason: string | null; byAgent: boolean; note: string | null } | null;
+  /** The latest thing that happened on the order, leaving out exception bookkeeping and staff comments. */
+  lastEventAt?: Date | null;
 };
+
+/**
+ * Owner, 2026-10-17 ("Most of these "Needs you" should be done by you"): a
+ * stuck_order a person or the agent resolved stays resolved while the order
+ * sits where it was for the same reason and nothing has happened on it since.
+ * The watch opened them again two minutes later: PC32029 ("Yousif: ignore this
+ * one"), PC32195 (printed on its own), PC32186 (drawn and approved by mail, the
+ * canvas at the printer), CPS 4184914032 (the mug delivered). The agent's own
+ * call is looked at again after AGENT_DECISION_DAYS; a person's holds until the
+ * order moves or something happens on it (a buyer message, an assignment, a
+ * file, an email).
+ */
+export function decisionHolds(o: OrderFacts, reason: StuckReason, now: Date): boolean {
+  const d = o.decision;
+  if (!d || d.reason !== reason) return false;
+  if (d.at.getTime() < o.enteredAt.getTime()) return false;
+  if (o.lastEventAt && o.lastEventAt.getTime() > d.at.getTime()) return false;
+  if (d.byAgent && now.getTime() - d.at.getTime() >= AGENT_DECISION_DAYS * 24 * HOUR) return false;
+  return true;
+}
 
 export type Owner =
   | { bucket: "designer" | "buyer" | "pipeline" | "owner"; why: string }
@@ -351,6 +385,13 @@ export function ownerOf(o: OrderFacts, now: Date, opts: { ignoreStuck?: boolean 
   }
 }
 
+type DecisionRow = { at: string; reason: string | null; byAgent: boolean; note: string | null };
+
+function decisionOf(v: DecisionRow | string | null): OrderFacts["decision"] {
+  const d = typeof v === "string" ? (JSON.parse(v) as DecisionRow) : v;
+  return d?.at ? { at: new Date(d.at), reason: d.reason ?? null, byAgent: !!d.byAgent, note: d.note ?? null } : null;
+}
+
 async function loadOrderFacts(tx: Tx, businessId: string): Promise<OrderFacts[]> {
   const closedList = sql.join(CLOSED_STATUSES.map((s) => sql`${s}`), sql`, `);
   const rows = await tx
@@ -376,6 +417,13 @@ async function loadOrderFacts(tx: Tx, businessId: string): Promise<OrderFacts[]>
         where e.order_id = ${orders.id} and e.status = 'open'), '{}'::text[])`,
       style: sql<string | null>`(select i.style from order_items i where i.order_id = ${orders.id} and i.style is not null order by i.id limit 1)`,
       legacyQuiet: sql<boolean>`${legacyQuiet()}`,
+      decision: sql<DecisionRow | string | null>`(select
+        json_build_object('at', e.resolved_at, 'reason', e.detail->>'reason', 'byAgent', e.resolved_by is null, 'note', e.resolution_note)
+        from exceptions e where e.order_id = ${orders.id} and e.kind = 'stuck_order' and e.status = 'resolved'
+          and e.resolved_at is not null and (e.resolved_by is not null or e.resolution_note like 'agent:%')
+        order by e.resolved_at desc limit 1)`,
+      lastEventAt: sql<string | null>`(select max(a.created_at) from activity_log a where a.order_id = ${orders.id}
+        and a.action not like 'agent.exception%' and a.action not in ('comment', 'order.note', 'order.note_added'))`,
     })
     .from(orders)
     .leftJoin(customers, eq(customers.id, orders.customerId))
@@ -384,6 +432,8 @@ async function loadOrderFacts(tx: Tx, businessId: string): Promise<OrderFacts[]>
     ...r,
     aiFailedHold: !!r.aiFailedHold,
     legacyQuiet: !!r.legacyQuiet,
+    decision: decisionOf(r.decision),
+    lastEventAt: r.lastEventAt ? new Date(r.lastEventAt) : null,
     enteredAt: new Date(r.enteredAt),
     lastChaseAt: r.lastChaseAt ? new Date(r.lastChaseAt) : null,
     openKinds: r.openKinds ?? [],
@@ -538,7 +588,16 @@ export async function suggestDesigner(tx: Tx, businessId: string, style: string 
   return best?.name ?? null;
 }
 
-export type WatchResult = { checked: number; opened: number; refreshed: number; closed: number; limbo: number; closedIds: string[] };
+export type WatchResult = {
+  checked: number;
+  opened: number;
+  refreshed: number;
+  closed: number;
+  limbo: number;
+  /** In limbo, but a person's or the agent's call on its row still stands (decisionHolds). */
+  held: number;
+  closedIds: string[];
+};
 
 /**
  * L4 for one business: every live order nobody owns past its grace gets a
@@ -552,7 +611,7 @@ export async function watchWaitingStates(
   const now = opts.now ?? new Date();
   return withSystemContext(async (tx) => {
     const facts = await loadOrderFacts(tx, businessId);
-    const res: WatchResult = { checked: facts.length, opened: 0, refreshed: 0, closed: 0, limbo: 0, closedIds: [] };
+    const res: WatchResult = { checked: facts.length, opened: 0, refreshed: 0, closed: 0, limbo: 0, held: 0, closedIds: [] };
     const stuckRows = await tx
       .select({ id: exceptions.id, orderId: exceptions.orderId, detail: exceptions.detail })
       .from(exceptions)
@@ -582,7 +641,14 @@ export async function watchWaitingStates(
       res.limbo++;
       const suggestion = ["not_assigned", "no_designer"].includes(w.reason) ? await suggestDesigner(tx, businessId, f.style) : null;
       const words = stuckWords(w.reason, f, suggestion, now);
-      const detail = { reason: w.reason, status: f.status, since: f.enteredAt.toISOString(), recommendation: words.recommendation };
+      const last = f.decision && f.decision.reason === w.reason ? { at: f.decision.at.toISOString(), note: f.decision.note } : null;
+      const detail = {
+        reason: w.reason,
+        status: f.status,
+        since: f.enteredAt.toISOString(),
+        recommendation: words.recommendation,
+        ...(last ? { lastDecision: last } : {}),
+      };
       const existing = stuckByOrder.get(f.id);
       if (existing) {
         if ((existing.detail as { reason?: string } | null)?.reason === w.reason) continue;
@@ -593,6 +659,10 @@ export async function watchWaitingStates(
             .set({ summary: `Order ${f.number}: ${words.summary}`, detail: sql`${exceptions.detail} || ${JSON.stringify(detail)}::jsonb` })
             .where(eq(exceptions.id, existing.id));
         }
+        continue;
+      }
+      if (decisionHolds(f, w.reason, now)) {
+        res.held++;
         continue;
       }
       res.opened++;

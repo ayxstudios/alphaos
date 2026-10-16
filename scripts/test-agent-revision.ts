@@ -3,8 +3,11 @@
 // done by you"; Katie Hutchinson, Perfetta 4197441022, asked in Etsy chat for
 // the pumpkin and the flowers back and nothing could queue it): a dry run
 // changes nothing, apply sends the newest undecided proof back to the SAME
-// designer with her words, and everything else is refused. Against a throwaway
-// business of its own, deleted at the end. Never run against production.
+// designer with her words; after approval or delivery of a digital piece it is
+// a late revision to the same designer, and once anything is printed (a print
+// job, printing, shipped, a physical piece delivered) it is refused as a
+// reprint. Against a throwaway business of its own, deleted at the end. Never
+// run against production.
 import "./load-env";
 
 process.env.ALPHA_HOOK_URL = "";
@@ -18,7 +21,7 @@ import ws from "ws";
 
 import { withSystemContext } from "../lib/db";
 import * as schema from "../lib/db/schema";
-import { activityLog, assignments, businesses, customers, orderItems, orders, proofs, shops, users } from "../lib/db/schema";
+import { activityLog, assignments, businesses, customers, orderItems, orders, printJobs, proofs, shops, users } from "../lib/db/schema";
 import { agentRevision, AGENT_REVISION_VIA } from "../lib/orders/agent-revision";
 import { generateProofToken } from "../lib/proofs/tokens";
 
@@ -45,7 +48,9 @@ async function setup() {
 }
 
 let n = 0;
-async function order(o: { status?: typeof orders.$inferInsert.status; archived?: boolean; decided?: "approved" | "revision" } = {}) {
+async function order(
+  o: { status?: typeof orders.$inferInsert.status; archived?: boolean; decided?: "approved" | "revision"; physical?: boolean; printJob?: boolean } = {},
+) {
   n++;
   const number = `AR${stamp % 100000}-${n}`;
   return withSystemContext(async (tx) => {
@@ -64,7 +69,15 @@ async function order(o: { status?: typeof orders.$inferInsert.status; archived?:
         archivedAt: o.archived ? ago(1) : null,
       })
       .returning({ id: orders.id });
-    await tx.insert(orderItems).values({ businessId: ids.biz, orderId: row.id, title: "Venue watercolor", figureCount: 1, figureCountSource: "manual", productType: "digital" });
+    await tx.insert(orderItems).values({
+      businessId: ids.biz,
+      orderId: row.id,
+      title: o.physical ? "Venue watercolor canvas" : "Venue watercolor",
+      figureCount: 1,
+      figureCountSource: "manual",
+      productType: o.physical ? "physical" : "digital",
+    });
+    if (o.printJob) await tx.insert(printJobs).values({ businessId: ids.biz, orderId: row.id, provider: "gelato", method: "manual", submittedAt: ago(3) });
     await tx.insert(assignments).values({ businessId: ids.biz, orderId: row.id, designerId: ids.designer, active: true });
     // An older proof she already answered, then the newest one out for approval.
     await tx.insert(proofs).values({ businessId: ids.biz, orderId: row.id, token: generateProofToken(), sentAt: ago(30), createdAt: ago(30), decision: "revision", decidedAt: ago(29) });
@@ -119,9 +132,44 @@ async function dbTests() {
   const again = await agentRevision({ order: a.id, reason: REASON, apply: true });
   check("a second apply is refused (no longer out for approval)", !again.ok && again.code === "not_awaiting_approval");
 
-  const shipped = await order({ status: "delivered" });
-  const late = await agentRevision({ order: shipped.number, reason: REASON, apply: true });
-  check("after delivery: refused, the order page handles it", !late.ok && late.code === "not_awaiting_approval");
+  // After delivery of a digital piece: a late revision, the same designer, her words on the card.
+  const delivered = await order({ status: "delivered", decided: "approved" });
+  const lateDry = await agentRevision({ order: delivered.number, reason: REASON });
+  check("after delivery (digital): dry run ok, says where it was", lateDry.ok && !lateDry.applied && lateDry.from === "delivered" && lateDry.designer === DESIGNER, JSON.stringify(lateDry));
+  check("... and the dry run changed nothing", (await state(delivered.id)).o.status === "delivered");
+  const late = await agentRevision({ order: delivered.number, reason: REASON, by: "Etsy chat 17 Oct, Alpha VA", apply: true });
+  check("after delivery (digital): apply ok", late.ok && late.applied, JSON.stringify(late));
+  const lateAfter = await state(delivered.id);
+  check("... back in design as revision 1", lateAfter.o.status === "in_design" && lateAfter.o.revisionCount === 1, JSON.stringify(lateAfter.o));
+  check("... the same designer, still the only active one", lateAfter.active.length === 1 && lateAfter.active[0].designerId === ids.designer);
+  const lateLog = lateAfter.logs.find((l) => (l.metadata as Record<string, unknown> | null)?.via === AGENT_REVISION_VIA);
+  const lateMeta = (lateLog?.metadata ?? {}) as Record<string, unknown>;
+  check(
+    "... the timeline carries her words for the designer's card",
+    !!lateLog && lateLog.action === "order.in_design" && lateMeta.requestedBy === "Etsy chat 17 Oct, Alpha VA" && lateMeta.revisionReason === REASON,
+    JSON.stringify(lateAfter.logs),
+  );
+
+  const approved = await order({ status: "approved", decided: "approved" });
+  const appr = await agentRevision({ order: approved.number, reason: REASON, apply: true });
+  check("approved, nothing printed: a late revision too", appr.ok && appr.applied && (await state(approved.id)).o.status === "in_design", JSON.stringify(appr));
+
+  for (const [name, o] of [
+    ["printing", { status: "printing" as const, decided: "approved" as const, physical: true }],
+    ["shipped", { status: "shipped" as const, decided: "approved" as const, physical: true }],
+    ["approved with a print job", { status: "approved" as const, decided: "approved" as const, physical: true, printJob: true }],
+    ["delivered with a print job", { status: "delivered" as const, decided: "approved" as const, printJob: true }],
+    ["a physical piece delivered", { status: "delivered" as const, decided: "approved" as const, physical: true }],
+  ] as const) {
+    const x = await order(o);
+    const r = await agentRevision({ order: x.number, reason: REASON, apply: true });
+    const st = await state(x.id);
+    check(`${name}: refused as a reprint (the owner's call), left as it was`, !r.ok && r.code === "print_ordered" && st.o.status === o.status && st.o.revisionCount === 0, JSON.stringify(r));
+  }
+
+  const early = await order({ status: "in_design" });
+  const ear = await agentRevision({ order: early.number, reason: REASON, apply: true });
+  check("still with the designer: refused, her words go on the order as a note", !ear.ok && ear.code === "not_awaiting_approval" && /note for the designer/.test(ear.message));
 
   const archived = await order({ archived: true });
   const arch = await agentRevision({ order: archived.number, reason: REASON, apply: true });

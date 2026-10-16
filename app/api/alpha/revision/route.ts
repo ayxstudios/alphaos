@@ -12,9 +12,9 @@ const STATUS: Record<string, number> = { usage: 400, not_found: 404 };
  * The agent lands a change request the buyer made outside the proof page (an
  * Etsy chat): the same road as her own "Request changes" on the proof out for
  * approval, so the order goes back to the SAME designer with her words on the
- * card (lib/orders/agent-revision.ts). Refused unless the order is awaiting
- * approval with an undecided proof; without `apply` it only says what would
- * happen.
+ * card (lib/orders/agent-revision.ts). After approval or delivery it is a late
+ * revision to the same designer, refused once a print is ordered (a reprint is
+ * the owner's call); without `apply` it only says what would happen.
  */
 export async function POST(req: NextRequest) {
   if (!isAlphaCaller(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });

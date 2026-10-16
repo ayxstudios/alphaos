@@ -13,7 +13,9 @@ import ws from "ws";
 import { runAgentTick } from "../lib/agent/autopilot";
 import { classifyUnmatchedMail, clearUnmatchedReplies, orderNumbersIn } from "../lib/agent/junk-mail";
 import {
+  AGENT_DECISION_DAYS,
   autoCloseStaleExceptions,
+  decisionHolds,
   getLimboCensus,
   handFailedAiToDesigners,
   handoverDueHours,
@@ -43,6 +45,7 @@ import {
   type DigestLine,
 } from "../lib/agent/owner-digest";
 import { closeNothingLeft, decideByAgent, listNeedsYou, noteByAgent, raiseToOwner, resolveByAgent, takeForAgent } from "../lib/agent/needs-you-desk";
+import { resolveException } from "../lib/agent/exceptions";
 import { withSystemContext } from "../lib/db";
 import * as schema from "../lib/db/schema";
 import {
@@ -168,6 +171,23 @@ function pureTests() {
     ...o,
   });
   const bucket = (o: Partial<OrderFacts>, opts?: { ignoreStuck?: boolean }) => ownerOf(order(o), now, opts);
+
+  // A call a person or the agent made on the stuck row stands while nothing happens (owner, 2026-10-17).
+  const holds = (d: Partial<NonNullable<OrderFacts["decision"]>>, o: Partial<OrderFacts> = {}) =>
+    decisionHolds(
+      order({ enteredAt: ago(30), decision: { at: ago(2), reason: "not_assigned", byAgent: true, note: "agent: drawn and approved by mail", ...d }, ...o }),
+      "not_assigned",
+      now,
+    );
+  const week = AGENT_DECISION_DAYS * 24;
+  check("decision: the agent's call stands while nothing happens", holds({}));
+  check("decision: no call, nothing holds", !decisionHolds(order({ enteredAt: ago(30) }), "not_assigned", now));
+  check("decision: a different reason is a new problem", !holds({ reason: "details" }));
+  check("decision: a call made before the order moved is moot", !holds({ at: ago(40) }));
+  check("decision: something happened on the order since = raised again", !holds({}, { lastEventAt: ago(1) }));
+  check("decision: what happened before the call changes nothing", holds({}, { lastEventAt: ago(3) }));
+  check("decision: the agent's call is looked at again after a week", !holds({ at: ago(week + 1) }, { enteredAt: ago(week + 2) }));
+  check("decision: a person's call holds past a week", holds({ at: ago(week + 1), byAgent: false }, { enteredAt: ago(week + 2) }));
   check("owner: a designer has it", bucket({ activeAssignment: true }).bucket === "designer");
   check("owner: proof with the buyer", bucket({ status: "awaiting_approval" }).bucket === "buyer");
   check("owner: QC is the pipeline", bucket({ status: "awaiting_qc" }).bucket === "pipeline");
@@ -867,6 +887,34 @@ async function dbTests() {
       .where(and(eq(activityLog.businessId, ids.biz), sql`${activityLog.action} in ('agent.exception_resolved', 'agent.exception_to_owner')`)),
   );
   check("desk: one activity row per resolve, decision and hand-over", deskLog.length === 3, JSON.stringify(deskLog));
+
+  // --- L4: a row a person or the agent resolved is not opened again while nothing happens (owner, 2026-10-17:
+  // PC32029 "ignore this one" and PC32186 "drawn and approved by mail" came back two minutes later) ---
+  const d1 = await mkOrder({ status: "ready_to_assign", hoursAgo: 5 });
+  const d2 = await mkOrder({ status: "ready_to_assign", hoursAgo: 5 });
+  const d3 = await mkOrder({ status: "ready_to_assign", hoursAgo: 5 });
+  await watchWaitingStates(ids.biz, { now: new Date() });
+  const [x1, x2, x3] = await Promise.all([d1, d2, d3].map((d) => openOn(d.id, "stuck_order")));
+  check("decision: three rows to decide on", !!x1 && !!x2 && !!x3);
+  await resolveByAgent(x1!.id, "Drawn and approved by mail; the canvas is at the printer");
+  await resolveByAgent(x2!.id, "Stale record, nothing owed");
+  await resolveException({ id: x3!.id, userId: ids.owner, note: "ignore this one" });
+  const next = await watchWaitingStates(ids.biz, { now: new Date() });
+  const none = (await Promise.all([d1, d2, d3].map((d) => openOn(d.id, "stuck_order")))).every((r) => !r);
+  check("decision: the next pass opens none of them again", none && next.held >= 3, JSON.stringify(next));
+  await withSystemContext((tx) =>
+    tx.insert(activityLog).values({ businessId: ids.biz, orderId: d1.id, actorId: null, action: "message.received", createdAt: new Date(Date.now() + 1000) }),
+  );
+  await watchWaitingStates(ids.biz, { now: new Date(Date.now() + 2000) });
+  const back = await openOn(d1.id, "stuck_order");
+  check(
+    "decision: something happens on the order = raised again, with the last call on the row",
+    !!back && (back.detail.lastDecision as { note?: string } | undefined)?.note === "agent: Drawn and approved by mail; the canvas is at the printer",
+    JSON.stringify(back),
+  );
+  await watchWaitingStates(ids.biz, { now: new Date(Date.now() + (AGENT_DECISION_DAYS * 24 + 1) * HOUR) });
+  check("decision: the agent's call is looked at again after a week", !!(await openOn(d2.id, "stuck_order")));
+  check("decision: a person's call still holds after a week", !(await openOn(d3.id, "stuck_order")));
 }
 
 // The app login may not delete activity_log rows (it is append-only), so the
