@@ -17,6 +17,7 @@
 import { ensureLegacyStub, parseOrderNumber } from "./legacy-intake";
 import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 
+import { holdAlphaPushesIf } from "@/lib/alpha/client";
 import { SYSTEM_ACTOR_ID, withSystemContext, type Tx } from "@/lib/db";
 import {
   activityLog,
@@ -144,10 +145,12 @@ async function perItem(
 ): Promise<void> {
   const pending: ((r: InboxReport) => void)[] = [];
   try {
-    await withSystemContext(async (tx) => {
-      await fn(tx, (apply) => pending.push(apply));
-      if (ctx.dryRun) throw new DryRunRollback();
-    });
+    await holdAlphaPushesIf(ctx.dryRun, () =>
+      withSystemContext(async (tx) => {
+        await fn(tx, (apply) => pending.push(apply));
+        if (ctx.dryRun) throw new DryRunRollback();
+      }),
+    );
   } catch (e) {
     if (!(e instanceof DryRunRollback)) {
       ctx.report.errors.push({ ...ref, message: errorMessage(e) });

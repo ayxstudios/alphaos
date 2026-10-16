@@ -29,6 +29,7 @@
 // "VA Team" the shared one: every active pin on 2026-10-16) move on this clock.
 import { and, eq, lt, sql } from "drizzle-orm";
 
+import { holdAlphaPushesIf } from "@/lib/alpha/client";
 import { withSystemContext, type Tx } from "@/lib/db";
 import { activityLog, assets, assignments, businesses, designerProfiles, orders, users } from "@/lib/db/schema";
 import { businessSlaHours, createAssignment, loadRankedCandidates } from "@/lib/orders/assign";
@@ -189,10 +190,13 @@ export async function runNotStartedPass(
     try {
       let move: NotStartedMove | null = null;
       try {
-        await withSystemContext(async (tx) => {
-          move = await moveOne(tx, businessId, w, now, olderThan);
-          if (dryRun) throw new DryRunRollback();
-        });
+        // A dry run rolls back: hold its pushes so nobody hears of the move.
+        await holdAlphaPushesIf(dryRun, () =>
+          withSystemContext(async (tx) => {
+            move = await moveOne(tx, businessId, w, now, olderThan);
+            if (dryRun) throw new DryRunRollback();
+          }),
+        );
       } catch (e) {
         if (!(e instanceof DryRunRollback)) throw e;
       }

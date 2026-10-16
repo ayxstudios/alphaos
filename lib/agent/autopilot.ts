@@ -13,6 +13,7 @@
 
 import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 
+import { holdAlphaPushesIf } from "@/lib/alpha/client";
 import { SYSTEM_ACTOR_ID, withSystemContext, type Tx } from "@/lib/db";
 import {
   activityLog,
@@ -219,7 +220,16 @@ function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTickReport> {
+/**
+ * One agent tick. A dry run holds every alpha hook push for its whole length
+ * (lib/alpha/client.ts withAlphaPushesHeld), so no pass can message a person
+ * about work the dry run then undoes (clean slating P6, 2026-10-16).
+ */
+export function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTickReport> {
+  return holdAlphaPushesIf(!!opts.dryRun, () => tick(opts));
+}
+
+async function tick(opts: AgentTickOptions): Promise<AgentTickReport> {
   const dryRun = !!opts.dryRun;
   const started = Date.now();
   const deadline = started + (opts.budgetMs ?? DEFAULT_BUDGET_MS);
@@ -437,10 +447,12 @@ async function perOrder(
 ): Promise<void> {
   const pending: ((r: AgentBusinessReport) => void)[] = [];
   try {
-    await withSystemContext(async (tx) => {
-      await fn(tx, (apply) => pending.push(apply));
-      if (ctx.dryRun) throw new DryRunRollback();
-    });
+    await holdAlphaPushesIf(ctx.dryRun, () =>
+      withSystemContext(async (tx) => {
+        await fn(tx, (apply) => pending.push(apply));
+        if (ctx.dryRun) throw new DryRunRollback();
+      }),
+    );
   } catch (e) {
     if (!(e instanceof DryRunRollback)) {
       ctx.report.errors.push({ orderId, message: errorMessage(e) });

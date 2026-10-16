@@ -26,6 +26,7 @@
 
 import { and, asc, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 
+import { holdAlphaPushesIf } from "@/lib/alpha/client";
 import { SYSTEM_ACTOR_ID, withSystemContext, type Tx } from "@/lib/db";
 import { activityLog, messages, orders, proofs } from "@/lib/db/schema";
 import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
@@ -191,10 +192,12 @@ export async function runProofRepliesPass(
 
     const pending: ((r: ProofRepliesReport) => void)[] = [];
     try {
-      await withSystemContext(async (tx) => {
-        await applyForOrder(tx, item, fresh, threshold, (f) => pending.push(f));
-        if (opts.dryRun) throw new DryRunRollback();
-      });
+      await holdAlphaPushesIf(!!opts.dryRun, () =>
+        withSystemContext(async (tx) => {
+          await applyForOrder(tx, item, fresh, threshold, (f) => pending.push(f));
+          if (opts.dryRun) throw new DryRunRollback();
+        }),
+      );
     } catch (e) {
       if (!(e instanceof DryRunRollback)) {
         report.errors.push({ orderId: item.orderId, message: e instanceof Error ? e.message : String(e) });

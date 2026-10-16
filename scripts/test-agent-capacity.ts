@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 
 import { and, eq, inArray, like, sql } from "drizzle-orm";
 
+import { recordAlphaPushes } from "./alpha-hook-recorder";
 import { loadCapacityModel } from "../lib/agent/capacity";
 import { rebalanceBusiness, runRebalance } from "../lib/agent/rebalance";
 import { withSystemContext } from "../lib/db";
@@ -179,16 +180,24 @@ async function main() {
     check("flag off: no moves", off.moves.length === 0);
 
     // ---- dry run: reports moves, changes nothing --------------------------------------
-    const dry = await rebalanceBusiness(businessId, { dryRun: true });
+    // The capacity page runs this preview on every view. Its moves roll back,
+    // so not one brief may reach the daemon (it delivers a push at once).
+    const { out: dry, pushed: dryPushed } = await recordAlphaPushes(() => rebalanceBusiness(businessId, { dryRun: true }));
     const dryMine = dry.moves.filter((m) => all.includes(m.orderId));
+    check("dry run: no message pushed to the daemon", dryPushed.length === 0, JSON.stringify(dryPushed.map((p) => p.type)));
     check("dry run: plans the 3 plain orders", dryMine.length === 3 && plain.every((id) => dryMine.some((m) => m.orderId === id)), `moves ${dryMine.length}`);
     check("dry run: pinned counted as skipped", dry.skippedPinned >= 1, `skippedPinned ${dry.skippedPinned}`);
     check("dry run: nothing changed", (await Promise.all(all.map(holder))).every((d) => d === overloaded.userId));
 
     // ---- real run ---------------------------------------------------------------------
     await withSystemContext((tx) => tx.update(businesses).set({ agentAssignEnabled: true }).where(eq(businesses.id, businessId)));
-    const real = await runRebalance(businessId);
+    const { out: real, pushed: realPushed } = await recordAlphaPushes(() => runRebalance(businessId));
     const realMine = real.moves.filter((m) => all.includes(m.orderId));
+    check(
+      "real run: each moved order's brief is pushed at once",
+      realMine.every((m) => realPushed.some((p) => p.type === "designer.brief" && p.orderId === m.orderId)),
+      `briefs ${realPushed.filter((p) => p.type === "designer.brief").length}`,
+    );
     check("real run: 3 plain orders moved", realMine.length === 3, `moves ${realMine.length}`);
     check("real run: no errors", real.errors.length === 0, real.errors.map((e) => e.message).join("; "));
     const heldNow = await Promise.all(plain.map(holder));

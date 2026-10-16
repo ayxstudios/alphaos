@@ -246,6 +246,15 @@ assignment a login had placed (all 199 pins that day were the "Alpha VA" and
 - This supersedes the 2026-10-07 "auto-reassignment is off" note in
   `lib/notifications/designer-sweep.ts` for not-started work only; anything
   that shows a start still stays with its designer.
+- Dry runs message nobody. A dry run (`/api/cron/agent?dryRun=1`, the
+  rebalance preview `/designers/capacity` runs on every view) makes the real
+  writes and rolls them back, but `sendAlphaEvent` pushed each event to the
+  daemon before the commit and the daemon delivers a push at once: a dry run
+  would have told designers about moves that never happened. Every rollback
+  dry run, and the whole dry tick, now runs inside `withAlphaPushesHeld`
+  (`lib/alpha/client.ts`); the rows still roll back with the rest.
+  test:not-started and test:agent-capacity count the pushes (none in a dry
+  run, the reassignment notes and briefs in a real one).
 
 ## L10 Archived is not done: a buyer writing reopens it (2026-10-16)
 

@@ -6,6 +6,7 @@
 // is a person: a human placed it, so a human keeps it).
 import { and, desc, eq, sql } from "drizzle-orm";
 
+import { holdAlphaPushesIf } from "@/lib/alpha/client";
 import { withSystemContext, type Tx } from "@/lib/db";
 import { activityLog, assets, assignments, businesses, orderItems, orders, users } from "@/lib/db/schema";
 import { createAssignment, loadRankedCandidates } from "@/lib/orders/assign";
@@ -192,10 +193,13 @@ export async function rebalanceBusiness(
       try {
         let move: RebalanceMove | null = null;
         try {
-          await withSystemContext(async (tx) => {
-            move = await moveOne(tx, { businessId, order, from, awayIds, reason: reason! });
-            if (dryRun) throw new DryRunRollback();
-          });
+          // A dry run (the capacity page preview) rolls back: hold its pushes.
+          await holdAlphaPushesIf(dryRun, () =>
+            withSystemContext(async (tx) => {
+              move = await moveOne(tx, { businessId, order, from, awayIds, reason: reason! });
+              if (dryRun) throw new DryRunRollback();
+            }),
+          );
         } catch (e) {
           if (!(e instanceof DryRunRollback)) throw e;
         }

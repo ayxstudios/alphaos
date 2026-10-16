@@ -18,6 +18,8 @@
 //
 // Env: ALPHA_HOOK_URL (daemon bridge base, via the tunnel), ALPHA_HOOK_SECRET.
 // Both optional: without them events queue and questions/chat get the fallback.
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import { alphaEvents } from "@/lib/db/schema";
 import type { Tx as DbTx } from "@/lib/db";
 import { plural } from "@/lib/utils";
@@ -84,6 +86,26 @@ export interface AlphaChatAnswer {
 const hookUrl = () => (process.env.ALPHA_HOOK_URL || "").replace(/\/$/, "");
 const hookSecret = () => process.env.ALPHA_HOOK_SECRET || "";
 export const alphaConnected = () => Boolean(hookUrl() && hookSecret());
+
+// Dry runs (the agent tick with ?dryRun=1, the rebalance preview the capacity
+// page runs on every view) do the real writes in a transaction and then roll
+// it back. The alpha_events row rolls back with it, but the hook push in
+// sendAlphaEvent leaves before the commit and the daemon delivers a pushed
+// event at once, so a dry run would WhatsApp a designer about a move that never
+// happened. Clean slating P6 (2026-10-16) put designer.reassigned and a fresh
+// brief into every dry tick (the not-started pass). Inside a hold the row is
+// still written (and rolled back with the rest); nothing is pushed.
+const pushesHeld = new AsyncLocalStorage<true>();
+
+/** Run fn with every alpha hook push held back (dry runs that roll back). */
+export function withAlphaPushesHeld<T>(fn: () => Promise<T>): Promise<T> {
+  return pushesHeld.run(true, fn);
+}
+
+/** withAlphaPushesHeld when `hold`, else fn() as is. */
+export function holdAlphaPushesIf<T>(hold: boolean, fn: () => Promise<T>): Promise<T> {
+  return hold ? withAlphaPushesHeld(fn) : fn();
+}
 
 class AlphaHookError extends Error {
   status?: number;
@@ -170,7 +192,7 @@ export async function sendAlphaEvent(tx: DbTx, evt: AlphaEvent): Promise<string>
       status: "queued",
     })
     .returning({ id: alphaEvents.id });
-  if (alphaConnected()) {
+  if (alphaConnected() && !pushesHeld.getStore()) {
     // Best effort, off the critical path. The daemon's poller is the guarantee.
     void postHook("/alpha/event", { id: row.id, ...evt }, 8000).catch(() => {});
   }

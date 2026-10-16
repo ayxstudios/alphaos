@@ -17,6 +17,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import ws from "ws";
 
+import { recordAlphaPushes } from "./alpha-hook-recorder";
 import { runAgentTick } from "../lib/agent/autopilot";
 import { MAX_NOT_STARTED_MOVES, runNotStartedPass } from "../lib/agent/not-started";
 import { withSystemContext } from "../lib/db";
@@ -191,10 +192,13 @@ async function dbTests() {
   });
 
   // ---- dry run: the plan, nothing changed ---------------------------------
-  const dry = await runNotStartedPass(ids.biz, { dryRun: true, now });
+  // The hook is live for these calls: a dry run rolls its writes back, so it
+  // must not push a single message to the daemon (which delivers at once).
+  const { out: dry, pushed: dryPushed } = await recordAlphaPushes(() => runNotStartedPass(ids.biz, { dryRun: true, now }));
   check("dry run: plans the three untouched VA/agent-placed orders", dry.moves.length === 3, JSON.stringify(dry.moves.map((m) => m.orderNumber)));
   check("dry run: nothing moved", (await holder(plain))?.designerId === ids.abdul);
   check("dry run: no timeline row", (await actions(plain, "agent.not_started_moved")).length === 0);
+  check("dry run: no message pushed to the daemon", dryPushed.length === 0, JSON.stringify(dryPushed.map((p) => p.type)));
 
   // ---- a clock of 0 is off -------------------------------------------------
   await withSystemContext((tx) => tx.update(businesses).set({ agentConfig: { notStartedMoveHours: 0 } }).where(eq(businesses.id, ids.biz)));
@@ -203,8 +207,16 @@ async function dbTests() {
   await withSystemContext((tx) => tx.update(businesses).set({ agentConfig: {} }).where(eq(businesses.id, ids.biz)));
 
   // ---- the real run --------------------------------------------------------
-  const real = await runNotStartedPass(ids.biz, { now });
+  const { out: real, pushed: realPushed } = await recordAlphaPushes(() => runNotStartedPass(ids.biz, { now }));
   const moved = new Set(real.moves.map((m) => m.orderId));
+  const plainPushes = realPushed.filter((p) => p.orderId === plain);
+  check(
+    "real run: the hook gets both reassignment notes and the new brief at once",
+    plainPushes.some((p) => p.type === "designer.reassigned" && p.toUserId === ids.abdul) &&
+      plainPushes.some((p) => p.type === "designer.reassigned" && p.toUserId === ids.jo) &&
+      plainPushes.some((p) => p.type === "designer.brief" && p.toUserId === ids.jo),
+    JSON.stringify(plainPushes.map((p) => `${p.type}>${p.toUserId === ids.jo ? "jo" : p.toUserId === ids.abdul ? "abdul" : p.toUserId}`)),
+  );
   check("moves the untouched order placed by a VA login", moved.has(plain));
   check("moves the untouched order the agent placed", moved.has(unpinned));
   check("moves the untouched order due soon", moved.has(soon));
@@ -253,9 +265,10 @@ async function dbTests() {
   await withSystemContext((tx) => tx.update(users).set({ active: true }).where(eq(users.id, ids.jo)));
 
   // ---- the tick runs it under the assign switch ----------------------------
-  const tick = await runAgentTick({ businessId: ids.biz, now, dryRun: true });
+  const { out: tick, pushed: tickPushed } = await recordAlphaPushes(() => runAgentTick({ businessId: ids.biz, now, dryRun: true }));
   const b = tick.businesses.find((x) => x.businessId === ids.biz);
   check("the tick reports the move (dry run)", b?.notStartedMoved === 1, JSON.stringify({ moved: b?.notStartedMoved, kept: b?.notStartedKept, errors: b?.errors }));
+  check("the dry tick pushes nothing to the daemon", tickPushed.length === 0, JSON.stringify(tickPushed.map((p) => p.type)));
   await withSystemContext((tx) => tx.update(businesses).set({ agentAssignEnabled: false }).where(eq(businesses.id, ids.biz)));
   const offTick = await runAgentTick({ businessId: ids.biz, now, dryRun: true });
   check("assign switch off: the tick leaves it", offTick.businesses.find((x) => x.businessId === ids.biz)?.notStartedMoved === undefined);
