@@ -184,3 +184,37 @@ first." Applies to new orders and revisions (missed touchups) alike.
   (codex, then ChatGPT on the web); never another engine. Each spot's box is re-read on a close-up before painting,
   a change that runs off its crop is repainted once in a bigger area, and the spot judge sees a wider view so a half
   changed thing (half the hair) counts as not fixed. Runbook: knowledge/integrations/alphaos-qc-fix.md (agent repo).
+
+## Wrong-file stop (incident 16 Oct 2026)
+
+PixArt PC32132 (Saiya alone, portrait) was delivered the PC32131 Parker + Saiya landscape file: the designer put one order's artwork on the buyer's other order. Code: `lib/qc/wrong-file.ts`, hashing in `lib/qc/image-hash.ts` and `lib/qc/asset-hash.ts`, migration 0060.
+
+**Hashing.** Every new upload (designer submission, customer reference, order creation, AI Studio, AI fix) gets a 64-bit dHash (9x8 greyscale) plus width and height in `assets.dhash/width/height`. Two files at most 10 bits apart are the same picture. Anything that is not a decodable image (PDF, HEIC where sharp has no decoder, corrupt, too big, fetch failed) gets no hash and is never matched and never blocks. A file with no hash yet (uploaded before 0060) is hashed lazily the first time it is compared.
+
+**What blocks** (`checkWrongFile(orderId, assetId)` returns `{ blocked, reasons: [{ kind, note, matchAssetId?, matchOrderNumber?, distance? }] }`):
+
+- `reference`: the file matches one of this order's own customer photos.
+- `other_order`: the file matches the newest artwork of one of the buyer's other orders.
+- `recent_art`: the file matches any artwork in the business hashed in the last 30 days on a different order.
+- `auto_qc`: the newest Auto QC row for the file carries `wrongFile` (below).
+
+**What warns only:** `orientation`, when the ordered orientation (line option "Orientation"/"Layout", else notes saying "portrait/landscape orientation") disagrees with the file shape (portrait = h > w * 1.05, landscape = w > h * 1.05). Square-ish files never warn.
+
+**Where it is enforced.** `runTransition` (the single choke point) on every move to Awaiting QC (designer submit) and on `awaiting_qc -> awaiting_approval`; `confirmQcPassAndSend` earlier, before any email goes; the owner Approve (`ownerApproveCore`, the `ownerApprove` action and `POST /api/approve/commit`). Refusal text: "This file looks like PC32131's artwork / the customer's reference photo / artwork on order X. Upload the right file for this order." The system actor (importers, cron) and the AI Studio's own submit skip the hash check; Auto QC covers AI files.
+
+**Override.** Staff (admin, VA) pass `overrideReason` (at least 4 characters): the move goes through and an activity row `order.wrong_file_override` records the reason, the matches and the road. Designers and helpers have no override. In the UI a refusal on /qc or /approve asks staff for the reason in a prompt, then retries.
+
+**Auto QC `wrongFile`.** `POST /api/agent-qc/result` accepts an optional top-level `wrongFile: { kind: reference|other_order|subject_count|orientation|product, note } | null`, stored in `auto_qc_checks.wrong_file`. The badge on /approve and /qc leads with a red "Wrong file: <note>", and Approve is refused while the newest check for that file carries it, unless staff give the override reason. Other unknown values are still rejected.
+
+**Judge helper.** `GET /api/agent-qc/siblings?orderId=<uuid>` (bearer `AGENT_JOBS_TOKEN`) returns `{ orderId, siblings: [{ orderNumber, productLine, stage, newestArtwork: { assetId, url, dhash, width, height } | null }] }`. `url` is a signed link valid 10 minutes. No buyer email, surname or address. The judge should fetch it and report `wrongFile` when the file is another order's.
+
+**Backfill (run once after 0060 is applied; not run by the code):**
+
+```
+BACKFILL_DB_URL=<owner connection string> npx tsx scripts/backfill-asset-hashes.ts --dry-run
+BACKFILL_DB_URL=<owner connection string> npx tsx scripts/backfill-asset-hashes.ts            # last 60 days
+```
+
+Flags: `--days N` (default 60), `--limit N` (default 5000). It needs the R2 env and hashes newest first.
+
+**Fail-open.** A failed lookup in `checkWrongFile` is logged and reads as "not blocked": it must never stop real work.
