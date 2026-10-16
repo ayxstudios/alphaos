@@ -8,6 +8,8 @@ import { AlertTriangle, Spinner } from "@/components/ui/icons";
 import { focusRing } from "@/components/ui/styles";
 import { cn } from "@/lib/utils";
 
+import { linkSignInAction } from "./actions";
+
 type Phase = "signing" | "failed" | "locked";
 
 /**
@@ -32,6 +34,21 @@ export function LinkSignIn({ token, next }: { token: string; next?: string | nul
   useEffect(() => {
     if (started.current) return; // StrictMode runs effects twice in dev
     started.current = true;
+    // Fallback: the same check as one server action (no csrf/providers fetches,
+    // which in-app browsers and blockers sometimes break). It redirects on success.
+    const viaServer = async () => {
+      try {
+        const r = await linkSignInAction(token);
+        setPhase(r.locked ? "locked" : "failed");
+      } catch (e) {
+        // A successful sign-in redirects by throwing; let that navigation happen.
+        if (e && typeof e === "object" && "digest" in e && String((e as { digest: unknown }).digest).startsWith("NEXT_REDIRECT")) {
+          window.location.replace("/dashboard");
+          return;
+        }
+        setPhase("failed");
+      }
+    };
     (async () => {
       try {
         const landing = safeNext(next);
@@ -40,10 +57,14 @@ export function LinkSignIn({ token, next }: { token: string; next?: string | nul
           window.location.replace(landing);
           return;
         }
-        setPhase(res?.code === "locked" ? "locked" : "failed");
+        if (res?.code === "locked") {
+          setPhase("locked");
+          return;
+        }
       } catch {
-        setPhase("failed");
+        // fall through to the server route
       }
+      await viaServer();
     })();
   }, [token, next]);
 
