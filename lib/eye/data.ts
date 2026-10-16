@@ -82,7 +82,7 @@ const STAGES: { key: EyeStageKey; label: string }[] = [
   { key: "drawing", label: "Drawing" },
   { key: "qc", label: "QC" },
   { key: "buyer", label: "With buyer" },
-  { key: "print", label: "Print" },
+  { key: "print", label: "Delivery" },
   { key: "done", label: "Done" },
 ];
 
@@ -125,24 +125,49 @@ export function eyeStage(status: string, aiState: string | null, physical: boole
     else if ((aiState === "claimed" || aiState === "revision" || aiState === "revision_claimed" || aiState === "queued") && status === "in_design") n = 1;
   }
   let label = STAGES[n].label;
-  if (n === 4 && !physical) label = "Delivering";
+  if (n === 4) label = physical ? "Printing" : "Delivering";
   return { n, label };
 }
 
-const UNHAPPY_RE = /refund|disappoint|upset|unacceptable|terrible|awful|wrong (order|portrait)|still (haven'?t|waiting)|never (received|got)|chargeback|cancel my/i;
+const UNHAPPY_RE =
+  /refund|disappoint|upset|unacceptable|terrible|awful|horrible|frustrat|ridiculous|scam|not happy|not (great|good|right)|not what (i|we)|poor quality|wrong (order|portrait|address)|still (haven'?t|waiting|not)|never (received|got|arrived)|chargeback|cancel my/i;
 const ANGRY_EXC_RE = /refund|angry|upset|complaint|chargeback|dispute|unhappy/i;
-const HAPPY_RE = /thank|love|perfect|amazing|beautiful|gorgeous|awesome|wonderful|great job|so good/i;
+const HAPPY_RE = /thank|love|perfect|amazing|beautiful|gorgeous|awesome|wonderful|lovely|great|so good|looks good|approved|happy with/i;
+/** The buyer is asking for something to change (a revision or a question), so she is not simply happy. */
+const CHANGE_RE = /\?|adjust|change|could (you|we)|can (you|we)|would it be|fix|redo|again|instead|still|a bit off|look(s)? off|too (small|big|dark|light)|not quite/i;
 const ATTENTION_KINDS = new Set(["reply_unclear", "buyer_question", "unmatched_reply", "stuck_order"]);
 
-function plain(body: string | null): string {
+export function plain(body: string | null): string {
   return (body ?? "")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
     .replace(/^>.*$/gm, " ")
     .replace(/\s+/g, " ")
+    // the quoted thread and phone signatures are our own words, not the buyer's
+    .replace(/\s*On (Mon|Tue|Wed|Thu|Fri|Sat|Sun|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d)[^]{0,200}?wrote:.*$/, "")
+    .replace(/\s*(-{2,}\s*Original Message|From: [^]{0,160}?Sent: ).*$/i, "")
+    .replace(/\s*(Sent from (my )?\w+( \w+)?( for (iOS|Android))?|Get Outlook for (iOS|Android)|Yahoo Mail: Search, Organi[sz]e, Conquer)\s*$/i, "")
     .trim();
+}
+
+/** How the buyer sounds: her own words first, then open issues. A revision count alone never makes a buyer "unhappy". */
+export function buyerSentiment(
+  lastText: string,
+  exc: { kind: string; summary: string }[],
+  rev: number,
+  approved: boolean,
+): EyeSentiment {
+  if (UNHAPPY_RE.test(lastText) || exc.some((e) => ANGRY_EXC_RE.test(e.kind) || ANGRY_EXC_RE.test(e.summary))) return "unhappy";
+  const asksChange = !!lastText && CHANGE_RE.test(lastText);
+  if (lastText && HAPPY_RE.test(lastText) && !asksChange) return "happy";
+  if (asksChange || exc.some((e) => ATTENTION_KINDS.has(e.kind)) || rev >= 3) return "attention";
+  return approved ? "happy" : "neutral";
 }
 
 function snippet(body: string | null): string {
@@ -325,11 +350,12 @@ export async function getEyeData(scope: RequestUser, nowInput: Date = new Date()
       // stage was logged (a backfilled order's updatedAt says nothing about delay).
       const stageOver = !o.dueAt && !!timer.isOverdue && !!transBy.get(o.id)?.get(o.status);
       const dueOver = !!o.dueAt && o.dueAt.getTime() < now.getTime();
-      const delayed = !finished && (stageOver || dueOver);
-      const overdueHours = !finished && dueOver ? Math.round(((now.getTime() - (o.dueAt as Date).getTime()) / 3600000) * 10) / 10 : 0;
-
       const waitingOnBuyer =
         o.status === "awaiting_details" || o.status === "awaiting_photos" || o.aiState === "with_buyer" || stage.n === 3;
+      // A wait on the buyer (photos, proof approval) is shown as waiting, never as our delay.
+      const delayed = !finished && !waitingOnBuyer && (stageOver || dueOver);
+      const overdueHours = !finished && dueOver ? Math.round(((now.getTime() - (o.dueAt as Date).getTime()) / 3600000) * 10) / 10 : 0;
+
       const pj = printBy.get(o.id);
       const last = inboundBy.get(o.id);
       const lastText = last ? plain(last.body) : "";
@@ -337,13 +363,9 @@ export async function getEyeData(scope: RequestUser, nowInput: Date = new Date()
       const kinds = exc.map((e) => e.kind);
       const rev = o.revisionCount ?? 0;
 
-      let sentiment: EyeSentiment = "neutral";
-      const unhappy =
-        UNHAPPY_RE.test(lastText) || rev >= 3 || exc.some((e) => ANGRY_EXC_RE.test(e.kind) || ANGRY_EXC_RE.test(e.summary));
-      const attention = kinds.some((k) => ATTENTION_KINDS.has(k)) || delayed || rev === 2;
-      if (unhappy) sentiment = "unhappy";
-      else if (attention) sentiment = "attention";
-      else if (HAPPY_RE.test(lastText) || decisionBy.get(o.id) === "approved") sentiment = "happy";
+      // Sentiment = how the buyer sounds: her own words first, then open issues. A revision
+      // count alone never makes a buyer "unhappy" (most portraits go through a few rounds).
+      const sentiment = buyerSentiment(lastText, exc, rev, decisionBy.get(o.id) === "approved");
 
       return {
         id: o.id,
@@ -393,7 +415,11 @@ export async function getEyeData(scope: RequestUser, nowInput: Date = new Date()
         biz.push({ id: o.businessId, name: o.business || "Shop" });
       }
     }
-    const businesses_ = biz.map((b) => ({ id: b.id, name: b.name, openCount: open.filter((o) => o.businessId === b.id).length }));
+    // A shop with no orders in AlphaOS at all (nothing open, nothing done this week) gets no empty sector.
+    const withOrders = new Set(out.map((o) => o.businessId));
+    const businesses_ = biz
+      .filter((b) => withOrders.has(b.id))
+      .map((b) => ({ id: b.id, name: b.name, openCount: open.filter((o) => o.businessId === b.id).length }));
 
     const events: EyeEvent[] = feed.map((f) => ({
       at: f.at.toISOString(),

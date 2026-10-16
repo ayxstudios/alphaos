@@ -22,7 +22,7 @@ const CHIPS: { key: EyeFilter; label: string; color: string; count: (d: EyeData)
   { key: "delayed", label: "Delayed", color: HEALTH_COLOR.amber, count: (d) => d.totals.delayed },
   { key: "unhappy", label: "Unhappy", color: HEALTH_COLOR.unhappy, count: (d) => d.totals.unhappy },
   { key: "waiting", label: "Waiting on buyer", color: HEALTH_COLOR.violet, count: (d) => d.totals.waitingOnBuyer },
-  { key: "printing", label: "Printing", color: HEALTH_COLOR.ok, count: (d) => d.totals.printing },
+  { key: "printing", label: "Delivery", color: HEALTH_COLOR.ok, count: (d) => d.totals.printing },
   { key: "done", label: "Done today", color: HEALTH_COLOR.done, count: (d) => d.totals.completedToday },
 ];
 

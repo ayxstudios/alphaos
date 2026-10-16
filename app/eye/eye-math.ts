@@ -2,7 +2,7 @@ import type { EyeOrder } from "@/lib/eye/data";
 
 /** Pure helpers for the All Seeing Eye: hashing, sectors, rings, health, wording. No DOM. */
 
-export const STAGE_NAMES = ["INTAKE", "DRAWING", "QC", "WITH BUYER", "PRINTING", "DONE"] as const;
+export const STAGE_NAMES = ["INTAKE", "DRAWING", "QC", "WITH BUYER", "DELIVERY", "DONE"] as const;
 
 export type Health = "unhappy" | "amber" | "violet" | "ok" | "done";
 export type EyeFilter = "delayed" | "unhappy" | "waiting" | "printing" | "done";

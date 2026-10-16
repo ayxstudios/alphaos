@@ -2,7 +2,7 @@ import type { EyeData, EyeOrder, EyeStageKey } from "@/lib/eye/data";
 
 /** Dev-only synthetic feed (open /eye?synthetic=500). Never used in production builds. */
 const KEYS: EyeStageKey[] = ["intake", "drawing", "qc", "buyer", "print", "done"];
-const LABELS = ["Intake", "Drawing", "QC", "With buyer", "Print", "Done"];
+const LABELS = ["Intake", "Drawing", "QC", "With buyer", "Delivery", "Done"];
 const SHOPS = ["Custom Story Shop", "PixArt", "Perfetta", "Dream Tees", "Artisan Portraits", "AY Studios"];
 
 export function makeSyntheticData(count: number): EyeData {
