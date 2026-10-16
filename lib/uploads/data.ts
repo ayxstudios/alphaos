@@ -6,6 +6,7 @@ import { runTransition, OrderTransitionError } from "@/lib/orders/transitions";
 import { ALLOWED_IMAGE_TYPES, MAX_UPLOAD_BYTES, extFor } from "@/lib/storage/r2";
 import { SNIFF_BYTES, sniffMatchesDeclared } from "./sniff";
 import { DEV_STORE_PREFIX, headStored, presignPut, readStoredHead, usingDevStore } from "./store";
+import { hashColumnsForKeys } from "@/lib/qc/asset-hash";
 
 /**
  * Everything the PUBLIC upload page may render. Deliberately minimal (same
@@ -230,8 +231,10 @@ export async function saveCustomerUploads(token: string, keys: string[], note: s
       if (notPhotos.length) throw new NotPhotosError(notPhotos);
 
       if (r2Keys.length) {
+        const hashes = await hashColumnsForKeys(r2Keys);
         await tx.insert(assets).values(
           r2Keys.map((r2Key) => ({
+            ...hashes.get(r2Key),
             businessId: order.businessId,
             orderId: order.id,
             type: "reference" as const,

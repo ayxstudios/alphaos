@@ -8,6 +8,7 @@ import { runTransition, type OrderStatus } from "@/lib/orders/transitions";
 import { shopStyleChoices } from "@/lib/designers/styles";
 import { referenceUploadProblem } from "@/lib/uploads/verify";
 import { withSizeOption } from "@/lib/orders/size-option";
+import { hashColumnsFor } from "@/lib/qc/asset-hash";
 
 /**
  * The core of "complete an imported awaiting_details order", shared by the VA
@@ -195,7 +196,10 @@ export async function completeOrderDetailsCore(
         uploadedBy: actorUserId,
       })),
     ];
-    if (assetRows.length) await tx.insert(assets).values(assetRows);
+    if (assetRows.length) {
+      const hashed = await Promise.all(assetRows.map(async (row) => ({ ...row, ...(await hashColumnsFor(row)) })));
+      await tx.insert(assets).values(hashed);
+    }
 
     const [assetCount] = await tx
       .select({ count: sql<number>`count(*)::int` })

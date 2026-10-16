@@ -778,6 +778,11 @@ export const assets = pgTable(
     // marked here (kept for the order's audit trail — the bytes are gone, the
     // record persists). Non-null => the asset no longer resolves.
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    // Wrong-file stop (migration 0060, lib/qc/image-hash.ts): 64-bit dHash as 16
+    // hex chars and the pixel size; NULL for anything not decodable or not hashed yet.
+    dhash: text("dhash"),
+    width: integer("width"),
+    height: integer("height"),
     createdAt: createdAt(),
   },
   (t) => [
@@ -878,6 +883,8 @@ export const autoQcChecks = pgTable(
     summary: text("summary"),
     portraits: jsonb("portraits").notNull(),
     revision: jsonb("revision"),
+    /** {kind, note} when the judge says this is not this order's artwork (migration 0060). */
+    wrongFile: jsonb("wrong_file"),
     model: text("model"),
     createdAt: createdAt(),
   },

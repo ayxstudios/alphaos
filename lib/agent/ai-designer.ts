@@ -38,6 +38,7 @@ import {
   isAgentAssigned,
   markQueuedForAgent,
 } from "./ai-core";
+import { hashColumnsFor } from "@/lib/qc/asset-hash";
 
 export { AI_REVISION_STAGE, ensureAgentDesigner, getAgentDesignerId, isAgentAssigned } from "./ai-core";
 
@@ -359,7 +360,11 @@ export async function deliverJob(
       }
     }
     // Same shape as a human upload (saveCardAssetUploads): a 'submission' asset.
-    const slotCols = { orderItemId: tag?.orderItemId ?? null, portraitUnit: tag?.portraitUnit ?? null };
+    const slotCols = {
+      orderItemId: tag?.orderItemId ?? null,
+      portraitUnit: tag?.portraitUnit ?? null,
+      ...(await hashColumnsFor(stored ? { storage: "r2", r2Key: stored.r2Key } : { storage: "cdn", url })),
+    };
     const [asset] = await tx
       .insert(assets)
       .values(

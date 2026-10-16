@@ -23,6 +23,7 @@ import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { AUTO_QC_CHECKS, AUTO_QC_RESULTS, AUTO_QC_VERDICTS, latestSlots, type AutoQcCheck, type AutoQcVerdict } from "./auto-qc";
 import { claimHolder, claimedMessage } from "./claims";
 import type { QcVersion } from "./data";
+import { hashColumnsFor } from "@/lib/qc/asset-hash";
 
 /** Fix images are full print size (4800 x 6000 and up), so the cap is well above a phone photo's. */
 export const MAX_FIX_BYTES = 40 * 1024 * 1024;
@@ -330,6 +331,7 @@ export async function applyAiFixes(
     const [asset] = await tx
       .insert(assets)
       .values({
+        ...(await hashColumnsFor({ storage: "r2", r2Key: r.r2Key })),
         businessId: order.businessId,
         orderId,
         orderItemId: src.orderItemId,

@@ -24,6 +24,7 @@ import {
   MAX_UPLOAD_BYTES,
   ALLOWED_IMAGE_TYPES,
 } from "@/lib/storage/r2";
+import { hashColumnsFor } from "@/lib/qc/asset-hash";
 
 export type NewOrderInput = {
   orderId: string; // client-minted (also the R2 key namespace)
@@ -246,7 +247,10 @@ export async function createManualOrder(input: NewOrderInput): Promise<NewOrderR
           uploadedBy: user.id,
         })),
       ];
-      if (assetRows.length) await tx.insert(assets).values(assetRows);
+      if (assetRows.length) {
+        const hashed = await Promise.all(assetRows.map(async (row) => ({ ...row, ...(await hashColumnsFor(row)) })));
+        await tx.insert(assets).values(hashed);
+      }
 
       await tx.insert(activityLog).values({
         businessId,

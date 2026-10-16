@@ -30,6 +30,7 @@ import {
   presignUpload,
 } from "@/lib/storage/r2";
 import { assertKeysBelongTo, assertStoredImage } from "@/lib/uploads/verify";
+import { hashColumnsForKeys } from "@/lib/qc/asset-hash";
 
 export type MoveResult =
   | { ok: true; status: OrderStatus }
@@ -275,9 +276,12 @@ export async function saveCardAssetUploads(input: {
 
       // Type, size and the bytes themselves (a .png that is really HTML is refused).
       await Promise.all(r2Keys.map((key) => assertStoredImage(key)));
+      // Wrong-file stop: hash every new file now so the next submit and QC can compare it.
+      const hashes = await hashColumnsForKeys(r2Keys);
 
       await tx.insert(assets).values(
         r2Keys.map((r2Key) => ({
+          ...hashes.get(r2Key),
           businessId: order.businessId,
           orderId: order.id,
           type: input.type,
