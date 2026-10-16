@@ -70,6 +70,7 @@ import {
   type LimboCensus,
 } from "./limbo";
 import { clearUnmatchedReplies, type ClearMailResult } from "./junk-mail";
+import { closeNothingLeft } from "./needs-you-desk";
 import { sendOwnerDigest, type OwnerDigestResult } from "./owner-digest";
 import { runQcOverduePass, type QcOverdueResult } from "./qc-overdue";
 
@@ -162,6 +163,8 @@ export type NoLimboReport = {
   mail: ClearMailResult | null;
   autoClosed: number;
   autoClosedBy: Record<string, number>;
+  /** Buyer mail with nothing to answer (a thank-you, a reaction), closed (./needs-you.ts). */
+  nothingLeftClosed: number;
   stuckOpened: number;
   stuckRefreshed: number;
   stuckClosed: number;
@@ -405,6 +408,8 @@ async function noLimboStep(ctx: TickCtx, businessId: string, assignOn: boolean):
   const reopened = await attempt("reopen archived", () => reopenArchivedWithBuyerWords(businessId, { dryRun }));
   const handover = assignOn ? await attempt("ai handover", () => handFailedAiToDesigners(businessId, { now, dryRun })) : null;
   const stale = await attempt("auto close", () => autoCloseStaleExceptions(businessId, { now, dryRun }));
+  // NEEDS YOU (2026-10-17): a thank-you or "it arrived" needs nobody (./needs-you.ts).
+  const nothingLeft = await attempt("nothing left", () => closeNothingLeft(businessId, { now, dryRun }));
   const watch = await attempt("waiting orders", () => watchWaitingStates(businessId, { now, dryRun }));
   const backlogsClosed = await attempt("designer backlog", () => closeClearedBacklogs(businessId, { now, dryRun }));
   const census = await attempt("census", () => getLimboCensus(businessId, { now }));
@@ -416,6 +421,7 @@ async function noLimboStep(ctx: TickCtx, businessId: string, assignOn: boolean):
     mail,
     autoClosed: stale?.closed ?? 0,
     autoClosedBy: stale?.byReason ?? {},
+    nothingLeftClosed: nothingLeft?.closed ?? 0,
     stuckOpened: watch?.opened ?? 0,
     stuckRefreshed: watch?.refreshed ?? 0,
     stuckClosed: watch?.closed ?? 0,

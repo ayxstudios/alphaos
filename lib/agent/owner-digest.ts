@@ -10,6 +10,13 @@ import { alphaEvents, businesses, exceptions, orders, shops } from "@/lib/db/sch
 import { appUrl } from "@/lib/urls";
 import { getAgentConfig } from "./config";
 import { CLOSED_STATUSES, EMAIL_GRACE_HOURS } from "./limbo";
+import {
+  agentFallback,
+  agentStateOf,
+  OWNER_TAG_WORDS,
+  roadOf,
+  type OwnerTag,
+} from "./needs-you";
 import { legacyQuiet } from "./scope";
 
 const HOUR = 3_600_000;
@@ -94,15 +101,23 @@ export function onlyEmailMissing(kind: string, detail: Record<string, unknown>):
   return missing.length > 0 && missing.every((m) => /^customer email \((Etsy did not share|not read from)/i.test(m));
 }
 
+/** A revision nobody holds: only an owner moves a revision (REVISIONS STAY, 2026-10-16). */
+export const REVISION_WORDS = "A revision moves only with your yes: say who takes it, the designer who drew it if they can.";
+
 /** The line for an unread email, once the filler's window has passed. */
 export const EMAIL_ONLY_WORDS = {
   summary: `I could not read the buyer's email from the Etsy order in ${EMAIL_GRACE_HOURS} hours, so the photo link has not gone out`,
   recommendation: "Message the buyer on Etsy for the photos. I keep trying for the email.",
 };
 
+/** Hours the row waits before anyone hears about it; null = never raised. */
+export function graceHours(c: Pick<DigestCandidate, "kind" | "emailOnly">): number | null {
+  return c.emailOnly ? EMAIL_GRACE_HOURS : c.kind in GRACE_HOURS ? GRACE_HOURS[c.kind] : OTHER_KIND_GRACE_HOURS;
+}
+
 /** Past its grace, not raised in the last day, raised fewer than MAX_RAISES times. */
 export function isDue(c: DigestCandidate, now: Date): boolean {
-  const grace = c.emailOnly ? EMAIL_GRACE_HOURS : c.kind in GRACE_HOURS ? GRACE_HOURS[c.kind] : OTHER_KIND_GRACE_HOURS;
+  const grace = graceHours(c);
   if (grace === null) return false;
   if (now.getTime() - c.createdAt.getTime() < grace * HOUR) return false;
   if (c.escalations >= MAX_RAISES) return false;
@@ -154,6 +169,8 @@ export type DigestLine = {
   said?: string | null;
   link: string;
   createdAt: Date;
+  /** Why it is the owner's (./needs-you.ts): upset buyer, money back, legal, a revision. */
+  tags?: OwnerTag[];
 };
 
 const MAIL_KINDS = ["reply_unclear", "buyer_question", "unmatched_reply", "legacy_order"];
@@ -180,7 +197,10 @@ export function buyerWords(excerpt: unknown, max = 140): string | null {
 }
 
 export function lineFor(l: DigestLine): string {
-  const label = [l.shop, l.number].filter(Boolean).join(" ");
+  // What makes it the owner's leads, in bold: "*Upset buyer, money back.* CPS 1234: ..."
+  const tags = (l.tags ?? []).map((t, i) => (i ? OWNER_TAG_WORDS[t].toLowerCase() : OWNER_TAG_WORDS[t]));
+  const lead = tags.length ? `*${tags.join(", ")}.* ` : "";
+  const label = (lead + [l.shop, l.number].filter(Boolean).join(" ")).trim();
   const n = l.exceptionIds.length;
   const times = n > 1 ? ` (${n} ${MAIL_KINDS.includes(l.kind) ? "emails" : "times"})` : "";
   const summary = sentence(plainWords(stripOrderPrefix(l.summary)).replace(/[\s.]+$/, "") + times);
@@ -199,6 +219,7 @@ export function mergeLines(lines: DigestLine[]): DigestLine[] {
     if (!seen) byKey.set(key, { ...l, exceptionIds: [...l.exceptionIds] });
     else {
       seen.exceptionIds.push(...l.exceptionIds);
+      if (l.tags?.length) seen.tags = [...new Set([...(seen.tags ?? []), ...l.tags])];
       // The newest email is the one worth quoting.
       if (l.said) seen.said = l.said;
     }
@@ -207,11 +228,13 @@ export function mergeLines(lines: DigestLine[]): DigestLine[] {
 }
 
 export function sortLines(lines: DigestLine[]): DigestLine[] {
-  const rank = (k: string) => {
-    const i = KIND_ORDER.indexOf(k);
+  // An upset buyer, money back or a legal threat leads.
+  const rank = (l: DigestLine) => {
+    if (l.tags?.some((t) => t !== "revision")) return -1;
+    const i = KIND_ORDER.indexOf(l.kind);
     return i < 0 ? KIND_ORDER.length : i;
   };
-  return [...lines].sort((a, b) => rank(a.kind) - rank(b.kind) || a.createdAt.getTime() - b.createdAt.getTime());
+  return [...lines].sort((a, b) => rank(a) - rank(b) || a.createdAt.getTime() - b.createdAt.getTime());
 }
 
 export function digestText(lines: DigestLine[]): string {
@@ -347,14 +370,13 @@ async function sentRecently(tx: Tx, userId: string | null, now: Date): Promise<b
   return !!row;
 }
 
-async function dueLines(
-  tx: Tx,
-  businessIds: string[],
-  bizName: Map<string, string>,
-  now: Date,
-  skip: Set<string>,
-): Promise<DigestLine[]> {
-  const rows = await tx
+/**
+ * Every open row that may be raised (the digest's) or worked (the agent's,
+ * ./needs-you-desk.ts): legacy-quiet orders and finished orders left out, as below.
+ */
+export async function openRaisableRows(tx: Tx, businessIds: string[]) {
+  if (!businessIds.length) return [];
+  return tx
     .select({
       id: exceptions.id,
       businessId: exceptions.businessId,
@@ -365,6 +387,8 @@ async function dueLines(
       createdAt: exceptions.createdAt,
       number: sql<string | null>`coalesce(${orders.platformOrderName}, ${orders.platformOrderId})`,
       shopName: shops.name,
+      orderStatus: sql<string | null>`${orders.status}::text`,
+      revisions: orders.revisionCount,
     })
     .from(exceptions)
     .leftJoin(orders, eq(orders.id, exceptions.orderId))
@@ -391,6 +415,34 @@ async function dueLines(
         ),
       ),
     );
+}
+
+export type RaisableRow = Awaited<ReturnType<typeof openRaisableRows>>[number];
+
+/** The row as ./needs-you.ts reads it. */
+export function needsYouInput(r: RaisableRow) {
+  const detail = (r.detail ?? {}) as Record<string, unknown>;
+  const ask = detail.ownerAsk;
+  return {
+    kind: r.kind,
+    summary: r.summary,
+    recommendation: typeof detail.recommendation === "string" ? detail.recommendation : null,
+    said: typeof detail.excerpt === "string" ? buyerWords(detail.excerpt, 4000) : null,
+    reason: typeof detail.reason === "string" ? detail.reason : null,
+    orderStatus: r.orderStatus,
+    revisions: r.revisions,
+    ownerAsk: ask && typeof ask === "object" ? (ask as { kinds?: unknown; note?: unknown }) : null,
+  };
+}
+
+async function dueLines(
+  tx: Tx,
+  businessIds: string[],
+  bizName: Map<string, string>,
+  now: Date,
+  skip: Set<string>,
+): Promise<DigestLine[]> {
+  const rows = await openRaisableRows(tx, businessIds);
 
   const firstShop = await firstShopLabels(tx, businessIds);
   const lines: DigestLine[] = [];
@@ -404,7 +456,23 @@ async function dueLines(
       escalations: typeof detail.escalations === "number" ? detail.escalations : 0,
       emailOnly: onlyEmailMissing(r.kind, detail),
     };
+    // NEEDS YOU (Yousif 2026-10-17): only an upset buyer, money back, a legal threat
+    // (or a revision only an owner may move) is the owner's. A thank-you is closed by
+    // the tick; the rest is mine, and reaches the owner only if I never took it,
+    // stopped, or could not finish it.
+    const road = roadOf(needsYouInput(r));
+    if (road.road === "close") continue;
+    const agent = agentStateOf(detail);
+    let fallbackNote: string | null = null;
+    if (road.road === "agent") {
+      const why = agentFallback(r.createdAt, graceHours(candidate) ?? 0, agent, now);
+      if (!why) continue;
+      // Stalled or out of goes: the owner gets where it got to, if anywhere.
+      if (agent.note) fallbackNote = `I tried ${agent.takes} ${agent.takes === 1 ? "time" : "times"}: ${agent.note}`;
+    }
     if (!isDue(candidate, now)) continue;
+    const ask = detail.ownerAsk as { note?: unknown } | undefined;
+    const askNote = road.road === "owner" && typeof ask?.note === "string" && ask.note.trim() ? ask.note : null;
     lines.push({
       exceptionId: r.id,
       exceptionIds: [r.id],
@@ -414,14 +482,20 @@ async function dueLines(
       shop: r.shopName ? shortShopLabel(r.shopName) : (firstShop.get(r.businessId) ?? bizName.get(r.businessId) ?? ""),
       number: r.orderId ? r.number : null,
       summary: candidate.emailOnly ? EMAIL_ONLY_WORDS.summary : r.summary,
-      recommendation: candidate.emailOnly
-        ? EMAIL_ONLY_WORDS.recommendation
-        : typeof detail.recommendation === "string"
-          ? detail.recommendation
-          : "",
+      recommendation:
+        askNote ??
+        fallbackNote ??
+        (road.tags.includes("revision") && road.tags.length === 1
+          ? REVISION_WORDS
+          : candidate.emailOnly
+            ? EMAIL_ONLY_WORDS.recommendation
+            : typeof detail.recommendation === "string"
+              ? detail.recommendation
+              : ""),
       said: MAIL_KINDS.includes(r.kind) ? buyerWords(detail.excerpt) : null,
       link: r.orderId ? appUrl(`/orders/${r.orderId}`) : appUrl("/exceptions"),
       createdAt: r.createdAt,
+      tags: road.tags.length ? road.tags : undefined,
     });
   }
   return sortLines(mergeLines(lines));

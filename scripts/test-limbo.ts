@@ -42,6 +42,7 @@ import {
   stripOrderPrefix,
   type DigestLine,
 } from "../lib/agent/owner-digest";
+import { closeNothingLeft, listNeedsYou, noteByAgent, raiseToOwner, resolveByAgent, takeForAgent } from "../lib/agent/needs-you-desk";
 import { withSystemContext } from "../lib/db";
 import * as schema from "../lib/db/schema";
 import {
@@ -293,6 +294,8 @@ function pureTests() {
     text,
   );
   check("line: never an em dash", !/[—–]/.test(text));
+  const tagged = lineFor(line({ tags: ["upset", "refund"], exceptionIds: ["x"] }));
+  check("line: what makes it the owner's leads, in bold", tagged.startsWith("• *Upset buyer, money back.* PixArt 4181693839: "), tagged);
   const legacy = lineFor(line({ kind: "legacy_order", summary: "Order not in AlphaOS yet. Check it on Trello, then confirm the details here.", exceptionIds: ["x"] }));
   check("line: an older order carries no second instruction", !legacy.includes("Find the order") && !legacy.includes("Open it and decide"), legacy);
   const many = Array.from({ length: MAX_LINES + 3 }, (_, i) => {
@@ -700,8 +703,11 @@ async function dbTests() {
   const text = sent.texts[0] ?? "";
   check("digest: one message to the owner", sent.recipients === 1 && sent.sent === 1, JSON.stringify({ ...sent, texts: undefined }));
   check("digest: buyer mail on a delivered order is raised, with their words", text.includes(`${o2.number}:`) && text.includes('They wrote: "Hi! The print arrived creased'), text);
-  check("digest: the order nobody owns is raised", text.includes(`${o5.number}:`) && text.includes("Send the photo request"), text);
-  check("digest: the AI order nobody can draw is raised", text.includes("Nobody draws Line Art"), text);
+  // NEEDS YOU (2026-10-17): everything but upset, money back and legal is the
+  // agent's first; the owner hears only if nobody took it within grace + 3 h.
+  check("digest: the order nobody owns is mine first, not the owner's", !text.includes(`${o5.number}:`), text);
+  check("digest: an AI order nobody took in time reaches the owner", text.includes("Nobody draws Line Art"), text);
+  check("digest: money back leads, in bold", (text.split("\n").find((l) => l.startsWith("•")) ?? "").startsWith("• *Money back.* "), text);
   const words = text.replace(/https?:\/\/\S+/g, "");
   check("digest: plain words", !/[—–]/.test(words) && !/\bexception|\bagent\b/i.test(words), text);
   check("digest: nothing already closed", !text.includes(`${o1.number}:`) && !text.includes(`${o3.number}:`) && !text.includes(`${o6.number}:`), text);
@@ -720,13 +726,126 @@ async function dbTests() {
   check("digest: raised rows are stamped", stamped.detail.escalations === 1 && typeof stamped.detail.escalatedAt === "string");
   const second = await sendOwnerDigest({ now: new Date(), businessIds: [ids.biz] });
   check("digest: not twice within the hour", second.sent === 0 && second.skippedRecent === 1, JSON.stringify({ ...second, texts: undefined }));
-  const later = await sendOwnerDigest({ now: new Date(digestAt.getTime() + 2 * HOUR), dryRun: true, businessIds: [ids.biz] });
+  const early = await sendOwnerDigest({ now: new Date(digestAt.getTime() + 2 * HOUR), dryRun: true, businessIds: [ids.biz] });
+  check("digest: two hours on, the order nobody owns is still mine", !(early.texts[0] ?? "").includes(`${o5.number}:`), early.texts[0] ?? "");
+  const later = await sendOwnerDigest({ now: new Date(digestAt.getTime() + 5 * HOUR), dryRun: true, businessIds: [ids.biz] });
   const laterText = later.texts[0] ?? "";
   check(
-    "digest: two hours on, only what became due since",
-    later.sent === 1 && laterText.includes(`${o5.number}:`) && laterText.includes("photos are coming tonight") && !laterText.includes(`${o2.number}:`),
+    "digest: five hours on, what nobody took since, and only that",
+    later.sent === 1 &&
+      laterText.includes(`${o5.number}:`) &&
+      laterText.includes("Send the photo request") &&
+      laterText.includes("photos are coming tonight") &&
+      !laterText.includes(`${o2.number}:`),
     laterText,
   );
+
+  // --- Needs you: the agent's desk (lib/agent/needs-you-desk.ts) -------------
+  const o10 = await mkOrder({ status: "in_design", hoursAgo: 10 });
+  const n1 = await mkException({
+    orderId: o10.id,
+    kind: "reply_unclear",
+    summary: `Buyer reply on order ${o10.number} needs a human`,
+    detail: { excerpt: "Awesome, thank you so much! On Wed, Oct 14, 2026 at 9:24 AM PixArt Creatives <shop@example.test> wrote:" },
+    hoursAgo: 3,
+  });
+  const o11 = await mkOrder({ status: "awaiting_approval", hoursAgo: 10 });
+  const n2 = await mkException({
+    orderId: o11.id,
+    kind: "reply_unclear",
+    summary: `Buyer reply on order ${o11.number} needs a human`,
+    detail: { excerpt: "Good news indeed. Thank you! Yahoo Mail: Search, Organize, Conquer" },
+    hoursAgo: 3,
+  });
+  const o12 = await mkOrder({ status: "in_design", hoursAgo: 10 });
+  const n3 = await mkException({
+    orderId: o12.id,
+    kind: "reply_unclear",
+    summary: `Buyer reply on order ${o12.number} needs a human`,
+    detail: { excerpt: "Yes that's fine Can you send express? What is the expected delivery time?" },
+    hoursAgo: 3,
+  });
+  const o13 = await mkOrder({ status: "delivered", hoursAgo: 100 });
+  const n4 = await mkException({
+    orderId: o13.id,
+    kind: "reply_unclear",
+    summary: `Buyer reply on order ${o13.number} needs a human`,
+    detail: { excerpt: "This is the worst experience I have had. I want my money back." },
+    hoursAgo: 3,
+  });
+  const o14 = await mkOrder({ status: "in_design", hoursAgo: 10 });
+  await withSystemContext((tx) => tx.update(orders).set({ revisionCount: 1 }).where(eq(orders.id, o14.id)));
+  const n5 = await mkException({
+    orderId: o14.id,
+    kind: "stuck_order",
+    summary: `Order ${o14.number}: in design but no designer holds it`,
+    detail: { reason: "no_designer", recommendation: "Pick a designer on the order page." },
+    hoursAgo: 1,
+  });
+  const o15 = await mkOrder({ status: "in_design", hoursAgo: 20 });
+  const n6 = await mkException({
+    orderId: o15.id,
+    kind: "reply_unclear",
+    summary: `Buyer reply on order ${o15.number} needs a human`,
+    detail: { excerpt: "Can you change the background to blue?", agentTakes: 3, agentTakenAt: ago(3).toISOString(), agentNote: "Etsy shows no email for this buyer; asked on Etsy messages" },
+    hoursAgo: 20,
+  });
+
+  const nlDry = await closeNothingLeft(ids.biz, { now, dryRun: true });
+  check("needs you: dry run counts the thank-you, writes nothing", nlDry.closed === 1 && nlDry.ids[0] === n1 && (await exceptionRow(n1)).status === "open", JSON.stringify(nlDry));
+  const nl = await closeNothingLeft(ids.biz, { now });
+  const rn1 = await exceptionRow(n1);
+  check("needs you: a thank-you closes itself", nl.closed === 1 && rn1.status === "resolved" && rn1.note === "auto: a thank-you, nothing to answer", String(rn1.note));
+  check("needs you: a thank-you on a proof stays (it may be a yes)", (await exceptionRow(n2)).status === "open");
+
+  const desk = new Map((await listNeedsYou({ businessIds: [ids.biz] })).map((i) => [i.id, i]));
+  check("needs you: upset + money back is the owner's", desk.get(n4)?.road === "owner" && desk.get(n4)?.tags.join() === "upset,refund", JSON.stringify(desk.get(n4) ?? null));
+  check("needs you: a revision nobody holds is the owner's", desk.get(n5)?.road === "owner" && desk.get(n5)?.tags.join() === "revision", JSON.stringify(desk.get(n5) ?? null));
+  check("needs you: the creased print is money back", desk.get(e2)?.road === "owner" && !!desk.get(e2)?.tags.includes("refund"));
+  check("needs you: an express question is mine, takeable", desk.get(n3)?.road === "agent" && desk.get(n3)?.takeable === true, JSON.stringify(desk.get(n3) ?? null));
+  check("needs you: closed rows are not listed", !desk.has(n1));
+
+  const taken = await takeForAgent({ businessIds: [ids.biz], limit: 50 });
+  const takenIds = taken.map((i) => i.id);
+  check(
+    "take: mine, never the owner's, never past the most goes",
+    takenIds.includes(n2) && takenIds.includes(n3) && !takenIds.includes(n4) && !takenIds.includes(n5) && !takenIds.includes(e2) && !takenIds.includes(n6),
+    JSON.stringify(takenIds),
+  );
+  const rn3 = await exceptionRow(n3);
+  check("take: stamped on the row", rn3.detail.agentTakes === 1 && typeof rn3.detail.agentTakenAt === "string", JSON.stringify(rn3.detail));
+  const takenAgain = await takeForAgent({ businessIds: [ids.biz], limit: 50 });
+  check("take: nothing twice within two hours", !takenAgain.some((i) => takenIds.includes(i.id)), JSON.stringify(takenAgain.map((i) => i.id)));
+
+  const at5 = (await sendOwnerDigest({ now: new Date(Date.now() + 5 * HOUR), dryRun: true, businessIds: [ids.biz] })).texts[0] ?? "";
+  check("needs you digest: upset + money back leads", (at5.split("\n").find((l) => l.startsWith("•")) ?? "").startsWith("• *Upset buyer, money back.* ") && at5.includes(`${o13.number}:`), at5);
+  check("needs you digest: the revision, with whose yes", at5.includes("*Revision.*") && at5.includes("A revision moves only with your yes"), at5);
+  check("needs you digest: rows I am working stay off it", !at5.includes(`${o11.number}:`) && !at5.includes(`${o12.number}:`), at5);
+  check("needs you digest: tried the most times = the owner hears, with my note", at5.includes(`${o15.number}:`) && at5.includes("I tried 3 times: Etsy shows no email"), at5);
+  const at7 = (await sendOwnerDigest({ now: new Date(Date.now() + 7 * HOUR), dryRun: true, businessIds: [ids.biz] })).texts[0] ?? "";
+  check("needs you digest: taken and not finished in 6 hours = the owner hears", at7.includes(`${o12.number}:`), at7);
+
+  const noted = await noteByAgent(n3, "Asked the buyer which address the express parcel goes to");
+  check("note: kept on the row", noted.ok && (await exceptionRow(n3)).detail.agentNote === "Asked the buyer which address the express parcel goes to");
+  const res = await resolveByAgent(n2, "Read as a yes; the print is ordered");
+  const rn2 = await exceptionRow(n2);
+  check("resolve: closed with my note", res.ok && res.changed === true && rn2.status === "resolved" && rn2.note === "agent: Read as a yes; the print is ordered", String(rn2.note));
+  check("resolve: twice changes nothing", (await resolveByAgent(n2, "again")).changed === false);
+  check("resolve: an unknown row is refused", !(await resolveByAgent(randomUUID(), "x")).ok);
+  const toOwner = await raiseToOwner(n3, ["refund"], "She paid standard and wants express: I recommend she pays the US$15 difference.");
+  const handedText = (await sendOwnerDigest({ now: new Date(Date.now() + 2 * HOUR), dryRun: true, businessIds: [ids.biz] })).texts[0] ?? "";
+  check(
+    "owner: a row I hand over is raised with my recommendation",
+    toOwner.ok && handedText.includes(`${o12.number}:`) && handedText.includes("I recommend she pays the US$15 difference") && handedText.includes("*Money back.*"),
+    handedText,
+  );
+  const deskLog = await withSystemContext((tx) =>
+    tx
+      .select({ action: activityLog.action })
+      .from(activityLog)
+      .where(and(eq(activityLog.businessId, ids.biz), sql`${activityLog.action} in ('agent.exception_resolved', 'agent.exception_to_owner')`)),
+  );
+  check("desk: one activity row per resolve and per hand-over", deskLog.length === 2, JSON.stringify(deskLog));
 }
 
 // The app login may not delete activity_log rows (it is append-only), so the

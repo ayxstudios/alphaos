@@ -76,7 +76,8 @@
     "test:not-started": "tsx scripts/test-not-started.ts",
     "test:archived-reopen": "tsx scripts/test-archived-reopen.ts",
     "test:eye": "tsx scripts/test-eye-sentiment.ts",
-    "test:rework-stays": "tsx scripts/test-rework-stays.ts"
+    "test:rework-stays": "tsx scripts/test-rework-stays.ts",
+    "test:needs-you": "tsx scripts/test-needs-you.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1102.0",
