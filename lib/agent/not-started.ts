@@ -218,7 +218,7 @@ async function moveOne(tx: Tx, businessId: string, w: Waiting, now: Date, olderT
   const full = new Set(
     model.designers.filter((d) => d.away || (d.limit > 0 && d.openLoad >= d.limit)).map((d) => d.designerId),
   );
-  const ranked = await loadRankedCandidates(tx, { businessId, style: w.style, excludeDesignerId: w.designerId });
+  const ranked = await loadRankedCandidates(tx, { businessId, style: w.style, excludeDesignerId: w.designerId, orderId: w.orderId });
   const target = ranked.find((c) => !full.has(c.designerId));
   if (!target) return null;
   const [t] = await tx.select({ name: users.name }).from(users).where(eq(users.id, target.designerId)).limit(1);

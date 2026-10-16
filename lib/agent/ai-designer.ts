@@ -25,7 +25,7 @@ import {
 import { getAgentConfig } from "@/lib/agent/config";
 import { openExceptionTx } from "@/lib/agent/exceptions";
 import { sendMessage } from "@/lib/email/dispatch";
-import { createAssignment } from "@/lib/orders/assign";
+import { createAssignment, disneyRefusal } from "@/lib/orders/assign";
 import { getOrderPortraits, resolveSlotTag } from "@/lib/orders/portraits";
 import { runTransition, type OrderStatus } from "@/lib/orders/transitions";
 import { loadProofFilePick, portraitList } from "@/lib/proofs/files";
@@ -703,6 +703,8 @@ export async function reassignOrder(
     if (current?.designerId === designerId && !(target.isAgent && o.aiState === "failed")) {
       return { ok: true as const, changed: false };
     }
+    const notDisney = await disneyRefusal(tx, orderId, designerId);
+    if (notDisney) return { ok: false as const, code: "disney_only", message: notDisney };
     if (target.isAgent) {
       const portraits = (await getOrderPortraits(tx, orderId)).length;
       if (portraits >= 2) {

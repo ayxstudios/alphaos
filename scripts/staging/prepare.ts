@@ -73,7 +73,11 @@ async function main() {
     if (!pixart) throw new Error("PixArt business not found in the clone");
     const designerId = ids.designer;
     await tx.insert(schema.designerBusinesses).values({ userId: designerId, businessId: pixart.id }).onConflictDoNothing();
-    await tx.insert(schema.designerProfiles).values({ userId: designerId, dailyCapacity: 10 }).onConflictDoNothing();
+    // PixArt orders are Disney pets: only a designer who draws Disney ("cartoon") may take them.
+    await tx
+      .insert(schema.designerProfiles)
+      .values({ userId: designerId, dailyCapacity: 10, styles: ["cartoon"] })
+      .onConflictDoUpdate({ target: schema.designerProfiles.userId, set: { styles: ["cartoon"] } });
 
     const already = await tx
       .select({ id: schema.assignments.id })

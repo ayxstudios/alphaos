@@ -45,6 +45,56 @@ export async function businessSlaHours(
   };
 }
 
+/**
+ * Disney orders only ever go to a designer who draws Disney (Yousif
+ * 2026-10-16: "Abdul should never get disney pet"). An order is Disney when a
+ * line's style is a Disney style (PixArt "cartoon", CPS "Disney Pet" /
+ * "Disneyfy People", any style naming Disney or Pixar) or its title names
+ * Disney, Pixar or a cartoon pet, so an order with no style set is caught too.
+ * CPS "Cartoon Portrait" (people, not Disney) is not a Disney style.
+ */
+const DISNEY_STYLES = new Set(["cartoon", "disney pet", "disneyfy people"]);
+
+export function isDisneyStyle(style: string | null | undefined): boolean {
+  const s = style?.trim().toLowerCase() ?? "";
+  return DISNEY_STYLES.has(s) || /disney|pixar/.test(s);
+}
+
+export function isDisneyOrder(items: { style?: string | null; title?: string | null }[]): boolean {
+  return items.some((i) => isDisneyStyle(i.style) || /disney|pixar|cartoon pet|pet cartoon/i.test(i.title ?? ""));
+}
+
+/** Draws at least one Disney style (Wahyu, Febri and Mar today). */
+export function drawsDisney(styles: string[] | null | undefined): boolean {
+  return (styles ?? []).some(isDisneyStyle);
+}
+
+export async function loadIsDisneyOrder(tx: Tx, orderId: string): Promise<boolean> {
+  const items = await tx
+    .select({ style: orderItems.style, title: orderItems.title })
+    .from(orderItems)
+    .where(eq(orderItems.orderId, orderId));
+  return isDisneyOrder(items);
+}
+
+/** Thrown by createAssignment when a Disney order would go to a designer who draws no Disney style. */
+export class DisneyOnlyError extends Error {
+  readonly code = "disney_only";
+}
+
+/** Why this designer may not have this order (a Disney order, a designer who draws no Disney style), or null. */
+export async function disneyRefusal(tx: Tx, orderId: string, designerId: string): Promise<string | null> {
+  if (!(await loadIsDisneyOrder(tx, orderId))) return null;
+  const [d] = await tx
+    .select({ name: users.name, styles: designerProfiles.styles })
+    .from(users)
+    .leftJoin(designerProfiles, eq(designerProfiles.userId, users.id))
+    .where(eq(users.id, designerId))
+    .limit(1);
+  if (drawsDisney(d?.styles)) return null;
+  return `This is a Disney order and ${d?.name ?? "that designer"} does not draw Disney. Only a designer who draws Disney can take it.`;
+}
+
 export type RevisionKind = "qc_fail" | "customer";
 
 /**
@@ -92,6 +142,10 @@ export async function createAssignment(
     reason?: string | null;
   },
 ): Promise<{ assignmentId: string; dueAt: Date }> {
+  // Hard stop: a Disney order never goes to a designer who does not draw Disney.
+  const refusal = await disneyRefusal(tx, input.orderId, input.designerId);
+  if (refusal) throw new DisneyOnlyError(refusal);
+
   const hours = input.dueAtHours ?? (await businessSlaHours(tx, input.businessId)).order;
   const dueAt = new Date(Date.now() + hours * 60 * 60 * 1000);
 
@@ -167,15 +221,18 @@ export type RankedCandidate = Candidate & {
  *     that style are eligible. An order with no style is open to everyone.
  *     (If no eligible designer exists the order stays unassigned — the caller
  *     surfaces it in the VA "Unassigned" tab.)
+ *  4. Disney only — a Disney order (a Disney style, or `disney` from its
+ *     titles when no style is set) goes only to a designer who draws Disney.
  *
  * Order among the eligible: manual rank (asc) -> most remaining capacity ->
  * lowest work-in-progress -> best 30-day on-time rate.
  */
 export function rankCandidates(
   candidates: Candidate[],
-  order: { style?: string | null },
+  order: { style?: string | null; disney?: boolean },
 ): RankedCandidate[] {
   const style = order.style?.trim().toLowerCase() || null;
+  const disney = !!order.disney || isDisneyStyle(style);
   const quotaOpen = (c: Candidate) => !c.styleQuota || c.styleQuota.usedToday < c.styleQuota.limit;
 
   const eligible = candidates
@@ -192,7 +249,9 @@ export function rankCandidates(
         // (an overflow group stays eligible past it, see quotaPriority).
         (quotaOpen(c) || !!c.styleQuota?.overflow) &&
         // Strict: a styled order goes only to a matching designer.
-        (style === null || c.styleMatch),
+        (style === null || c.styleMatch) &&
+        // A Disney order, styled or not, goes only to a Disney designer.
+        (!disney || drawsDisney(c.styles)),
     );
 
   // Designers holding a per-style quota for this style are served first, in
@@ -422,7 +481,8 @@ export async function loadRankedCandidates(
     styleQuota: quotaFor.get(r.designerId) ?? null,
   }));
 
-  return rankCandidates(candidates, { style: input.style });
+  const disney = isDisneyStyle(input.style) || (input.orderId ? await loadIsDisneyOrder(tx, input.orderId) : false);
+  return rankCandidates(candidates, { style: input.style, disney });
 }
 
 /**
@@ -444,9 +504,14 @@ export async function runAutoAssign(
 
   // A product with the AI designer switched on goes to the agent, not a human,
   // unless the order needs 2+ separate portraits (two lines, or one bought
-  // twice): the AI draws one portrait per job, so those go to a person.
+  // twice): the AI draws one portrait per job, so those go to a person. A
+  // Disney order never goes to the agent, only to a Disney designer.
   const styleRow = await findStyle(tx, order.businessId, style);
-  if (styleRow?.aiDesignerEnabled && (await getOrderPortraits(tx, order.orderId)).length < 2) {
+  if (
+    styleRow?.aiDesignerEnabled &&
+    !(await loadIsDisneyOrder(tx, order.orderId)) &&
+    (await getOrderPortraits(tx, order.orderId)).length < 2
+  ) {
     const agentId = await getAgentDesignerId(tx, order.businessId);
     if (agentId) {
       await createAssignment(tx, {

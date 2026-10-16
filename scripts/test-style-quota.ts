@@ -2,9 +2,14 @@
 // house/venue split — Jerome 1/day (priority 1), Reza 3/day (priority 2),
 // Slamet unquota'd takes the rest — plus the no-quota regression path, and
 // the Disney routing (Yousif 2026-10-16): big orders to Mar, Wahyu 6 a day
-// across CPS + PixArt, Febri 1 a shop, then Mar.
+// across CPS + PixArt, Febri 1 a shop, then Mar. And Disney only (Yousif
+// 2026-10-16, "Abdul should never get disney pet"): a Disney order, styled or
+// not, only ever goes to a designer who draws Disney.
 import type { StyleDailyLimit } from "../lib/db/schema";
 import {
+  drawsDisney,
+  isDisneyOrder,
+  isDisneyStyle,
   passesValueGate,
   quotaGroupFor,
   quotaPool,
@@ -252,6 +257,42 @@ check("rescue: his 6 new orders are counted, then Febri", assignNext(rescue, sma
 
 const unknown = freshDay();
 check("unknown total: treated as a small order (Wahyu, not Mar)", assignNext(unknown, { businessId: PIX, style: "cartoon", total: null }) === "wahyu");
+
+// ---------------------------------------------------------------------------
+// Disney only (Yousif 2026-10-16: "Abdul should never get disney pet")
+// ---------------------------------------------------------------------------
+check("disney style: PixArt cartoon", isDisneyStyle("cartoon"));
+check("disney style: CPS Disney Pet + Disneyfy People, any case", isDisneyStyle("disney pet") && isDisneyStyle("Disneyfy People"));
+check("disney style: CPS Cartoon Portrait (people) is not Disney", !isDisneyStyle("Cartoon Portrait"));
+check("disney style: watercolour and no style are not", !isDisneyStyle("Watercolor People") && !isDisneyStyle(null));
+check("disney order: no style, Disney title", isDisneyOrder([{ style: null, title: "Custom Disney-Cartoon Pet Portrait  | Personalized Portraits" }]));
+check("disney order: no style, Pixar title", isDisneyOrder([{ style: null, title: "Cartoon Style Pet Portrait | Pixar-Inspired Pet Gift" }]));
+check("disney order: no style, cartoon pet title", isDisneyOrder([{ style: null, title: "Custom Hand-Drawn Cartoon Pet Portrait" }]));
+check("disney order: one Disney line makes it Disney", isDisneyOrder([{ style: "Watercolor Pets", title: "Watercolor Pet" }, { style: "Disney Pet", title: "Print & Ship" }]));
+check("not disney: watercolour couple", !isDisneyOrder([{ style: "Watercolor People", title: "Custom Hand-Drawn Watercolor Couple Portrait" }]));
+check("not disney: Perfetta cartoon family", !isDisneyOrder([{ style: null, title: "Custom Cartoon Portrait from Photo, Personalized Family Illustration (Digital Download)" }]));
+check("draws disney: Wahyu yes, Abdul no, AI Studio no", drawsDisney(["cartoon", "Disney Pet"]) && !drawsDisney(["Watercolor People", "Perfetta Watercolor Pets"]) && !drawsDisney(null));
+
+// The CPS roster as it is today: on a no-style order Abdul is first by rank,
+// so a Disney title has to skip him and every other non-Disney designer.
+const cpsRoster: Candidate[] = [
+  { ...base, designerId: "abdul", rank: 3, dailyCapacity: 20, styles: ["Watercolor People", "Minimal Watercolor People"], styleQuota: null },
+  { ...base, designerId: "jerome", rank: 4, dailyCapacity: 30, styles: ["Watercolor Pets", "Cartoon Portrait"], styleQuota: null },
+  { ...base, designerId: "wahyu", rank: 8, dailyCapacity: 15, styles: ["cartoon", "Disney Pet", "Disneyfy People"], styleQuota: null },
+  { ...base, designerId: "mar", rank: 9, dailyCapacity: 15, styles: ["Disney Pet", "Disneyfy People", "cartoon"], styleQuota: null },
+];
+const ids = (r: { designerId: string }[]) => r.map((c) => c.designerId).join(",");
+check("no style, not Disney: still open to everyone (Abdul first)", rankCandidates(cpsRoster, { style: null })[0]?.designerId === "abdul");
+const noStyleDisney = rankCandidates(cpsRoster, { style: null, disney: true });
+check("no style, Disney title: Disney designers only", ids(noStyleDisney) === "wahyu,mar", ids(noStyleDisney));
+const styledDisney = rankCandidates(cpsRoster, { style: "Disney Pet" });
+check("Disney Pet: never Abdul or Jerome", ids(styledDisney) === "wahyu,mar", ids(styledDisney));
+check("Disney title on a watercolour style: still never Abdul", rankCandidates(cpsRoster, { style: "Watercolor People", disney: true }).length === 0);
+const allFull = rankCandidates(
+  cpsRoster.map((c) => (drawsDisney(c.styles) ? { ...c, ordersAssignedToday: c.dailyCapacity } : c)),
+  { style: null, disney: true },
+);
+check("Disney designers all full: nobody, never Abdul", allFull.length === 0, ids(allFull));
 
 console.log(failed ? `\ntest-style-quota FAILED (${failed})` : "\ntest-style-quota OK");
 process.exit(failed ? 1 : 0);
