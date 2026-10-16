@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EyeData, EyeOrder } from "@/lib/eye/data";
 
 import { createEngine, type Engine, type LayoutInfo } from "./eye-engine";
-import { HEALTH_COLOR, ageText, healthOf, sentimentWords, type EyeFilter } from "./eye-math";
+import { HEALTH_COLOR, ageText, healthOf, sentimentWords, type EyeFilter, type Health } from "./eye-math";
 import { makeSyntheticData } from "./eye-synthetic";
 
 const POLL_MS = 45_000;
@@ -17,6 +17,14 @@ const EMPTY_DATA: EyeData = {
   orders: [],
   events: [],
 };
+
+const KEY: [Health, string][] = [
+  ["ok", "On track"],
+  ["violet", "Waiting on buyer"],
+  ["amber", "Delayed"],
+  ["unhappy", "Unhappy"],
+  ["done", "Done"],
+];
 
 const CHIPS: { key: EyeFilter; label: string; color: string; count: (d: EyeData) => number }[] = [
   { key: "delayed", label: "Delayed", color: HEALTH_COLOR.amber, count: (d) => d.totals.delayed },
@@ -37,6 +45,10 @@ const CSS = `
 .eye-clock{font-variant-numeric:tabular-nums;color:rgba(200,220,255,.85)}
 .eye-stale{color:#ffb347}
 .eye-demo{display:inline-block;margin-left:12px;padding:2px 8px;border-radius:999px;border:1px solid rgba(255,179,71,.6);color:#ffb347;font-size:10px;font-weight:600;letter-spacing:.2em;vertical-align:1px}
+.eye-key{position:absolute;z-index:3;left:24px;bottom:52px;display:flex;flex-direction:column;gap:7px;font-size:11px;letter-spacing:.04em;color:rgba(170,195,235,.72);pointer-events:none}
+.eye-key i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:8px;vertical-align:1px}
+.eye-key.c{left:50%;bottom:auto;transform:translateX(-50%);flex-direction:row;flex-wrap:wrap;justify-content:center;gap:10px 16px;width:min(340px,88vw)}
+.eye-key.c p{flex-basis:100%;margin:6px 0 0;text-align:center;color:rgba(150,175,220,.55)}
 .eye-down{position:absolute;z-index:3;left:50%;transform:translateX(-50%);text-align:center;max-width:min(420px,86vw);font-size:12px;line-height:1.5;color:rgba(190,210,245,.8);pointer-events:none}
 .eye-down em{display:block;font-style:normal;color:rgba(150,175,220,.6);margin-top:2px}
 .eye-chips{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
@@ -419,6 +431,18 @@ export function EyeClient({ initial }: { initial: EyeData | null }) {
       {tip && !selectedId && (
         <div className="eye-tip" style={{ left: Math.max(70, tip.x), top: tip.y }}>
           {tip.o.orderNumber} <em>{"·"} {tip.o.business} {"·"} {tip.o.stage.label}</em>
+        </div>
+      )}
+
+      {lay && (!lay.compact || (rootRef.current?.clientHeight ?? 0) - (lay.cy + lay.R + 36) > 100) && (
+        <div className={`eye-key${lay.compact ? " c" : ""}`} style={lay.compact ? { top: lay.cy + lay.R + 36 } : undefined} aria-hidden="true">
+          {KEY.map(([h, label]) => (
+            <span key={h}>
+              <i style={{ background: HEALTH_COLOR[h], boxShadow: `0 0 8px ${HEALTH_COLOR[h]}` }} />
+              {label}
+            </span>
+          ))}
+          {lay.compact && <p>Tap any light for the order and the buyer{"'"}s last message</p>}
         </div>
       )}
 

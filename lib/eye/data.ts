@@ -130,11 +130,17 @@ export function eyeStage(status: string, aiState: string | null, physical: boole
 }
 
 const UNHAPPY_RE =
-  /refund|disappoint|upset|unacceptable|terrible|awful|horrible|frustrat|ridiculous|scam|not happy|not (great|good|right)|not what (i|we)|poor quality|wrong (order|portrait|address)|still (haven'?t|waiting|not)|never (received|got|arrived)|chargeback|cancel my/i;
+  /refund|disappoint|upset|unacceptable|terrible|awful|horrible|frustrat|ridiculous|scam|not happy|not (great|good|right)|not what (i|we)|poor quality|wrong (order|portrait|address)|still (haven't|hasn't|waiting|not)|never (received|got|arrived)|haven't (heard|received)|chargeback|cancel my|looks? worse|(does|did)(n't| not) look like|no cost to me|none of the issues|where is my/i;
 const ANGRY_EXC_RE = /refund|angry|upset|complaint|chargeback|dispute|unhappy/i;
-const HAPPY_RE = /thank|love|perfect|amazing|beautiful|gorgeous|awesome|wonderful|lovely|great|so good|looks good|approved|happy with/i;
+const HAPPY_RE = /thank|love|perfect|amazing|beautiful|gorgeous|awesome|wonderful|lovely|great|so good|looks good|approved|happy with|incredible|so cute|reacted via/i;
 /** The buyer is asking for something to change (a revision or a question), so she is not simply happy. */
-const CHANGE_RE = /\?|adjust|change|could (you|we)|can (you|we)|would it be|fix|redo|again|instead|still|a bit off|look(s)? off|too (small|big|dark|light)|not quite/i;
+const CHANGE_RE =
+  /\?|adjust|change|alter\b|tweak|one (more |quick )?thing|could (you|we)|can (you|we)|would it be|fix|redo|again|instead|still|a bit off|look(s)? off|too (small|big|dark|light|sad)|not quite|please (add|remove|change|make)|make (it|the|him|her|them|his|their)\b.{0,30}\bmore|missing|remove the|if you could|would prefer|lighten|darken|brighten/i;
+/** A bounce or delivery failure: the buyer cannot be reached, which needs someone. */
+const BOUNCE_RE = /\*\* ?(address not found|message (too large|blocked|not delivered))|mail system at host|delivery status notification|undeliverable|could not be delivered|wasn't delivered/i;
+/** Phrases that mention a change but say none is wanted. */
+const NO_CHANGE_RE =
+  /no changes?( are)? needed|no (other |more |further )?changes|nothing (i'?d|i would|we'?d|to) (like to |want to )?change|(so many|all the|the) changes|for (the|all the|your) (adjustments|changes|edits)/gi;
 const ATTENTION_KINDS = new Set(["reply_unclear", "buyer_question", "unmatched_reply", "stuck_order"]);
 
 export function plain(body: string | null): string {
@@ -147,12 +153,16 @@ export function plain(body: string | null): string {
     .replace(/&quot;/g, '"')
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/￼/g, " ")
     .replace(/^>.*$/gm, " ")
     .replace(/\s+/g, " ")
-    // the quoted thread and phone signatures are our own words, not the buyer's
-    .replace(/\s*On (Mon|Tue|Wed|Thu|Fri|Sat|Sun|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d)[^]{0,200}?wrote:.*$/, "")
-    .replace(/\s*(-{2,}\s*Original Message|From: [^]{0,160}?Sent: ).*$/i, "")
-    .replace(/\s*(Sent from (my )?\w+( \w+)?( for (iOS|Android))?|Get Outlook for (iOS|Android)|Yahoo Mail: Search, Organi[sz]e, Conquer)\s*$/i, "")
+    // everything from a phone signature, a divider or a quoted header on is our own words or footer, not hers
+    .replace(
+      /\s*(Sent from (my )?(iPhone|iPad|Android|Galaxy|Samsung|phone|mobile)|Sent from (Yahoo Mail|Outlook|Mail for Windows|AOL)|Get Outlook for|Yahoo Mail: Search|_{6,}|-{2,}\s*Original Message|From: [^]{0,200}?(Sent|Date): |On (Mon|Tue|Wed|Thu|Fri|Sat|Sun|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d)[^]{0,200}?(wrote:|, at \d)).*$/i,
+      "",
+    )
     .trim();
 }
 
@@ -164,7 +174,8 @@ export function buyerSentiment(
   approved: boolean,
 ): EyeSentiment {
   if (UNHAPPY_RE.test(lastText) || exc.some((e) => ANGRY_EXC_RE.test(e.kind) || ANGRY_EXC_RE.test(e.summary))) return "unhappy";
-  const asksChange = !!lastText && CHANGE_RE.test(lastText);
+  if (BOUNCE_RE.test(lastText)) return "attention";
+  const asksChange = !!lastText && CHANGE_RE.test(lastText.replace(NO_CHANGE_RE, " "));
   if (lastText && HAPPY_RE.test(lastText) && !asksChange) return "happy";
   if (asksChange || exc.some((e) => ATTENTION_KINDS.has(e.kind)) || rev >= 3) return "attention";
   return approved ? "happy" : "neutral";
