@@ -138,4 +138,5 @@ Branch task/wrongfile-fp, worktree alphaos-wt-wrongfile-fp. Jerome's submits wer
 - [x] prod: 0061 column applied; backfill hashed the CDN references, then 1021 R2 files (8 unreadable); fine_sig on 543/547 R2 submissions and every hashable reference
 - [x] 5d5fdf1 backfill stops before hashing when it cannot read stored files (an inherited R2_* from the agent shell had skipped 1024 files silently)
 - [x] proof on prod, every check rolled back: Jerome's 25 uploads and the 4 refused orders' current art all pass; 60 days of artwork vs same-order references = 10 lookalikes, all staff-attached (2 revision proofs, carried-over art on 4196536586 / 4181693839 / cancelled 4196607816, old-proof revision 4189043031, and PC32132's file). PC32132's file now only warns here (landscape on a portrait order); Auto QC's orientation backstop blocks it at QC pass / Approve, and a copy of a sibling's AlphaOS art still blocks (ink 0.000)
-- [ ] land under integrate:alphaos, prod CLI deploy, catch-up backfill; Jerome re-presses submit on 4201598491 and 4204380102
+- [x] landed 16 Oct 19:23 AEST under integrate:alphaos: main ddd5e64, prod CLI deploy alphaos-r32gndx1j aliased to alphaos-kappa (migration 0061 recorded, live /api/agent-qc/siblings returns fineSig)
+- [ ] catch-up hash backfill after landing; Jerome re-presses submit on 4201598491 and 4204380102
