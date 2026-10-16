@@ -16,8 +16,10 @@ import { randomUUID } from "node:crypto";
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-serverless";
+import { NextRequest } from "next/server";
 import ws from "ws";
 
+import { POST as moveApprovedPOST } from "../app/api/alpha/move-approved/route";
 import { reassignOrder } from "../lib/agent/ai-designer";
 import { runAgentTick } from "../lib/agent/autopilot";
 import { handFailedAiOrder } from "../lib/agent/limbo";
@@ -306,6 +308,34 @@ async function appTests() {
   check("handing it back to the designer who drew it needs no yes", m4.ok && m4.applied && !m4.needsYes && (await holder(chat)) === ids.abdul, JSON.stringify(m4));
   const m5 = await moveApproved({ order: chatNo, to: "Lee", apply: true, approved: "Yousif: Lee" });
   check("a designer who has left cannot be picked", !m5.ok && m5.code === "designer", JSON.stringify(m5));
+
+  // ---- the same road over HTTP, for the agent (POST /api/alpha/move-approved)
+  process.env.ALPHA_HOOK_SECRET = "rework-stays-test-secret";
+  process.env.ALPHA_HOOK_URL = ""; // nothing leaves the test
+  const post = (body: unknown, secret = true) =>
+    moveApprovedPOST(
+      new NextRequest("http://localhost/api/alpha/move-approved", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(secret ? { "x-alpha-secret": process.env.ALPHA_HOOK_SECRET! } : {}) },
+        body: JSON.stringify(body),
+      }),
+    );
+  const http0 = await post({ order: chatNo, to: "Jo", apply: true, approved: "x" }, false);
+  check("POST move-approved: 401 without the secret", http0.status === 401 && (await holder(chat)) === ids.abdul);
+  const http1 = await post({ order: chatNo, to: "Jo", apply: true });
+  const http1b = (await http1.json()) as { code?: string };
+  check(
+    "POST move-approved: a revision without the owner's words is refused",
+    http1.status === 409 && http1b.code === "needs_yes" && (await holder(chat)) === ids.abdul,
+    JSON.stringify(http1b),
+  );
+  const http2 = await post({ order: chatNo, to: "Jo", apply: true, approved: "Ayser in chat: Jo takes it" });
+  const http2b = (await http2.json()) as { applied?: boolean; approvedBy?: string };
+  check(
+    "POST move-approved: with the owner's words it moves",
+    http2.status === 200 && !!http2b.applied && http2b.approvedBy === "Ayser in chat: Jo takes it" && (await holder(chat)) === ids.jo,
+    JSON.stringify(http2b),
+  );
 
   return { gone };
 }
