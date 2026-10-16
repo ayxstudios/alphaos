@@ -7,6 +7,7 @@ import { approveProof } from "@/lib/proofs/decide";
 import { proofUrl } from "@/lib/urls";
 import { sendAlphaEvent } from "@/lib/alpha/client";
 import { agentOrderScope } from "@/lib/agent/scope";
+import { buyerRepliedSince } from "./buyer-replied";
 
 const DAY = 24 * 60 * 60 * 1000;
 export const PHOTO_REMINDER_AFTER_MS = 48 * 60 * 60 * 1000; // 48h
@@ -26,6 +27,8 @@ export type RemindersSweepResult = {
   proofReminders: { candidates: number; fired: number };
   customerSilentAlerts: { candidates: number; fired: number };
   autoApprovals: { candidates: number; fired: number; failed: number };
+  /** Proofs left alone because the buyer wrote after them: a reply is not silence. */
+  buyerReplied: number;
 };
 
 /**
@@ -75,6 +78,7 @@ export async function runRemindersSweep(opts: { businessIds?: string[]; now?: Da
     proofReminders: { candidates: 0, fired: 0 },
     customerSilentAlerts: { candidates: 0, fired: 0 },
     autoApprovals: { candidates: 0, fired: 0, failed: 0 },
+    buyerReplied: 0,
   };
 
   // --- 48h photo reminder --------------------------------------------------
@@ -170,6 +174,19 @@ export async function runRemindersSweep(opts: { businessIds?: string[]; now?: Da
       platformOrderId: p.platformOrderId,
       platformOrderName: p.platformOrderName,
     };
+
+    // The buyer wrote after this proof (an approval, a change request, a
+    // question): no reminder, no "customer silent" alert, and above all no
+    // auto-approve "after 7 days of silence". Shelby Leachet 4199624202 got a
+    // reminder 45 min after asking for changes (clean slating audit,
+    // 2026-10-16). Nothing is claimed, so a newer proof starts its own clock.
+    if (ageMs >= PROOF_REMINDER_AFTER_MS) {
+      const replied = await withSystemContext((tx) => buyerRepliedSince(tx, p.orderId, p.sentAt));
+      if (replied) {
+        result.buyerReplied++;
+        continue;
+      }
+    }
 
     if (ageMs >= PROOF_REMINDER_AFTER_MS) {
       result.proofReminders.candidates++;

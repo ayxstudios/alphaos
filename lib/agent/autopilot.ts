@@ -47,6 +47,7 @@ import { computeCompleteness } from "./completeness";
 import { openExceptionTx, type ExceptionKind } from "./exceptions";
 import { emptyInboxReport, runInboxPass, type InboxReport } from "./inbox";
 import { runOutboxPass, type OutboxReport } from "./outbox";
+import { runProofRepliesPass, type ProofRepliesReport } from "./proof-replies";
 import { rebalanceBusiness } from "./rebalance";
 import { parseIntake } from "./intake";
 import { findCatalogStyle, registerUnindexedProduct } from "./legacy-intake";
@@ -140,6 +141,8 @@ export type AgentBusinessReport = {
   printLeftForPerson?: number;
   /** Inbox pass counts (all zero when the inbox switch is off). */
   inbox: Omit<InboxReport, "exceptionsOpened" | "exceptionKinds" | "errors">;
+  /** Email approvals and change requests applied with the inbox switch off (./proof-replies.ts). */
+  proofReplies?: Omit<ProofRepliesReport, "errors">;
   /** Outbox pass counts: agent mail sent by itself, retries, failed-send exceptions. */
   outbox?: Omit<OutboxReport, "errors">;
   /** No limbo pass (docs/NO_LIMBO.md): junk mail cleared, stale rows closed, stuck orders raised, census. */
@@ -283,6 +286,19 @@ export async function runAgentTick(opts: AgentTickOptions = {}): Promise<AgentTi
       for (const k of inbox.exceptionKinds) if (!report.exceptionKinds.includes(k)) report.exceptionKinds.push(k);
       for (const e of inbox.errors) {
         report.errors.push({ orderId: e.orderId ?? "", message: e.messageId ? `message ${e.messageId}: ${e.message}` : e.message });
+      }
+    }
+    // Inbox switch off: still hear a clear email approval or change request on a
+    // proof (clean slating audit 2026-10-16: CPS approvals by Emily Page and
+    // Megan Coakley never reached AlphaOS). The inbox pass above covers it when on.
+    if (!biz.inbox && !outOfTime()) {
+      try {
+        const pr = await runProofRepliesPass(biz, { dryRun, outOfTime });
+        const { errors, ...counts } = pr;
+        report.proofReplies = counts;
+        for (const e of errors) report.errors.push({ orderId: e.orderId ?? "", message: e.messageId ? `message ${e.messageId}: ${e.message}` : e.message });
+      } catch (e) {
+        report.errors.push({ orderId: "", message: `proof replies: ${errorMessage(e)}` });
       }
     }
     // Every enabled business: the agent's mail goes out on its own, failed sends are retried.

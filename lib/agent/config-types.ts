@@ -116,4 +116,18 @@ export type AgentConfigInput = {
    * no QC history is picked unless they are the only other admin.
    */
   qcBackupApproverUserId?: string | null;
+  /**
+   * Apply a clear email (or Etsy message) approval or change request on a proof
+   * even when the inbox switch is off (lib/agent/proof-replies.ts). Default
+   * true. Emily Page 4199506964 and Megan Coakley 4197002875 (CPS) approved by
+   * email and AlphaOS never knew: the inbox pass only ran for PixArt (clean
+   * slating audit, 2026-10-16).
+   */
+  proofReplyDecisions?: boolean;
+  /**
+   * Hours an assignment may sit with nobody starting it before the agent moves
+   * it to a designer with room (lib/agent/not-started.ts). Default 24, allowed
+   * 0-168; 0 = never move. Clean slating audit, 2026-10-16.
+   */
+  notStartedMoveHours?: number;
 };

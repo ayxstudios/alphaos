@@ -43,6 +43,8 @@ export const AGENT_CONFIG_DEFAULTS: AgentConfig = {
   ownerQcSlaHours: 12,
   ownerQcBackupAfterHours: 2,
   qcBackupApproverUserId: null,
+  proofReplyDecisions: true,
+  notStartedMoveHours: 24,
   designerSlaHours: 24,
   revisionSlaHours: 24,
   qcFailSlaHours: 12,
@@ -120,6 +122,8 @@ export function getAgentConfig(business: { agentConfig?: unknown } | null | unde
     ownerQcBackupAfterHours: num(raw.ownerQcBackupAfterHours, 0.5, 72, AGENT_CONFIG_DEFAULTS.ownerQcBackupAfterHours),
     qcBackupApproverUserId:
       typeof raw.qcBackupApproverUserId === "string" && raw.qcBackupApproverUserId.trim() ? raw.qcBackupApproverUserId.trim() : null,
+    proofReplyDecisions: typeof raw.proofReplyDecisions === "boolean" ? raw.proofReplyDecisions : AGENT_CONFIG_DEFAULTS.proofReplyDecisions,
+    notStartedMoveHours: num(raw.notStartedMoveHours, 0, 168, AGENT_CONFIG_DEFAULTS.notStartedMoveHours),
   };
 }
 

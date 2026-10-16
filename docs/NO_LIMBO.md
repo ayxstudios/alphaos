@@ -196,3 +196,28 @@ digest) watches each portrait waiting on an owner: `awaiting_qc`, or
   (bearer AGENT_JOBS_TOKEN): `{ now, count, items: [{ orderId, orderNumber,
   shop, businessId, kind, enteredAt, hours, overdue, urgentSentAt,
   backupSentAt, next, open, owner, backup, link }] }`.
+
+## L8 A buyer's answer is heard, and stops the reminders (2026-10-16)
+
+Clean slating audit 2026-10-16: Emily Page 4199506964 and Megan Coakley
+4197002875 approved their CPS proofs by email and AlphaOS never knew; Megan Six
+4201085914's approval was classified at 97% and never applied; Shelby Leachet
+4199624202 asked for changes at 20:31 and was asked to approve at 21:16. The
+inbox pass only ran where `agentInboxEnabled` was on (PixArt alone).
+
+- `lib/agent/proof-replies.ts` `runProofRepliesPass`, every tick for a business
+  whose inbox switch is OFF (the inbox pass covers it when on), unless
+  `agent_config.proofReplyDecisions` is false. Only orders in
+  `awaiting_approval` with an undecided latest proof, only buyer words written
+  after that proof. A clear change request (>= `replyConfidenceThreshold`)
+  wins: back to design with her words as the revision reason. Else a clear
+  approval approves. Questions, thank-yous and anything below the bar are left
+  as they were (classification stored for the VA card, nothing drafted or
+  escalated). Same road as a VA's tap (`applyReplyClassificationDecision`),
+  stamped `agent.reply_applied`; open proof reminders on the order withdrawn.
+- `lib/reminders/buyer-replied.ts`: a reply of any kind after the proof is not
+  silence. The reminders sweep sends no 3-day reminder, no day-5 "customer
+  silent" alert and no day-7 auto-approve; `sendMessage` withdraws a queued or
+  drafted `proof_reminder` (archived draft, `email.proof_reminder_withdrawn`)
+  when the buyer wrote after the proof, the proof was decided or the order
+  moved on; the agent outbox withdraws such drafts instead of holding them.

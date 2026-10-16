@@ -19,6 +19,7 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { withSystemContext } from "@/lib/db";
 import { activityLog, exceptions, messages, orders } from "@/lib/db/schema";
 import { sendMessage } from "@/lib/email/dispatch";
+import { staleProofReminderReason, withdrawProofReminder } from "@/lib/reminders/buyer-replied";
 
 import { openExceptionTx } from "./exceptions";
 import { agentMessageScope } from "./scope";
@@ -57,6 +58,8 @@ export type OutboxReport = {
   deferred: number;
   /** Failed sends retried this pass (of which `retried` succeeded is in `sent`). */
   retried: number;
+  /** Proof reminders taken back at send time: the buyer answered or the proof moved on. */
+  withdrawn: number;
   /** Failed emails that ran out of retries and became an exception. */
   exceptionsOpened: number;
   /** Open "Email failed to send" exceptions closed because the email went out. */
@@ -65,7 +68,7 @@ export type OutboxReport = {
 };
 
 export function emptyOutboxReport(): OutboxReport {
-  return { promoted: 0, heldForHuman: 0, sent: 0, deferred: 0, retried: 0, exceptionsOpened: 0, exceptionsResolved: 0, errors: [] };
+  return { promoted: 0, heldForHuman: 0, sent: 0, deferred: 0, retried: 0, withdrawn: 0, exceptionsOpened: 0, exceptionsResolved: 0, errors: [] };
 }
 
 export type OutboxPassOptions = { dryRun?: boolean; now?: Date; outOfTime?: () => boolean };
@@ -126,6 +129,7 @@ async function promoteStep(businessId: string, dryRun: boolean, report: OutboxRe
     tx
       .select({
         id: messages.id,
+        orderId: messages.orderId,
         templateKey: messages.templateKey,
         metadata: messages.metadata,
         orderStatus: orders.status,
@@ -156,6 +160,22 @@ async function promoteStep(businessId: string, dryRun: boolean, report: OutboxRe
   const go: string[] = [];
   for (const d of drafts) {
     const finished = d.orderStatus && (FINISHED as readonly string[]).includes(d.orderStatus);
+    // A reminder drafted while the buyer was silent, overtaken by her reply or a
+    // decision: withdrawn, not left in the outbox for someone to tap (Shelby
+    // Leachet 4199624202, clean slating audit 2026-10-16).
+    if (d.templateKey === "proof_reminder" && d.orderId) {
+      const orderId = d.orderId;
+      const pulled = await withSystemContext(async (tx) => {
+        const reason = await staleProofReminderReason(tx, orderId);
+        if (!reason) return false;
+        if (!dryRun) await withdrawProofReminder(tx, { id: d.id, businessId, orderId }, reason);
+        return true;
+      });
+      if (pulled) {
+        report.withdrawn += 1;
+        continue;
+      }
+    }
     const staleReminder = d.templateKey === "proof_reminder" && d.orderStatus !== "awaiting_approval";
     const sensitive = !!d.inboundBody && SENSITIVE.test(d.inboundBody);
     if (finished || staleReminder || sensitive) {
@@ -221,6 +241,7 @@ async function sendStep(
       res = { ok: false, error, retryable: false };
     }
     if (res.ok) report.sent += 1;
+    else if (res.withdrawn) report.withdrawn += 1;
     else if (res.retryable) report.deferred += 1;
     else {
       // First failure: the retry policy starts from here.
@@ -296,6 +317,11 @@ async function retryStep(
             metadata: { messageId: m.id, attempts: retry.attempts + 1 },
           }),
         );
+        continue;
+      }
+      if (res.withdrawn) {
+        report.retried -= 1;
+        report.withdrawn += 1;
         continue;
       }
       // Sending switched off is a setting, not a fault: keep the email failed, burn no retry.

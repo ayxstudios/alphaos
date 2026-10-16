@@ -8,6 +8,7 @@ import { header, textToHtml } from "@/lib/integrations/gmail/mime";
 import { loadAssetAttachment } from "@/lib/email/attachments";
 import { generateProofToken } from "@/lib/proofs/tokens";
 import { proofUrl, uploadUrl } from "@/lib/urls";
+import { staleProofReminderReason, withdrawProofReminder } from "@/lib/reminders/buyer-replied";
 import {
   DEFAULT_TEMPLATES,
   renderTemplate,
@@ -341,7 +342,10 @@ export async function draftFreeformReply(
  * `queued: "etsy"` = an Etsy-message delivery (buyer has no email on file) was
  * released to the shop desk; nothing was emailed.
  */
-export type SendResult = { ok: true; queued?: "etsy" } | { ok: false; error: string; retryable: boolean; busy?: boolean };
+export type SendResult =
+  | { ok: true; queued?: "etsy" }
+  /** `withdrawn`: a proof reminder that must not go out any more (lib/reminders/buyer-replied.ts); archived, no retry. */
+  | { ok: false; error: string; retryable: boolean; busy?: boolean; withdrawn?: boolean };
 
 const SEND_CAP_SUMMARY = "Automatic emails paused: hourly limit reached";
 
@@ -449,6 +453,7 @@ export async function sendMessage(
         attachmentContentType: messages.attachmentContentType,
         metadata: messages.metadata,
         manualSentAt: messages.manualSentAt,
+        templateKey: messages.templateKey,
       })
       .from(messages)
       .where(eq(messages.id, messageId));
@@ -458,6 +463,20 @@ export async function sendMessage(
   // Never resend what already reached the customer (sent, or marked sent by hand).
   if (msg.status === "sent" || msg.manualSentAt) return { ok: true };
   if (msg.direction !== "outbound") return { ok: false, error: "Not an outbound message", retryable: false };
+  // The last gate for every road (sweep, agent inbox, a VA's tap): a proof
+  // reminder written while the buyer was silent never goes out once she has
+  // answered or the proof moved on. Shelby Leachet 4199624202 was asked to
+  // approve 45 min after she asked for changes (clean slating audit, 2026-10-16).
+  if (msg.templateKey === "proof_reminder" && msg.orderId) {
+    const orderId = msg.orderId;
+    const withdrawn = await withSystemContext(async (tx) => {
+      const reason = await staleProofReminderReason(tx, orderId);
+      if (!reason) return null;
+      await withdrawProofReminder(tx, { id: msg.id, businessId: msg.businessId, orderId }, reason);
+      return reason;
+    });
+    if (withdrawn) return { ok: false, error: `Proof reminder withdrawn: ${withdrawn}`, retryable: false, withdrawn: true };
+  }
   // Etsy-message delivery (an Etsy buyer with no email on file). AlphaOS never
   // talks to Etsy: releasing the row only queues it. The shop desk sends it
   // from the shop's own Etsy inbox and marks it sent. Gmail, the sending
