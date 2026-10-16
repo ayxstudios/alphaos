@@ -35,6 +35,9 @@ const PROTECTED = [
   /^\/exceptions(\/|$)/,
   // The component styleguide is a staff design reference, not a public page.
   /^\/styleguide(\/|$)/,
+  // The All Seeing Eye (owner only; the page and /api/eye check role admin themselves).
+  /^\/eye(\/|$)/,
+  /^\/api\/eye(\/|$)/,
 ];
 
 // The only areas a designer may reach. Per-order ownership on /orders/[id] is
@@ -59,7 +62,7 @@ const HELPER_ALLOWED = [
 ];
 
 // Admin-only areas (VAs are sent home, matching the pages' own redirects).
-const ADMIN_ONLY = [/^\/payouts(\/|$)/, /^\/health(\/|$)/];
+const ADMIN_ONLY = [/^\/payouts(\/|$)/, /^\/health(\/|$)/, /^\/eye(\/|$)/];
 
 // Designer-only pages: staff who type one get the Designers page here, in
 // the middleware, instead of a second full document after the page's own
