@@ -29,6 +29,7 @@ const LABELS: Record<string, string> = {
   "order.reconciled": "Reconciled with the shop",
   "order.reclassified": "Order type changed",
   "order.awaiting_qc": "Awaiting QC",
+  "order.wrong_file_override": "Wrong-file stop overridden",
   "order.awaiting_approval": "Awaiting approval",
   "order.fulfillment_only": "Fulfilment only",
   "proof.viewed": "Proof viewed",

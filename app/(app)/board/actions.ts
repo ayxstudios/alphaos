@@ -53,7 +53,8 @@ export async function moveOrder(
   const user = { id: session.user.id, role: session.user.role };
 
   try {
-    const { status } = await transition(user, { orderId, to, expectedFrom, metadata });
+    const overrideReason = typeof metadata?.overrideReason === "string" ? metadata.overrideReason : undefined;
+    const { status } = await transition(user, { orderId, to, expectedFrom, metadata, overrideReason });
     revalidatePath("/board");
     revalidatePath("/orders");
     return { ok: true, status };

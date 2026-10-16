@@ -31,10 +31,10 @@ async function requireStaff(): Promise<{ user: RequestUser; name: string } | { e
  * holds for the owner (aiOwnerApproval) is released in the same tap when an
  * owner (admin) approves it: their tap IS the owner approval.
  */
-export async function ownerApprove(orderId: string, fixIds?: string[]): Promise<ApproveActionResult> {
+export async function ownerApprove(orderId: string, fixIds?: string[], overrideReason?: string): Promise<ApproveActionResult> {
   const staff = await requireStaff();
   if ("error" in staff) return staff.error;
-  return ownerApproveCore(staff.user, staff.name, orderId, { fixIds: Array.isArray(fixIds) ? fixIds.filter((f) => typeof f === "string") : [] });
+  return ownerApproveCore(staff.user, staff.name, orderId, { fixIds: Array.isArray(fixIds) ? fixIds.filter((f) => typeof f === "string") : [], overrideReason: typeof overrideReason === "string" ? overrideReason : undefined });
 }
 
 /** Which check a rejection most likely means, from the owner's own words. */

@@ -25,6 +25,7 @@ import {
 } from "@/lib/qc/checklist";
 import { onRevisionEdge } from "@/lib/agent/ai-core";
 import { aiQcRefusal } from "@/lib/qc/ai-qc-gate";
+import { wrongFileGate } from "@/lib/qc/wrong-file";
 import { resetRevisionDeadline, runAutoAssign } from "./assign";
 import { SENT_BACK_FROM } from "./board-constants";
 import { prepareProofForApproval, queueStageEmail } from "@/lib/email/dispatch";
@@ -176,6 +177,10 @@ export type TransitionInput = {
   to: OrderStatus;
   expectedFrom: OrderStatus; // the status the client believed the order was in
   metadata?: Record<string, unknown>;
+  /** Staff only: why a wrong-file stop (lib/qc/wrong-file.ts) is overridden. Designers cannot override. */
+  overrideReason?: string;
+  /** The caller already ran the wrong-file gate for this move (confirmQcPassAndSend does, before it emails). */
+  wrongFileChecked?: boolean;
 };
 
 /** Legal staff transitions out of a status — used to render VA queue actions. */
@@ -249,9 +254,25 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
   if (to === "awaiting_qc") {
     await assertHasSubmission(tx, orderId, order.platformOrderId);
     await assertEveryPortrait(tx, orderId, order.platformOrderId, "submit");
+    const wrong = await wrongFileGate(tx, actor, {
+      orderId,
+      businessId: order.businessId,
+      overrideReason: input.overrideReason,
+      via: "submit",
+    });
+    if (wrong) throw new PreconditionError(wrong.message);
   }
   if (key === "awaiting_qc->awaiting_approval") {
     await assertEveryPortrait(tx, orderId, order.platformOrderId, "pass");
+    if (!input.wrongFileChecked) {
+      const wrong = await wrongFileGate(tx, actor, {
+        orderId,
+        businessId: order.businessId,
+        overrideReason: input.overrideReason,
+        via: "qc_pass",
+      });
+      if (wrong) throw new PreconditionError(wrong.message);
+    }
   }
 
   // QC gate — enforced HERE, not just in the UI/action, so a crafted request

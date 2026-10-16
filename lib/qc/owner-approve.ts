@@ -31,7 +31,7 @@ export async function ownerApproveCore(
   user: RequestUser,
   name: string,
   orderId: string,
-  opts: { fixIds?: string[] } = {},
+  opts: { fixIds?: string[]; overrideReason?: string } = {},
 ): Promise<ApproveActionResult> {
 
   const ctx = await getQcContext(user, orderId);
@@ -76,6 +76,7 @@ export async function ownerApproveCore(
     subject: p.subject,
     body: p.body,
     signature: name,
+    overrideReason: opts.overrideReason,
   });
   if (!sent.ok) return { ok: false, code: sent.code, message: sent.message };
 

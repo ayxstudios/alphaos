@@ -16,6 +16,7 @@
  */
 import { and, desc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 
+import { isAgentAssigned } from "@/lib/agent/ai-core";
 import { withSystemContext, type RequestUser, type Tx } from "@/lib/db";
 import { activityLog, assets, autoQcChecks, orderItems, orders } from "@/lib/db/schema";
 import { orderNumberOf, loadSameBuyerContext, orientationOf } from "@/lib/orders/same-buyer";
@@ -299,6 +300,8 @@ export async function wrongFileGate(
   input: { orderId: string; businessId: string; assetIds?: string[]; overrideReason?: unknown; via: "submit" | "qc_pass" },
 ): Promise<WrongFileRefusal | null> {
   if (actor.role === "system") return null;
+  // The AI Studio's own submission is judged by Auto QC (wrongFile), not by this hash check.
+  if (input.via === "submit" && (await isAgentAssigned(tx, input.orderId))) return null;
   const ids = input.assetIds?.length ? input.assetIds : await currentArtworkIds(tx, input.orderId);
   if (!ids.length) return null;
   const reasons: WrongFileReason[] = [];

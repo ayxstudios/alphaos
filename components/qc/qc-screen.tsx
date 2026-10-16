@@ -181,7 +181,9 @@ export function QcScreen({
     if (!emailPreview || pending) return;
     setActing("pass");
     start(async () => {
-      const res = await confirmQcPassAndSend({
+      const send = (overrideReason?: string) =>
+        confirmQcPassAndSend({
+        overrideReason,
         orderId: ctx.orderId,
         expectedFrom: ctx.status,
         checklist: ctx.checklist,
@@ -195,6 +197,12 @@ export function QcScreen({
         body: emailBody,
         signature,
       });
+      let res = await send();
+      // Wrong-file stop (lib/qc/wrong-file.ts): staff can send anyway with a written reason, logged on the order.
+      if (!res.ok && res.code === "wrong_file") {
+        const reason = window.prompt(`${res.message}\n\nOnly if you have checked it is right: type why, then OK. Cancel keeps it stopped.`);
+        if (reason && reason.trim().length >= 4) res = await send(reason.trim());
+      }
       if (res.ok) setEmailPreview(null);
       handleResult(res, "Proof sent to the customer");
     });

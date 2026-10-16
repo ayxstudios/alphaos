@@ -23,12 +23,12 @@ const COMMIT_TIMEOUT_MS = 55_000;
 /** Full RSC prefetch: the server render of /approve takes seconds, so Approve and Stop swap from the cache instead. */
 export const FULL_PREFETCH = { kind: PrefetchKind.FULL };
 
-async function viaRoute(orderId: string, keepalive: boolean, fixIds?: string[]): Promise<CommitResult> {
+async function viaRoute(orderId: string, keepalive: boolean, fixIds?: string[], overrideReason?: string): Promise<CommitResult> {
   const res = await fetch("/api/approve/commit", {
     method: "POST",
     keepalive,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(fixIds?.length ? { orderId, fixIds } : { orderId }),
+    body: JSON.stringify({ orderId, ...(fixIds?.length ? { fixIds } : {}), ...(overrideReason ? { overrideReason } : {}) }),
   });
   return (await res.json()) as CommitResult;
 }
@@ -37,9 +37,19 @@ async function viaRoute(orderId: string, keepalive: boolean, fixIds?: string[]):
 // dropped connection or a 55 s stall ends with a reason, and a retry is safe
 // because the server answers "Already checked" when the first one landed.
 async function commit(orderId: string, fixIds?: string[]): Promise<CommitResult> {
+  const first = await commitOnce(orderId, fixIds);
+  // Wrong-file stop (lib/qc/wrong-file.ts): staff can send anyway with a written reason, logged on the order.
+  if (!first.ok && first.code === "wrong_file" && typeof window !== "undefined") {
+    const reason = window.prompt(`${first.message}\n\nOnly if you have checked it is right: type why, then OK. Cancel keeps it stopped.`);
+    if (reason && reason.trim().length >= 4) return commitOnce(orderId, fixIds, reason.trim());
+  }
+  return first;
+}
+
+async function commitOnce(orderId: string, fixIds?: string[], overrideReason?: string): Promise<CommitResult> {
   try {
     return await Promise.race([
-      ownerApprove(orderId, fixIds),
+      ownerApprove(orderId, fixIds, overrideReason),
       new Promise<never>((_, fail) => setTimeout(() => fail(new Error("timeout")), COMMIT_TIMEOUT_MS)),
     ]);
   } catch (err) {
@@ -48,7 +58,7 @@ async function commit(orderId: string, fixIds?: string[]): Promise<CommitResult>
     // plain route does the same approve and needs no matching bundle.
     if (/server action/i.test(msg)) {
       try {
-        return await viaRoute(orderId, false, fixIds);
+        return await viaRoute(orderId, false, fixIds, overrideReason);
       } catch {
         return { ok: false, code: "network", message: "AlphaOS was just updated. Tap Retry." };
       }

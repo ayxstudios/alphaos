@@ -44,6 +44,7 @@ import { getQcFailContext } from "@/lib/qc/data";
 import { autoResolveOrderFigures } from "@/lib/orders/figure-auto";
 import { qcPassEmailInFlight } from "@/lib/qc/send-guard";
 import { aiQcRefusal } from "@/lib/qc/ai-qc-gate";
+import { wrongFileGate } from "@/lib/qc/wrong-file";
 import { holdForOwnerReview, ownerReviewRequired } from "@/lib/agent/ai-designer";
 import { loadProofFilePick, portraitList } from "@/lib/proofs/files";
 import { generateProofToken } from "@/lib/proofs/tokens";
@@ -241,6 +242,8 @@ export async function confirmQcPassAndSend(input: {
   subject: string;
   body: string;
   signature: string;
+  /** Staff only: why a wrong-file stop is overridden (lib/qc/wrong-file.ts). */
+  overrideReason?: string;
 }): Promise<QcResult> {
   const user = await requireVa();
   if ("error" in user) return user.error;
@@ -284,6 +287,15 @@ export async function confirmQcPassAndSend(input: {
     // AI portraits: only an owner, and only once Auto QC has judged this exact file (lib/qc/ai-qc-gate.ts).
     const ai = await aiQcRefusal(tx, user, { orderId: ctx.order.id, assetId: ctx.asset.id });
     if (ai) return { ok: false as const, code: ai.code, message: ai.message };
+    // Wrong-file stop: the file must not be the reference photo or another order's artwork (staff may override with a reason, logged).
+    const wrong = await wrongFileGate(tx, user, {
+      orderId: ctx.order.id,
+      businessId: ctx.order.businessId,
+      assetIds: [ctx.asset.id],
+      overrideReason: input.overrideReason,
+      via: "qc_pass",
+    });
+    if (wrong) return { ok: false as const, code: wrong.code, message: wrong.message };
     const proof = await ensureProof(tx, ctx.order);
     if (proof.id !== input.proofId) {
       return { ok: false as const, code: "stale_proof", message: "The proof link changed. Refresh and preview again." };
@@ -435,6 +447,7 @@ export async function confirmQcPassAndSend(input: {
         orderId: input.orderId,
         to: "awaiting_approval",
         expectedFrom: input.expectedFrom,
+        wrongFileChecked: true,
         metadata: {
           itemResults: input.itemResults,
           signature: input.signature,
