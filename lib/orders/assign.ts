@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 
 import type { Tx } from "@/lib/db";
 import {
@@ -6,6 +6,7 @@ import {
   designerProfiles,
   users,
   assignments,
+  assets,
   orders,
   orderItems,
   earnings,
@@ -14,6 +15,14 @@ import { liveOrderWhere } from "@/lib/orders/archive";
 import { sendDesignerBrief } from "@/lib/notifications/designer-events";
 
 export const DESIGNER_SLA_HOURS = 24;
+
+/** Assignment is the last hard stop before a designer sees an order. */
+export class MissingReferencePhotoError extends Error {
+  constructor(orderId: string) {
+    super(`Order ${orderId} cannot be assigned until at least one reference photo is attached.`);
+    this.name = "MissingReferencePhotoError";
+  }
+}
 
 /**
  * The one place an assignment row is created. Deactivates any prior active
@@ -35,6 +44,13 @@ export async function createAssignment(
   },
 ): Promise<{ assignmentId: string; dueAt: Date }> {
   const dueAt = new Date(Date.now() + (input.dueAtHours ?? DESIGNER_SLA_HOURS) * 60 * 60 * 1000);
+
+  const [reference] = await tx
+    .select({ id: assets.id })
+    .from(assets)
+    .where(and(eq(assets.orderId, input.orderId), eq(assets.type, "reference"), isNull(assets.deletedAt)))
+    .limit(1);
+  if (!reference) throw new MissingReferencePhotoError(input.orderId);
 
   await tx
     .update(assignments)

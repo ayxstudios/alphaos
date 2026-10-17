@@ -30,6 +30,7 @@ import {
   type OrderStatus,
 } from "@/lib/orders/transitions";
 import { addComment } from "@/lib/orders/card-detail";
+import { createAssignment, MissingReferencePhotoError } from "@/lib/orders/assign";
 import {
   freshShopifyCredentials,
   fulfillShopifyOrderWithTracking,
@@ -294,18 +295,25 @@ export async function bulkReassignOrders(
       }
 
       const previous = await tx
-        .update(assignments)
-        .set({ active: false })
+        .select({ id: assignments.id })
+        .from(assignments)
         .where(and(eq(assignments.orderId, order.id), eq(assignments.active, true)))
-        .returning({ id: assignments.id });
-      await tx.insert(assignments).values({
-        businessId: order.businessId,
-        orderId: order.id,
-        designerId,
-        assignedBy: user.id,
-        dueAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        active: true,
-      });
+        .limit(1);
+      try {
+        await createAssignment(tx, {
+          businessId: order.businessId,
+          orderId: order.id,
+          designerId,
+          assignedBy: user.id,
+          reason: previous.length ? "Reassigned from the Orders dashboard." : "Assigned from the Orders dashboard.",
+        });
+      } catch (error) {
+        if (error instanceof MissingReferencePhotoError) {
+          skipped.push({ orderId: id, orderNumber: number, reason: "Add at least one reference photo before assigning this order." });
+          continue;
+        }
+        throw error;
+      }
       await tx.insert(activityLog).values({
         businessId: order.businessId,
         orderId: order.id,

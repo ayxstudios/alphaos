@@ -20,6 +20,7 @@ import {
   users,
 } from "../lib/db/schema";
 import { runDesignerLaneSweep } from "../lib/notifications/designer-sweep";
+import { createAssignment } from "../lib/orders/assign";
 import { transition, OrderTransitionError } from "../lib/orders/transitions";
 import { DEFAULT_CHECKLIST } from "../lib/qc/checklist";
 
@@ -48,6 +49,13 @@ async function createOrder(input: { businessId: string; shopId: string; designer
       uploadToken: randomUUID(),
     });
     cleanup.orderIds.push(id);
+    await tx.insert(assets).values({
+      businessId: input.businessId,
+      orderId: id,
+      type: "reference",
+      storage: "cdn",
+      url: `https://example.com/${id}-reference.jpg`,
+    });
     await tx.insert(assignments).values({
       businessId: input.businessId,
       orderId: id,
@@ -107,22 +115,58 @@ async function cleanupRows() {
 
 async function main() {
   const ctx = await withSystemContext(async (tx) => {
-    const [shop] = await tx.select({ id: shops.id, businessId: shops.businessId }).from(shops).limit(1);
-    if (!shop) throw new Error("Need at least one shop in the database");
     const [va] = await tx.select({ id: users.id, name: users.name }).from(users).where(eq(users.role, "va")).limit(1);
     if (!va) throw new Error("Need at least one VA in the database");
-    const designers = await tx
-      .select({ id: users.id })
-      .from(users)
-      .innerJoin(designerBusinesses, and(eq(designerBusinesses.userId, users.id), eq(designerBusinesses.businessId, shop.businessId)))
-      .where(eq(users.role, "designer"));
-    if (designers.length < 2) throw new Error("Need at least two designers linked to the seed business");
+    let shop: { id: string; businessId: string } | undefined;
+    let designers: { id: string }[] = [];
+    for (const candidate of await tx.select({ id: shops.id, businessId: shops.businessId }).from(shops)) {
+      const linked = await tx
+        .select({ id: users.id })
+        .from(users)
+        .innerJoin(designerBusinesses, and(eq(designerBusinesses.userId, users.id), eq(designerBusinesses.businessId, candidate.businessId)))
+        .where(eq(users.role, "designer"));
+      if (linked.length >= 2) { shop = candidate; designers = linked; break; }
+    }
+    if (!shop) throw new Error("Need a shop with at least two linked designers in the seed database");
     return { shopId: shop.id, businessId: shop.businessId, vaId: va.id, vaName: va.name ?? "", d1: designers[0].id, d2: designers[1].id };
   });
 
   const now = new Date();
 
   try {
+    // --- 0. No assignment can be created without a reference photo -------
+    const noPhotoOrder = await withSystemContext(async (tx) => {
+      const id = randomUUID();
+      await tx.insert(orders).values({
+        id,
+        businessId: ctx.businessId,
+        shopId: ctx.shopId,
+        platformOrderId: `NO-PHOTO-${Date.now()}`,
+        platformOrderName: "NO-PHOTO",
+        status: "ready_to_assign",
+        source: "manual",
+        uploadToken: randomUUID(),
+      });
+      cleanup.orderIds.push(id);
+      return id;
+    });
+    let photoGate = false;
+    try {
+      await withSystemContext((tx) => createAssignment(tx, {
+        orderId: noPhotoOrder,
+        businessId: ctx.businessId,
+        designerId: ctx.d1,
+        assignedBy: ctx.vaId,
+      }));
+    } catch (error) {
+      photoGate = error instanceof Error && /reference photo/i.test(error.message);
+    }
+    report(
+      "an order with no reference photo cannot be assigned",
+      photoGate && (await activeAssignment(noPhotoOrder)) === null,
+      photoGate ? "assignment rejected before a designer received it" : "assignment was not rejected",
+    );
+
     // --- 1. Nudge fires once at 24h with no submission -------------------
     const nudgeOrder = await createOrder({
       businessId: ctx.businessId,
