@@ -42,6 +42,7 @@ import {
   stripQuotedReplyText,
   type ReplyIntent,
 } from "@/lib/email/reply-classifier";
+import { moneyBackAsk } from "@/lib/email/money-back";
 import { mergeReplyClassification } from "@/lib/integrations/gmail/inbound";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { detectMentionedOrders } from "@/lib/orders/same-buyer";
@@ -423,10 +424,12 @@ async function handleReply(ctx: Ctx, row: ReplyRow, threshold: number): Promise<
     if (fresh) classification = fresh;
   }
   const cleaned = classification?.strippedText || stripQuotedReplyText(row.body ?? "") || (row.body ?? "").trim();
+  // Her words ask for money back (Yousif 2026-10-17): nothing is drafted for her, step 0 below.
+  const moneyBack = moneyBackAsk(cleaned);
 
   // Order facts for the answer prompt (read outside the write transaction).
   let answer: string | null = null;
-  if (classification?.intent === "question" && anthropicFeaturesEnabled()) {
+  if (classification?.intent === "question" && anthropicFeaturesEnabled() && !moneyBack) {
     const facts = await withSystemContext(async (tx) => {
       const [o] = await tx
         .select({
@@ -523,6 +526,34 @@ async function handleReply(ctx: Ctx, row: ReplyRow, threshold: number): Promise<
       await noteMentionedOrders(tx, { businessId: row.businessId, messageId: row.id, from: { id: order.id, number: orderNo }, mentioned: named });
     }
     const namesOthers = named.length ? namedOrdersAdvice(named) : null;
+
+    // 0. She asks for money back (Yousif 2026-10-17 12:50: "For customers wanting a refund. Don't message them until
+    //    you check with me and we investigate what happened ... say nothing until we confirm"): never applied as an
+    //    approval or a revision, never answered, not even a holding line. An owner looks into what happened and decides.
+    if (moneyBack) {
+      const exceptionId = await raise(tx, bump, ref, "reply_unclear", `Buyer asks for money back on order ${orderNo}`, {
+        messageId: row.id,
+        excerpt: excerptOf(cleaned),
+        classifier,
+        moneyBack,
+        suggested: [
+          `She asks for money back ("${moneyBack}"). Send her nothing, not even a holding line: look into what happened (designer, revisions, QC, what she was sent) and take it to an owner; his answer is the only reply she gets.`,
+          namesOthers,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      });
+      await logAgent(tx, ref, "agent.reply_escalated", {
+        messageId: row.id,
+        kind: "reply_unclear",
+        exceptionId,
+        moneyBack,
+        intent: c?.intent ?? null,
+        confidence: c?.confidence ?? null,
+      });
+      bump((r) => (r.repliesEscalated += 1));
+      return;
+    }
 
     // 1. Clear approval or revision request on a proof that is out for approval.
     const decision: ReplyDecision | null =

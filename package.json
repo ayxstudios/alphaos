@@ -77,6 +77,7 @@
     "test:archived-reopen": "tsx scripts/test-archived-reopen.ts",
     "test:eye": "tsx scripts/test-eye-sentiment.ts",
     "test:rework-stays": "tsx scripts/test-rework-stays.ts",
+    "test:money-back": "tsx scripts/test-money-back.ts",
     "test:needs-you": "tsx scripts/test-needs-you.ts",
     "test:agent-revision": "tsx scripts/test-agent-revision.ts"
   },
