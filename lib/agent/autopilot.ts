@@ -54,6 +54,7 @@ import { reopenArchivedWithBuyerWords } from "@/lib/orders/reopen";
 import { runNotStartedPass } from "./not-started";
 import { parseIntake } from "./intake";
 import { findCatalogStyle, registerUnindexedProduct } from "./legacy-intake";
+import { findInvoiceAddons, invoiceHintForOrderTx, linkInvoiceAddonTx, type InvoiceHint } from "./invoice-addons";
 import {
   autoCloseStaleExceptions,
   autoResolveTx,
@@ -132,6 +133,8 @@ export type AgentBusinessReport = {
   addonOnly: number;
   /** Add-on-only orders linked to the buyer's one portrait order (now fulfillment_only). */
   addonLinked?: number;
+  /** Paid custom invoices the agent made, linked to the order they add to (./invoice-addons.ts). */
+  invoiceAddonsLinked?: number;
   /** Of `assigned`: orders that went to the style's main designer past their limit (docs/NO_LIMBO.md L3). */
   overflowAssigned?: number;
   /** Left to a human: the importer flagged them (missing email, conflicts). */
@@ -288,6 +291,8 @@ async function tick(opts: AgentTickOptions): Promise<AgentTickReport> {
     reports.push(report);
     const ctx: TickCtx = { dryRun, now, report };
 
+    // Every business: a paid invoice the agent made is never a new portrait.
+    if (!outOfTime()) await invoiceAddonStep(ctx, biz.id, outOfTime);
     if (biz.intake && !outOfTime()) await intakeStep(ctx, biz.id, outOfTime);
     if (biz.intake && !outOfTime()) await completenessStep(ctx, biz.id, outOfTime);
     if (biz.assign && !outOfTime()) await assignStep(ctx, biz.id, outOfTime);
@@ -574,6 +579,14 @@ async function intakeStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
       if (!order || order.status !== "awaiting_details") return;
       bump((r) => (r.intakeChecked += 1));
 
+      // A paid invoice for an add-on the agent made on her order: it rides on
+      // that order. Never a new product, a figure question or a photo ask.
+      const invoice = await invoiceHintForOrderTx(tx, order, ctx.now);
+      if (invoice && (await linkInvoiceAddonTx(tx, order, invoice, ctx.now))) {
+        bump((r) => (r.invoiceAddonsLinked = (r.invoiceAddonsLinked ?? 0) + 1));
+        return;
+      }
+
       const [shop] = await tx
         .select({ styles: shops.styles, config: shops.integrationConfig })
         .from(shops)
@@ -685,6 +698,40 @@ async function intakeStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
         bump((r) => (r.etsyDetailsCompleted += 1));
       } else {
         await unparsed([res.message]);
+      }
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Invoiced add-ons: a paid custom invoice rides on the order it was made for
+// ---------------------------------------------------------------------------
+
+async function invoiceAddonStep(ctx: TickCtx, businessId: string, outOfTime: () => boolean): Promise<void> {
+  let found: { orderId: string; hint: InvoiceHint }[];
+  try {
+    found = await withSystemContext((tx) => findInvoiceAddons(tx, businessId, ctx.now));
+  } catch (e) {
+    ctx.report.errors.push({ orderId: "", message: `invoice add-ons: ${errorMessage(e)}` });
+    return;
+  }
+  for (const { orderId, hint } of found) {
+    if (outOfTime()) return;
+    await perOrder(ctx, orderId, async (tx, bump) => {
+      const [order] = await tx
+        .select({
+          id: orders.id,
+          businessId: orders.businessId,
+          status: orders.status,
+          platformOrderId: orders.platformOrderId,
+          platformOrderName: orders.platformOrderName,
+        })
+        .from(orders)
+        .where(eq(orders.id, orderId))
+        .for("update");
+      if (!order) return;
+      if (await linkInvoiceAddonTx(tx, order, hint, ctx.now)) {
+        bump((r) => (r.invoiceAddonsLinked = (r.invoiceAddonsLinked ?? 0) + 1));
       }
     });
   }
@@ -902,6 +949,12 @@ async function assignStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
         .limit(1);
       if (active) return;
       bump((r) => (r.assignChecked += 1));
+      // A paid invoice for an add-on the agent made: nothing to draw.
+      const invoice = await invoiceHintForOrderTx(tx, order, ctx.now);
+      if (invoice && (await linkInvoiceAddonTx(tx, order, invoice, ctx.now))) {
+        bump((r) => (r.invoiceAddonsLinked = (r.invoiceAddonsLinked ?? 0) + 1));
+        return;
+      }
       // The importer held these back on purpose (no email, conflicts, unresolved figures).
       if (order.needsReview) {
         bump((r) => (r.skippedNeedsReview += 1));

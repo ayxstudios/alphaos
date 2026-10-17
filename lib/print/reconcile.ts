@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 
 import { withSystemContext, type Tx } from "@/lib/db";
 import { getBusinessPrintCredentials } from "@/lib/db/credentials";
@@ -94,7 +94,15 @@ async function loadCandidates(tx: Tx, businessId: string): Promise<CandidateOrde
       and(
         eq(orders.businessId, businessId),
         isNull(orders.archivedAt),
-        or(eq(orders.status, "printing"), and(eq(orders.status, "approved"), lt(orders.updatedAt, approvedCutoff))),
+        or(
+          eq(orders.status, "printing"),
+          and(eq(orders.status, "approved"), lt(orders.updatedAt, approvedCutoff)),
+          // A paid add-on (an invoiced framed print) the agent's print road sent to print.
+          and(
+            eq(orders.status, "fulfillment_only"),
+            sql`exists (select 1 from ${printJobs} pj where pj.order_id = ${orders.id} and pj.provider_order_id is not null)`,
+          ),
+        ),
       ),
     );
   if (!rows.length) return [];
@@ -281,7 +289,8 @@ async function handleMatch(
   const { businessId, order, provider, result, source } = ctx;
   // An approved order matched to a real provider order is in print, whatever its job row looks like (none, a
   // placeholder with no provider order id, or an id written by the agent's print road, 2026-10-14).
-  const wasApprovedSelfHeal = order.status === "approved";
+  // A paid add-on (fulfillment_only) at the printer moves the same way (invoiced add-ons, 2026-10-17).
+  const wasApprovedSelfHeal = order.status === "approved" || (order.status === "fulfillment_only" && !!result.providerOrderId);
   const job = ctx.job ?? (await ensureJobRow(tx, businessId, order.id, provider));
   const newState = classify(result);
   const prevState = job.reconcileState || "unchecked";
@@ -305,7 +314,7 @@ async function handleMatch(
     await runTransition(tx, SYSTEM_ACTOR, {
       orderId: order.id,
       to: "printing",
-      expectedFrom: "approved",
+      expectedFrom: order.status,
       metadata: { via: "print_reconcile_self_heal", provider, providerOrderId: result.providerOrderId },
     });
   }

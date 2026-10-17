@@ -54,6 +54,12 @@ export const WAIT_GRACE_HOURS = 2;
 export const EMAIL_GRACE_HOURS = 12;
 /** An add-on with no portrait order gets a day for the link to show up. */
 export const ADDON_GRACE_HOURS = 24;
+/**
+ * An add-on the buyer paid on an invoice the agent made (./invoice-addons.ts)
+ * is the print road's for this long after it is linked, even when its order is
+ * finished and archived; still not printed after that, it is limbo again.
+ */
+export const INVOICE_ADDON_OWNED_DAYS = 14;
 /** A buyer chase (photo request or reminder) counts as live this long. */
 export const CHASE_LIVE_DAYS = 7;
 /**
@@ -282,6 +288,8 @@ export type OrderFacts = {
   lastChaseAt: Date | null;
   /** fulfillment_only: linked to a portrait order that is not cancelled or archived. */
   parentLive: boolean;
+  /** fulfillment_only: when a paid invoice was linked to its order (./invoice-addons.ts). */
+  invoiceLinkedAt?: Date | null;
   /** Kinds of the open exceptions on this order. */
   openKinds: string[];
   style: string | null;
@@ -346,6 +354,13 @@ export function ownerOf(o: OrderFacts, now: Date, opts: { ignoreStuck?: boolean 
   if (o.activeAssignment && !o.aiFailedHold) return { bucket: "designer", why: "has a designer" };
   if (o.status === "awaiting_approval") return { bucket: "buyer", why: "proof with the buyer" };
   if (["awaiting_qc", "approved", "printing"].includes(o.status)) return { bucket: "pipeline", why: `in ${o.status.replace(/_/g, " ")}` };
+  if (
+    o.status === "fulfillment_only" &&
+    o.invoiceLinkedAt &&
+    now.getTime() - o.invoiceLinkedAt.getTime() < INVOICE_ADDON_OWNED_DAYS * 24 * HOUR
+  ) {
+    return { bucket: "pipeline", why: "invoiced add-on, prints with its order's art" };
+  }
   if (o.status === "fulfillment_only" && o.parentLive) return { bucket: "pipeline", why: "add-on with its portrait order" };
   const kinds = opts.ignoreStuck ? o.openKinds.filter((k) => k !== "stuck_order") : o.openKinds;
   if (kinds.length) return { bucket: "owner", why: `raised: ${kinds.join(", ")}` };
@@ -373,7 +388,7 @@ export function ownerOf(o: OrderFacts, now: Date, opts: { ignoreStuck?: boolean 
       return limbo("no_photos", o.lastChaseAt ? "no photos since the last reminder" : "photos never asked for");
     }
     case "fulfillment_only":
-      return limbo("addon_orphan", "add-on with no portrait order", ADDON_GRACE_HOURS);
+      return limbo("addon_orphan", o.invoiceLinkedAt ? "invoiced add-on still not printed" : "add-on with no portrait order", ADDON_GRACE_HOURS);
     case "ready_to_assign":
       return limbo("not_assigned", o.inScope ? "nobody assigned" : "older order nobody assigned");
     case "in_design":
@@ -413,6 +428,8 @@ async function loadOrderFacts(tx: Tx, businessId: string): Promise<OrderFacts[]>
       parentLive: sql<boolean>`exists (select 1 from activity_log l join orders p on p.id::text = l.metadata->>'parentOrderId'
         where l.order_id = ${orders.id} and l.action = 'agent.addon_linked'
           and p.archived_at is null and p.status <> 'cancelled')`,
+      invoiceLinkedAt: sql<string | null>`(select max(l.created_at) from activity_log l
+        where l.order_id = ${orders.id} and l.action = 'agent.invoice_addon_linked')`,
       openKinds: sql<string[]>`coalesce((select array_agg(e.kind) from exceptions e
         where e.order_id = ${orders.id} and e.status = 'open'), '{}'::text[])`,
       style: sql<string | null>`(select i.style from order_items i where i.order_id = ${orders.id} and i.style is not null order by i.id limit 1)`,
@@ -436,6 +453,7 @@ async function loadOrderFacts(tx: Tx, businessId: string): Promise<OrderFacts[]>
     lastEventAt: r.lastEventAt ? new Date(r.lastEventAt) : null,
     enteredAt: new Date(r.enteredAt),
     lastChaseAt: r.lastChaseAt ? new Date(r.lastChaseAt) : null,
+    invoiceLinkedAt: r.invoiceLinkedAt ? new Date(r.invoiceLinkedAt) : null,
     openKinds: r.openKinds ?? [],
   }));
 }
