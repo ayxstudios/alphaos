@@ -180,3 +180,12 @@ Branch task/revisions-stay, worktree alphaos-wt-revkeep. Migration 0063 = one tr
 - [x] lib/orders/agent-revision.ts + POST /api/alpha/revision (7983d8e, dpl_9xGec8yKf52YsBhmEdynaaFKpHo9): a change she asked outside the proof page goes back to the SAME designer with her words; the agent's `alphaos-needs-you.mjs revision` verb
 - [x] 5ef2ef2 (dpl_5A4nUQ6JgK6wzh8vLLXfiMq3tvfJ): limbo decisionHolds, a stuck_order a person or the agent resolved is not re-opened while nothing happens on the order (agent call re-looked after AGENT_DECISION_DAYS = 7, a person's holds), re-opened rows carry detail.lastDecision; late revisions from approved/delivered/complete, refused as print_ordered once a print job exists, printing/shipped, or a physical piece delivered
 - [x] bench: test:agent-revision, test:limbo, test:rework-stays, test:proof-replies, test:archived-reopen pass; tsc + eslint clean
+
+## 2026-10-17 Refund replies: say nothing until an owner confirms (Yousif 12:50, chat 64828303487194@lid)
+Ask: "For customers wanting a refund. Don't message them until you check with me and we investigate what happened. Don't say "I'll check with the owner or anything at all" say nothing until we confirm".
+Branch task/refund-hold-2026-10-17, worktree alphaos-refund-hold.
+- [x] lib/email/money-back.ts: moneyBackAsk(words), the same MONEY_BACK / NOT_ASKING patterns as the agent's lib/refund-hold.js (refund, money back, chargeback, dispute, cancel and refund; "no refund needed", "never wanted my money back" do not count)
+- [x] lib/agent/inbox.ts step 0: a reply asking for money back is never auto-applied (no revision, no approval) and never gets a drafted answer; it raises reply_unclear "Buyer asks for money back" with her words and the instruction (send her nothing, not even a holding line, look into what happened, an owner's answer is the only reply), logs agent.reply_escalated with moneyBack
+- [x] the outbox already held agent drafts replying to sensitive inbound; revision_received stays a fixed draft and revised proofs only go out after owner QC
+- [x] test:money-back (16 cases) passes; tsc clean. The DB-backed test-agent-inbox was not run (the .env.local database could not be proven a demo DB)
+- [x] landed 17 Oct under integrate:alphaos: main 25c2a2d, prod CLI deploy dpl_ES11ZUJ3AuqYzFPjMsrcfHRnc8bP (alphaos-jl9bw13ma-almacorpvision) aliased to alphaos-kappa; /api/health ok, /approve 307
