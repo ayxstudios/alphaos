@@ -25,7 +25,11 @@ import {
 import { getAgentConfig } from "@/lib/agent/config";
 import { openExceptionTx } from "@/lib/agent/exceptions";
 import { sendMessage } from "@/lib/email/dispatch";
-import { createAssignment, disneyRefusal } from "@/lib/orders/assign";
+import {
+  createAssignment,
+  disneyRefusal,
+  MissingReferencePhotoError,
+} from "@/lib/orders/assign";
 import { adminApproval, loadReworkHold, reworkAllows, reworkStaysMessage } from "@/lib/orders/rework";
 import { getOrderPortraits, resolveSlotTag } from "@/lib/orders/portraits";
 import { runTransition, type OrderStatus } from "@/lib/orders/transitions";
@@ -727,15 +731,26 @@ export async function reassignOrder(
       }
     }
     const wasAgent = current ? await isAgentAssigned(tx, orderId) : false;
-    await createAssignment(tx, {
-      orderId,
-      businessId: o.businessId,
-      designerId,
-      assignedBy: byUserId,
-      dueAtHours: opts.dueAtHours,
-      reason: wasAgent ? "Reassigned from the AI designer." : null,
-      ownerApproved: approvedBy,
-    });
+    try {
+      await createAssignment(tx, {
+        orderId,
+        businessId: o.businessId,
+        designerId,
+        assignedBy: byUserId,
+        dueAtHours: opts.dueAtHours,
+        reason: wasAgent ? "Reassigned from the AI designer." : null,
+        ownerApproved: approvedBy,
+      });
+    } catch (error) {
+      if (error instanceof MissingReferencePhotoError) {
+        return {
+          ok: false as const,
+          code: "missing_reference_photo",
+          message: "Add at least one reference photo before assigning this order.",
+        };
+      }
+      throw error;
+    }
     await tx.insert(activityLog).values({
       businessId: o.businessId,
       orderId,
