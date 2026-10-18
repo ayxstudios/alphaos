@@ -33,6 +33,16 @@ import {
 export const DESIGNER_SLA_HOURS = 24;
 
 /** Assignment is the last hard stop before a designer sees an order. */
+/** True when the order carries at least one live reference photo (assets.type = reference, not deleted). */
+export async function hasReferencePhoto(tx: Tx, orderId: string): Promise<boolean> {
+  const [reference] = await tx
+    .select({ id: assets.id })
+    .from(assets)
+    .where(and(eq(assets.orderId, orderId), eq(assets.type, "reference"), isNull(assets.deletedAt)))
+    .limit(1);
+  return Boolean(reference);
+}
+
 export class MissingReferencePhotoError extends Error {
   constructor(orderId: string) {
     super(`Order ${orderId} cannot be assigned until at least one reference photo is attached.`);
@@ -177,12 +187,9 @@ export async function createAssignment(
   const hours = input.dueAtHours ?? (await businessSlaHours(tx, input.businessId)).order;
   const dueAt = new Date(Date.now() + hours * 60 * 60 * 1000);
 
-  const [reference] = await tx
-    .select({ id: assets.id })
-    .from(assets)
-    .where(and(eq(assets.orderId, input.orderId), eq(assets.type, "reference"), isNull(assets.deletedAt)))
-    .limit(1);
-  if (!reference) throw new MissingReferencePhotoError(input.orderId);
+  // Hard stop (Yousif 2026-10-18, "designers keep saying there's photos
+  // missing"): no designer ever receives an order without a reference photo.
+  if (!(await hasReferencePhoto(tx, input.orderId))) throw new MissingReferencePhotoError(input.orderId);
 
   await tx
     .update(assignments)
@@ -536,7 +543,12 @@ export async function loadRankedCandidates(
 export async function runAutoAssign(
   tx: Tx,
   order: { orderId: string; businessId: string; assignedBy: string | null },
-): Promise<{ assigned: string | null; reworkHeld?: ReworkHold }> {
+): Promise<{ assigned: string | null; reworkHeld?: ReworkHold; missingPhoto?: boolean }> {
+  // No photo = nobody is picked and nothing throws: the caller parks the order
+  // (autopilot raises a card, a transition still succeeds) until a reference
+  // photo is attached, then the next pass assigns it.
+  if (!(await hasReferencePhoto(tx, order.orderId))) return { assigned: null, missingPhoto: true };
+
   const [item] = await tx
     .select({ style: orderItems.style })
     .from(orderItems)

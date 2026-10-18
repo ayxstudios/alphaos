@@ -19,7 +19,7 @@ import {
   users,
 } from "../lib/db/schema";
 import { runDesignerLaneSweep } from "../lib/notifications/designer-sweep";
-import { createAssignment } from "../lib/orders/assign";
+import { createAssignment, runAutoAssign } from "../lib/orders/assign";
 import { transition, OrderTransitionError } from "../lib/orders/transitions";
 import { DEFAULT_CHECKLIST } from "../lib/qc/checklist";
 
@@ -164,6 +164,16 @@ async function main() {
       "an order with no reference photo cannot be assigned",
       photoGate && (await activeAssignment(noPhotoOrder)) === null,
       photoGate ? "assignment rejected before a designer received it" : "assignment was not rejected",
+    );
+    const autoNoPhoto = await withSystemContext((tx) => runAutoAssign(tx, {
+      orderId: noPhotoOrder,
+      businessId: ctx.businessId,
+      assignedBy: null,
+    }));
+    report(
+      "auto-assign parks a photo-less order instead of throwing",
+      autoNoPhoto.assigned === null && autoNoPhoto.missingPhoto === true && (await activeAssignment(noPhotoOrder)) === null,
+      `assigned=${autoNoPhoto.assigned} missingPhoto=${autoNoPhoto.missingPhoto}`,
     );
 
     // --- 1. Nudge fires once at 24h with no submission -------------------

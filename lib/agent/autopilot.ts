@@ -992,11 +992,22 @@ async function assignStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
         return;
       }
 
-      const { assigned, reworkHeld } = await runAutoAssign(tx, { orderId: order.id, businessId: order.businessId, assignedBy: null });
+      const { assigned, reworkHeld, missingPhoto } = await runAutoAssign(tx, { orderId: order.id, businessId: order.businessId, assignedBy: null });
       if (assigned) {
         await logAgent(tx, order, "agent.assigned", { designerId: assigned, via: "agent_autopilot" });
         bump((r) => (r.assigned += 1));
         await backlogCheck(tx, order, assigned, ctx.now);
+        return;
+      }
+
+      // Hard stop (Yousif 2026-10-18): an order with no reference photo never
+      // reaches a designer, not even the overflow pick. One card says where
+      // the photo is to come from; the next pass assigns it once it is on.
+      if (missingPhoto) {
+        await raise(tx, bump, ctx.now, order, "photo_count_mismatch",
+          `Order #${orderLabel(order)} is in the design queue with no reference photo: attach the buyer's photo before anyone draws it`,
+          { have: 0, need: null, reason: "no reference photo",
+            recommendation: "Pull the photo from the buyer's Etsy chat or email onto the order (the photo bridge does this every 20 minutes); if the buyer never sent one, send the photo ask." });
         return;
       }
 

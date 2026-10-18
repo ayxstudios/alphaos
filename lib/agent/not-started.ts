@@ -33,7 +33,7 @@ import { and, eq, lt, sql } from "drizzle-orm";
 import { holdAlphaPushesIf } from "@/lib/alpha/client";
 import { withSystemContext, type Tx } from "@/lib/db";
 import { activityLog, assets, assignments, businesses, designerProfiles, orders, users } from "@/lib/db/schema";
-import { businessSlaHours, createAssignment, loadRankedCandidates } from "@/lib/orders/assign";
+import { businessSlaHours, createAssignment, hasReferencePhoto, loadRankedCandidates } from "@/lib/orders/assign";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { sendDesignerReassigned } from "@/lib/notifications/designer-events";
 
@@ -229,6 +229,8 @@ async function moveOne(tx: Tx, businessId: string, w: Waiting, now: Date, olderT
   const ranked = await loadRankedCandidates(tx, { businessId, style: w.style, excludeDesignerId: w.designerId, orderId: w.orderId });
   const target = ranked.find((c) => !full.has(c.designerId));
   if (!target) return null;
+  // Never hand a photo-less order to a new designer (the photo bridge / a card handles it).
+  if (!(await hasReferencePhoto(tx, w.orderId))) return null;
   const [t] = await tx.select({ name: users.name }).from(users).where(eq(users.id, target.designerId)).limit(1);
 
   const hoursWaited = Math.round(((now.getTime() - w.assignedAt.getTime()) / HOUR) * 10) / 10;

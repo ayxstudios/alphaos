@@ -9,7 +9,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { holdAlphaPushesIf } from "@/lib/alpha/client";
 import { withSystemContext, type Tx } from "@/lib/db";
 import { activityLog, assets, assignments, businesses, orderItems, orders, users } from "@/lib/db/schema";
-import { createAssignment, loadRankedCandidates } from "@/lib/orders/assign";
+import { createAssignment, hasReferencePhoto, loadRankedCandidates } from "@/lib/orders/assign";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { agentOrderScope, legacyQuiet } from "./scope";
 import { stageTimer } from "@/lib/orders/stage-timers";
@@ -108,6 +108,8 @@ async function moveOne(
   // Same ranking as assignment, minus anyone who is away right now.
   const target = ranked.find((c) => !input.awayIds.has(c.designerId));
   if (!target) return null;
+  // Never hand a photo-less order to a new designer (the photo bridge / a card handles it).
+  if (!(await hasReferencePhoto(tx, input.order.orderId))) return null;
   const [t] = await tx.select({ name: users.name }).from(users).where(eq(users.id, target.designerId)).limit(1);
 
   await createAssignment(tx, {
