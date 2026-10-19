@@ -1,4 +1,5 @@
 import type { CardEvent } from "@/lib/orders/card-detail";
+import { revisionSource } from "@/lib/orders/revision-source";
 
 /**
  * The order's story in plain steps, built from the activity log: every stage
@@ -75,7 +76,9 @@ export function buildStageTimeline(events: CardEvent[]): TimelineStep[] {
         tone = "revision";
         label = `In revision, round ${round}`;
         const reason = metaString(e.metadata, "revisionReason", "reason", "note");
-        detail = e.fromState === "awaiting_qc" ? `QC sent it back${reason ? `: ${reason}` : ""}` : `Buyer asked for a change${reason ? `: ${reason}` : ""}`;
+        const source = revisionSource(e.metadata);
+        const origin = e.fromState === "awaiting_qc" ? "QC sent it back" : source === "internal_qc" ? "Internal QC found a defect" : source === "customer" ? "Buyer asked for a change" : "Team returned it for a revision";
+        detail = `${origin}${reason ? `: ${reason}` : ""}`;
       } else if (round > 0 && e.toState === "awaiting_qc") {
         label = `Revision QC, round ${round}`;
         tone = "revision";
