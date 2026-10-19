@@ -23,6 +23,11 @@ assert.match(validateInternalQcPullback({ ...base, activeDesignerId: null }) ?? 
 assert.equal(revisionSource({ via: "internal_qc_pullback" }), "internal_qc");
 assert.equal(revisionSource({ via: "proof_portal" }), "customer");
 assert.equal(revisionSource({ via: "va_created_revision" }), "team");
+assert.equal(
+  revisionSource({ via: "va_created_revision", revisionReason: "INTERNAL QC correction: fix eye color." }),
+  "internal_qc",
+  "legacy VA revision notes explicitly marked internal QC must not be attributed to the buyer",
+);
 
 const steps = buildStageTimeline([{
   id: "event-1",
@@ -45,11 +50,25 @@ const legacyStaffRevision = buildStageTimeline([{
   actorName: "Alpha VA",
   fromState: "awaiting_approval",
   toState: "in_design",
-  metadata: { via: "va_created_revision", revisionReason: "Internal QC pullback." },
+  metadata: { via: "va_created_revision", revisionReason: "Move the subject left." },
   body: null,
   createdAt: "2026-10-19T03:00:00.000Z",
 }]);
 assert.match(legacyStaffRevision[0].detail ?? "", /Team returned it/);
 assert.doesNotMatch(legacyStaffRevision[0].detail ?? "", /Buyer asked/);
+
+const vaInternalQcRevision = buildStageTimeline([{
+  id: "event-va-qc",
+  action: "order.in_design",
+  actorId: "va-1",
+  actorName: "Alpha VA",
+  fromState: "awaiting_approval",
+  toState: "in_design",
+  metadata: { via: "va_created_revision", revisionReason: "INTERNAL QC correction: fix eye color." },
+  body: null,
+  createdAt: "2026-10-19T03:00:00.000Z",
+}]);
+assert.match(vaInternalQcRevision[0].detail ?? "", /Internal QC found a defect/);
+assert.doesNotMatch(vaInternalQcRevision[0].detail ?? "", /Buyer asked/);
 
 console.log("internal QC pullback policy and audit labels passed");
