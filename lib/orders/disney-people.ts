@@ -45,6 +45,18 @@ const NEGATION = /\b(?:no|not|without|leave(?:s|ing)? out|leave off|remove|remov
 const NON_TEXT_OPTION = /background|print|size|mug|72 hours|frame|canvas|number of pets|variant/i;
 const PEOPLE_OPTION_NAME = /\b(?:number of (?:people|persons|humans|adults|kids|children)|add (?:a )?(?:person|human|people))\b/i;
 
+/**
+ * A PixArt Disney line: styled cartoon / Disney Pet, or unstyled with a Disney or
+ * cartoon listing title ("Custom Cartoon Hand Drawn Pet Portrait" on Etsy). The
+ * Print & Ship add-on and the watercolor / renaissance / line-art listings are not.
+ */
+export function isDisneyLine(i: { style?: string | null; title?: string | null }): boolean {
+  const s = (i.style ?? "").trim().toLowerCase();
+  if (s) return s === "cartoon" || s === "disney pet";
+  const t = i.title ?? "";
+  return isDisneyOrder([{ title: t }]) || (/cartoon/i.test(t) && !/watercolou?r|renaissance|line ?art|add on|print & ship/i.test(t));
+}
+
 export type PeopleSource = {
   options?: { name?: string | null; label?: string | null; value?: string | null }[] | null;
   notes?: string | null;
@@ -108,7 +120,7 @@ export async function routeDisneyPeople(tx: Tx, orderId: string, businessId: str
     .select({ id: orderItems.id, style: orderItems.style, title: orderItems.title, options: orderItems.options })
     .from(orderItems)
     .where(eq(orderItems.orderId, orderId));
-  if (!isDisneyOrder(items)) return null;
+  if (!items.some(isDisneyLine)) return null;
   if (items.some((i) => (i.style ?? "").trim().toLowerCase() === DISNEY_PEOPLE_STYLE.toLowerCase())) return null;
 
   const [o] = await tx
@@ -123,9 +135,7 @@ export async function routeDisneyPeople(tx: Tx, orderId: string, businessId: str
 
   // Restyle the Disney lines (the Print & Ship add-on with no style stays as it is).
   for (const i of items) {
-    const s = (i.style ?? "").trim().toLowerCase();
-    const disneyLine = s === "cartoon" || s === "disney pet" || (!s && isDisneyOrder([{ title: i.title }]));
-    if (!disneyLine) continue;
+    if (!isDisneyLine(i)) continue;
     await tx.update(orderItems).set({ style: target.name, styleLocked: true }).where(eq(orderItems.id, i.id));
   }
   return target.name;

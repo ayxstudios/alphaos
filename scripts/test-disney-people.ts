@@ -1,6 +1,6 @@
 // Pure checks for the PixArt Disney-people filter (lib/orders/disney-people.ts).
 import assert from "node:assert/strict";
-import { peopleMention } from "../lib/orders/disney-people";
+import { isDisneyLine, peopleMention } from "../lib/orders/disney-people";
 
 const P = (value: string) => ({ options: [{ name: "Personalization", value }] });
 const yes: [string, object][] = [
@@ -27,4 +27,13 @@ const no: [string, object][] = [
 ];
 for (const [label, src] of yes) assert.ok(peopleMention(src as never), `should flag: ${label}`);
 for (const [label, src] of no) assert.equal(peopleMention(src as never), null, `should not flag: ${label}`);
-console.log(`disney-people: ${yes.length + no.length} checks passed`);
+const lines: [string, { style?: string | null; title?: string | null }, boolean][] = [
+  ["styled cartoon", { style: "cartoon", title: "x" }, true],
+  ["etsy hand drawn cartoon", { style: null, title: "Custom Cartoon Hand Drawn Pet Portrait | Cat, Dog" }, true],
+  ["disney mug", { style: null, title: "Custom Pet Portrait Mug | Pet Cartoon Drawing from Photo" }, true],
+  ["print add-on", { style: null, title: "Add On - Print & Ship | Get Your Portrait Printed and Shipped" }, false],
+  ["watercolor listing", { style: null, title: "Custom Pet Portrait from Photo | Hand-Painted Watercolor Cat & Dog Art" }, false],
+  ["watercolor style", { style: "watercolor", title: "Cartoon" }, false],
+];
+for (const [label, line, want] of lines) assert.equal(isDisneyLine(line), want, `isDisneyLine: ${label}`);
+console.log(`disney-people: ${yes.length + no.length + lines.length} checks passed`);
