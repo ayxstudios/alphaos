@@ -19,6 +19,7 @@ import { findStyle, getAgentDesignerId, markQueuedForAgent } from "@/lib/agent/a
 import { getAgentConfig } from "@/lib/agent/config";
 import { getOrderPortraits } from "@/lib/orders/portraits";
 import { loadOrderTotal, toOrderTotal, type OrderTotal } from "@/lib/orders/order-total";
+import { routeDisneyPeople } from "@/lib/orders/disney-people";
 import {
   loadReworkHold,
   reworkAllows,
@@ -554,10 +555,14 @@ export async function runAutoAssign(
     .from(orderItems)
     .where(eq(orderItems.orderId, order.orderId))
     .limit(1);
-  const style = item?.style ?? null;
+  let style = item?.style ?? null;
 
   const hold = await loadReworkHold(tx, order.orderId);
   if (reworkBound(hold)) return keepRework(tx, order, hold, style);
+
+  // A PixArt Disney order whose buyer names a person becomes Disneyfy People,
+  // so only the Disney people designer is offered it (Yousif 2026-10-21).
+  style = (await routeDisneyPeople(tx, order.orderId, order.businessId)) ?? style;
 
   // A product with the AI designer switched on goes to the agent, not a human,
   // unless the order needs 2+ separate portraits (two lines, or one bought
