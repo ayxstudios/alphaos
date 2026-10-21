@@ -93,7 +93,7 @@ export const alphaConnected = () => Boolean(hookUrl() && hookSecret());
 // sendAlphaEvent leaves before the commit and the daemon delivers a pushed
 // event at once, so a dry run would WhatsApp a designer about a move that never
 // happened. Clean slating P6 (2026-10-16) put designer.reassigned and a fresh
-// brief into every dry tick (the not-started pass). Inside a hold the row is
+// brief into every dry tick (the not-started pass, removed 2026-10-21). Inside a hold the row is
 // still written (and rolled back with the rest); nothing is pushed.
 const pushesHeld = new AsyncLocalStorage<true>();
 

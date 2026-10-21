@@ -449,6 +449,13 @@
       "when": 1791990000000,
       "tag": "0063_rework_stays",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1792000000000,
+      "tag": "0064_stay_on_board",
+      "breakpoints": true
     }
   ]
 }

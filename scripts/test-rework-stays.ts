@@ -180,10 +180,10 @@ const holder = async (orderId: string) => {
 const nameOf = (id: string | null) => Object.entries(ids).find(([, v]) => v === id)?.[0] ?? String(id);
 
 async function appTests() {
-  // ---- a first draft moves freely, as before --------------------------------
+  // ---- a first draft on a person's board stays too (Yousif 2026-10-21, test-stay-on-board) --
   const first = await order({ rows: [{ designer: ids.abdul, active: true, hoursAgo: 30 }] });
   const r1 = await reassignOrder(first, ids.jo, ids.va);
-  check("first draft: a VA moves it", r1.ok && (await holder(first)) === ids.jo, JSON.stringify(r1));
+  check("first draft: a VA cannot move it either", !r1.ok && (await holder(first)) === ids.abdul, JSON.stringify(r1));
 
   // ---- a revision stays ------------------------------------------------------
   const rev = await order({ rows: [{ designer: ids.abdul, active: true, hoursAgo: 30 }], drawnBy: [ids.abdul], revisionCount: 1 });

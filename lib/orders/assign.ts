@@ -30,6 +30,14 @@ import {
   setReworkMoveApproval,
   type ReworkHold,
 } from "@/lib/orders/rework";
+import {
+  boardHolds,
+  loadBoardHolder,
+  onPersonsBoard,
+  setBoardHandBack,
+  staysOnBoardMessage,
+  StaysOnBoardError,
+} from "@/lib/orders/board-hold";
 
 export const DESIGNER_SLA_HOURS = 24;
 
@@ -182,8 +190,16 @@ export async function createAssignment(
   // drew it unless an owner approved the move (Yousif 2026-10-16).
   const approval = input.ownerApproved?.trim() || null;
   const hold = await loadReworkHold(tx, input.orderId);
-  const needsApproval = !reworkAllows(hold, input.designerId);
-  if (needsApproval && !approval) throw new ReworkStaysError(await reworkStaysMessage(tx, hold));
+  const reworkMove = !reworkAllows(hold, input.designerId);
+  if (reworkMove && !approval) throw new ReworkStaysError(await reworkStaysMessage(tx, hold));
+
+  // Hard stop: an order on a person's board stays there unless an owner
+  // approved the move (Yousif 2026-10-21, lib/orders/board-hold.ts).
+  const holder = await loadBoardHolder(tx, input.orderId);
+  const boardMove = boardHolds(holder, input.designerId);
+  if (boardMove && !approval) throw new StaysOnBoardError(staysOnBoardMessage(holder));
+  const needsApproval = reworkMove || boardMove;
+  const handBack = onPersonsBoard(holder) && holder.designerId === input.designerId;
 
   const hours = input.dueAtHours ?? (await businessSlaHours(tx, input.businessId)).order;
   const dueAt = new Date(Date.now() + hours * 60 * 60 * 1000);
@@ -192,12 +208,14 @@ export async function createAssignment(
   // missing"): no designer ever receives an order without a reference photo.
   if (!(await hasReferencePhoto(tx, input.orderId))) throw new MissingReferencePhotoError(input.orderId);
 
+  // The approval opens the database guards (migrations 0063 and 0064) for this
+  // one move only; a hand-back to the same designer opens 0064 for that alone.
+  if (needsApproval && approval) await setReworkMoveApproval(tx, approval);
+  if (handBack) await setBoardHandBack(tx, input.orderId, input.designerId);
   await tx
     .update(assignments)
     .set({ active: false })
     .where(and(eq(assignments.orderId, input.orderId), eq(assignments.active, true)));
-  // The approval opens the database guard (migration 0063) for this one insert only.
-  if (needsApproval && approval) await setReworkMoveApproval(tx, approval);
   const [row] = await tx
     .insert(assignments)
     .values({
@@ -209,6 +227,7 @@ export async function createAssignment(
       active: true,
     })
     .returning({ id: assignments.id });
+  if (handBack) await setBoardHandBack(tx, input.orderId, null);
   if (needsApproval) await setReworkMoveApproval(tx, "");
 
   // The AI Studio agent has no phone or chat: it reads its jobs from the API.
@@ -540,6 +559,7 @@ export async function loadRankedCandidates(
  * A revision or failed QC never goes through the ranking: it goes back to the
  * designer who has it or drew it, at any load (keepRework). When none of them
  * can take it the order waits with reworkHeld set, for an owner to say who does.
+ * An order already on a person's board stays with them (lib/orders/board-hold.ts).
  */
 export async function runAutoAssign(
   tx: Tx,
@@ -559,6 +579,11 @@ export async function runAutoAssign(
 
   const hold = await loadReworkHold(tx, order.orderId);
   if (reworkBound(hold)) return keepRework(tx, order, hold, style);
+
+  // Already on a person's board: it stays there, never re-ranked away
+  // (Yousif 2026-10-21, lib/orders/board-hold.ts).
+  const holder = await loadBoardHolder(tx, order.orderId);
+  if (onPersonsBoard(holder)) return { assigned: holder.designerId };
 
   // A PixArt Disney order whose buyer names a person becomes Disneyfy People,
   // so only the Disney people designer is offered it (Yousif 2026-10-21).
@@ -633,6 +658,10 @@ async function keepRework(
 ): Promise<{ assigned: string | null; reworkHeld?: ReworkHold }> {
   const keeper = await reworkKeeper(tx, order.businessId, hold);
   if (!keeper) return { assigned: null, reworkHeld: hold };
+
+  // Someone else has it on their board: it stays with them (Yousif 2026-10-21).
+  const holder = await loadBoardHolder(tx, order.orderId);
+  if (boardHolds(holder, keeper.designerId)) return { assigned: holder!.designerId };
 
   if (keeper.isAgent) {
     const agentId = await aiDesignerFor(tx, order.businessId, order.orderId, style);

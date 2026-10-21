@@ -1,9 +1,11 @@
-// Agent-owned rebalancing. When a designer is over capacity, or is away (quiet
-// hours / deactivated) with work waiting past the stage timer, move their
-// NOT-YET-STARTED orders to the best other designer using the assigner's own
-// ranking (loadRankedCandidates). Never touches an order with a proof
-// uploaded, in revision, or a human-pinned assignment (assignments.assigned_by
-// is a person: a human placed it, so a human keeps it).
+// Agent-owned rebalancing, deactivated designers only (Yousif 2026-10-21:
+// orders were vanishing from designer boards). A person's board is never
+// emptied for load or quiet hours any more (lib/orders/board-hold.ts): only
+// when a designer's login is deactivated are their NOT-YET-STARTED orders moved
+// to the best other designer using the assigner's own ranking
+// (loadRankedCandidates). Never touches an order with a proof uploaded, in
+// revision, or a human-pinned assignment (assignments.assigned_by is a person:
+// a human placed it, so a human keeps it).
 import { and, desc, eq, sql } from "drizzle-orm";
 
 import { holdAlphaPushesIf } from "@/lib/alpha/client";
@@ -12,7 +14,6 @@ import { activityLog, assets, assignments, businesses, orderItems, orders, users
 import { createAssignment, hasReferencePhoto, loadRankedCandidates } from "@/lib/orders/assign";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { agentOrderScope, legacyQuiet } from "./scope";
-import { stageTimer } from "@/lib/orders/stage-timers";
 
 import { loadCapacityModel, type DesignerLoad } from "./capacity";
 
@@ -161,33 +162,14 @@ export async function rebalanceBusiness(
 
   const model = await withSystemContext((tx) => loadCapacityModel(tx, businessId, now));
   const awayIds = new Set(model.designers.filter((d) => d.away).map((d) => d.designerId));
-  // Donors: over capacity, or away. Most overloaded first.
-  const donors = model.designers
-    .filter((d) => (d.overCapacity || d.away) && d.queued > 0)
-    .sort((a, b) => b.excess - a.excess);
+  // Donors: deactivated designers only; a person still on the team keeps their board.
+  const donors = model.designers.filter((d) => !d.active && d.queued > 0);
 
   for (const from of donors) {
-    let excess = Math.min(from.excess, from.queued);
     const candidates = await withSystemContext((tx) => movableOrders(tx, businessId, from.designerId));
     for (const order of candidates) {
       if (budget <= 0) return report;
-      // Why this order qualifies: the designer is over capacity, or is away and it waited past the timer.
-      let reason: string | null = null;
-      if (from.overCapacity && excess > 0) {
-        reason = `${from.name} is over capacity (${from.openLoad} open, limit ${from.limit})`;
-      } else if (from.away) {
-        const timer = stageTimer({
-          status: "ready_to_assign",
-          derivedStatus: "",
-          isPhysical: false,
-          stageStartedAt: order.assignedAt.toISOString(),
-          now,
-        });
-        if (timer.isOverdue) {
-          reason = `${from.name} is ${from.active ? "in quiet hours" : "deactivated"} and the order has waited past the stage timer`;
-        }
-      }
-      if (!reason) continue;
+      const reason = `${from.name} is deactivated`;
 
       if (order.assignedBy) {
         report.skippedPinned += 1;
@@ -200,7 +182,7 @@ export async function rebalanceBusiness(
           // A dry run (the capacity page preview) rolls back: hold its pushes.
           await holdAlphaPushesIf(dryRun, () =>
             withSystemContext(async (tx) => {
-              move = await moveOne(tx, { businessId, order, from, awayIds, reason: reason! });
+              move = await moveOne(tx, { businessId, order, from, awayIds, reason });
               if (dryRun) throw new DryRunRollback();
             }),
           );
@@ -210,7 +192,6 @@ export async function rebalanceBusiness(
         if (move) {
           report.moves.push(move);
           budget -= 1;
-          excess -= 1;
         } else report.noTarget += 1;
       } catch (e) {
         report.errors.push({ orderId: order.orderId, message: e instanceof Error ? e.message : String(e) });

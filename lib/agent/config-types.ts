@@ -124,10 +124,4 @@ export type AgentConfigInput = {
    * slating audit, 2026-10-16).
    */
   proofReplyDecisions?: boolean;
-  /**
-   * Hours an assignment may sit with nobody starting it before the agent moves
-   * it to a designer with room (lib/agent/not-started.ts). Default 24, allowed
-   * 0-168; 0 = never move. Clean slating audit, 2026-10-16.
-   */
-  notStartedMoveHours?: number;
 };

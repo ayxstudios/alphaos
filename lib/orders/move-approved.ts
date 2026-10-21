@@ -1,4 +1,5 @@
-// Carry out an owner's yes to move a revision or failed QC to another designer
+// Carry out an owner's yes to move an order off a person's board (Yousif
+// 2026-10-21, ./board-hold.ts) or a revision or failed QC to another designer
 // (Yousif 2026-10-16: "From now on don't move revisions or failed QC to another
 // designer unless I approve it. It can confuse designers and often they need
 // the source file"). Every other path refuses that move (lib/orders/rework.ts,
@@ -14,6 +15,7 @@ import { withSystemContext } from "@/lib/db";
 import { assignments, businesses, designerBusinesses, designerProfiles, orders, users } from "@/lib/db/schema";
 import { sendDesignerReassigned } from "@/lib/notifications/designer-events";
 
+import { boardHolds, loadBoardHolder } from "./board-hold";
 import { loadReworkHold, reworkAllows } from "./rework";
 
 export type MoveApprovedInput = {
@@ -109,11 +111,14 @@ export async function moveApproved(input: MoveApprovedInput): Promise<MoveApprov
           .limit(1)
       : [];
     const hold = await loadReworkHold(tx, o.id);
-    return { ok: true as const, o, target: targets[0], cur: cur ?? null, by: byUser?.id ?? null, hold, needsYes: !reworkAllows(hold, targets[0].id) };
+    // Off a person's board needs the same yes as a revision (Yousif 2026-10-21, ./board-hold.ts).
+    const onBoard = boardHolds(await loadBoardHolder(tx, o.id), targets[0].id);
+    const needsYes = !reworkAllows(hold, targets[0].id) || onBoard;
+    return { ok: true as const, o, target: targets[0], cur: cur ?? null, by: byUser?.id ?? null, hold, onBoard, needsYes };
   });
   if (!plan.ok) return plan;
 
-  const { o, target, cur, hold, needsYes } = plan;
+  const { o, target, cur, hold, onBoard, needsYes } = plan;
   const approved = input.approved?.trim() || null;
   const toName = target.name ?? name;
   const result = {
@@ -132,7 +137,9 @@ export async function moveApproved(input: MoveApprovedInput): Promise<MoveApprov
     return {
       ok: false,
       code: "needs_yes",
-      message: `Order ${o.number} is a revision or failed QC: moving it to ${toName} needs an owner's yes (who and their words).`,
+      message: hold.rework && !onBoard
+        ? `Order ${o.number} is a revision or failed QC: moving it to ${toName} needs an owner's yes (who and their words).`
+        : `Order ${o.number} is on ${cur?.name ?? "its designer"}'s board: moving it to ${toName} needs an owner's yes (who and their words).`,
     };
   }
 

@@ -179,7 +179,16 @@ async function main() {
     const off = await runRebalance(businessId);
     check("flag off: no moves", off.moves.length === 0);
 
-    // ---- dry run: reports moves, changes nothing --------------------------------------
+    // ---- over capacity alone moves nothing (Yousif 2026-10-21) -------------------------
+    // An order stays on a person's board; only a deactivated designer's work moves.
+    await withSystemContext((tx) => tx.update(businesses).set({ agentAssignEnabled: true }).where(eq(businesses.id, businessId)));
+    const busy = await runRebalance(businessId);
+    check("over capacity, still on the team: nothing moves", busy.moves.filter((m) => all.includes(m.orderId)).length === 0, `moves ${busy.moves.length}`);
+    check("over capacity: every order still with them", (await Promise.all(all.map(holder))).every((d) => d === overloaded.userId));
+    await withSystemContext((tx) => tx.update(businesses).set({ agentAssignEnabled: false }).where(eq(businesses.id, businessId)));
+    await withSystemContext((tx) => tx.update(users).set({ active: false }).where(eq(users.id, overloaded.userId)));
+
+    // ---- deactivated: dry run reports moves, changes nothing ---------------------------
     // The capacity page runs this preview on every view. Its moves roll back,
     // so not one brief may reach the daemon (it delivers a push at once).
     const { out: dry, pushed: dryPushed } = await recordAlphaPushes(() => rebalanceBusiness(businessId, { dryRun: true }));
@@ -226,6 +235,7 @@ async function main() {
     check("second run: nothing more to move", again.moves.filter((m) => all.includes(m.orderId)).length === 0);
   } finally {
     // ---- restore -----------------------------------------------------------------------
+    await withSystemContext((tx) => tx.update(users).set({ active: true }).where(eq(users.id, overloaded.userId)));
     await withSystemContext(async (tx) => {
       for (const p of roster) {
         await tx

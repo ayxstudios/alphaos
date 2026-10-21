@@ -4,7 +4,7 @@
  */
 import "./load-env";
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import { withSystemContext, type RequestUser } from "../lib/db";
 import {
@@ -205,6 +205,8 @@ async function main() {
       figureCount: 1,
     });
     await withSystemContext(async (tx) => {
+      // A fixture reassignment off a person's board carries an owner's yes (migration 0064).
+      await tx.execute(sql`select set_config('alphaos.rework_move_ok', 'test: an owner said yes', true)`);
       await tx.update(assignments).set({ active: false }).where(and(eq(assignments.orderId, reassignedOrderId), eq(assignments.active, true)));
       await tx.insert(assignments).values({
         businessId: ctx.businessId,

@@ -6,9 +6,8 @@
  * designer even with nothing submitted — people work outside the app and a
  * silent move throws their work away. At 48 h the VAs get one attention line
  * and a human decides; the sweep never moves an assignment itself.
- * (Since 2026-10-16 an order nobody STARTED in notStartedMoveHours moves on
- * its own, lib/agent/not-started.ts, docs/NO_LIMBO.md L9; this sweep still
- * never moves one.)
+ * (The 2026-10-16 not-started move was removed 2026-10-21: an order on a
+ * person's board stays there without an owner's yes, lib/orders/board-hold.ts.)
  *
  * Behind `ALPHA_ACTIONS_ENABLED` (default off): candidates are always computed
  * and logged so ops can size the effect before flipping it on; only when the

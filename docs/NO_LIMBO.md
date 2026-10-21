@@ -224,6 +224,14 @@ inbox pass only ran where `agentInboxEnabled` was on (PixArt alone).
 
 ## L9 Not started in a day = a designer with room (2026-10-16)
 
+**REMOVED 2026-10-21** (Yousif: "Some designers are saying some orders disappear
+from their alphaOS boards, can we make sure this stops happening. You shouldn't
+really reassign orders unless they are severely late or we've talked about it
+here"). An order on a person's board now stays there without an owner's yes:
+`lib/orders/board-hold.ts` in the app and the `assignments_stay_on_board`
+trigger (migration 0064) in the database. The rebalance only moves work off a
+deactivated designer. The text below is history.
+
 Clean slating audit 2026-10-16: Abdul (103 open), Jerome (89) and Mar (57)
 held orders for days that nobody had started, while the rebalance only moved
 work off designers who were over capacity or away and skipped every

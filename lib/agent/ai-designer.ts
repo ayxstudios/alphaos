@@ -31,6 +31,7 @@ import {
   MissingReferencePhotoError,
 } from "@/lib/orders/assign";
 import { adminApproval, loadReworkHold, reworkAllows, reworkStaysMessage } from "@/lib/orders/rework";
+import { boardHolds, loadBoardHolder, staysOnBoardMessage } from "@/lib/orders/board-hold";
 import { getOrderPortraits, resolveSlotTag } from "@/lib/orders/portraits";
 import { runTransition, type OrderStatus } from "@/lib/orders/transitions";
 import { loadProofFilePick, portraitList } from "@/lib/proofs/files";
@@ -677,7 +678,8 @@ export type ReassignResult = { ok: true; changed: boolean } | { ok: false; code:
  * A revision or failed QC moves to someone new only with an owner's approval
  * (Yousif 2026-10-16): an admin making the move, or `ownerApproved` (who, and
  * their words) from a caller acting on an owner's yes. Anyone else is refused
- * with code rework_stays.
+ * with code rework_stays. The same yes is needed to take any order off a
+ * person's board (Yousif 2026-10-21): refused with code stays_on_board.
  */
 export async function reassignOrder(
   orderId: string,
@@ -715,10 +717,15 @@ export async function reassignOrder(
     const notDisney = await disneyRefusal(tx, orderId, designerId);
     if (notDisney) return { ok: false as const, code: "disney_only", message: notDisney };
     const hold = await loadReworkHold(tx, orderId);
+    const reworkMove = !reworkAllows(hold, designerId);
+    // An order on a person's board stays there without an owner's yes (Yousif 2026-10-21, lib/orders/board-hold.ts).
+    const holder = await loadBoardHolder(tx, orderId);
+    const boardMove = boardHolds(holder, designerId);
     let approvedBy: string | null = null;
-    if (!reworkAllows(hold, designerId)) {
+    if (reworkMove || boardMove) {
       approvedBy = opts.ownerApproved?.trim() || (await adminApproval(tx, byUserId));
-      if (!approvedBy) return { ok: false as const, code: "rework_stays", message: await reworkStaysMessage(tx, hold) };
+      if (!approvedBy && reworkMove) return { ok: false as const, code: "rework_stays", message: await reworkStaysMessage(tx, hold) };
+      if (!approvedBy) return { ok: false as const, code: "stays_on_board", message: staysOnBoardMessage(holder) };
     }
     if (target.isAgent) {
       const portraits = (await getOrderPortraits(tx, orderId)).length;
@@ -761,7 +768,8 @@ export async function reassignOrder(
         via: "reassign_order",
         ...(wasAgent ? { fromAi: true } : {}),
         ...(target.isAgent ? { toAi: true } : {}),
-        ...(approvedBy ? { reworkMoveApprovedBy: approvedBy } : {}),
+        ...(approvedBy ? { moveApprovedBy: approvedBy } : {}),
+        ...(approvedBy && reworkMove ? { reworkMoveApprovedBy: approvedBy } : {}),
       },
     });
     if (target.isAgent) {
