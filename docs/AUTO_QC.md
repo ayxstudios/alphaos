@@ -225,3 +225,11 @@ BACKFILL_DB_URL=<owner connection string> npx tsx scripts/backfill-asset-hashes.
 Flags: `--days N` (default 60), `--limit N` (default 5000), `--concurrency N` (default 6). It needs the R2 env and hashes newest first; a row missing either the dHash or the fine signature is redone. It stops before hashing anything when it cannot read stored files: an `R2_*` already set in the parent shell wins over `.env.local` and `--env-file` (on 16 Oct the agent's own bucket did, and 1024 files were skipped as unreadable until this check existed).
 
 **Fail-open.** A failed lookup in `checkWrongFile` is logged and reads as "not blocked": it must never stop real work.
+
+## Revision stop (Yousif 2026-10-22)
+
+CPS 4197212238 (Taylor): two revisions went to her after Auto QC said they missed her ask (14 Oct `partly`: photo booth still missing, the tattoos QC had removed were back; 18 Oct `no`: a different photo drawn, booth still missing). Approve passed both, she saw three very different portraits and asked for her money back. In the 21 days before, buyers asked again after 75% of `no` and 65% of `partly` revisions that went out, against 38% of `yes`. Code: `lib/qc/revision-stop.ts`.
+
+- **What stops:** the newest `auto_qc_checks` row for the order has `revision.done` `no` or `partly` AND judged exactly the files going out (the screens' "current" rule, `sameIds`). A newer upload waits for its own check; a new order (no revision verdict) is never stopped.
+- **Where:** `confirmQcPassAndSend` right after the wrong-file stop, before any email, so /qc, /approve (`ownerApproveCore`, `POST /api/approve/commit`) and the Day queue all hit it; `runTransition` on `awaiting_qc -> awaiting_approval` for every other road. The system actor is not stopped.
+- **Override:** the same `overrideReason` (at least 4 characters, admin or VA) as the wrong-file stop; the move goes through and `order.revision_stop_override` records the reason, the verdict and the missed list. Refusal code `revision_not_done`; /qc and /approve ask for the reason in the same prompt. The Auto QC box on both screens says Approve will not send it without a reason.

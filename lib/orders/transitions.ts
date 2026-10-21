@@ -25,7 +25,8 @@ import {
 } from "@/lib/qc/checklist";
 import { onRevisionEdge } from "@/lib/agent/ai-core";
 import { aiQcRefusal } from "@/lib/qc/ai-qc-gate";
-import { wrongFileGate } from "@/lib/qc/wrong-file";
+import { revisionStopGate } from "@/lib/qc/revision-stop";
+import { currentArtworkIds, wrongFileGate } from "@/lib/qc/wrong-file";
 import { resetRevisionDeadline, runAutoAssign } from "./assign";
 import { SENT_BACK_FROM } from "./board-constants";
 import { prepareProofForApproval, queueStageEmail } from "@/lib/email/dispatch";
@@ -179,7 +180,7 @@ export type TransitionInput = {
   metadata?: Record<string, unknown>;
   /** Staff only: why a wrong-file stop (lib/qc/wrong-file.ts) is overridden. Designers cannot override. */
   overrideReason?: string;
-  /** The caller already ran the wrong-file gate for this move (confirmQcPassAndSend does, before it emails). */
+  /** The caller already ran the wrong-file and revision stops for this move (confirmQcPassAndSend does, before it emails). */
   wrongFileChecked?: boolean;
 };
 
@@ -272,6 +273,14 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
         via: "qc_pass",
       });
       if (wrong) throw new PreconditionError(wrong.message);
+      const unfinished = await revisionStopGate(tx, actor, {
+        orderId,
+        businessId: order.businessId,
+        assetIds: await currentArtworkIds(tx, orderId),
+        overrideReason: input.overrideReason,
+        via: "qc_pass",
+      });
+      if (unfinished) throw new PreconditionError(unfinished.message);
     }
   }
 

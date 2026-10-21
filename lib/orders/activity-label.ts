@@ -38,6 +38,7 @@ const LABELS: Record<string, string> = {
   "qc.overdue_urgent": "QC overdue: owner alerted",
   "qc.backup_approver": "QC passed to the backup approver",
   "order.wrong_file_override": "Wrong-file stop overridden",
+  "order.revision_stop_override": "Sent although Auto QC said the revision was not done",
   "order.awaiting_approval": "Awaiting approval",
   "order.fulfillment_only": "Fulfilment only",
   "proof.viewed": "Proof viewed",

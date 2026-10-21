@@ -72,6 +72,7 @@
     "test:same-buyer": "tsx scripts/test-same-buyer.ts",
     "test:image-hash": "tsx scripts/test-image-hash.ts",
     "test:wrong-file": "tsx scripts/test-wrong-file.ts",
+    "test:revision-stop": "tsx scripts/test-revision-stop.ts",
     "test:qc-overdue": "tsx scripts/test-qc-overdue.ts",
     "test:proof-replies": "tsx scripts/test-proof-replies.ts",
     "test:archived-reopen": "tsx scripts/test-archived-reopen.ts",

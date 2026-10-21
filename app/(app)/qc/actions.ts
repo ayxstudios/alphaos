@@ -44,6 +44,7 @@ import { getQcFailContext } from "@/lib/qc/data";
 import { autoResolveOrderFigures } from "@/lib/orders/figure-auto";
 import { qcPassEmailInFlight } from "@/lib/qc/send-guard";
 import { aiQcRefusal } from "@/lib/qc/ai-qc-gate";
+import { revisionStopGate } from "@/lib/qc/revision-stop";
 import { wrongFileGate } from "@/lib/qc/wrong-file";
 import { holdForOwnerReview, ownerReviewRequired } from "@/lib/agent/ai-designer";
 import { loadProofFilePick, portraitList } from "@/lib/proofs/files";
@@ -296,6 +297,15 @@ export async function confirmQcPassAndSend(input: {
       via: "qc_pass",
     });
     if (wrong) return { ok: false as const, code: wrong.code, message: wrong.message };
+    // Revision stop: Auto QC said this revision misses the ask (lib/qc/revision-stop.ts); same override reason.
+    const unfinished = await revisionStopGate(tx, user, {
+      orderId: ctx.order.id,
+      businessId: ctx.order.businessId,
+      assetIds: ctx.files.length ? ctx.files.map((f) => f.assetId) : [ctx.asset.id],
+      overrideReason: input.overrideReason,
+      via: "qc_pass",
+    });
+    if (unfinished) return { ok: false as const, code: unfinished.code, message: unfinished.message };
     const proof = await ensureProof(tx, ctx.order);
     if (proof.id !== input.proofId) {
       return { ok: false as const, code: "stale_proof", message: "The proof link changed. Refresh and preview again." };

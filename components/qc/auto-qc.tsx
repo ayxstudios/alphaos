@@ -1,7 +1,8 @@
 /**
  * Auto QC badge and notes (Yousif 2026-10-14). The AI's look at the artwork,
- * shown next to the owner's own QC. It never decides anything: the owner
- * reads it and approves or rejects as before. docs/AUTO_QC.md.
+ * shown next to the owner's own QC. The owner reads it and approves or rejects
+ * as before; one exception: a revision it calls not done needs a written reason
+ * to send (lib/qc/revision-stop.ts). docs/AUTO_QC.md.
  */
 import type { AutoQcCheck, AutoQcPortrait, AutoQcView } from "@/lib/qc/auto-qc";
 import { cn } from "@/lib/utils";
@@ -128,6 +129,11 @@ export function AutoQcNotes({ view }: { view: AutoQcView | null }) {
                     : "Revision not done"}
               </p>
               {view.revision.note ? <p className="break-words text-sm text-ink">{view.revision.note}</p> : null}
+              {view.current && view.revision.done !== "yes" ? (
+                <p className="text-sm font-semibold text-rose" data-testid="auto-qc-revision-stop">
+                  Approve will not send it without a reason. Fail it back to the designer with what was missed.
+                </p>
+              ) : null}
               {view.revision.missed.length ? (
                 <ul className="list-disc pl-5 text-sm text-ink">
                   {view.revision.missed.map((m) => (
