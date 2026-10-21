@@ -102,11 +102,19 @@ export function usePendingApprovals(): PendingRow[] {
  * more id to skip: the order about to be approved, so the page the screen will
  * move to can be preloaded before the tap (the URL must match exactly).
  */
+let streamHint: "new" | "revision" | null = null;
+/** The stream on screen: where "/approve" lands when an order was the last one in it. */
+export function setApproveStream(stream: "new" | "revision" | null) {
+  streamHint = stream;
+}
+
 export function approveHref(orderId: string | null, exclude?: string, also?: string): string {
   const skip = approvalStore.skipIds().filter((id) => id !== exclude);
   if (also && also !== exclude && !skip.includes(also)) skip.push(also);
   const q = new URLSearchParams();
   if (orderId) q.set("o", orderId);
+  // With no order to open (the stream is finished) stay in the stream the owner is working (2026-10-21).
+  else if (streamHint) q.set("s", streamHint);
   if (skip.length) q.set("skip", skip.join(","));
   const s = q.toString();
   return s ? `/approve?${s.replace(/%2C/g, ",")}` : "/approve";

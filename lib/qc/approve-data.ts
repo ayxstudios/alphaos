@@ -11,6 +11,7 @@ import { getAutoQcView, latestSlots, slotAssetIds, type AutoQcView } from "./aut
 import { othersClaims, startIndex, summarizeOthers } from "./claims";
 import { getFixViews, type AutoQcFixView } from "./auto-qc-fix";
 import { getQcContext, getQcQueueIds, type QcContext } from "./data";
+import { getQueueKinds, type OrderStream } from "./approve-streams";
 
 /**
  * The owner Approve screen (/approve, 2026-10-14): from 14 Oct there are no
@@ -61,20 +62,40 @@ export async function getOwnerApproveQueue(
   user: RequestUser,
   skip: string[] = [],
   asked?: string,
-): Promise<{ ids: string[]; start: number; others: { name: string; count: number }[]; takenBy: string | null }> {
-  const [all, live] = await Promise.all([
+  stream?: OrderStream,
+): Promise<{
+  ids: string[];
+  start: number;
+  others: { name: string; count: number }[];
+  takenBy: string | null;
+  /** The stream these ids are in (the one asked for, else the asked-for order's, else the first with anything in it). */
+  stream: OrderStream;
+  /** Orders waiting per stream (what someone else has open or what is in its Stop window not counted). */
+  counts: Record<OrderStream, number>;
+}> {
+  const [all0, live] = await Promise.all([
     getQcQueueIds(user, "all"),
     withUserContext(user, (tx) => othersClaims(tx, user.id)),
   ]);
-  const inQueue = new Set(all);
+  const kinds = await getQueueKinds(user, all0);
+  const inQueue = new Set(all0);
   const claims = live.filter((c) => inQueue.has(c.orderId));
   const hide = new Set([...skip, ...claims.map((c) => c.orderId)]);
-  const ids = all.filter((id) => !hide.has(id));
+  const free = all0.filter((id) => !hide.has(id));
+  const counts: Record<OrderStream, number> = { new: 0, revision: 0 };
+  for (const id of free) counts[kinds.get(id) ?? "new"]++;
+  // An order opened by link (?o=) decides its own stream; a stream tab with nothing on it falls to the other one.
+  const chosen: OrderStream =
+    (asked && kinds.get(asked)) || stream || (counts.new === 0 && counts.revision > 0 ? "revision" : "new");
+  const all = all0.filter((id) => (kinds.get(id) ?? "new") === chosen);
+  const ids = free.filter((id) => (kinds.get(id) ?? "new") === chosen);
   return {
     ids,
     start: startIndex(all, ids, asked),
     others: summarizeOthers(claims),
     takenBy: (asked && claims.find((c) => c.orderId === asked)?.holder) || null,
+    stream: chosen,
+    counts,
   };
 }
 

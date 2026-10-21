@@ -15,6 +15,7 @@ import {
   FULL_PREFETCH,
   PendingApprovalsHost,
   PendingApprovalsInline,
+  setApproveStream,
   usePendingApprovals,
 } from "@/components/qc/pending-approvals";
 import { AutoQcBadge, AutoQcNotes } from "@/components/qc/auto-qc";
@@ -71,6 +72,7 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
     if (takenBy) toast({ variant: "info", title: `${takenBy} is checking that one`, description: "Here is the next one." });
   }, [takenBy, toast]);
   usePendingApprovals(); // re-render when the skip list changes (Skip link)
+  setApproveStream(item.isRevision ? "revision" : "new"); // before any href below is built
   // The page Approve moves to (this order skipped), preloaded so the swap is instant.
   const afterApprove = approveHref(nextId, undefined, ctx.orderId);
   useEffect(() => {
