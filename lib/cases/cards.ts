@@ -80,7 +80,7 @@ export async function listCases(): Promise<CaseCard[] | null> {
   const origin = base();
   if (!origin) return null;
   try {
-    const res = await fetch(`${origin}/api/cards?k=${encodeURIComponent(process.env.NEEDS_YOU_KEY!)}`, { cache: "no-store", signal: AbortSignal.timeout(6000) });
+    const res = await fetch(`${origin}/api/cards?k=${encodeURIComponent(process.env.NEEDS_YOU_KEY!)}`, { cache: "no-store", signal: AbortSignal.timeout(4000) });
     if (!res.ok) return null;
     const j = (await res.json()) as { live?: Row[] };
     return (j.live ?? []).map(toCard);

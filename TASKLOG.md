@@ -189,3 +189,4 @@ Branch task/refund-hold-2026-10-17, worktree alphaos-refund-hold.
 - [x] the outbox already held agent drafts replying to sensitive inbound; revision_received stays a fixed draft and revised proofs only go out after owner QC
 - [x] test:money-back (16 cases) passes; tsc clean. The DB-backed test-agent-inbox was not run (the .env.local database could not be proven a demo DB)
 - [x] landed 17 Oct under integrate:alphaos: main 25c2a2d, prod CLI deploy dpl_ES11ZUJ3AuqYzFPjMsrcfHRnc8bP (alphaos-jl9bw13ma-almacorpvision) aliased to alphaos-kappa; /api/health ok, /approve 307
+- [x] 2026-10-21 /approve = three streams (New orders, Revisions, Cases). Cases = the agent's needs-you cards via the Needs-you reviewer API (NEEDS_YOU_KEY on prod), lib/cases/cards.ts, components/qc/case-screen.tsx; swipe records, agent does it after 30 s; 24 h silence = agent's pick (agent side). Landed main + prod CLI deploy aliased to alphaos-kappa.
