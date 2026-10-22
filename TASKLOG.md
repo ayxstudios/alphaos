@@ -194,4 +194,5 @@ Branch task/refund-hold-2026-10-17, worktree alphaos-refund-hold.
 ## 2026-10-22 Revision stop (Yousif, terminal: "prevent this happening again", CPS Taylor Olsen 4197212238)
 Branch task/revision-stop-20261022, worktree alphaos-wt-revstop. No migrations.
 - [x] lib/qc/revision-stop.ts: a QC pass is refused while Auto QC's newest check on exactly the outgoing files says the revision was `no` or `partly` done; staff send anyway only with a reason (order.revision_stop_override); confirmQcPassAndSend + runTransition; /qc and /approve prompt for the reason; Auto QC box says so
-- [x] test:revision-stop (Taylor's real 14 and 18 Oct verdicts); tsc clean
+- [x] test:revision-stop (Taylor's real 14 and 18 Oct verdicts); tsc clean; full ci-local = the same 11 failing suites as base 52a3805 (identical failing checks)
+- [x] landed 22 Oct under integrate:alphaos: main 87cb57d, prod CLI deploy dpl_29i4172FQZE4DsMgmmCGQwAhS9Np aliased to alphaos-kappa; /api/health 200, /approve 307; live /qc on CPS 4201269787 shows the stop line
