@@ -196,3 +196,9 @@ Branch task/revision-stop-20261022, worktree alphaos-wt-revstop. No migrations.
 - [x] lib/qc/revision-stop.ts: a QC pass is refused while Auto QC's newest check on exactly the outgoing files says the revision was `no` or `partly` done; staff send anyway only with a reason (order.revision_stop_override); confirmQcPassAndSend + runTransition; /qc and /approve prompt for the reason; Auto QC box says so
 - [x] test:revision-stop (Taylor's real 14 and 18 Oct verdicts); tsc clean; full ci-local = the same 11 failing suites as base 52a3805 (identical failing checks)
 - [x] landed 22 Oct under integrate:alphaos: main 87cb57d, prod CLI deploy dpl_29i4172FQZE4DsMgmmCGQwAhS9Np aliased to alphaos-kappa; /api/health 200, /approve 307; live /qc on CPS 4201269787 shows the stop line
+
+## 2026-10-22 Two portraits, one file (Yousif, terminal: "yes fix it all"; Shelby PC32228, Kara PC32205, CPS10283)
+Branch task/duplicate-slots-20261022, worktree alphaos-wt-dupslots. No migrations.
+- [x] lib/qc/duplicate-slots.ts: the hand-in (in_design -> awaiting_qc) and a runTransition QC pass stop when two portrait slots carry the same file: same dhash + fine signature + size on record, confirmed by the same R2 size and ETag. Two units of one line always count; across lines only a portrait option she set differently (Background, Pet Name; product options like Print On or Size ignored). Unreadable options or an unconfirmed HEAD never stop. Staff send anyway with a reason (order.duplicate_slots_override); designers upload the right file
+- [x] test:duplicate-slots (Shelby's and Kara's real hashes); tsc and eslint clean; read-only scan of the 34 two-plus-portrait proofs of 30 days: 3 hits (CPS10283 Doc/Juno, PC32205, PC32228), all byte-identical and all sent back by the buyer, no false hit
+- [ ] the /qc screen path (app/(app)/qc/actions.ts) is being reworked by another session (Ayser's approve stops): add duplicateSlotsGate next to wrongFileGate there once it lands

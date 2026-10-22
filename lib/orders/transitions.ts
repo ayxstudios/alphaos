@@ -25,6 +25,7 @@ import {
 } from "@/lib/qc/checklist";
 import { onRevisionEdge } from "@/lib/agent/ai-core";
 import { aiQcRefusal } from "@/lib/qc/ai-qc-gate";
+import { duplicateSlotsGate } from "@/lib/qc/duplicate-slots";
 import { revisionStopGate } from "@/lib/qc/revision-stop";
 import { currentArtworkIds, wrongFileGate } from "@/lib/qc/wrong-file";
 import { resetRevisionDeadline, runAutoAssign } from "./assign";
@@ -262,6 +263,14 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
       via: "submit",
     });
     if (wrong) throw new PreconditionError(wrong.message);
+    // two portraits she asked to be different, handed in as one file (Shelby PC32228, Kara PC32205)
+    const twin = await duplicateSlotsGate(tx, actor, {
+      orderId,
+      businessId: order.businessId,
+      overrideReason: input.overrideReason,
+      via: "submit",
+    });
+    if (twin) throw new PreconditionError(twin.message);
   }
   if (key === "awaiting_qc->awaiting_approval") {
     await assertEveryPortrait(tx, orderId, order.platformOrderId, "pass");
@@ -281,6 +290,13 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
         via: "qc_pass",
       });
       if (unfinished) throw new PreconditionError(unfinished.message);
+      const twin = await duplicateSlotsGate(tx, actor, {
+        orderId,
+        businessId: order.businessId,
+        overrideReason: input.overrideReason,
+        via: "qc_pass",
+      });
+      if (twin) throw new PreconditionError(twin.message);
     }
   }
 
