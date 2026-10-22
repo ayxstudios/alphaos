@@ -203,3 +203,4 @@ Branch task/duplicate-slots-20261022, worktree alphaos-wt-dupslots. No migration
 - [x] test:duplicate-slots (Shelby's and Kara's real hashes); tsc and eslint clean; read-only scan of the 34 two-plus-portrait proofs of 30 days: 3 hits (CPS10283 Doc/Juno, PC32205, PC32228), all byte-identical and all sent back by the buyer, no false hit
 - [x] the /qc screen and /approve path: confirmQcPassAndSend runs duplicateSlotsGate after the revision stop; both screens prompt for the reason on `duplicate_slots`
 - [x] full ci-local = the same 11 failing suites as base 87cb57d (identical failing checks), 52/63 with the new suite
+- [x] landed 22 Oct under integrate:alphaos: main a9da1c3 (the /qc gate commit re-ran test:etsy-proof-queue, test:proof-multi, test:duplicate-slots green), prod CLI deploy dpl_GX8MuJLLUYefyWQRV4dk4sptMfn7 aliased to alphaos-kappa; /api/health 200, /approve 307, /qc 200 as the VA
