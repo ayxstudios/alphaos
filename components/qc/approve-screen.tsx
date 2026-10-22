@@ -129,6 +129,7 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
   const [busy, setBusy] = useState<"reject" | "missing" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
+  const [stopOpen, setStopOpen] = useState(false);
   const [note, setNote] = useState("");
   // A note typed before an app update reload comes back, panel open (see callAction).
   useEffect(() => {
@@ -321,7 +322,9 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
   );
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4" data-testid="approve-screen" data-kind={item.isRevision ? "revision" : "new"}>
+    // w-full: centred with mx-auto inside the page's column, the screen otherwise took the width of its longest
+    // one-line text (a same-buyer order title, a portrait button) and ran off a phone's edge (2026-10-22).
+    <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-4" data-testid="approve-screen" data-kind={item.isRevision ? "revision" : "new"}>
       <PendingApprovalsHost />
       {/* Where am I in the pile */}
       <div className="flex items-center justify-between gap-3">
@@ -613,16 +616,26 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
           </p>
         ) : null}
         {stops.length && !rejecting && !missing.length ? (
-          <div role="alert" data-testid="approve-stop" className="flex flex-col gap-1 rounded-input border border-rose/30 bg-rose/5 px-3 py-2 text-sm text-ink">
+          // Three lines each, tap for the rest: in full it covered half a phone screen and the artwork with it.
+          // The whole note is also in the Auto QC panel above.
+          <div
+            role="alert"
+            data-testid="approve-stop"
+            onClick={() => setStopOpen((v) => !v)}
+            className="flex cursor-pointer flex-col gap-1 rounded-input border border-rose/30 bg-rose/5 px-3 py-2 text-sm text-ink"
+          >
             {stops.map((x) => (
-              <p key={x.kind}>
+              <p key={x.kind} className={stopOpen ? undefined : "line-clamp-3"}>
                 <span className="font-semibold text-rose">
                   {x.kind === "revision_not_done" ? "Revision not done? " : x.kind === "duplicate_slots" ? "Same file twice? " : "Wrong file? "}
                 </span>
                 {x.message}
               </p>
             ))}
-            <p className="text-slate">Approve still sends it: your call.</p>
+            <p className="text-slate">
+              Approve still sends it: your call.
+              {!stopOpen && stops.some((x) => x.message.length > 140) ? " Tap to read it all." : ""}
+            </p>
           </div>
         ) : null}
         {error ? (

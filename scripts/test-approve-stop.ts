@@ -11,6 +11,7 @@ process.env.R2_SECRET_ACCESS_KEY = "test-secret";
 import { createApprovalStore, OVERRIDABLE_CODES, type CommitResult } from "../components/qc/pending-approvals-store";
 import type { AutoQcView } from "../lib/qc/auto-qc";
 import { approveStopOf } from "../lib/qc/approve-data";
+import { wrongFileNoteText } from "../lib/qc/auto-qc-text";
 import { MIN_OVERRIDE_REASON, autoQcWrongFileReason } from "../lib/qc/wrong-file";
 import { STABLE_GET_WINDOW_SECONDS, presignGetStable } from "../lib/storage/r2";
 
@@ -67,6 +68,10 @@ function view(p: Partial<AutoQcView>): AutoQcView {
     ["p1-new", "p2-old"],
   );
   assert.equal(p2?.kind, "wrong_file"); // same rule as the gate, though the check is no longer "current"
+  // The finding's code word stays out of what the owner reads (stored text untouched: the gate reads "Portrait N").
+  assert.equal(p2?.message, "Auto QC thinks this is the wrong file: Portrait 2: Katie.");
+  assert.equal(wrongFileNoteText("Portrait 2 (subject_count): Still the cat. Portrait 1 (other_order): x"), "Portrait 2: Still the cat. Portrait 1: x");
+  assert.equal(wrongFileNoteText("This is order 4209142032's drawing (see photo 2)"), "This is order 4209142032's drawing (see photo 2)");
   const partly = approveStopOf(view({ revision: { done: "partly", missed: ["photo booth"], note: "" } }), ["a1"]);
   assert.equal(partly?.kind, "revision_not_done");
   assert.match(partly?.message ?? "", /only partly done\. Missed: photo booth\./);

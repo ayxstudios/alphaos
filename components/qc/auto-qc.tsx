@@ -5,6 +5,7 @@
  * Approve; an owner's Approve still sends it (lib/qc/revision-stop.ts, 22 Oct). docs/AUTO_QC.md.
  */
 import type { AutoQcCheck, AutoQcPortrait, AutoQcView } from "@/lib/qc/auto-qc";
+import { wrongFileNoteText } from "@/lib/qc/auto-qc-text";
 import { cn } from "@/lib/utils";
 
 function badgeText(v: AutoQcView | null): { text: string; tone: string; title: string } {
@@ -12,7 +13,7 @@ function badgeText(v: AutoQcView | null): { text: string; tone: string; title: s
   if (!v.current)
     return { text: "Auto QC'd an older version", tone: "bg-canvas text-slate", title: "The designer uploaded again; a fresh check is coming" };
   if (v.wrongFile)
-    return { text: `Wrong file: ${v.wrongFile.note}`, tone: "bg-rose/10 text-rose", title: "Auto QC thinks this is not this order's artwork" };
+    return { text: `Wrong file: ${wrongFileNoteText(v.wrongFile.note)}`, tone: "bg-rose/10 text-rose", title: "Auto QC thinks this is not this order's artwork" };
   if (v.verdict === "pass") return { text: "Has been Auto QC'd · looks right", tone: "bg-sage/10 text-sage", title: v.summary ?? "" };
   if (v.verdict === "issues")
     return {
@@ -110,7 +111,7 @@ export function AutoQcNotes({ view }: { view: AutoQcView | null }) {
           ) : null}
           {view.current && view.wrongFile ? (
             <p className="rounded-card border border-rose/30 bg-rose/5 p-3 text-sm font-semibold text-rose" data-testid="auto-qc-wrong-file">
-              Wrong file: {view.wrongFile.note}
+              Wrong file: {wrongFileNoteText(view.wrongFile.note)}
             </p>
           ) : null}
           {view.summary ? <p className="break-words text-base text-ink">{view.summary}</p> : null}

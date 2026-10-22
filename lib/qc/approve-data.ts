@@ -8,6 +8,7 @@ import { buildRevisionHistory, type RevisionHistoryNote } from "@/lib/orders/rev
 import type { OrderStatus } from "@/lib/orders/transitions";
 import { aiAwaitingAutoQc } from "./ai-qc-gate";
 import { getAutoQcView, latestSlots, slotAssetIds, type AutoQcView } from "./auto-qc";
+import { wrongFileNoteText } from "./auto-qc-text";
 import { othersClaims, startIndex, summarizeOthers } from "./claims";
 import { getFixViews, type AutoQcFixView } from "./auto-qc-fix";
 import { getQcContext, getQcQueueIds, resolveAssetUrl, type QcContext } from "./data";
@@ -31,7 +32,7 @@ export function approveStopOf(view: AutoQcView | null, outgoing: string[]): Appr
   // The gate's rule (autoQcWrongFileApplies): a portrait-named finding holds while that portrait's file goes out.
   const judged = view.portraits.map((p) => p.assetId).filter(Boolean);
   if (view.wrongFile && autoQcWrongFileApplies({ assetIds: judged, portraits: view.portraits, wrongFile: view.wrongFile }, outgoing)) {
-    return { kind: "wrong_file", message: `Auto QC thinks this is the wrong file: ${view.wrongFile.note.replace(/\.\s*$/, "")}.` };
+    return { kind: "wrong_file", message: `Auto QC thinks this is the wrong file: ${wrongFileNoteText(view.wrongFile.note).replace(/\.\s*$/, "")}.` };
   }
   if (!view.current) return null;
   // current = the check judged exactly these files (the revision stop's rule).
