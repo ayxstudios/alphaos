@@ -44,6 +44,7 @@ import { getQcFailContext } from "@/lib/qc/data";
 import { autoResolveOrderFigures } from "@/lib/orders/figure-auto";
 import { qcPassEmailInFlight } from "@/lib/qc/send-guard";
 import { aiQcRefusal } from "@/lib/qc/ai-qc-gate";
+import { duplicateSlotsGate } from "@/lib/qc/duplicate-slots";
 import { revisionStopGate } from "@/lib/qc/revision-stop";
 import { wrongFileGate } from "@/lib/qc/wrong-file";
 import { holdForOwnerReview, ownerReviewRequired } from "@/lib/agent/ai-designer";
@@ -306,6 +307,14 @@ export async function confirmQcPassAndSend(input: {
       via: "qc_pass",
     });
     if (unfinished) return { ok: false as const, code: unfinished.code, message: unfinished.message };
+    // Two portraits she asked to be different, one file twice (lib/qc/duplicate-slots.ts); same override reason.
+    const twice = await duplicateSlotsGate(tx, user, {
+      orderId: ctx.order.id,
+      businessId: ctx.order.businessId,
+      overrideReason: input.overrideReason,
+      via: "qc_pass",
+    });
+    if (twice) return { ok: false as const, code: twice.code, message: twice.message };
     const proof = await ensureProof(tx, ctx.order);
     if (proof.id !== input.proofId) {
       return { ok: false as const, code: "stale_proof", message: "The proof link changed. Refresh and preview again." };

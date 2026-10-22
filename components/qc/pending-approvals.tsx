@@ -38,8 +38,8 @@ async function viaRoute(orderId: string, keepalive: boolean, fixIds?: string[], 
 // because the server answers "Already checked" when the first one landed.
 async function commit(orderId: string, fixIds?: string[]): Promise<CommitResult> {
   const first = await commitOnce(orderId, fixIds);
-  // Wrong-file and revision stops (lib/qc/wrong-file.ts, lib/qc/revision-stop.ts): staff can send anyway with a written reason, logged on the order.
-  if (!first.ok && (first.code === "wrong_file" || first.code === "revision_not_done") && typeof window !== "undefined") {
+  // Wrong-file, revision and two-portraits-one-file stops (lib/qc/wrong-file.ts, revision-stop.ts, duplicate-slots.ts): staff can send anyway with a written reason, logged on the order.
+  if (!first.ok && (first.code === "wrong_file" || first.code === "revision_not_done" || first.code === "duplicate_slots") && typeof window !== "undefined") {
     const reason = window.prompt(`${first.message}\n\nOnly if you have checked it is right: type why, then OK. Cancel keeps it stopped.`);
     if (reason && reason.trim().length >= 4) return commitOnce(orderId, fixIds, reason.trim());
   }

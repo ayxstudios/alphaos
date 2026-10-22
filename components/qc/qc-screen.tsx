@@ -198,8 +198,8 @@ export function QcScreen({
         signature,
       });
       let res = await send();
-      // Wrong-file and revision stops (lib/qc/wrong-file.ts, lib/qc/revision-stop.ts): staff can send anyway with a written reason, logged on the order.
-      if (!res.ok && (res.code === "wrong_file" || res.code === "revision_not_done")) {
+      // Wrong-file, revision and two-portraits-one-file stops (lib/qc/wrong-file.ts, revision-stop.ts, duplicate-slots.ts): staff can send anyway with a written reason, logged on the order.
+      if (!res.ok && (res.code === "wrong_file" || res.code === "revision_not_done" || res.code === "duplicate_slots")) {
         const reason = window.prompt(`${res.message}\n\nOnly if you have checked it is right: type why, then OK. Cancel keeps it stopped.`);
         if (reason && reason.trim().length >= 4) res = await send(reason.trim());
       }
