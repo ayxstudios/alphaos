@@ -75,6 +75,9 @@ function toCard(r: Row): CaseCard {
   };
 }
 
+/** The last list read on this server (listCasesForCount). */
+let recent: { at: number; cards: CaseCard[] } | null = null;
+
 /** The cases waiting for a swipe, urgent first then oldest. null = could not be read (not configured or the agent's page is down). */
 export async function listCases(): Promise<CaseCard[] | null> {
   const origin = base();
@@ -83,10 +86,26 @@ export async function listCases(): Promise<CaseCard[] | null> {
     const res = await fetch(`${origin}/api/cards?k=${encodeURIComponent(process.env.NEEDS_YOU_KEY!)}`, { cache: "no-store", signal: AbortSignal.timeout(4000) });
     if (!res.ok) return null;
     const j = (await res.json()) as { live?: Row[] };
-    return (j.live ?? []).map(toCard);
+    const cards = (j.live ?? []).map(toCard);
+    recent = { at: Date.now(), cards };
+    return cards;
   } catch {
     return null;
   }
+}
+
+/**
+ * The case list for the Cases tab's count on the order streams: the agent's
+ * page answers in ~2.5 s (it runs in the US), and every Approve page waited
+ * for it before showing the order (2026-10-21 to 22). A list read in the last
+ * CASES_COUNT_MAX_AGE_MS on this server is used as is; the Cases stream itself
+ * always reads fresh (listCases), and a swipe forgets the copy.
+ */
+export const CASES_COUNT_MAX_AGE_MS = 30_000;
+
+export function listCasesForCount(): Promise<CaseCard[] | null> {
+  if (recent && Date.now() - recent.at < CASES_COUNT_MAX_AGE_MS) return Promise.resolve(recent.cards);
+  return listCases();
 }
 
 export type CaseDecision =
@@ -116,6 +135,7 @@ async function post(path: string, body: Record<string, unknown>): Promise<CaseWr
 }
 
 export function writeDecision(d: CaseDecision): Promise<CaseWrite> {
+  recent = null;
   return post("/api/decide", {
     id: d.id,
     decision: d.decision,
@@ -126,5 +146,6 @@ export function writeDecision(d: CaseDecision): Promise<CaseWrite> {
 }
 
 export function writeUndo(id: string): Promise<CaseWrite> {
+  recent = null;
   return post("/api/undo", { id });
 }

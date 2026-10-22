@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 
-import { ownerReject } from "@/app/(app)/approve/actions";
 import { releaseClaim, useApproveClaim } from "@/components/qc/approve-claim";
 import { QcPicturePicker, useQcPictures } from "@/components/qc/attachment-picker";
 import {
@@ -27,7 +26,9 @@ import { focusRing } from "@/components/ui/styles";
 import { SameBuyerStrip } from "@/components/orders/same-buyer";
 import { portraitList } from "@/lib/orders/portrait-list";
 import type { SameBuyerView } from "@/lib/orders/same-buyer-view";
-import type { ApproveItem } from "@/lib/qc/approve-data";
+import type { ApproveItem, ApproveStop } from "@/lib/qc/approve-data";
+import type { ApproveActionResult } from "@/lib/qc/owner-approve";
+import type { OwnerRejectInput } from "@/lib/qc/owner-reject";
 import { splitChecklistLabel } from "@/lib/qc/checklist";
 import { cn } from "@/lib/utils";
 
@@ -42,7 +43,27 @@ type Props = {
   takenBy: string | null;
   /** This order in a line plus the buyer's other orders (one buyer, several orders). */
   sameBuyer?: SameBuyerView | null;
+  /** The next order's artwork URLs, fetched in the background so it opens with its picture (2026-10-22). */
+  nextArt?: string[];
+  /** The picture check's match and the same-file-twice check (getPictureMatchStop, getDuplicateSlotsStop), shown before the tap like Auto QC's. */
+  matchStops?: ApproveStop[];
 };
+
+/**
+ * Preloads expire after 3 minutes (next.config staleTimes) and a prefetch of an entry younger than that is a no-op,
+ * so the warm-up runs just after each expiry while an order stays open.
+ */
+const REWARM_MS = 185_000;
+
+/** The send back, through the plain route (POST /api/approve/reject): no server action, so the preloaded next order stays. */
+async function postReject(input: OwnerRejectInput): Promise<ApproveActionResult> {
+  const res = await fetch("/api/approve/reject", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return (await res.json()) as ApproveActionResult;
+}
 
 function dueText(iso: string | null): { text: string; late: boolean } | null {
   if (!iso) return null;
@@ -56,13 +77,14 @@ function whenText(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 }
 
-export function ApproveScreen({ item, position, total, nextId, others, takenBy, sameBuyer = null }: Props) {
+export function ApproveScreen({ item, position, total, nextId, others, takenBy, sameBuyer = null, nextArt = [], matchStops = [] }: Props) {
   const { ctx } = item;
   const router = useRouter();
   const toast = useToast();
   // Two owners (2026-10-14): this order is mine while it is on screen.
   useApproveClaim(ctx.orderId, ctx.orderNumber);
   // An AI portrait waits for its Auto QC before Approve opens (lib/qc/ai-qc-gate.ts): look again every 30 s.
+  // A refresh empties the preloaded pages; its answer is a new `item`, which warms them again (below).
   useEffect(() => {
     if (!item.aiWaiting) return;
     const t = window.setInterval(() => router.refresh(), 30_000);
@@ -73,13 +95,36 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
   }, [takenBy, toast]);
   usePendingApprovals(); // re-render when the skip list changes (Skip link)
   setApproveStream(item.isRevision ? "revision" : "new"); // before any href below is built
-  // The page Approve moves to (this order skipped), preloaded so the swap is instant.
+  // The page Approve and Reject move to (this order skipped), preloaded so the swap is instant.
   const afterApprove = approveHref(nextId, undefined, ctx.orderId);
+  const afterSkip = nextId ? approveHref(nextId) : null;
   useEffect(() => {
-    router.prefetch(afterApprove, FULL_PREFETCH);
-    // Where Stop lands: this same order, pinned. Warm before Approve is tapped.
-    router.prefetch(approveHref(ctx.orderId, ctx.orderId), FULL_PREFETCH);
-  }, [afterApprove, ctx.orderId, router]);
+    const warm = () => {
+      router.prefetch(afterApprove, FULL_PREFETCH);
+      // Where Stop lands: this same order, pinned. Warm before Approve is tapped.
+      router.prefetch(approveHref(ctx.orderId, ctx.orderId), FULL_PREFETCH);
+      if (afterSkip) router.prefetch(afterSkip, FULL_PREFETCH);
+    };
+    warm();
+    // A careful look takes longer than the 3 minute preload.
+    const t = window.setInterval(warm, REWARM_MS);
+    return () => window.clearInterval(t);
+  }, [afterApprove, afterSkip, ctx.orderId, router, item]);
+  // The next order's artwork (5-8 MB) downloads while this one is looked at, after this one's own picture.
+  const nextArtKey = nextArt.join("\n");
+  useEffect(() => {
+    if (!nextArtKey) return;
+    const imgs: HTMLImageElement[] = [];
+    const t = window.setTimeout(() => {
+      for (const src of nextArtKey.split("\n")) {
+        const img = new Image();
+        img.decoding = "async";
+        img.src = src;
+        imgs.push(img);
+      }
+    }, 1500);
+    return () => window.clearTimeout(t);
+  }, [nextArtKey]);
   const [pending, startTransition] = useTransition();
   const [busy, setBusy] = useState<"reject" | "missing" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +140,10 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
     setRejecting(true);
   }, [ctx.orderId]);
   const [picked, setPicked] = useState<number[]>([]);
+  // Auto QC's wrong-file or revision-not-done finding and the picture check's match, shown before the tap. Approve
+  // still sends it (Ayser 2026-10-22: "Do not do the popup thing", "its something I already approved"): the approval
+  // carries the line below, and the server logs it on the order.
+  const stops = [item.stop, ...matchStops].filter((x): x is ApproveStop => !!x);
   const pictures = useQcPictures(ctx.orderId);
   // Which artwork the viewer shows: the new version, the one before it (revisions) or the AI fix (2026-10-14).
   const [view, setView] = useState<"new" | "before" | "fix">("new");
@@ -190,7 +239,12 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
   // Stop window (components/qc/pending-approvals.tsx) and the screen moves on.
   function approve() {
     setError(null);
-    approvalStore.enqueue({ orderId: ctx.orderId, orderNumber: ctx.orderNumber, customerName: ctx.customerName });
+    approvalStore.enqueue({
+      orderId: ctx.orderId,
+      orderNumber: ctx.orderNumber,
+      customerName: ctx.customerName,
+      ...(stops.length ? { overrideReason: `Approved on the Approve screen with this shown: ${stops.map((x) => x.message).join(" ")}` } : {}),
+    });
     goNext(false);
   }
 
@@ -224,10 +278,10 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
     void sendBack("missing", { note: missingNote, failedKeys: [] });
   }
 
-  async function sendBack(kind: "reject" | "missing", input: Omit<Parameters<typeof ownerReject>[0], "orderId">) {
+  async function sendBack(kind: "reject" | "missing", input: Omit<OwnerRejectInput, "orderId">) {
     setBusy(kind);
     setError(null);
-    const res = await callAction(() => ownerReject({ orderId: ctx.orderId, ...input }));
+    const res = await callAction(() => postReject({ orderId: ctx.orderId, ...input }));
     if (!res) return;
     if (!res.ok) {
       if (res.code === "stale" || res.code === "claimed") {
@@ -243,7 +297,8 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
       return;
     }
     toast({ variant: "success", title: res.title, description: res.description });
-    goNext();
+    // The preloaded page (this order skipped, the same one Approve uses): no refresh, it would throw that away.
+    startTransition(() => router.replace(approveHref(nextId, undefined, ctx.orderId)));
   }
 
   const locked = busy !== null || pending;
@@ -556,6 +611,19 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
           <p className="rounded-input bg-canvas px-3 py-2 text-sm text-slate" data-testid="ai-auto-qc-waiting">
             Auto QC is still checking this AI portrait. Approve opens once it&apos;s done, usually within 10 minutes.
           </p>
+        ) : null}
+        {stops.length && !rejecting && !missing.length ? (
+          <div role="alert" data-testid="approve-stop" className="flex flex-col gap-1 rounded-input border border-rose/30 bg-rose/5 px-3 py-2 text-sm text-ink">
+            {stops.map((x) => (
+              <p key={x.kind}>
+                <span className="font-semibold text-rose">
+                  {x.kind === "revision_not_done" ? "Revision not done? " : x.kind === "duplicate_slots" ? "Same file twice? " : "Wrong file? "}
+                </span>
+                {x.message}
+              </p>
+            ))}
+            <p className="text-slate">Approve still sends it: your call.</p>
+          </div>
         ) : null}
         {error ? (
           <p role="alert" className="rounded-input bg-rose/10 px-3 py-2 text-sm text-rose">

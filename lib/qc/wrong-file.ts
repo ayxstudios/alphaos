@@ -15,9 +15,15 @@
  *   other_order the newest artwork of the buyer's other orders                       BLOCKS
  *   recent_art  any artwork on another order of the business hashed in 30 days       BLOCKS
  *   orientation the file's shape contradicts the portrait/landscape ordered          WARNS
- *   auto_qc     Auto QC's judge reported wrongFile for this file                     BLOCKS
+ *   auto_qc     Auto QC's judge reported wrongFile on exactly these files           BLOCKS
  * Files with no hash or no fine signature (PDF, HEIC, corrupt, not backfilled)
  * are never matched and never blocked.
+ *
+ * A block never overrides an owner on what the owner saw (Ayser 2026-10-22:
+ * "dont override what i say"): an admin's QC pass goes through Auto QC's
+ * finding with "<name> approved it" logged (confirmQcPassAndSend), and the
+ * Approve screen shows a picture match before the tap and sends its own line
+ * with the approval. A VA gives any word, "OK" included.
  */
 import { and, desc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 
@@ -26,11 +32,13 @@ import { withSystemContext, type RequestUser, type Tx } from "@/lib/db";
 import { activityLog, assets, autoQcChecks, orderItems, orders } from "@/lib/db/schema";
 import { orderNumberOf, loadSameBuyerContext, orientationOf } from "@/lib/orders/same-buyer";
 import { hashColumnsFor } from "@/lib/qc/asset-hash";
+import { sameIds } from "@/lib/qc/auto-qc";
 import { SAME_PICTURE_DISTANCE, aspectOf, hamming, samePicture } from "@/lib/qc/image-hash";
 
 export const WRONG_FILE_OVERRIDE_ACTION = "order.wrong_file_override";
 export const RECENT_ART_DAYS = 30;
-export const MIN_OVERRIDE_REASON = 4;
+/** Any word is enough (Ayser 2026-10-22, his "OK" was refused at 4): the owner's say goes. */
+export const MIN_OVERRIDE_REASON = 1;
 
 export type WrongFileKind = "reference" | "other_order" | "recent_art" | "orientation" | "auto_qc";
 
@@ -376,18 +384,45 @@ export async function checkWrongFile(orderId: string, assetId: string): Promise<
 
 export type WrongFileRefusal = { code: "wrong_file"; message: string; reasons: WrongFileReason[] };
 
-/** Auto QC's wrongFile for the newest judged row that covers one of these assets, as a blocking reason. */
+/**
+ * Auto QC's wrongFile on the newest check, as a blocking reason, while the file
+ * it flagged is still going out. Before 22 Oct one shared file was enough, so a
+ * 2-portrait order stayed blocked after the flagged portrait was replaced and its
+ * designer could not hand the fix in.
+ */
 async function autoQcReason(tx: Tx, orderId: string, assetIds: string[]): Promise<WrongFileReason | null> {
   const [row] = await tx
-    .select({ assetIds: autoQcChecks.assetIds, wrongFile: autoQcChecks.wrongFile })
+    .select({ assetIds: autoQcChecks.assetIds, portraits: autoQcChecks.portraits, wrongFile: autoQcChecks.wrongFile })
     .from(autoQcChecks)
     .where(eq(autoQcChecks.orderId, orderId))
     .orderBy(desc(autoQcChecks.createdAt))
     .limit(1);
-  const wf = row?.wrongFile as { kind?: string; note?: string } | null | undefined;
-  if (!row || !wf || typeof wf !== "object") return null;
-  const judged = Array.isArray(row.assetIds) ? (row.assetIds as unknown[]) : [];
-  if (!assetIds.some((id) => judged.includes(id))) return null; // a newer upload than the one Auto QC flagged
+  return autoQcWrongFileReason(row, assetIds);
+}
+
+export type AutoQcWrongFileCheck = { assetIds: unknown; portraits?: unknown; wrongFile: unknown };
+
+/**
+ * Does Auto QC's wrongFile still apply to these outgoing files? A note that
+ * names its portrait ("Portrait 2 (other_order): ...", how the judge writes
+ * them on 2+ portrait orders) applies while that portrait's judged file is
+ * still going out; any other note applies only to exactly the files judged.
+ * Pure (tested); the Approve screen uses the same rule (approveStopOf).
+ */
+export function autoQcWrongFileApplies(check: AutoQcWrongFileCheck | null | undefined, outgoing: string[]): boolean {
+  const wf = check?.wrongFile as { note?: unknown } | null | undefined;
+  if (!check || !wf || typeof wf !== "object") return false;
+  const n = typeof wf.note === "string" ? /^\s*Portrait (\d+)\b/i.exec(wf.note)?.[1] : undefined;
+  const portraits = Array.isArray(check.portraits) ? (check.portraits as { portrait?: unknown; assetId?: unknown }[]) : [];
+  const flagged = n ? portraits.find((p) => Number(p?.portrait) === Number(n) && typeof p?.assetId === "string" && p.assetId) : undefined;
+  if (flagged) return outgoing.includes(flagged.assetId as string);
+  return sameIds(check.assetIds, [...new Set(outgoing)]);
+}
+
+/** autoQcReason's verdict as a blocking reason (tested). */
+export function autoQcWrongFileReason(check: AutoQcWrongFileCheck | null | undefined, assetIds: string[]): WrongFileReason | null {
+  if (!autoQcWrongFileApplies(check, assetIds)) return null;
+  const wf = check!.wrongFile as { kind?: string; note?: string };
   return { kind: "auto_qc", note: String(wf.note || wf.kind || "not this order's artwork").slice(0, 300) };
 }
 
@@ -402,7 +437,15 @@ async function autoQcReason(tx: Tx, orderId: string, assetIds: string[]): Promis
 export async function wrongFileGate(
   tx: Tx,
   actor: { id: string; role: RequestUser["role"] | "system" },
-  input: { orderId: string; businessId: string; assetIds?: string[]; overrideReason?: unknown; via: "submit" | "qc_pass" },
+  input: {
+    orderId: string;
+    businessId: string;
+    assetIds?: string[];
+    overrideReason?: unknown;
+    /** An owner's pass ("<name> approved it"): covers Auto QC's finding, which every QC screen shows; a picture match still needs overrideReason. */
+    ownerApproval?: string;
+    via: "submit" | "qc_pass";
+  },
 ): Promise<WrongFileRefusal | null> {
   if (actor.role === "system") return null;
   // The AI Studio's own submission is judged by Auto QC (wrongFile), not by this hash check.
@@ -418,7 +461,9 @@ export async function wrongFileGate(
   if (ai) reasons.push(ai);
   if (!reasons.length) return null;
 
-  const reason = typeof input.overrideReason === "string" ? input.overrideReason.trim().replace(/\s+/g, " ").slice(0, 500) : "";
+  const given = typeof input.overrideReason === "string" ? input.overrideReason.trim().replace(/\s+/g, " ").slice(0, 500) : "";
+  const owner = actor.role === "admin" && reasons.every((r) => r.kind === "auto_qc") ? (input.ownerApproval ?? "").trim() : "";
+  const reason = given || owner;
   if ((actor.role === "admin" || actor.role === "va") && reason.length >= MIN_OVERRIDE_REASON) {
     await tx.insert(activityLog).values({
       businessId: input.businessId,

@@ -108,6 +108,7 @@ export function presignGet(
   key: string,
   expiresIn = GET_TTL_SECONDS,
   response?: { contentDisposition?: string; contentType?: string; cacheControl?: string },
+  signingDate?: Date,
 ): Promise<string> {
   return getSignedUrl(
     client(),
@@ -118,8 +119,24 @@ export function presignGet(
       ResponseContentType: response?.contentType,
       ResponseCacheControl: response?.cacheControl,
     }),
-    { expiresIn },
+    { expiresIn, ...(signingDate ? { signingDate } : {}) },
   );
+}
+
+/** Stable presigned GETs are signed at the start of a window this long (lib/storage/r2.ts presignGetStable). */
+export const STABLE_GET_WINDOW_SECONDS = 600;
+
+/**
+ * The same presigned GET for a whole 10-minute window: signed at the window's
+ * start and valid an hour from now at least, so two renders give the same URL
+ * and the browser reuses the file it already has (Approve preloads the next
+ * order's 5-8 MB artwork; a fresh signature every render made that a second
+ * download). Screen images only; links that leave the app use presignGet.
+ */
+export function presignGetStable(key: string, now = Date.now()): Promise<string> {
+  const windowMs = STABLE_GET_WINDOW_SECONDS * 1000;
+  const start = Math.floor(now / windowMs) * windowMs;
+  return presignGet(key, GET_TTL_SECONDS + STABLE_GET_WINDOW_SECONDS, undefined, new Date(start));
 }
 
 export async function headObject(key: string): Promise<{

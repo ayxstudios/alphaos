@@ -8,7 +8,9 @@
  *
  * A QC pass whose file Auto QC judged as a revision "partly" or "not" done is
  * refused until staff either fail it back to the designer or give a reason to
- * send it anyway (logged on the order). Over the 21 days before this, buyers
+ * send it anyway (logged on the order). An owner's pass is that reason (Ayser
+ * 2026-10-22: "its something I already approved"); the warning is on the screen
+ * before the tap. Over the 21 days before this, buyers
  * asked again after 75% of "no" and 65% of "partly" revisions that went out,
  * against 38% of "yes".
  *

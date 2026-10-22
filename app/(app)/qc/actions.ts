@@ -251,6 +251,10 @@ export async function confirmQcPassAndSend(input: {
   if ("error" in user) return user.error;
   const ticked = assertAllTicked(input.checklist, input.itemResults);
   if (!ticked.ok) return ticked;
+  // An owner's pass is the decision (Ayser 2026-10-22: "dont override what i say", "its something I already
+  // approved"): Auto QC's wrong-file or revision finding is on the screen before the tap, and is logged on the order
+  // with this line, never asked again. A picture match the screen did not show still stops (wrongFileGate).
+  const ownerApproval = user.role === "admin" ? `${input.signature} approved it` : undefined;
 
   const prepared = await withUserContext(user, async (tx) => {
     // Row lock: a second "Pass and send" for this order waits here until the
@@ -289,12 +293,15 @@ export async function confirmQcPassAndSend(input: {
     // AI portraits: only an owner, and only once Auto QC has judged this exact file (lib/qc/ai-qc-gate.ts).
     const ai = await aiQcRefusal(tx, user, { orderId: ctx.order.id, assetId: ctx.asset.id });
     if (ai) return { ok: false as const, code: ai.code, message: ai.message };
+    // Every file going out (2+ portrait orders too: before 22 Oct only the first one was checked).
+    const outgoing = ctx.files.length ? ctx.files.map((f) => f.assetId) : [ctx.asset.id];
     // Wrong-file stop: the file must not be the reference photo or another order's artwork (staff may override with a reason, logged).
     const wrong = await wrongFileGate(tx, user, {
       orderId: ctx.order.id,
       businessId: ctx.order.businessId,
-      assetIds: [ctx.asset.id],
+      assetIds: outgoing,
       overrideReason: input.overrideReason,
+      ownerApproval,
       via: "qc_pass",
     });
     if (wrong) return { ok: false as const, code: wrong.code, message: wrong.message };
@@ -302,8 +309,8 @@ export async function confirmQcPassAndSend(input: {
     const unfinished = await revisionStopGate(tx, user, {
       orderId: ctx.order.id,
       businessId: ctx.order.businessId,
-      assetIds: ctx.files.length ? ctx.files.map((f) => f.assetId) : [ctx.asset.id],
-      overrideReason: input.overrideReason,
+      assetIds: outgoing,
+      overrideReason: input.overrideReason?.trim() || ownerApproval,
       via: "qc_pass",
     });
     if (unfinished) return { ok: false as const, code: unfinished.code, message: unfinished.message };

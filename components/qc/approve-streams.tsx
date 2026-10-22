@@ -6,16 +6,19 @@ import { focusRing } from "@/components/ui/styles";
 
 /**
  * New orders | Revisions | Cases (both owners, 2026-10-21). Each tab shows how many are waiting; a Cases count in rose means
- * one of them is urgent. Cases is null when the agent's case list could not be read, or hidden when the viewer is not an owner.
+ * one of them is urgent. Cases is null when the agent's case list could not be read, or hidden when the viewer is not an owner;
+ * casesPending = the count is still on its way (it streams in after the order, app/(app)/approve/page.tsx).
  */
 export function StreamTabs({
   active,
   counts,
   casesUrgent = false,
+  casesPending = false,
 }: {
   active: Stream;
   counts: { new: number; revision: number; cases?: number | null };
   casesUrgent?: boolean;
+  casesPending?: boolean;
 }) {
   const tabs = STREAMS.filter((s) => s.key !== "cases" || counts.cases !== undefined); // no Cases tab for a non-owner
   return (
@@ -43,7 +46,7 @@ export function StreamTabs({
                 n === 0 ? "bg-canvas text-slate" : t.key === "cases" && casesUrgent ? "bg-rose text-surface" : on ? "bg-pigment text-surface" : "bg-ink/10 text-ink",
               )}
             >
-              {n === null ? "?" : n}
+              {n === null ? (t.key === "cases" && casesPending ? "…" : "?") : n}
             </span>
           </Link>
         );

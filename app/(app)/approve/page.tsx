@@ -1,9 +1,10 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
-import { getApproveItem, getOwnerApproveQueue } from "@/lib/qc/approve-data";
+import { getApproveItem, getArtworkPreloadUrls, getDuplicateSlotsStop, getOwnerApproveQueue, getPictureMatchStop } from "@/lib/qc/approve-data";
 import { parseStream, type Stream } from "@/lib/qc/approve-streams";
-import { listCases } from "@/lib/cases/cards";
+import { listCases, listCasesForCount, type CaseCard } from "@/lib/cases/cards";
 import { getSameBuyerView } from "@/lib/orders/same-buyer-view";
 import { PendingApprovalsHost } from "@/components/qc/pending-approvals";
 import { parseSkip } from "@/components/qc/pending-approvals-store";
@@ -15,11 +16,22 @@ import { CheckCircle } from "@/components/ui/icons";
 
 export const dynamic = "force-dynamic";
 
+type Counts = { new: number; revision: number };
+
+/** The tabs once the case list is in (it streams in after the order; see below). */
+async function TabsWithCases({ active, counts, cases }: { active: Stream; counts: Counts; cases: Promise<CaseCard[] | null> }) {
+  const list = await cases;
+  return <StreamTabs active={active} counts={{ ...counts, cases: list?.length ?? null }} casesUrgent={!!list?.some((x) => x.urgent)} />;
+}
+
 /**
  * Owner QC (2026-10-14): one order at a time, Approve or Reject. Three streams (2026-10-21): New orders, Revisions and
  * Cases (a customer who needs a person: lib/cases/cards.ts). ?s= picks the stream; ?o=<orderId> opens that order and its
  * stream. Every business in one queue, urgent first then soonest due. An order another owner has open is not offered
  * (lib/qc/claims.ts): the two never overlap.
+ *
+ * The case list comes from the agent's page in the US (~2.5 s). From 21 Oct every order waited for it; since 22 Oct
+ * the order shows at once and only the Cases count streams in after (a copy up to 30 s old, listCasesForCount).
  */
 export default async function ApprovePage({ searchParams }: { searchParams: Promise<{ o?: string; skip?: string; s?: string; c?: string }> }) {
   const session = await auth();
@@ -33,23 +45,37 @@ export default async function ApprovePage({ searchParams }: { searchParams: Prom
   const wantCases = asked === "cases" && isOwner;
 
   // Approvals still in their Stop window stay out of the queue (an explicitly opened ?o= never hides itself).
-  const [q, cases] = await Promise.all([
-    getOwnerApproveQueue(user, parseSkip(skip).filter((id) => id !== o), o, asked === "revision" ? "revision" : asked === "new" ? "new" : undefined),
-    isOwner ? listCases() : Promise.resolve(undefined),
-  ]);
+  // Started now, awaited only where the page needs the list itself (the Cases stream, or nothing else left).
+  // A plain /approve may land on the Cases stream (nothing else left), so it reads fresh too.
+  const casesP: Promise<CaseCard[] | null> | undefined = isOwner ? (wantCases || (!asked && !o) ? listCases() : listCasesForCount()) : undefined;
+  const q = await getOwnerApproveQueue(
+    user,
+    parseSkip(skip).filter((id) => id !== o),
+    o,
+    asked === "revision" ? "revision" : asked === "new" ? "new" : undefined,
+  );
   const { ids: queue, start, others, takenBy, counts } = q;
 
   // No stream asked for and nothing in the order streams: the cases are what is left.
-  const active: Stream = wantCases || (!asked && !o && counts.new + counts.revision === 0 && (cases?.length ?? 0) > 0) ? "cases" : q.stream;
-  const tabs = (
+  const ordersLeft = counts.new + counts.revision > 0;
+  const casesNow = casesP && (wantCases || (!asked && !o && !ordersLeft)) ? await casesP : undefined;
+  const active: Stream = wantCases || (!asked && !o && !ordersLeft && (casesNow?.length ?? 0) > 0) ? "cases" : q.stream;
+  const tabs = !casesP ? (
+    <StreamTabs active={active} counts={{ new: counts.new, revision: counts.revision }} />
+  ) : casesNow !== undefined ? (
     <StreamTabs
       active={active}
-      counts={{ new: counts.new, revision: counts.revision, cases: cases === undefined ? undefined : (cases?.length ?? null) }}
-      casesUrgent={!!cases?.some((x) => x.urgent)}
+      counts={{ new: counts.new, revision: counts.revision, cases: casesNow?.length ?? null }}
+      casesUrgent={!!casesNow?.some((x) => x.urgent)}
     />
+  ) : (
+    <Suspense fallback={<StreamTabs active={active} counts={{ new: counts.new, revision: counts.revision, cases: null }} casesPending />}>
+      <TabsWithCases active={active} counts={{ new: counts.new, revision: counts.revision }} cases={casesP} />
+    </Suspense>
   );
 
   if (active === "cases") {
+    const cases = casesNow;
     if (cases === null || cases === undefined) {
       return (
         <div className="flex flex-col gap-4">
@@ -104,10 +130,17 @@ export default async function ApprovePage({ searchParams }: { searchParams: Prom
   }
 
   const index = start;
-  // The buyer's other orders load in their own connection beside the order (one buyer, several orders).
-  const [item, sameBuyer] = await Promise.all([getApproveItem(user, queue[index]), getSameBuyerView(user, queue[index])]);
-  if (!item) redirect(`/approve?s=${q.stream}`);
   const nextId = queue.length > 1 ? queue[(index + 1) % queue.length] : null;
+  // The buyer's other orders load in their own connection beside the order (one buyer, several orders), the picture
+  // check beside them (shown before the tap), and the next order's artwork URLs, so its picture downloads meanwhile.
+  const [item, sameBuyer, nextArt, matchStop, twiceStop] = await Promise.all([
+    getApproveItem(user, queue[index]),
+    getSameBuyerView(user, queue[index]),
+    getArtworkPreloadUrls(user, nextId),
+    getPictureMatchStop(queue[index]),
+    getDuplicateSlotsStop(user, queue[index]),
+  ]);
+  if (!item) redirect(`/approve?s=${q.stream}`);
 
   return (
     <div className="flex flex-col gap-4">
@@ -121,6 +154,8 @@ export default async function ApprovePage({ searchParams }: { searchParams: Prom
         others={others}
         takenBy={takenBy}
         sameBuyer={sameBuyer}
+        nextArt={nextArt}
+        matchStops={[matchStop, twiceStop].filter((x) => x !== null)}
       />
     </div>
   );

@@ -1,7 +1,7 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
-import { activityLog, orders, shops, users } from "@/lib/db/schema";
+import { activityLog, assets, orders, shops, users } from "@/lib/db/schema";
 import type { CardEvent } from "@/lib/orders/card-detail";
 import type { ProofFilePick } from "@/lib/proofs/files";
 import { buildRevisionHistory, type RevisionHistoryNote } from "@/lib/orders/revision-history";
@@ -10,8 +10,36 @@ import { aiAwaitingAutoQc } from "./ai-qc-gate";
 import { getAutoQcView, latestSlots, slotAssetIds, type AutoQcView } from "./auto-qc";
 import { othersClaims, startIndex, summarizeOthers } from "./claims";
 import { getFixViews, type AutoQcFixView } from "./auto-qc-fix";
-import { getQcContext, getQcQueueIds, type QcContext } from "./data";
+import { getQcContext, getQcQueueIds, resolveAssetUrl, type QcContext } from "./data";
 import { getQueueKinds, type OrderStream } from "./approve-streams";
+import { duplicateSlotsGate } from "./duplicate-slots";
+import { evaluateRevisionStop } from "./revision-stop";
+import { autoQcWrongFileApplies, currentArtworkIds, wrongFileWarningsFor } from "./wrong-file";
+
+/**
+ * What Auto QC found against the files going out, shown before the tap (Ayser
+ * 2026-10-22: the stop used to pop up as a browser box 8 s after Approve, over
+ * the next order, and refused his "OK"; "Do not do the popup thing", "its
+ * something I already approved"). An owner's Approve sends it anyway and the
+ * gates log it (confirmQcPassAndSend); this is the same rule read from the
+ * check on screen, so the owner sees it before deciding.
+ */
+export type ApproveStop = { kind: "wrong_file" | "revision_not_done" | "picture_match" | "duplicate_slots"; message: string };
+
+export function approveStopOf(view: AutoQcView | null, outgoing: string[]): ApproveStop | null {
+  if (!view) return null;
+  // The gate's rule (autoQcWrongFileApplies): a portrait-named finding holds while that portrait's file goes out.
+  const judged = view.portraits.map((p) => p.assetId).filter(Boolean);
+  if (view.wrongFile && autoQcWrongFileApplies({ assetIds: judged, portraits: view.portraits, wrongFile: view.wrongFile }, outgoing)) {
+    return { kind: "wrong_file", message: `Auto QC thinks this is the wrong file: ${view.wrongFile.note.replace(/\.\s*$/, "")}.` };
+  }
+  if (!view.current) return null;
+  // current = the check judged exactly these files (the revision stop's rule).
+  const stop = evaluateRevisionStop({ id: view.id, assetIds: judged, revision: view.revision }, judged);
+  if (!stop) return null;
+  const missed = stop.missed.length ? ` Missed: ${stop.missed.slice(0, 4).join("; ")}.` : stop.note ? ` ${stop.note}` : "";
+  return { kind: "revision_not_done", message: `Auto QC says this revision ${stop.done === "no" ? "was not done" : "is only partly done"}.${missed}` };
+}
 
 /**
  * The owner Approve screen (/approve, 2026-10-14): from 14 Oct there are no
@@ -38,6 +66,8 @@ export type ApproveItem = {
   aiWaiting: boolean;
   /** The files a proof email carries by default (from the QC context). */
   proofFiles: ProofFilePick;
+  /** Auto QC's wrong-file or revision stop on the files going out, or null (approveStopOf). */
+  stop: ApproveStop | null;
 };
 
 export async function getApproveQueue(user: RequestUser, skip: string[] = []): Promise<string[]> {
@@ -139,10 +169,11 @@ export async function getApproveItem(user: RequestUser, orderId: string): Promis
       metadata: (r.metadata as Record<string, unknown> | null) ?? null,
       createdAt: r.createdAt.toISOString(),
     }));
-    const autoQc = await getAutoQcView(tx, orderId, slotAssetIds(latestSlots(ctx.versions, ctx.portraits, ctx.proofFiles)));
+    const outgoing = slotAssetIds(latestSlots(ctx.versions, ctx.portraits, ctx.proofFiles));
+    const autoQc = await getAutoQcView(tx, orderId, outgoing);
     const fixes = await getFixViews(tx, orderId, ctx.versions, ctx.portraits, ctx.proofFiles);
     const aiWaiting = await aiAwaitingAutoQc(tx, orderId);
-    return { o, requests: buildRevisionHistory(events), autoQc, fixes, aiWaiting };
+    return { o, requests: buildRevisionHistory(events), autoQc, fixes, aiWaiting, outgoing };
   });
   const revisionCount = extra.o?.revisionCount ?? 0;
   const isRevision = revisionCount > 0 || extra.requests.length > 0;
@@ -158,5 +189,82 @@ export async function getApproveItem(user: RequestUser, orderId: string): Promis
     fixes: extra.fixes,
     aiWaiting: extra.aiWaiting,
     proofFiles: ctx.proofFiles,
+    stop: approveStopOf(extra.autoQc, extra.outgoing),
   };
+}
+
+/** How long the picture match may hold the page; past it the send's own check still runs (a failed row says so). */
+const MATCH_CHECK_MS = 2_500;
+
+/**
+ * The picture check (lib/qc/wrong-file.ts: the customer's photo, the buyer's
+ * other orders, 30 days of art) on the order's current files, so it is on the
+ * screen before the tap like Auto QC's own findings, and the owner's Approve
+ * covers it (the reviewer's catch, 22 Oct: an unseen match must not go out
+ * under "approved it"). Never throws; slow or failed reads as nothing.
+ */
+export async function getPictureMatchStop(orderId: string): Promise<ApproveStop | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const res = await Promise.race([
+      wrongFileWarningsFor(orderId),
+      new Promise<null>((done) => {
+        timer = setTimeout(() => done(null), MATCH_CHECK_MS);
+      }),
+    ]);
+    if (!res?.blocking) return null;
+    return { kind: "picture_match", message: res.blocking.replace(/\s*Upload the right file for this order\.$/, "") };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Two portraits she asked to be different carrying the same file (lib/qc/duplicate-slots.ts), read before the tap
+ * like the other stops so the owner's Approve covers it. The gate with no reason given only reads (two R2 HEADs at
+ * most). Never throws; slow or failed reads as nothing, and the send's own check still runs.
+ */
+export async function getDuplicateSlotsStop(user: RequestUser, orderId: string): Promise<ApproveStop | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const res = await Promise.race([
+      withUserContext(user, (tx) => duplicateSlotsGate(tx, user, { orderId, businessId: "", via: "qc_pass" })),
+      new Promise<null>((done) => {
+        timer = setTimeout(() => done(null), MATCH_CHECK_MS);
+      }),
+    ]);
+    if (!res) return null;
+    const message = res.message.replace(/^Order [^:]+: /, "").replace(/\s*Fail it back to the designer.*$/, "");
+    return { kind: "duplicate_slots", message };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * The artwork the next order opens on (newest file per portrait), so Approve
+ * can fetch it in the background while the owner looks at this one: the next
+ * screen then paints its 5-8 MB image from the browser's memory. Same URLs as
+ * that screen (resolveAssetUrl, stable for 10 minutes). Never throws.
+ */
+export async function getArtworkPreloadUrls(user: RequestUser, orderId: string | null): Promise<string[]> {
+  if (!orderId) return [];
+  try {
+    return await withUserContext(user, async (tx) => {
+      const ids = await currentArtworkIds(tx, orderId);
+      if (!ids.length) return [];
+      const rows = await tx
+        .select({ url: assets.url, storage: assets.storage, r2Key: assets.r2Key })
+        .from(assets)
+        .where(and(inArray(assets.id, ids.slice(0, 4)), isNull(assets.deletedAt)));
+      const urls = await Promise.all(rows.map((r) => resolveAssetUrl(r)));
+      return urls.filter((u): u is string => !!u);
+    });
+  } catch {
+    return [];
+  }
 }

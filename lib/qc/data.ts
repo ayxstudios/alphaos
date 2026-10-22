@@ -20,7 +20,7 @@ import type { OrderStatus } from "@/lib/orders/transitions";
 import { resolveChecklist, type ChecklistSnapshot } from "./checklist";
 import { resolveAttachmentViews } from "./attachment-urls";
 import type { QcAttachmentView } from "./attachments";
-import { isR2Configured, presignGet } from "@/lib/storage/r2";
+import { isR2Configured, presignGetStable } from "@/lib/storage/r2";
 import { currentMatchForProduct } from "@/lib/orders/style-learning";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
 import type { ProductOption } from "@/lib/db/schema";
@@ -98,7 +98,7 @@ export type QcContext = {
 
 const SUBMISSION_TYPES = ["submission", "final"] as const;
 
-async function resolveAssetUrl(asset: {
+export async function resolveAssetUrl(asset: {
   url: string | null;
   storage: string;
   r2Key: string | null;
@@ -106,7 +106,8 @@ async function resolveAssetUrl(asset: {
   if (asset.url) return asset.url;
   if (asset.storage === "r2" && asset.r2Key && isR2Configured()) {
     try {
-      return await presignGet(asset.r2Key);
+      // Stable for 10 minutes: the Approve screen preloads the next order's artwork under this exact URL.
+      return await presignGetStable(asset.r2Key);
     } catch {
       return null;
     }

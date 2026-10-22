@@ -4,12 +4,12 @@ import { useRouter } from "next/navigation";
 import { PrefetchKind } from "next/dist/client/components/router-reducer/router-reducer-types";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
-import { ownerApprove } from "@/app/(app)/approve/actions";
 import { useToast } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
 import { cn } from "@/lib/utils";
 import {
   APPROVE_GRACE_MS,
+  OVERRIDABLE_CODES,
   createApprovalStore,
   type CommitResult,
   type PendingRow,
@@ -23,54 +23,42 @@ const COMMIT_TIMEOUT_MS = 55_000;
 /** Full RSC prefetch: the server render of /approve takes seconds, so Approve and Stop swap from the cache instead. */
 export const FULL_PREFETCH = { kind: PrefetchKind.FULL };
 
-async function viaRoute(orderId: string, keepalive: boolean, fixIds?: string[], overrideReason?: string): Promise<CommitResult> {
+async function viaRoute(orderId: string, keepalive: boolean, fixIds?: string[], overrideReason?: string, signal?: AbortSignal): Promise<CommitResult> {
   const res = await fetch("/api/approve/commit", {
     method: "POST",
     keepalive,
+    signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ orderId, ...(fixIds?.length ? { fixIds } : {}), ...(overrideReason ? { overrideReason } : {}) }),
   });
   return (await res.json()) as CommitResult;
 }
 
-// Same protections the screen's callAction always had (Yousif 2026-10-14): a
-// dropped connection or a 55 s stall ends with a reason, and a retry is safe
-// because the server answers "Already checked" when the first one landed.
-async function commit(orderId: string, fixIds?: string[]): Promise<CommitResult> {
-  const first = await commitOnce(orderId, fixIds);
-  // Wrong-file, revision and two-portraits-one-file stops (lib/qc/wrong-file.ts, revision-stop.ts, duplicate-slots.ts): staff can send anyway with a written reason, logged on the order.
-  if (!first.ok && (first.code === "wrong_file" || first.code === "revision_not_done" || first.code === "duplicate_slots") && typeof window !== "undefined") {
-    const reason = window.prompt(`${first.message}\n\nOnly if you have checked it is right: type why, then OK. Cancel keeps it stopped.`);
-    if (reason && reason.trim().length >= 4) return commitOnce(orderId, fixIds, reason.trim());
-  }
-  return first;
-}
-
-async function commitOnce(orderId: string, fixIds?: string[], overrideReason?: string): Promise<CommitResult> {
+// The send goes through the plain route, not the ownerApprove server action
+// (2026-10-22): an action that revalidates answers with a fresh render of
+// /approve and empties the browser's preloaded pages, so the order the owner
+// moved on to lost its preloaded next one and that Approve waited seconds.
+// No browser prompt any more (it popped up 8 s later over the next order and
+// refused "OK"; Ayser 2026-10-22: "Do not do the popup thing"): what can stop
+// a send is shown on the screen and the Approve carries the owner's say. Only
+// something the screen did not show can still stop it, and that row has a
+// one-tap Send anyway.
+// Same protections as before: a dropped connection or a 55 s stall ends with
+// a reason, and a retry is safe because the server answers "Already checked".
+async function commit(orderId: string, fixIds?: string[], overrideReason?: string): Promise<CommitResult> {
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), COMMIT_TIMEOUT_MS);
   try {
-    return await Promise.race([
-      ownerApprove(orderId, fixIds, overrideReason),
-      new Promise<never>((_, fail) => setTimeout(() => fail(new Error("timeout")), COMMIT_TIMEOUT_MS)),
-    ]);
+    return await viaRoute(orderId, false, fixIds, overrideReason, stop.signal);
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    // The page is older than the live app (its server action id is gone): the
-    // plain route does the same approve and needs no matching bundle.
-    if (/server action/i.test(msg)) {
-      try {
-        return await viaRoute(orderId, false, fixIds, overrideReason);
-      } catch {
-        return { ok: false, code: "network", message: "AlphaOS was just updated. Tap Retry." };
-      }
-    }
+    const timedOut = stop.signal.aborted || (err instanceof Error && err.name === "AbortError");
     return {
       ok: false,
-      code: msg === "timeout" ? "timeout" : "network",
-      message:
-        msg === "timeout"
-          ? "No answer after a minute, it may not have gone through."
-          : "That didn't go through (connection dropped).",
+      code: timedOut ? "timeout" : "network",
+      message: timedOut ? "No answer after a minute, it may not have gone through." : "That didn't go through (connection dropped).",
     };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -78,7 +66,7 @@ async function commitOnce(orderId: string, fixIds?: string[], overrideReason?: s
 // router.replace + refresh that remounts the screen after every Approve.
 export const approvalStore = createApprovalStore({
   commit,
-  beacon: (orderId, fixIds) => viaRoute(orderId, true, fixIds),
+  beacon: (orderId, fixIds, overrideReason) => viaRoute(orderId, true, fixIds, overrideReason),
   schedule: (fn, ms) => setTimeout(fn, ms),
   cancel: (h) => clearTimeout(h as ReturnType<typeof setTimeout>),
   now: () => Date.now(),
@@ -142,6 +130,27 @@ function doneLine(r: PendingRow): string {
   return `Sent to ${firstName(r.customerName)}`;
 }
 
+/**
+ * A send stopped by something the screen did not show (a picture match found
+ * only at send time, an Auto QC check that landed after the page opened, or a
+ * VA's send; 2026-10-22). One tap sends it, no prompt and no typing; the line
+ * is logged on the order with what stopped it.
+ */
+function SendAnyway({ row }: { row: PendingRow }) {
+  return (
+    <div className="flex gap-2 px-3 pb-3">
+      <button
+        type="button"
+        data-testid="send-anyway"
+        onClick={() => approvalStore.retry(row.orderId, `Sent anyway from the Approve screen after: ${row.message ?? "a stop"}`)}
+        className={cn("h-11 flex-1 rounded-input bg-sage px-3 text-sm font-semibold text-surface", focusRing)}
+      >
+        Send anyway
+      </button>
+    </div>
+  );
+}
+
 function Rows({ rows }: { rows: PendingRow[] }) {
   const router = useRouter();
   const toast = useToast();
@@ -182,6 +191,7 @@ function Rows({ rows }: { rows: PendingRow[] }) {
                   <>
                     <span className="font-semibold">{r.orderNumber} not sent.</span>
                     <span className="text-slate"> {r.message}</span>
+                    {r.code && OVERRIDABLE_CODES.has(r.code) ? <span className="text-ink"> Open it to look, or send it anyway.</span> : null}
                   </>
                 )}
               </p>
@@ -202,14 +212,16 @@ function Rows({ rows }: { rows: PendingRow[] }) {
               ) : null}
               {r.status === "failed" ? (
                 <div className="flex shrink-0 gap-2">
-                  <button
-                    type="button"
-                    data-testid="retry-approval"
-                    onClick={() => approvalStore.retry(r.orderId)}
-                    className={cn("min-h-11 min-w-11 rounded-input bg-sage px-3 text-sm font-semibold text-surface", focusRing)}
-                  >
-                    Retry
-                  </button>
+                  {r.code && OVERRIDABLE_CODES.has(r.code) ? null : (
+                    <button
+                      type="button"
+                      data-testid="retry-approval"
+                      onClick={() => approvalStore.retry(r.orderId)}
+                      className={cn("min-h-11 min-w-11 rounded-input bg-sage px-3 text-sm font-semibold text-surface", focusRing)}
+                    >
+                      Retry
+                    </button>
+                  )}
                   <button
                     type="button"
                     data-testid="open-approval"
@@ -225,6 +237,7 @@ function Rows({ rows }: { rows: PendingRow[] }) {
                 </div>
               ) : null}
             </div>
+            {r.status === "failed" && r.code && OVERRIDABLE_CODES.has(r.code) ? <SendAnyway row={r} /> : null}
             {r.status === "pending" ? (
               <div className="h-1 bg-line">
                 <div className="h-full bg-rose transition-[width] duration-200 ease-linear" style={{ width: `${pct}%` }} />

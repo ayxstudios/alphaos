@@ -197,12 +197,11 @@ export function QcScreen({
         body: emailBody,
         signature,
       });
-      let res = await send();
-      // Wrong-file, revision and two-portraits-one-file stops (lib/qc/wrong-file.ts, revision-stop.ts, duplicate-slots.ts): staff can send anyway with a written reason, logged on the order.
-      if (!res.ok && (res.code === "wrong_file" || res.code === "revision_not_done" || res.code === "duplicate_slots")) {
-        const reason = window.prompt(`${res.message}\n\nOnly if you have checked it is right: type why, then OK. Cancel keeps it stopped.`);
-        if (reason && reason.trim().length >= 4) res = await send(reason.trim());
-      }
+      // Wrong-file, revision and two-portraits-one-file stops (lib/qc/wrong-file.ts, revision-stop.ts,
+      // duplicate-slots.ts): no prompt any more (Ayser 2026-10-22: "Do not do the popup thing"). An owner's pass goes
+      // through Auto QC's finding on the server (logged); anything else comes back as the error, to fail it back or
+      // send from /approve, which shows it before the tap.
+      const res = await send();
       if (res.ok) setEmailPreview(null);
       handleResult(res, "Proof sent to the customer");
     });
