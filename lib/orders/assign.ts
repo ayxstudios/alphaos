@@ -20,6 +20,7 @@ import { getAgentConfig } from "@/lib/agent/config";
 import { getOrderPortraits } from "@/lib/orders/portraits";
 import { loadOrderTotal, toOrderTotal, type OrderTotal } from "@/lib/orders/order-total";
 import { routeDisneyPeople } from "@/lib/orders/disney-people";
+import { fillRoutingStyle, hasRoutingStyles } from "@/lib/designers/styles";
 import {
   loadReworkHold,
   reworkAllows,
@@ -564,7 +565,7 @@ export async function loadRankedCandidates(
 export async function runAutoAssign(
   tx: Tx,
   order: { orderId: string; businessId: string; assignedBy: string | null },
-): Promise<{ assigned: string | null; reworkHeld?: ReworkHold; missingPhoto?: boolean }> {
+): Promise<{ assigned: string | null; reworkHeld?: ReworkHold; missingPhoto?: boolean; noStyle?: boolean }> {
   // No photo = nobody is picked and nothing throws: the caller parks the order
   // (autopilot raises a card, a transition still succeeds) until a reference
   // photo is attached, then the next pass assigns it.
@@ -584,6 +585,17 @@ export async function runAutoAssign(
   // (Yousif 2026-10-21, lib/orders/board-hold.ts).
   const holder = await loadBoardHolder(tx, order.orderId);
   if (onPersonsBoard(holder)) return { assigned: holder.designerId };
+
+  // No style = no route (2026-10-23: CPS watercolor pets and couples saved with
+  // no style went to whoever ranked first). Read it off the catalog; still none
+  // in a business that has styles = nobody is picked and the caller raises it.
+  // A Disney order keeps its Disney-only route even unstyled.
+  if (!style) {
+    style = await fillRoutingStyle(tx, order.businessId, order.orderId);
+    if (!style && !(await loadIsDisneyOrder(tx, order.orderId)) && (await hasRoutingStyles(tx, order.businessId))) {
+      return { assigned: null, noStyle: true };
+    }
+  }
 
   // A PixArt Disney order whose buyer names a person becomes Disneyfy People,
   // so only the Disney people designer is offered it (Yousif 2026-10-21).

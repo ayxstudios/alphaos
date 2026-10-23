@@ -2,6 +2,7 @@
 // database (the passes are checked in test-limbo.ts). The cases are real rows
 // from the owner message of 2026-10-17, then the traps the rules must not fall into.
 import {
+  AGENT_DAILY_RETAKE_HOURS,
   AGENT_MAX_TAKES,
   AGENT_PICKUP_HOURS,
   AGENT_RETAKE_HOURS,
@@ -162,7 +163,12 @@ check("tried the most times, last go still running: mine", agentFallback(created
 check("takeable: past grace", takeable(ago(2), 1, fresh, now) && !takeable(ago(0.5), 1, fresh, now));
 check("takeable: not again inside the retake gap", !takeable(created, 1, { takes: 1, takenAt: ago(1).toISOString(), note: null }, now));
 check("takeable: again after it", takeable(created, 1, { takes: 1, takenAt: ago(AGENT_RETAKE_HOURS).toISOString(), note: null }, now));
-check("takeable: never past the most goes", !takeable(created, 1, { takes: AGENT_MAX_TAKES, takenAt: ago(5).toISOString(), note: null }, now));
+check("takeable: past the most goes, not again the same day", !takeable(created, 1, { takes: AGENT_MAX_TAKES, takenAt: ago(5).toISOString(), note: null }, now));
+check(
+  "takeable: past the most goes, one more go a day",
+  takeable(created, 1, { takes: AGENT_MAX_TAKES, takenAt: ago(AGENT_DAILY_RETAKE_HOURS).toISOString(), note: null }, now) &&
+    takeable(created, 1, { takes: AGENT_MAX_TAKES + 4, takenAt: ago(AGENT_DAILY_RETAKE_HOURS + 1).toISOString(), note: null }, now),
+);
 const st = agentStateOf({ agentTakes: 2, agentTakenAt: "2026-10-17T01:00:00Z", agentNote: "asked on Etsy" });
 check("agent state read from the row", st.takes === 2 && st.takenAt === "2026-10-17T01:00:00Z" && st.note === "asked on Etsy");
 

@@ -915,6 +915,18 @@ async function dbTests() {
   await watchWaitingStates(ids.biz, { now: new Date(Date.now() + (AGENT_DECISION_DAYS * 24 + 1) * HOUR) });
   check("decision: the agent's call is looked at again after a week", !!(await openOn(d2.id, "stuck_order")));
   check("decision: a person's call still holds after a week", !(await openOn(d3.id, "stuck_order")));
+
+  // --- Saving an order's details again is not a new arrival (2026-10-23: DT 4196502186's stuck row was
+  // auto-closed six times, each time its details were saved, as if it had just come in) ---
+  const ed = await mkOrder({ status: "ready_to_assign", hoursAgo: 30 });
+  await withSystemContext((tx) =>
+    tx.insert(activityLog).values([
+      { businessId: ids.biz, orderId: ed.id, actorId: null, action: "order.ready_to_assign", fromState: "awaiting_details", toState: "ready_to_assign", createdAt: ago(30) },
+      { businessId: ids.biz, orderId: ed.id, actorId: null, action: "order.details_updated", fromState: "ready_to_assign", toState: "ready_to_assign", createdAt: ago(0.1) },
+    ]),
+  );
+  const edited = await getLimboCensus(ids.biz, { now });
+  check("census: a re-saved order keeps the time it really arrived", edited.limboOrders.some((o) => o.number === ed.number), JSON.stringify(edited.limboOrders));
 }
 
 // The app login may not delete activity_log rows (it is append-only), so the

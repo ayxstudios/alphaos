@@ -154,6 +154,8 @@ export const AGENT_PICKUP_HOURS = 3;
 export const AGENT_RETAKE_HOURS = 2;
 /** After this many goes the owner hears, with the agent's last note. */
 export const AGENT_MAX_TAKES = 3;
+/** Past the most goes the row is still the agent's: one more go a day, never quiet for good (2026-10-23). */
+export const AGENT_DAILY_RETAKE_HOURS = 24;
 /** Taken but not taken again for this long = the agent side stopped: the owner hears. */
 export const AGENT_STALLED_HOURS = 6;
 /** Rows one take hands over (one agent run works them). */
@@ -187,9 +189,12 @@ export function agentFallback(createdAt: Date, graceHours: number, a: AgentState
   return null;
 }
 
-/** The agent may take it now: past its grace, not taken in the last AGENT_RETAKE_HOURS, goes left. */
+/**
+ * The agent may take it now: past its grace and not taken in the last
+ * AGENT_RETAKE_HOURS; past the most goes, once a day (AGENT_DAILY_RETAKE_HOURS).
+ */
 export function takeable(createdAt: Date, graceHours: number, a: AgentState, now: Date): boolean {
   if ((now.getTime() - createdAt.getTime()) / HOUR < graceHours) return false;
-  if (a.takes >= AGENT_MAX_TAKES) return false;
+  if (a.takes >= AGENT_MAX_TAKES) return hoursSince(a.takenAt, now) >= AGENT_DAILY_RETAKE_HOURS;
   return !a.takes || hoursSince(a.takenAt, now) >= AGENT_RETAKE_HOURS;
 }

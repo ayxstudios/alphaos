@@ -671,6 +671,8 @@ async function intakeStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
               style: v.style,
               productType: v.productType,
               toStatus: applied.toStatus,
+              // The email filler links the buyer later; nothing waits on it.
+              ...(v.customerEmail ? {} : { emailMissing: true }),
             });
             if (applied.toStatus === "awaiting_photos" && order.uploadToken) {
               const queued = await queuePhotoRequestOnce(inner, { ...order, uploadToken: order.uploadToken });
@@ -977,7 +979,7 @@ async function assignStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
         return;
       }
 
-      const { assigned, reworkHeld, missingPhoto } = await runAutoAssign(tx, { orderId: order.id, businessId: order.businessId, assignedBy: null });
+      const { assigned, reworkHeld, missingPhoto, noStyle } = await runAutoAssign(tx, { orderId: order.id, businessId: order.businessId, assignedBy: null });
       if (assigned) {
         await logAgent(tx, order, "agent.assigned", { designerId: assigned, via: "agent_autopilot" });
         bump((r) => (r.assigned += 1));
@@ -993,6 +995,18 @@ async function assignStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
           `Order #${orderLabel(order)} is in the design queue with no reference photo: attach the buyer's photo before anyone draws it`,
           { have: 0, need: null, reason: "no reference photo",
             recommendation: "Pull the photo from the buyer's Etsy chat or email onto the order (the photo bridge does this every 20 minutes); if the buyer never sent one, send the photo ask." });
+        return;
+      }
+
+      // No style (2026-10-23): nobody is ranked, so it never lands on whoever
+      // is first in line. One card: pick the style and the next pass assigns it.
+      if (noStyle) {
+        bump((r) => (r.noEligibleDesigner += 1));
+        const product = lines.find((l) => l.title)?.title ?? null;
+        await raise(tx, bump, ctx.now, order, "no_eligible_designer",
+          `Order #${orderLabel(order)} has no style: pick its style so the right designer gets it`,
+          { style: null, noStyle: true, product,
+            recommendation: "Set the style on the order (or add this listing's title to its style on /styles); the next pass gives it to that style's designer." });
         return;
       }
 

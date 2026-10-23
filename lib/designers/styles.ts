@@ -1,7 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 
 import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
-import { styles } from "@/lib/db/schema";
+import { orderItems, styles } from "@/lib/db/schema";
 
 export type BusinessStyle = {
   id: string;
@@ -10,6 +10,8 @@ export type BusinessStyle = {
   skuMatches: string[];
   isDefault: boolean;
   perFigureRate: string | null;
+  /** Made by the agent for a product it had never seen: no designer picked yet. */
+  autoCreated?: boolean;
 };
 
 /**
@@ -25,6 +27,7 @@ export async function listBusinessStyles(tx: Tx, businessId: string): Promise<Bu
       skuMatches: styles.skuMatches,
       isDefault: styles.isDefault,
       perFigureRate: styles.perFigureRate,
+      autoCreated: styles.autoCreated,
     })
     .from(styles)
     .where(eq(styles.businessId, businessId))
@@ -36,7 +39,77 @@ export async function listBusinessStyles(tx: Tx, businessId: string): Promise<Bu
     skuMatches: r.skuMatches ?? [],
     isDefault: r.isDefault,
     perFigureRate: r.perFigureRate,
+    autoCreated: r.autoCreated,
   }));
+}
+
+/** Add-on listings (Print & Ship, upgrades) carry a style row but nothing to draw: never a route. */
+const ADDON_STYLE = /print\s*&\s*ship|add-?on/i;
+
+/**
+ * The style a product ROUTES by when nobody set one (2026-10-23: CPS watercolor
+ * pets and couples were completed with no style and went to whoever ranked
+ * first). An exact SKU rule, else the LONGEST title rule the title contains.
+ * Never the business default, never an auto-created or add-on style, and null
+ * when two different styles tie, so a person picks instead of a guess.
+ */
+export function routingStyleMatch(
+  title: string | null | undefined,
+  sku: string | null | undefined,
+  businessStyles: BusinessStyle[],
+): string | null {
+  const usable = businessStyles.filter((st) => !st.autoCreated && !ADDON_STYLE.test(st.name));
+  const s = (sku ?? "").trim().toLowerCase();
+  if (s) {
+    const bySku = new Set(usable.filter((st) => st.skuMatches.some((m) => m.trim().toLowerCase() === s)).map((st) => st.name));
+    if (bySku.size === 1) return [...bySku][0];
+    if (bySku.size > 1) return null;
+  }
+  const t = (title ?? "").toLowerCase();
+  if (!t) return null;
+  let best = 0;
+  let names = new Set<string>();
+  for (const st of usable) {
+    for (const m of st.titleMatches) {
+      const key = m.trim().toLowerCase();
+      if (!key || !t.includes(key) || key.length < best) continue;
+      if (key.length > best) {
+        best = key.length;
+        names = new Set();
+      }
+      names.add(st.name);
+    }
+  }
+  return names.size === 1 ? [...names][0] : null;
+}
+
+/** The business routes by style at all: it has a style a person set up (not add-on, not auto-created). */
+export async function hasRoutingStyles(tx: Tx, businessId: string): Promise<boolean> {
+  return (await listBusinessStyles(tx, businessId)).some((st) => !st.autoCreated && !ADDON_STYLE.test(st.name));
+}
+
+/**
+ * Give every style-less item of an order its routing style (unlocked, a rule
+ * chose it) and return the order's style afterwards (the first item that has
+ * one, so an add-on line never hides the portrait's). Items that already have
+ * a style stay as they are; nothing matched = nothing written.
+ */
+export async function fillRoutingStyle(tx: Tx, businessId: string, orderId: string): Promise<string | null> {
+  const items = await tx
+    .select({ id: orderItems.id, title: orderItems.title, sku: orderItems.sku, style: orderItems.style })
+    .from(orderItems)
+    .where(eq(orderItems.orderId, orderId));
+  const catalog = items.some((i) => !i.style?.trim()) ? await listBusinessStyles(tx, businessId) : [];
+  let found: string | null = null;
+  for (const item of items) {
+    let style = item.style?.trim() || null;
+    if (!style) {
+      style = routingStyleMatch(item.title, item.sku, catalog);
+      if (style) await tx.update(orderItems).set({ style, styleLocked: false }).where(eq(orderItems.id, item.id));
+    }
+    found ??= style;
+  }
+  return found;
 }
 
 export type StyleMatch = {

@@ -5,7 +5,7 @@ import type { Tx } from "@/lib/db";
 import { shops, orders, orderItems, customers, assets, activityLog } from "@/lib/db/schema";
 import { parseFigureCount } from "@/lib/orders/manual-input";
 import { runTransition, type OrderStatus } from "@/lib/orders/transitions";
-import { shopStyleChoices } from "@/lib/designers/styles";
+import { listBusinessStyles, routingStyleMatch, shopStyleChoices } from "@/lib/designers/styles";
 import { referenceUploadProblem } from "@/lib/uploads/verify";
 import { withSizeOption } from "@/lib/orders/size-option";
 import { hashColumnsFor } from "@/lib/qc/asset-hash";
@@ -130,7 +130,8 @@ export async function completeOrderDetailsCore(
       .select({ styles: shops.styles })
       .from(shops)
       .where(eq(shops.id, order.shopId));
-    if (!styleAllowed(input.style, await shopStyleChoices(tx, businessId, shop?.styles))) {
+    const styleChoices = await shopStyleChoices(tx, businessId, shop?.styles);
+    if (!styleAllowed(input.style, styleChoices)) {
       return { ok: false as const, message: "Choose one of this shop's configured portrait styles." };
     }
 
@@ -152,21 +153,30 @@ export async function completeOrderDetailsCore(
     }
 
     const [existingItem] = await tx
-      .select({ id: orderItems.id, options: orderItems.options })
+      .select({ id: orderItems.id, options: orderItems.options, sku: orderItems.sku, style: orderItems.style, styleLocked: orderItems.styleLocked })
       .from(orderItems)
       .where(eq(orderItems.orderId, order.id))
       .for("update")
       .limit(1);
+    // No style given (2026-10-23: the agent's intake often sends none, and the
+    // ranker then gave CPS watercolor orders to whoever was first in line):
+    // keep the item's own, else the catalog route for its title; never a guess.
+    const title = input.productTitle?.trim() || null;
+    const given = input.style?.trim() || null;
+    const kept = given ? null : existingItem?.style?.trim() || null;
+    const routed = given || kept ? null : routingStyleMatch(title, existingItem?.sku, await listBusinessStyles(tx, businessId));
+    const style = given ?? kept ?? (routed && styleAllowed(routed, styleChoices) ? routed : null);
     const itemValues = {
       businessId,
       orderId: order.id,
-      title: input.productTitle?.trim() || null,
+      title,
       figureCount,
       figureCountSource: figureCount != null ? (input.figureCountSource ?? ("manual" as const)) : null,
-      style: input.style?.trim() || null,
+      style,
       // A style the VA picked by hand is a hand-set: the order page shows it
       // as chosen (not "Defaulted ... please confirm") and a re-resolve keeps it.
-      styleLocked: input.styleLocked ?? !!input.style?.trim(),
+      // A kept style keeps its lock; a routed one is a rule's, never locked.
+      styleLocked: given ? (input.styleLocked ?? true) : kept ? (existingItem?.styleLocked ?? false) : false,
       productType: input.productType,
       // Only touch options when the form carried a size, so an imported
       // order's other options are never lost.
@@ -244,7 +254,7 @@ export async function completeOrderDetailsCore(
         action: "order.details_updated",
         fromState: order.status,
         toState: order.status,
-        metadata: { photoCount, style: input.style ?? null },
+        metadata: { photoCount, style, ...(style && !given ? { styleVia: kept ? "kept" : "catalog" } : {}) },
       });
     }
 

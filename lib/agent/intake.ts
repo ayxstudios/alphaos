@@ -33,6 +33,7 @@ export type IntakeValues = {
   productType: "digital" | "physical";
   notes: string;
   customerName: string;
+  /** Empty when nobody has read it off the Etsy order page yet (not a blocker). */
   customerEmail: string;
 };
 
@@ -114,9 +115,13 @@ export function parseIntake(ctx: IntakeContext): IntakeParse {
   const productTitle = defaults.productTitle.trim() || null;
   if (!productTitle) missing.push("product title");
 
+  // A missing email never keeps an order off the boards (2026-10-23: two paid
+  // CPS orders sat 7 days in awaiting_details on it alone). Etsy's API never
+  // gives it; the order completes without one and the email filler links the
+  // buyer later (it picks every Etsy order with no customer). Every buyer email
+  // send skips an order with no customer. A malformed one still holds the order.
   const customerEmail = (ctx.customerEmail?.trim() || review.buyerEmail?.trim() || "").toLowerCase() || null;
-  if (!customerEmail) missing.push("customer email (not read from the Etsy order page yet)");
-  else if (emailProblem(customerEmail)) missing.push(`customer email ("${customerEmail}" does not look right)`);
+  if (customerEmail && emailProblem(customerEmail)) missing.push(`customer email ("${customerEmail}" does not look right)`);
   const customerName = ctx.customerName?.trim() || review.buyerName?.trim() || null;
 
   const notes = ctx.orderNotes?.trim() || defaults.notes.trim() || null;
@@ -133,7 +138,7 @@ export function parseIntake(ctx: IntakeContext): IntakeParse {
     customerEmail,
   };
 
-  if (missing.length || figureCount == null || !style || !productType || !productTitle || !customerEmail) {
+  if (missing.length || figureCount == null || !style || !productType || !productTitle) {
     return { confident: false, missing, bestGuess };
   }
   return {
@@ -145,7 +150,7 @@ export function parseIntake(ctx: IntakeContext): IntakeParse {
       productType,
       notes: notes ?? "",
       customerName: customerName ?? "",
-      customerEmail,
+      customerEmail: customerEmail ?? "",
     },
     bestGuess,
   };

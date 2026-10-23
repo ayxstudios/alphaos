@@ -416,8 +416,11 @@ async function loadOrderFacts(tx: Tx, businessId: string): Promise<OrderFacts[]>
       status: sql<string>`${orders.status}::text`,
       needsReview: orders.needsReview,
       inScope: sql<boolean>`${agentOrderScope()}`,
+      // A real move into the status, never a same-status save (details_updated):
+      // re-saving an order's details is not a new arrival (2026-10-23).
       enteredAt: sql<string>`coalesce((select max(a.created_at) from activity_log a
-        where a.order_id = ${orders.id} and a.to_state = ${orders.status}), ${orders.createdAt})`,
+        where a.order_id = ${orders.id} and a.to_state = ${orders.status}
+          and a.from_state is distinct from a.to_state), ${orders.createdAt})`,
       activeAssignment: sql<boolean>`exists (select 1 from assignments a where a.order_id = ${orders.id} and a.active)`,
       aiFailedHold: sql<boolean>`(${orders.aiState} = 'failed' and exists (select 1 from assignments a
         join designer_profiles p on p.user_id = a.designer_id where a.order_id = ${orders.id} and a.active and p.is_agent))`,
