@@ -17,7 +17,6 @@ import {
   designerBusinesses,
   designerProfiles,
   exceptions,
-  orderItems,
   orders,
   shops,
   users,
@@ -29,6 +28,7 @@ import { buyerWordsWhere } from "@/lib/reminders/buyer-replied";
 import { reassignOrder } from "./ai-designer";
 import { agentOrderScope, legacyQuiet } from "./scope";
 import { openExceptionTx } from "./exceptions";
+import { loadPortraitStyle } from "@/lib/orders/portrait-item";
 
 const HOUR = 3_600_000;
 export const CLOSED_STATUSES = ["cancelled", "complete", "delivered", "shipped"];
@@ -1111,13 +1111,9 @@ export async function reworkHeldNote(
   orderId: string,
   hold: ReworkHold,
 ): Promise<{ headline: string; owner: string | null; suggest: string | null; recommendation: string }> {
-  const [item] = await tx
-    .select({ style: orderItems.style })
-    .from(orderItems)
-    .where(and(eq(orderItems.orderId, orderId), sql`${orderItems.style} is not null`))
-    .limit(1);
+  const itemStyle = await loadPortraitStyle(tx, orderId);
   const owner = await reworkOwnerName(tx, hold);
-  const pick = await pickHumanDesigner(tx, businessId, item?.style ?? null);
+  const pick = await pickHumanDesigner(tx, businessId, itemStyle);
   const who = owner ?? "its designer";
   return {
     headline: `a revision of ${who}'s work and ${who} cannot take it back`,
@@ -1125,7 +1121,7 @@ export async function reworkHeldNote(
     suggest: pick?.name ?? null,
     recommendation: pick
       ? `It is a revision, so it moves only with your yes: give it to ${pick.name ?? "the next designer"} on the order page, or say who.`
-      : `It is a revision, so it moves only with your yes: say who redoes it${item?.style ? ` (nobody else draws ${item.style} right now)` : ""}.`,
+      : `It is a revision, so it moves only with your yes: say who redoes it${itemStyle ? ` (nobody else draws ${itemStyle} right now)` : ""}.`,
   };
 }
 

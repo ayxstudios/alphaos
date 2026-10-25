@@ -17,7 +17,6 @@ import {
   designerBusinesses,
   designerProfiles,
   messages,
-  orderItems,
   orders,
   proofs,
   users,
@@ -28,6 +27,7 @@ import { sendMessage } from "@/lib/email/dispatch";
 import {
   createAssignment,
   disneyRefusal,
+  eligibilityRefusal,
   MissingReferencePhotoError,
 } from "@/lib/orders/assign";
 import { adminApproval, loadReworkHold, reworkAllows, reworkStaysMessage } from "@/lib/orders/rework";
@@ -45,6 +45,7 @@ import {
   markQueuedForAgent,
 } from "./ai-core";
 import { hashColumnsFor } from "@/lib/qc/asset-hash";
+import { loadPortraitItem } from "@/lib/orders/portrait-item";
 
 export { AI_REVISION_STAGE, ensureAgentDesigner, getAgentDesignerId, isAgentAssigned } from "./ai-core";
 
@@ -122,18 +123,8 @@ async function buildJob(tx: Tx, orderId: string): Promise<AiJob | null> {
     .limit(1);
   if (!o) return null;
 
-  const [item] = await tx
-    .select({
-      title: orderItems.title,
-      style: orderItems.style,
-      variation: orderItems.variation,
-      options: orderItems.options,
-      figureCount: orderItems.figureCount,
-      productType: orderItems.productType,
-    })
-    .from(orderItems)
-    .where(eq(orderItems.orderId, orderId))
-    .limit(1);
+  // The portrait line, never an add-on that happens to be the first row.
+  const item = await loadPortraitItem(tx, orderId);
 
   const { findStyle } = await import("./ai-core");
   const styleRow = await findStyle(tx, o.businessId, item?.style ?? null);
@@ -716,6 +707,13 @@ export async function reassignOrder(
     }
     const notDisney = await disneyRefusal(tx, orderId, designerId);
     if (notDisney) return { ok: false as const, code: "disney_only", message: notDisney };
+    // The same style / Disney-only / AI Studio rules auto-assign follows. Only an
+    // owner's yes (ownerApproved) or an admin making the move may override them;
+    // a VA, a designer or the agent cannot (4188930166 went to the wrong person).
+    const ineligible = await eligibilityRefusal(tx, { orderId, businessId: o.businessId, designerId });
+    if (ineligible && !(opts.ownerApproved?.trim() || (await adminApproval(tx, byUserId)))) {
+      return { ok: false as const, code: ineligible.code, message: ineligible.message };
+    }
     const hold = await loadReworkHold(tx, orderId);
     const reworkMove = !reworkAllows(hold, designerId);
     // An order on a person's board stays there without an owner's yes (Yousif 2026-10-21, lib/orders/board-hold.ts).

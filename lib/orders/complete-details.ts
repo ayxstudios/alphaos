@@ -1,5 +1,5 @@
 import { parseDueDate } from "@/lib/time";
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 
 import type { Tx } from "@/lib/db";
 import { shops, orders, orderItems, customers, assets, activityLog } from "@/lib/db/schema";
@@ -9,6 +9,7 @@ import { listBusinessStyles, routingStyleMatch, shopStyleChoices } from "@/lib/d
 import { referenceUploadProblem } from "@/lib/uploads/verify";
 import { withSizeOption } from "@/lib/orders/size-option";
 import { hashColumnsFor } from "@/lib/qc/asset-hash";
+import { loadClassifyConfig, pickPortraitItem } from "@/lib/orders/portrait-item";
 
 /**
  * The core of "complete an imported awaiting_details order", shared by the VA
@@ -152,12 +153,14 @@ export async function completeOrderDetailsCore(
       customerId = c?.id ?? null;
     }
 
-    const [existingItem] = await tx
-      .select({ id: orderItems.id, options: orderItems.options, sku: orderItems.sku, style: orderItems.style, styleLocked: orderItems.styleLocked })
+    // The portrait line is the one this form fills in, never an add-on that is the first row.
+    const lockedItems = await tx
+      .select({ id: orderItems.id, title: orderItems.title, options: orderItems.options, sku: orderItems.sku, style: orderItems.style, styleLocked: orderItems.styleLocked })
       .from(orderItems)
       .where(eq(orderItems.orderId, order.id))
-      .for("update")
-      .limit(1);
+      .orderBy(asc(orderItems.id))
+      .for("update");
+    const existingItem = lockedItems.length > 1 ? pickPortraitItem(lockedItems, await loadClassifyConfig(tx, order.id)) ?? undefined : lockedItems[0];
     // No style given (2026-10-23: the agent's intake often sends none, and the
     // ranker then gave CPS watercolor orders to whoever was first in line):
     // keep the item's own, else the catalog route for its title; never a guess.

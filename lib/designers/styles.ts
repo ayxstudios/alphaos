@@ -2,6 +2,7 @@ import { asc, eq } from "drizzle-orm";
 
 import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
 import { orderItems, styles } from "@/lib/db/schema";
+import { ADDON_STYLE, loadClassifyConfig, pickPortraitItem, type PickableItem } from "@/lib/orders/portrait-item";
 
 export type BusinessStyle = {
   id: string;
@@ -43,8 +44,6 @@ export async function listBusinessStyles(tx: Tx, businessId: string): Promise<Bu
   }));
 }
 
-/** Add-on listings (Print & Ship, upgrades) carry a style row but nothing to draw: never a route. */
-const ADDON_STYLE = /print\s*&\s*ship|add-?on/i;
 
 /**
  * The style a product ROUTES by when nobody set one (2026-10-23: CPS watercolor
@@ -90,26 +89,27 @@ export async function hasRoutingStyles(tx: Tx, businessId: string): Promise<bool
 
 /**
  * Give every style-less item of an order its routing style (unlocked, a rule
- * chose it) and return the order's style afterwards (the first item that has
- * one, so an add-on line never hides the portrait's). Items that already have
+ * chose it) and return the order's style afterwards (its portrait item's, so an
+ * add-on line never hides the portrait's). Items that already have
  * a style stay as they are; nothing matched = nothing written.
  */
 export async function fillRoutingStyle(tx: Tx, businessId: string, orderId: string): Promise<string | null> {
   const items = await tx
     .select({ id: orderItems.id, title: orderItems.title, sku: orderItems.sku, style: orderItems.style })
     .from(orderItems)
-    .where(eq(orderItems.orderId, orderId));
+    .where(eq(orderItems.orderId, orderId))
+    .orderBy(asc(orderItems.id));
   const catalog = items.some((i) => !i.style?.trim()) ? await listBusinessStyles(tx, businessId) : [];
-  let found: string | null = null;
+  const filled: PickableItem[] = [];
   for (const item of items) {
     let style = item.style?.trim() || null;
     if (!style) {
       style = routingStyleMatch(item.title, item.sku, catalog);
       if (style) await tx.update(orderItems).set({ style, styleLocked: false }).where(eq(orderItems.id, item.id));
     }
-    found ??= style;
+    filled.push({ ...item, style });
   }
-  return found;
+  return pickPortraitItem(filled, filled.length > 1 ? await loadClassifyConfig(tx, orderId) : null)?.style ?? null;
 }
 
 export type StyleMatch = {

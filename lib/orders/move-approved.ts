@@ -143,7 +143,7 @@ export async function moveApproved(input: MoveApprovedInput): Promise<MoveApprov
     };
   }
 
-  const res = await reassignOrder(o.id, target.id, plan.by, { ownerApproved: needsYes ? approved : null });
+  const res = await reassignOrder(o.id, target.id, plan.by, { ownerApproved: approved });
   if (!res.ok) return { ok: false, code: res.code, message: res.message };
   result.applied = res.changed;
   // Both designers hear it the usual way; the AI designer has no phone.

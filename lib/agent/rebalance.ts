@@ -10,12 +10,13 @@ import { and, desc, eq, sql } from "drizzle-orm";
 
 import { holdAlphaPushesIf } from "@/lib/alpha/client";
 import { withSystemContext, type Tx } from "@/lib/db";
-import { activityLog, assets, assignments, businesses, orderItems, orders, users } from "@/lib/db/schema";
+import { activityLog, assets, assignments, businesses, orders, users } from "@/lib/db/schema";
 import { createAssignment, hasReferencePhoto, loadRankedCandidates } from "@/lib/orders/assign";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { agentOrderScope, legacyQuiet } from "./scope";
 
 import { loadCapacityModel, type DesignerLoad } from "./capacity";
+import { loadPortraitStyle } from "@/lib/orders/portrait-item";
 
 export type RebalanceMove = {
   orderId: string;
@@ -95,14 +96,9 @@ async function moveOne(
   tx: Tx,
   input: { businessId: string; order: Movable; from: DesignerLoad; awayIds: Set<string>; reason: string },
 ): Promise<RebalanceMove | null> {
-  const [item] = await tx
-    .select({ style: orderItems.style })
-    .from(orderItems)
-    .where(eq(orderItems.orderId, input.order.orderId))
-    .limit(1);
   const ranked = await loadRankedCandidates(tx, {
     businessId: input.businessId,
-    style: item?.style ?? null,
+    style: await loadPortraitStyle(tx, input.order.orderId),
     excludeDesignerId: input.from.designerId,
     orderId: input.order.orderId,
   });

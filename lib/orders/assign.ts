@@ -39,6 +39,7 @@ import {
   staysOnBoardMessage,
   StaysOnBoardError,
 } from "@/lib/orders/board-hold";
+import { loadPortraitStyle } from "@/lib/orders/portrait-item";
 
 export const DESIGNER_SLA_HOURS = 24;
 
@@ -108,12 +109,31 @@ export function drawsDisney(styles: string[] | null | undefined): boolean {
   return (styles ?? []).some(isDisneyStyle);
 }
 
+/** Titles of the Etsy receipt lines kept in orders.raw_import (legacy backfilled orders have no order_items rows). */
+function rawImportTitles(raw: unknown): string[] {
+  const transactions = (raw as { transactions?: unknown } | null)?.transactions;
+  if (!Array.isArray(transactions)) return [];
+  return transactions
+    .map((t) => (t as { title?: unknown } | null)?.title)
+    .filter((t): t is string => typeof t === "string");
+}
+
 export async function loadIsDisneyOrder(tx: Tx, orderId: string): Promise<boolean> {
   const items = await tx
     .select({ style: orderItems.style, title: orderItems.title })
     .from(orderItems)
     .where(eq(orderItems.orderId, orderId));
-  return isDisneyOrder(items);
+  if (items.length) return isDisneyOrder(items);
+  // No item rows (legacy backfill): the raw receipt still names the product, so a
+  // Disney order is not mistaken for a plain one and handed to anyone.
+  const [o] = await tx.select({ rawImport: orders.rawImport }).from(orders).where(eq(orders.id, orderId)).limit(1);
+  return isDisneyOrder(rawImportTitles(o?.rawImport).map((title) => ({ title })));
+}
+
+/** Draws only Disney styles (Mar today): never a plain order. */
+export function drawsOnlyDisney(styles: string[] | null | undefined): boolean {
+  const list = (styles ?? []).filter((s) => s.trim());
+  return list.length > 0 && list.every(isDisneyStyle);
 }
 
 /** Thrown by createAssignment when a Disney order would go to a designer who draws no Disney style. */
@@ -132,6 +152,57 @@ export async function disneyRefusal(tx: Tx, orderId: string, designerId: string)
     .limit(1);
   if (drawsDisney(d?.styles)) return null;
   return `This is a Disney order and ${d?.name ?? "that designer"} does not draw Disney. Only a designer who draws Disney can take it.`;
+}
+
+export type EligibilityRefusal = { code: "not_eligible"; message: string };
+
+/**
+ * The same routing rules auto-assign applies, for a person or a script picking
+ * the designer by hand (reassignOrder). A Disney order is handled by
+ * disneyRefusal; this covers the rest: a styled order only to a designer who
+ * draws that style, a plain order never to a Disney-only designer (Mar), and the
+ * AI Studio only where the order's style has the AI designer switched on (the
+ * designer-only businesses and styles never do) and it needs one portrait.
+ * Callers let an owner or admin override it.
+ */
+export async function eligibilityRefusal(
+  tx: Tx,
+  input: { orderId: string; businessId: string; designerId: string },
+): Promise<EligibilityRefusal | null> {
+  const [d] = await tx
+    .select({ name: users.name, styles: designerProfiles.styles, isAgent: designerProfiles.isAgent })
+    .from(users)
+    .leftJoin(designerProfiles, eq(designerProfiles.userId, users.id))
+    .where(eq(users.id, input.designerId))
+    .limit(1);
+  const who = d?.name ?? "that designer";
+  const refuse = (message: string): EligibilityRefusal => ({ code: "not_eligible", message });
+
+  const disney = await loadIsDisneyOrder(tx, input.orderId);
+  let style = await loadPortraitStyle(tx, input.orderId);
+  if (!style) style = await fillRoutingStyle(tx, input.businessId, input.orderId);
+
+  if (d?.isAgent) {
+    if (disney) return refuse(`This is a Disney order and the AI Studio does not draw Disney. Give it to a Disney designer.`);
+    const styleRow = await findStyle(tx, input.businessId, style);
+    if (!styleRow?.aiDesignerEnabled) {
+      return refuse(
+        style
+          ? `The AI Studio is not switched on for ${style}. Give it to a designer who draws ${style}.`
+          : "This order has no style yet, and the AI Studio only takes a style it is switched on for.",
+      );
+    }
+    return null;
+  }
+
+  if (disney) return null; // disneyRefusal already limits it to a Disney designer
+  if (drawsOnlyDisney(d?.styles)) {
+    return refuse(`${who} draws only Disney and this is not a Disney order. Give it to a designer who draws ${style ?? "its style"}.`);
+  }
+  if (style && !(d?.styles ?? []).some((s) => s.trim().toLowerCase() === style!.trim().toLowerCase())) {
+    return refuse(`${who} does not draw ${style}. Give it to a designer who does.`);
+  }
+  return null;
 }
 
 export type RevisionKind = "qc_fail" | "customer";
@@ -571,12 +642,9 @@ export async function runAutoAssign(
   // photo is attached, then the next pass assigns it.
   if (!(await hasReferencePhoto(tx, order.orderId))) return { assigned: null, missingPhoto: true };
 
-  const [item] = await tx
-    .select({ style: orderItems.style })
-    .from(orderItems)
-    .where(eq(orderItems.orderId, order.orderId))
-    .limit(1);
-  let style = item?.style ?? null;
+  // The style comes off the order's PORTRAIT item, never an add-on line that
+  // happens to be the first row (portrait-item.ts).
+  let style = await loadPortraitStyle(tx, order.orderId);
 
   const hold = await loadReworkHold(tx, order.orderId);
   if (reworkBound(hold)) return keepRework(tx, order, hold, style);

@@ -49,7 +49,7 @@ function unitLabel(item: { title: string | null; variation: string | null }, uni
  * are never a portrait of their own, even when a shop has not listed them in
  * its non-portrait settings.
  */
-const ADD_ON_TITLE = /^\s*(add[\s-]?on|rush|upgrade|express|priority)\b|\bprint\s*(&|and)\s*ship/i;
+export const ADD_ON_TITLE = /^\s*(add[\s-]?on|rush|upgrade|express|priority)\b|\bprint\s*(&|and)\s*ship/i;
 
 /** An order item as far as the slot builder needs it. */
 export type PortraitItem = {

@@ -1,10 +1,11 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import { withSystemContext, withUserContext, type RequestUser } from "@/lib/db";
-import { activityLog, assets, businesses, messages, orderItems, orders, proofs } from "@/lib/db/schema";
+import { activityLog, assets, businesses, messages, orders, proofs } from "@/lib/db/schema";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { transition } from "@/lib/orders/transitions";
 import { resolveUrl, type DayImage } from "@/lib/agent/day";
+import { loadPortraitItem } from "@/lib/orders/portrait-item";
 
 /** One "AI portrait ready" card for the Day queue (admins only). */
 export type OwnerReviewCard = {
@@ -41,12 +42,7 @@ export async function getOwnerReviewCards(user: RequestUser, businessScope: stri
       .limit(100);
     const out: OwnerReviewCard[] = [];
     for (const r of rows) {
-      const [item] = await tx
-        .select({ title: orderItems.title, options: orderItems.options, style: orderItems.style })
-        .from(orderItems)
-        .where(eq(orderItems.orderId, r.id))
-        .orderBy(asc(orderItems.id))
-        .limit(1);
+      const item = await loadPortraitItem(tx, r.id);
       const size = Array.isArray(item?.options)
         ? (item.options as Array<{ name?: string; value?: string }>).find((o) => /size|dimension/i.test(o?.name ?? ""))?.value
         : null;

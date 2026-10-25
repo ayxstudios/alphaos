@@ -73,6 +73,7 @@ import { clearUnmatchedReplies, type ClearMailResult } from "./junk-mail";
 import { closeNothingLeft } from "./needs-you-desk";
 import { sendOwnerDigest, type OwnerDigestResult } from "./owner-digest";
 import { runQcOverduePass, type QcOverdueResult } from "./qc-overdue";
+import { loadPortraitStyle } from "@/lib/orders/portrait-item";
 
 /** How long a customer has to answer the shortfall email before a human is asked. */
 export const PHOTO_SHORTFALL_GRACE_HOURS = 72;
@@ -1059,12 +1060,7 @@ async function assignStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
 
 /** After an assignment: the designer's not-started queue for the order's style past 3 days of their limit is one line for the owner. */
 async function backlogCheck(tx: Tx, order: { id: string; businessId: string }, designerId: string, now: Date): Promise<void> {
-  const [item] = await tx
-    .select({ style: orderItems.style })
-    .from(orderItems)
-    .where(and(eq(orderItems.orderId, order.id), sql`${orderItems.style} is not null`))
-    .limit(1);
-  const style = item?.style?.trim();
+  const style = await loadPortraitStyle(tx, order.id);
   if (!style) return;
   await checkDesignerBacklog(tx, { businessId: order.businessId, designerId, style, now });
 }
@@ -1078,12 +1074,7 @@ async function whyNoDesigner(
   businessId: string,
   orderId: string,
 ): Promise<{ headline: string; style: string | null; roster: { designerId: string; name: string | null; blockers: string[] }[] }> {
-  const [item] = await tx
-    .select({ style: orderItems.style })
-    .from(orderItems)
-    .where(eq(orderItems.orderId, orderId))
-    .limit(1);
-  const style = item?.style?.trim() || null;
+  const style = await loadPortraitStyle(tx, orderId);
 
   const roster = await tx
     .select({
