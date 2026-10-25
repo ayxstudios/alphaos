@@ -22,8 +22,8 @@ import { reassignOrder } from "../lib/agent/ai-designer";
 import { ensureAgentDesigner } from "../lib/agent/ai-core";
 import { withSystemContext } from "../lib/db";
 import * as schema from "../lib/db/schema";
-import { assets, assignments, businesses, designerBusinesses, designerProfiles, orderItems, orders, shops, styles, users } from "../lib/db/schema";
-import { drawsOnlyDisney, loadIsDisneyOrder, runAutoAssign } from "../lib/orders/assign";
+import { activityLog, assets, assignments, businesses, designerBusinesses, designerProfiles, orderItems, orders, shops, styles, users } from "../lib/db/schema";
+import { ArchivedOrderError, createAssignment, drawsOnlyDisney, loadIsDisneyOrder, runAutoAssign } from "../lib/orders/assign";
 import { isAddOnItem, pickPortraitItem } from "../lib/orders/portrait-item";
 
 let failed = 0;
@@ -273,6 +273,52 @@ async function dbTests() {
   );
   const override3 = await mkOrder({ status: "ready_to_assign", items: [{ title: PET_TITLE, style: "Watercolor Pets" }] });
   check("bug2: an admin may send a designer-only style to the AI Studio on purpose", code(await reassign(override3, ids.agent, ids.admin)) === "ok");
+
+  // ---- Bug 3: an archived order is not assigned unseen ----------------------
+  // A non-settled archive (an old sweep) is lifted on the record; a settled one
+  // ("not needed", duplicate, "ignore this order") refuses.
+  const sweepArchived = await mkOrder({ status: "ready_to_assign", items: [{ title: PET_TITLE, style: "Watercolor Pets" }] });
+  await withSystemContext((tx) =>
+    tx.update(orders).set({ archivedAt: new Date(), archiveReason: "pre 2026-10-03 sweep" }).where(eq(orders.id, sweepArchived)),
+  );
+  let sweepErr = "";
+  try {
+    await withSystemContext((tx) => createAssignment(tx, { orderId: sweepArchived, businessId: ids.biz, designerId: ids.pets, assignedBy: ids.va }));
+  } catch (e) {
+    sweepErr = String(e);
+  }
+  const sweepState = await withSystemContext(async (tx) => {
+    const [o] = await tx.select({ archivedAt: orders.archivedAt, archiveReason: orders.archiveReason }).from(orders).where(eq(orders.id, sweepArchived));
+    const log = await tx
+      .select({ metadata: activityLog.metadata })
+      .from(activityLog)
+      .where(and(eq(activityLog.orderId, sweepArchived), eq(activityLog.action, "order.unarchived_on_assign")));
+    return { o, log };
+  });
+  check("bug3: a sweep-archived order is assigned", sweepErr === "" && (await holder(sweepArchived)) === ids.pets, sweepErr);
+  check("bug3: ...and is no longer archived", sweepState.o?.archivedAt === null && sweepState.o?.archiveReason === null);
+  check(
+    "bug3: ...with an order.unarchived_on_assign activity row carrying the old reason",
+    sweepState.log.length === 1 && (sweepState.log[0].metadata as { archiveReason?: string } | null)?.archiveReason === "pre 2026-10-03 sweep",
+    JSON.stringify(sweepState.log),
+  );
+
+  const settledArchived = await mkOrder({ status: "ready_to_assign", items: [{ title: PET_TITLE, style: "Watercolor Pets" }] });
+  await withSystemContext((tx) => tx.update(orders).set({ archivedAt: new Date(), archiveReason: "not needed" }).where(eq(orders.id, settledArchived)));
+  let settledErr: unknown = null;
+  try {
+    await withSystemContext((tx) => createAssignment(tx, { orderId: settledArchived, businessId: ids.biz, designerId: ids.pets, assignedBy: ids.va }));
+  } catch (e) {
+    settledErr = e;
+  }
+  check("bug3: a 'not needed' archive refuses with ArchivedOrderError", settledErr instanceof ArchivedOrderError, String(settledErr));
+  const settledState = await withSystemContext(async (tx) => {
+    const [o] = await tx.select({ archivedAt: orders.archivedAt }).from(orders).where(eq(orders.id, settledArchived));
+    const rows = await tx.select({ id: assignments.id }).from(assignments).where(eq(assignments.orderId, settledArchived));
+    const log = await tx.select({ id: activityLog.id }).from(activityLog).where(and(eq(activityLog.orderId, settledArchived), eq(activityLog.action, "order.unarchived_on_assign")));
+    return { archived: !!o?.archivedAt, rows: rows.length, log: log.length };
+  });
+  check("bug3: ...no assignment row, still archived, no unarchive activity", settledState.rows === 0 && settledState.archived && settledState.log === 0, JSON.stringify(settledState));
 }
 
 // The app login may not delete activity_log rows (append-only), so the
