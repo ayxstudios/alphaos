@@ -43,6 +43,7 @@ export {
 } from "./product-media";
 export {
   fulfillShopifyOrderWithTracking,
+  updateShopifyFulfillmentTracking,
   type ShopifyFulfillmentResult,
   type ShopifyTrackingInput,
 } from "./fulfillment";

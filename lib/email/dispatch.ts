@@ -270,8 +270,11 @@ export async function queueStageEmail(
   order: { id: string; businessId: string; customerId: string | null; platformOrderId: string; platformOrderName: string | null },
   key: StageEmailKey,
   vars: Omit<TemplateVars, "first_name" | "business_name" | "order_number"> = {},
-  /** The nth deliberate repeat of the same moment (a second reminder for one proof); 1 = the first. */
-  opts: { repeat?: number } = {},
+  /**
+   * repeat: the nth deliberate repeat of the same moment (a second reminder for one proof); 1 = the first.
+   * moment: names the moment instead of the default (the shipped email of a split order: its numbers, "+" joined).
+   */
+  opts: { repeat?: number; moment?: string } = {},
 ): Promise<string | null> {
   const ctx = await readEmailContext(tx, order.businessId, order.customerId);
   if (!ctx) return null;
@@ -284,7 +287,7 @@ export async function queueStageEmail(
   // One mail per stage entry the customer should hear about. Internal re-entries
   // (reassign, AI job re-list, a status reset) hit the same key and are dropped;
   // a new proof (reminder) or a new tracking number (shipped) is a new moment.
-  const moment = key === "proof_reminder" ? vars.proof_link : key === "shipped" ? vars.tracking_number : undefined;
+  const moment = opts.moment ?? (key === "proof_reminder" ? vars.proof_link : key === "shipped" ? vars.tracking_number : undefined);
   return insertRendered(tx, {
     dedupeKey: `stage:${order.id}:${key}${moment ? `:${moment}` : ""}${opts.repeat && opts.repeat > 1 ? `:r${opts.repeat}` : ""}`,
     businessId: order.businessId,

@@ -14,7 +14,12 @@
  *   already shows a shipment) - the VA forgetting to click "Sent to print"
  *   never leaves an order silently stuck;
  * - running the whole sweep twice produces no duplicate ledger rows,
- *   activity log rows, or Alpha events (the idempotency ledger).
+ *   activity log rows, or Alpha events (the idempotency ledger);
+ * - an order Gelato split into two parts (lib/print/parts.ts) is followed
+ *   part by part: both shipped = one shipped email listing both numbers;
+ *   one shipped = nothing until the other ships, or until 3 days have passed
+ *   (then an email for the first, the order stays printing), and the later
+ *   part gets its own short email. No number is ever emailed twice.
  */
 process.env.PRINT_PROVIDER_MOCK = "1";
 
@@ -23,7 +28,7 @@ import "./load-env";
 import { randomUUID } from "node:crypto";
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-serverless";
-import { eq, inArray, like } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 import ws from "ws";
 
 import { withSystemContext } from "../lib/db";
@@ -32,6 +37,8 @@ import {
   activityLog,
   alphaEvents,
   businesses,
+  customers,
+  messages,
   orderItems,
   orders,
   printJobs,
@@ -39,6 +46,9 @@ import {
   shops,
 } from "../lib/db/schema";
 import { setBusinessPrintCredentials } from "../lib/db/credentials";
+import { gelatoStatusToNormalized } from "../lib/integrations/gelato/client";
+import { GELATO_FIXTURES, splitPart } from "../lib/integrations/gelato/fixtures";
+import { pickParts, planShipmentNotice, PART_WAIT_MS, type PrintPartRow } from "../lib/print/parts";
 import { reconcileBusinessPrintJobs } from "../lib/print/reconcile";
 
 let failures = 0;
@@ -58,8 +68,15 @@ const ids = {
   missing: randomUUID(), // PC-9999 (no fixture), printing, gelato, 13h old -> missing
   selfHeal: randomUUID(), // PC-1004, approved/no job/25h old, gelato -> self-heals to printing
   lumaSelfHeal: randomUUID(), // PC-2001, approved/no job/25h old, lumaprints -> self-heals to shipped
+  splitBoth: randomUUID(), // PC-1101, printing, two gelato parts both in transit -> shipped, one email
+  splitOne: randomUUID(), // PC-1102, printing, one part in transit, one in production -> waits
+  customerId: randomUUID(),
 };
-const orderIds = Object.values(ids).filter((v) => v !== ids.businessId && v !== ids.shopId);
+const orderIds = Object.values(ids).filter((v) => v !== ids.businessId && v !== ids.shopId && v !== ids.customerId);
+const SPLIT = {
+  both: [GELATO_FIXTURES["PC-1101"].id, GELATO_FIXTURES["PC-1101#2"].id],
+  one: [GELATO_FIXTURES["PC-1102"].id, GELATO_FIXTURES["PC-1102#2"].id],
+};
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 60 * 60 * 1000);
 
@@ -74,6 +91,12 @@ async function setup() {
       externalShopId: `print-reconcile-${suffix}.myshopify.com`,
       credentials: {},
     });
+    await tx.insert(customers).values({
+      id: ids.customerId,
+      businessId: ids.businessId,
+      email: `print-reconcile-${suffix}@example.com`,
+      firstName: "Lori",
+    });
     await setBusinessPrintCredentials(tx, ids.businessId, {
       gelato: { apiKey: "test-key", webhookSecret: "test-secret" },
       lumaprints: { username: "test-user", password: "test-pass", storeId: "818" },
@@ -86,6 +109,8 @@ async function setup() {
       mkOrder(ids.missing, "PC-9999", "printing"),
       mkOrder(ids.selfHeal, "PC-1004", "approved", hoursAgo(25)),
       mkOrder(ids.lumaSelfHeal, "PC-2001", "approved", hoursAgo(25)),
+      mkOrder(ids.splitBoth, "PC-1101", "printing"),
+      mkOrder(ids.splitOne, "PC-1102", "printing"),
     ]);
     await tx.insert(orderItems).values(
       orderIds.map((orderId) => ({
@@ -102,6 +127,11 @@ async function setup() {
       mkJob(ids.processing, "gelato", hoursAgo(2)),
       mkJob(ids.problem, "gelato", hoursAgo(2)),
       mkJob(ids.missing, "gelato", hoursAgo(13)), // past the 12h missing threshold
+      // As the agent's print road writes them: one row per part, connectedTo = the paid order.
+      mkPart(ids.splitBoth, SPLIT.both[0], null, hoursAgo(3)),
+      mkPart(ids.splitBoth, SPLIT.both[1], SPLIT.both[0], hoursAgo(2)),
+      mkPart(ids.splitOne, SPLIT.one[0], null, hoursAgo(3)),
+      mkPart(ids.splitOne, SPLIT.one[1], SPLIT.one[0], hoursAgo(2)),
     ]);
   });
 }
@@ -115,6 +145,7 @@ function mkOrder(id: string, platformOrderName: string, status: "printing" | "ap
     platformOrderName,
     status,
     source: "manual" as const,
+    customerId: ids.customerId,
     placedAt: hoursAgo(30),
     ...(updatedAt ? { updatedAt } : {}),
   };
@@ -131,6 +162,15 @@ function mkJob(orderId: string, provider: "gelato" | "lumaprints", submittedAt: 
   };
 }
 
+function mkPart(orderId: string, providerOrderId: string, connectedTo: string | null, at: Date) {
+  return {
+    ...mkJob(orderId, "gelato", at),
+    providerOrderId,
+    providerPayload: { source: "agent_print_road", ...(connectedTo ? { connectedTo } : {}) },
+    createdAt: at,
+  };
+}
+
 async function cleanup() {
   neonConfig.webSocketConstructor = ws;
   const pool = new Pool({ connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL! });
@@ -140,10 +180,12 @@ async function cleanup() {
       await tx.delete(printReconcileLedger).where(eq(printReconcileLedger.businessId, ids.businessId));
       await tx.delete(alphaEvents).where(eq(alphaEvents.businessId, ids.businessId));
       await tx.delete(activityLog).where(eq(activityLog.businessId, ids.businessId));
+      await tx.delete(messages).where(eq(messages.businessId, ids.businessId));
       await tx.delete(printJobs).where(eq(printJobs.businessId, ids.businessId));
       await tx.delete(orderItems).where(inArray(orderItems.orderId, orderIds));
       await tx.delete(orders).where(inArray(orders.id, orderIds));
       await tx.delete(shops).where(eq(shops.id, ids.shopId));
+      await tx.delete(customers).where(eq(customers.id, ids.customerId));
       await tx.delete(businesses).where(eq(businesses.id, ids.businessId));
     });
   } finally {
@@ -163,6 +205,95 @@ async function jobFor(orderId: string) {
     const [row] = await tx.select().from(printJobs).where(eq(printJobs.orderId, orderId)).limit(1);
     return row ?? null;
   });
+}
+
+async function shippedEmails(orderId: string) {
+  return withSystemContext((tx) =>
+    tx
+      .select({ body: messages.body, dedupeKey: messages.dedupeKey })
+      .from(messages)
+      .where(and(eq(messages.orderId, orderId), eq(messages.templateKey, "shipped")))
+      .orderBy(messages.createdAt)
+      .then((rows) => rows.map((r) => ({ ...r, body: r.body ?? "" }))),
+  );
+}
+
+async function partsOf(orderId: string) {
+  return withSystemContext((tx) => tx.select().from(printJobs).where(eq(printJobs.orderId, orderId)).orderBy(printJobs.createdAt));
+}
+
+/** No database: which rows are one order's parts, and what the buyer hears when. */
+function pureChecks() {
+  const at = (h: number) => hoursAgo(h);
+  const row = (id: string, poid: string | null, h: number, extra: Partial<PrintPartRow> = {}): PrintPartRow => ({
+    id,
+    provider: "gelato",
+    providerOrderId: poid,
+    reconcileState: "matched",
+    providerStatus: null,
+    submittedAt: at(h),
+    createdAt: at(h),
+    trackingNumber: null,
+    trackingCompany: null,
+    trackingUrl: null,
+    shippedAt: null,
+    shopifyFulfillmentId: null,
+    platformSyncedAt: null,
+    platformSyncError: null,
+    providerPayload: {},
+    providerResponse: {},
+    ...extra,
+  });
+
+  const single = pickParts([row("a", "g1", 1)]);
+  const split = pickParts([row("b", "g2", 1, { providerPayload: { connectedTo: "g1" } }), row("a", "g1", 2)]);
+  const viaGelato = pickParts([row("b", "g2", 1), row("a", "g1", 2, { providerResponse: { connectedOrderIds: ["g1", "g2"] } })]);
+  const duplicate = pickParts([row("p", "g1", 1), row("a", "g1", 2, { trackingNumber: "T1" })]);
+  const replacement = pickParts([row("r", "g9", 1), row("a", "g1", 30, { reconcileState: "shipped", trackingNumber: "T1" })]);
+  report(
+    "parts: one print = one part; connectedTo or Gelato's connectedOrderIds join a split; same printer id = one part (the tracked row); a replacement stands alone",
+    single.length === 1 &&
+      split.map((p) => p.id).join() === "a,b" &&
+      viaGelato.length === 2 &&
+      duplicate.length === 1 && duplicate[0].id === "a" &&
+      replacement.length === 1 && replacement[0].id === "r",
+    JSON.stringify({ single: single.length, split: split.map((p) => p.id), viaGelato: viaGelato.length, duplicate: duplicate.map((p) => p.id), replacement: replacement.map((p) => p.id) }),
+  );
+
+  const shipped = (id: string, poid: string, n: string, h: number) =>
+    row(id, poid, 10, { reconcileState: "shipped", trackingNumber: n, shippedAt: at(h) });
+  const none = new Set<string>();
+  const oneOnly = planShipmentNotice([shipped("a", "g1", "T1", 1)], none);
+  const bothShipped = planShipmentNotice([shipped("a", "g1", "T1", 1), shipped("b", "g2", "T2", 1)], none);
+  const halfFresh = planShipmentNotice([shipped("a", "g1", "T1", 1), row("b", "g2", 10)], none);
+  const halfOld = planShipmentNotice([shipped("a", "g1", "T1", PART_WAIT_MS / 3_600_000 + 1), row("b", "g2", 10)], none);
+  const halfOldTold = planShipmentNotice([shipped("a", "g1", "T1", PART_WAIT_MS / 3_600_000 + 1), row("b", "g2", 10)], new Set(["T1"]));
+  const otherCancelled = planShipmentNotice([shipped("a", "g1", "T1", 1), row("b", "g2", 10, { reconcileState: "problem" })], none);
+  const otherDeliveredBlind = planShipmentNotice(
+    [shipped("a", "g1", "T1", 1), row("b", "g2", 10, { reconcileState: "shipped", providerStatus: "delivered" })],
+    none,
+  );
+  report(
+    "notice: one part shipped = all; both = all; one of two under 3 days = wait, over = early, once; a cancelled or numberless delivered part is not waited for",
+    oneOnly.kind === "all" &&
+      bothShipped.kind === "all" && bothShipped.untold.length === 2 &&
+      halfFresh.kind === "wait" &&
+      halfOld.kind === "early" && halfOld.untold.length === 1 &&
+      halfOldTold.kind === "wait" &&
+      otherCancelled.kind === "all" &&
+      otherDeliveredBlind.kind === "all",
+    JSON.stringify({ oneOnly: oneOnly.kind, bothShipped: bothShipped.kind, halfFresh: halfFresh.kind, halfOld: halfOld.kind, halfOldTold: halfOldTold.kind, otherCancelled: otherCancelled.kind, otherDeliveredBlind: otherDeliveredBlind.kind }),
+  );
+
+  // Gelato v4 puts tracking in shipment.packages[]; a package labelled while still in production is not a shipment.
+  const inTransit = gelatoStatusToNormalized(splitPart("g1", "PC-1", [], "T1"));
+  const labelled = gelatoStatusToNormalized({ ...splitPart("g1", "PC-1", [], "T1"), fulfillmentStatus: "in_production" });
+  report(
+    "gelato: an in_transit package is the shipment; the same package while in_production is not",
+    inTransit.status === "shipped" && inTransit.shipments.length === 1 && inTransit.shipments[0].trackingNumber === "T1" &&
+      labelled.status === "created" && labelled.shipments.length === 0,
+    JSON.stringify({ inTransit: [inTransit.status, inTransit.shipments], labelled: [labelled.status, labelled.shipments] }),
+  );
 }
 
 async function countLike(table: "activity" | "ledger" | "alpha", pattern: string): Promise<number> {
@@ -188,13 +319,46 @@ async function countLike(table: "activity" | "ledger" | "alpha", pattern: string
 
 async function main() {
   try {
+    pureChecks();
     await setup();
 
     const run1 = await withSystemContext((tx) => reconcileBusinessPrintJobs(tx, ids.businessId));
+    const singleMails = await shippedEmails(ids.shipped);
     report(
-      "shipped order: matched + tracking pulled + moved to shipped",
-      run1.results.find((r) => r.orderId === ids.shipped)?.outcome === "shipped" && (await orderStatus(ids.shipped)) === "shipped",
-      JSON.stringify({ outcome: run1.results.find((r) => r.orderId === ids.shipped), status: await orderStatus(ids.shipped), job: await jobFor(ids.shipped) }),
+      "shipped order: matched + tracking pulled + moved to shipped, one shipped email with its number (one part, as before)",
+      run1.results.find((r) => r.orderId === ids.shipped)?.outcome === "shipped" &&
+        (await orderStatus(ids.shipped)) === "shipped" &&
+        singleMails.length === 1 &&
+        singleMails[0].dedupeKey === `stage:${ids.shipped}:shipped:392964503590` &&
+        singleMails[0].body.includes("392964503590"),
+      JSON.stringify({ outcome: run1.results.find((r) => r.orderId === ids.shipped), status: await orderStatus(ids.shipped), mails: singleMails, job: await jobFor(ids.shipped) }),
+    );
+
+    const bothMails = await shippedEmails(ids.splitBoth);
+    const bothParts = await partsOf(ids.splitBoth);
+    const bothResult = run1.results.find((r) => r.orderId === ids.splitBoth);
+    report(
+      "split order, both parts shipped: both followed, order shipped, ONE email listing both numbers",
+      bothResult?.outcome === "shipped" &&
+        bothResult.parts?.length === 2 &&
+        (await orderStatus(ids.splitBoth)) === "shipped" &&
+        bothParts.every((p) => p.reconcileState === "shipped" && p.trackingNumber) &&
+        bothMails.length === 1 &&
+        bothMails[0].body.includes("9400111899223100001101") &&
+        bothMails[0].body.includes("9400111899223100001102"),
+      JSON.stringify({ result: bothResult, status: await orderStatus(ids.splitBoth), mails: bothMails, parts: bothParts.map((p) => [p.providerOrderId, p.reconcileState, p.trackingNumber, p.trackingCompany]) }),
+    );
+
+    const oneParts = await partsOf(ids.splitOne);
+    const oneResult = run1.results.find((r) => r.orderId === ids.splitOne);
+    report(
+      "split order, one part shipped an hour ago: its tracking recorded, order stays printing, no email yet",
+      oneResult?.outcome === "matched" &&
+        (await orderStatus(ids.splitOne)) === "printing" &&
+        oneParts[0].trackingNumber === "9400111899223100001201" &&
+        !oneParts[1].trackingNumber &&
+        (await shippedEmails(ids.splitOne)).length === 0,
+      JSON.stringify({ result: oneResult, status: await orderStatus(ids.splitOne), parts: oneParts.map((p) => [p.providerOrderId, p.reconcileState, p.trackingNumber]) }),
     );
 
     const processingJob = await jobFor(ids.processing);
@@ -256,6 +420,35 @@ async function main() {
       "idempotent: a second sweep adds no ledger rows, no Alpha events, no reconcile activity",
       ledgerAfter1 === ledgerAfter2 && alphaAfter1 === alphaAfter2 && reconcileActivityAfter1 === reconcileActivityAfter2,
       JSON.stringify({ ledgerAfter1, ledgerAfter2, alphaAfter1, alphaAfter2, reconcileActivityAfter1, reconcileActivityAfter2, run2Outcomes: run2.results }),
+    );
+
+    // Three days on and the frame is still being made: the buyer hears about the canvas now, once.
+    await withSystemContext((tx) =>
+      tx.update(printJobs).set({ shippedAt: hoursAgo(PART_WAIT_MS / 3_600_000 + 2) }).where(eq(printJobs.providerOrderId, SPLIT.one[0])),
+    );
+    await withSystemContext((tx) => reconcileBusinessPrintJobs(tx, ids.businessId));
+    await withSystemContext((tx) => reconcileBusinessPrintJobs(tx, ids.businessId));
+    const earlyMails = await shippedEmails(ids.splitOne);
+    report(
+      "split order, first part shipped over 3 days ago: one email for it (not repeated), order stays printing",
+      (await orderStatus(ids.splitOne)) === "printing" &&
+        earlyMails.length === 1 &&
+        earlyMails[0].body.includes("9400111899223100001201") &&
+        !earlyMails[0].body.includes("9400111899223100001202"),
+      JSON.stringify({ status: await orderStatus(ids.splitOne), mails: earlyMails }),
+    );
+
+    // Then the frame ships: its own short email, and the order is shipped.
+    GELATO_FIXTURES["PC-1102#2"] = splitPart(SPLIT.one[1], "PC-1102", [SPLIT.one[0]], "9400111899223100001202");
+    await withSystemContext((tx) => reconcileBusinessPrintJobs(tx, ids.businessId));
+    const laterMails = await shippedEmails(ids.splitOne);
+    report(
+      "split order, later part ships: a second email with only the new number, order shipped",
+      (await orderStatus(ids.splitOne)) === "shipped" &&
+        laterMails.length === 2 &&
+        laterMails[1].body.includes("9400111899223100001202") &&
+        !laterMails[1].body.includes("9400111899223100001201"),
+      JSON.stringify({ status: await orderStatus(ids.splitOne), mails: laterMails }),
     );
 
     report(

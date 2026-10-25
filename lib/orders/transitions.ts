@@ -16,7 +16,6 @@ import {
   shops,
   orderStatus,
   assets,
-  printJobs,
 } from "@/lib/db/schema";
 import {
   resolveChecklist,
@@ -36,6 +35,7 @@ import { createEarningForCompletion } from "@/lib/orders/earnings";
 import { MAX_QC_ATTACHMENTS, type QcAttachment } from "@/lib/qc/attachments";
 import { sendQcFeedback } from "@/lib/notifications/designer-events";
 import { loadProofFilePick, portraitList } from "@/lib/proofs/files";
+import { queueShippedEmail } from "@/lib/print/parts";
 
 export type OrderStatus = (typeof orderStatus.enumValues)[number];
 export type TransitionRole = "admin" | "va" | "designer" | "system";
@@ -381,16 +381,8 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
     await queueStageEmail(tx, order, "printing");
   }
   if (key === "printing->shipped") {
-    const [job] = await tx
-      .select({ trackingNumber: printJobs.trackingNumber, trackingUrl: printJobs.trackingUrl })
-      .from(printJobs)
-      .where(eq(printJobs.orderId, order.id))
-      .orderBy(desc(printJobs.createdAt))
-      .limit(1);
-    await queueStageEmail(tx, order, "shipped", {
-      tracking_number: job?.trackingNumber ?? undefined,
-      tracking_url: job?.trackingUrl ?? undefined,
-    });
+    // Every part of a split print (lib/print/parts.ts) the buyer has not been told about yet, in one email.
+    await queueShippedEmail(tx, order);
   }
 
   // The full checklist snapshot + per-item results live on the qc_checks row

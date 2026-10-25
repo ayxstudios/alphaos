@@ -16,10 +16,12 @@ export type GelatoCredentials = {
 export type GelatoFulfillmentStatus =
   | "created"
   | "passed"
+  | "in_production"
   | "failed"
   | "canceled"
   | "printed"
   | "shipped"
+  | "in_transit"
   | "delivered";
 
 export type GelatoFulfillment = {
@@ -51,7 +53,28 @@ export type GelatoOrder = {
   createdAt?: string;
   updatedAt?: string;
   orderedAt?: string;
+  shippedAt?: string | null;
   items: GelatoOrderItem[];
+  // Where a live v4 order keeps its tracking: one package per parcel.
+  shipment?: GelatoShipment | null;
+  // A paid order Gelato split by production site: every part lists all of them.
+  connectedOrderIds?: string[];
+};
+
+export type GelatoShipment = {
+  id?: string;
+  status?: string;
+  shipmentMethodName?: string | null;
+  shipmentMethodUid?: string | null;
+  packages?: GelatoPackage[];
+};
+
+export type GelatoPackage = {
+  id?: string;
+  orderId?: string;
+  orderItemIds?: string[];
+  trackingCode?: string | null;
+  trackingUrl?: string | null;
 };
 
 export type GelatoSearchResponse = {

@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 
 import { withSystemContext, type Tx } from "@/lib/db";
 import { getBusinessPrintCredentials } from "@/lib/db/credentials";
@@ -8,8 +8,9 @@ import { GelatoClient, type GelatoCredentials } from "@/lib/integrations/gelato"
 import { LumaPrintsClient, type LumaPrintsCredentials } from "@/lib/integrations/lumaprints";
 import { runTransition, type OrderStatus } from "@/lib/orders/transitions";
 import { defaultPrintProvider, type PrintProvider } from "@/lib/print/mapping";
+import { emailedTrackingNumbers, loadPrintParts, planShipmentNotice, type ShipmentNotice } from "@/lib/print/parts";
 import { claimReconcileEvent, type ReconcileSource } from "@/lib/print/reconcile-ledger";
-import { applyReconcileShipment } from "@/lib/print/tracking";
+import { recordPartShipment, settleOrderShipment } from "@/lib/print/tracking";
 import type { NormalizedProviderOrder, PrintProviderClient } from "@/lib/print/provider-types";
 
 const SYSTEM_ACTOR = { id: "system", role: "system" as const };
@@ -35,6 +36,8 @@ export type ReconcileOrderResult = {
   orderId: string;
   outcome: ReconcileOutcome;
   provider: PrintProvider | null;
+  /** Each part of a split print (lib/print/parts.ts); absent for an order with one print. */
+  parts?: Array<{ printJobId: string | null; providerOrderId: string | null; outcome: ReconcileOutcome }>;
 };
 
 export type ReconcileSummary = {
@@ -76,6 +79,7 @@ type CandidateJob = {
   reconcileState: string;
   submittedAt: Date | null;
   createdAt: Date;
+  trackingNumber?: string | null;
 };
 
 async function loadCandidates(tx: Tx, businessId: string): Promise<CandidateOrder[]> {
@@ -119,21 +123,31 @@ async function loadCandidates(tx: Tx, businessId: string): Promise<CandidateOrde
   return rows.filter((r) => physicalOrderIds.has(r.id)) as CandidateOrder[];
 }
 
-async function latestJobFor(tx: Tx, orderId: string): Promise<CandidateJob | null> {
-  const [row] = await tx
-    .select({
-      id: printJobs.id,
-      provider: printJobs.provider,
-      providerOrderId: printJobs.providerOrderId,
-      reconcileState: printJobs.reconcileState,
-      submittedAt: printJobs.submittedAt,
-      createdAt: printJobs.createdAt,
-    })
-    .from(printJobs)
-    .where(eq(printJobs.orderId, orderId))
-    .orderBy(desc(printJobs.createdAt))
-    .limit(1);
-  return (row as CandidateJob) ?? null;
+// The least advanced part speaks for a split order: it is only shipped once every part is.
+const PART_OUTCOME_ORDER: ReconcileOutcome[] = ["problem", "missing", "not_configured", "no_change", "matched", "shipped"];
+
+/**
+ * Reconcile every part of one order at the printer (lib/print/parts.ts; one print = one part, exactly as before),
+ * then settle it once: writeback, shipped and the buyer's email when every part has tracking.
+ */
+async function reconcileOrderParts(
+  tx: Tx,
+  ctx: { businessId: string; order: CandidateOrder; credentials: BusinessPrintCredentials; source: ReconcileSource },
+): Promise<ReconcileOrderResult> {
+  const parts = await loadPrintParts(tx, ctx.order.id);
+  const results: ReconcileOrderResult[] = [];
+  for (const job of parts.length ? parts : [null]) {
+    results.push(await reconcileOneOrder(tx, { ...ctx, job }));
+  }
+  await settleOrderShipment(tx, { businessId: ctx.businessId, orderId: ctx.order.id, source: ctx.source });
+  if (results.length === 1) return results[0];
+  const outcome = PART_OUTCOME_ORDER.find((o) => results.some((r) => r.outcome === o)) ?? "no_change";
+  return {
+    orderId: ctx.order.id,
+    outcome,
+    provider: results[0].provider,
+    parts: results.map((r, i) => ({ printJobId: parts[i].id, providerOrderId: parts[i].providerOrderId, outcome: r.outcome })),
+  };
 }
 
 function classify(result: NormalizedProviderOrder): "matched" | "shipped" | "problem" {
@@ -161,8 +175,7 @@ export async function reconcileBusinessPrintJobs(
   for (const order of candidates) {
     summary.checked += 1;
     try {
-      const job = await latestJobFor(tx, order.id);
-      const outcome = await reconcileOneOrder(tx, { businessId, order, job, credentials, source });
+      const outcome = await reconcileOrderParts(tx, { businessId, order, credentials, source });
       summary.byOutcome[outcome.outcome] += 1;
       summary.results.push(outcome);
     } catch (error) {
@@ -198,8 +211,7 @@ export async function reconcileOrderPrintJob(
   const order = (await loadCandidates(tx, businessId)).find((candidate) => candidate.id === orderId);
   if (!order) return null;
   const credentials = ((await getBusinessPrintCredentials(tx, businessId)) as BusinessPrintCredentials | null) ?? {};
-  const job = await latestJobFor(tx, order.id);
-  return reconcileOneOrder(tx, { businessId, order, job, credentials, source });
+  return reconcileOrderParts(tx, { businessId, order, credentials, source });
 }
 
 async function reconcileOneOrder(
@@ -317,9 +329,28 @@ async function handleMatch(
       expectedFrom: order.status,
       metadata: { via: "print_reconcile_self_heal", provider, providerOrderId: result.providerOrderId },
     });
+    // The next part of the same order sees it printing, not approved again.
+    order.status = "printing";
   }
 
   if (newState === prevState && !(wasApprovedSelfHeal && newState === "shipped")) {
+    // A part already seen shipped whose number only shows up now (still on its way, not delivered).
+    const late = result.shipments[0];
+    if (newState === "shipped" && result.status === "shipped" && late && !job.trackingNumber) {
+      const lateClaimed = await claimReconcileEvent(tx, {
+        businessId,
+        orderId: order.id,
+        printJobId: job.id,
+        provider,
+        eventKey: `${job.id}:tracking:${late.trackingNumber}`,
+        outcome: newState,
+        source,
+        payload: { rawStatus: result.rawStatus, providerOrderId: result.providerOrderId },
+      });
+      if (lateClaimed) {
+        await recordPartShipment(tx, { businessId, orderId: order.id, printJobId: job.id, provider, providerOrderId: result.providerOrderId, shipment: late });
+      }
+    }
     return { orderId: order.id, outcome: newState, provider };
   }
 
@@ -350,7 +381,7 @@ async function handleMatch(
   });
 
   if (newState === "shipped" && result.shipments[0]) {
-    await applyReconcileShipment(tx, {
+    await recordPartShipment(tx, {
       businessId,
       orderId: order.id,
       printJobId: job.id,
@@ -486,8 +517,11 @@ export async function reconcileFromProviderEvent(
     .limit(1);
   if (!order) return null;
 
-  const job = await latestJobFor(tx, order.id);
-  return handleMatch(tx, {
+  // The part this event is about; an id no part has yet goes to the newest, as before.
+  const parts = await loadPrintParts(tx, order.id);
+  const newest = parts.reduce<(typeof parts)[number] | null>((a, b) => (!a || b.createdAt >= a.createdAt ? b : a), null);
+  const job = parts.find((p) => p.providerOrderId === input.result.providerOrderId) ?? newest;
+  const outcome = await handleMatch(tx, {
     businessId: input.businessId,
     order: order as CandidateOrder,
     job,
@@ -495,4 +529,71 @@ export async function reconcileFromProviderEvent(
     result: input.result,
     source: input.source,
   });
+  await settleOrderShipment(tx, { businessId: input.businessId, orderId: order.id, source: input.source });
+  return outcome;
+}
+
+/**
+ * Read only: what reconcile sees for one order now. Every part with a fresh look at its printer, which parts would
+ * have a new tracking number recorded, and what the buyer would then hear (ShipmentNotice). Writes nothing and sends
+ * nothing, so it is safe against a live order before its parcels ship.
+ */
+export async function inspectOrderPrintParts(
+  tx: Tx,
+  businessId: string,
+  orderId: string,
+  now = new Date(),
+): Promise<{
+  orderId: string;
+  parts: Array<{
+    printJobId: string;
+    providerOrderId: string | null;
+    rowState: string;
+    providerStatus: string | null;
+    state: ReturnType<typeof classify> | null;
+    trackingNumber: string | null;
+    newTracking: boolean;
+  }>;
+  notice: ShipmentNotice["kind"];
+  untold: string[];
+}> {
+  const credentials = ((await getBusinessPrintCredentials(tx, businessId)) as BusinessPrintCredentials | null) ?? {};
+  const parts = await loadPrintParts(tx, orderId);
+  const seen = [];
+  const projected = [];
+  for (const part of parts) {
+    const client = buildPrintProviderClient(part.provider, credentials);
+    const result = client && part.providerOrderId ? await client.getOrder(part.providerOrderId) : null;
+    const state = result ? classify(result) : null;
+    const shipment = result?.shipments[0] ?? null;
+    // Mirrors handleMatch: a state change to shipped records its parcel; an unchanged shipped part only while in transit.
+    const newTracking =
+      !!result && !!shipment && state === "shipped" && !part.trackingNumber &&
+      (part.reconcileState !== "shipped" || result.status === "shipped");
+    const trackingNumber = part.trackingNumber ?? (newTracking ? shipment!.trackingNumber : null);
+    seen.push({
+      printJobId: part.id,
+      providerOrderId: part.providerOrderId,
+      rowState: part.reconcileState,
+      providerStatus: result?.rawStatus ?? part.providerStatus,
+      state,
+      trackingNumber,
+      newTracking,
+    });
+    const said = newTracking && shipment!.shippedAt ? new Date(shipment!.shippedAt) : null;
+    projected.push({
+      ...part,
+      reconcileState: state ?? part.reconcileState,
+      providerStatus: result?.rawStatus ?? part.providerStatus,
+      trackingNumber,
+      shippedAt: part.shippedAt ?? (newTracking ? (said && !Number.isNaN(said.getTime()) ? said : now) : null),
+    });
+  }
+  const notice = planShipmentNotice(projected, await emailedTrackingNumbers(tx, orderId), now);
+  return {
+    orderId,
+    parts: seen,
+    notice: notice.kind,
+    untold: notice.kind === "all" || notice.kind === "early" ? notice.untold.map((p) => p.trackingNumber!) : [],
+  };
 }

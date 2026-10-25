@@ -49,8 +49,18 @@ export type ShopifyTrackingInput = {
   trackingNumber: string;
   trackingCompany?: string;
   trackingUrl?: string;
+  /** Every parcel of a split print (lib/print/parts.ts); more than one is sent as Shopify's numbers/urls. */
+  trackingNumbers?: string[];
+  trackingUrls?: string[];
   notifyCustomer?: boolean;
   closeOrder?: boolean;
+};
+
+type FulfillmentTrackingInfoUpdateData = {
+  fulfillmentTrackingInfoUpdate: {
+    fulfillment: { id: string; status: string } | null;
+    userErrors: UserError[];
+  };
 };
 
 const ORDER_FULFILLMENT_QUERY = `
@@ -85,6 +95,20 @@ mutation($fulfillment: FulfillmentInput!, $message: String) {
   }
 }`;
 
+const FULFILLMENT_TRACKING_UPDATE_MUTATION = `
+mutation($fulfillmentId: ID!, $trackingInfoInput: FulfillmentTrackingInput!, $notifyCustomer: Boolean) {
+  fulfillmentTrackingInfoUpdate(fulfillmentId: $fulfillmentId, trackingInfoInput: $trackingInfoInput, notifyCustomer: $notifyCustomer) {
+    fulfillment {
+      id
+      status
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}`;
+
 const ORDER_CLOSE_MUTATION = `
 mutation($input: OrderCloseInput!) {
   orderClose(input: $input) {
@@ -106,6 +130,21 @@ function shopifyOrderGid(platformOrderId: string): string {
 
 function userErrorMessage(errors: UserError[]): string {
   return errors.map((error) => error.message).join("; ");
+}
+
+/** One number = the exact shape sent before; several = Shopify's numbers/urls on the one fulfillment. */
+function trackingInfoFor(tracking: ShopifyTrackingInput): Record<string, unknown> {
+  const company = tracking.trackingCompany ? { company: tracking.trackingCompany } : {};
+  const numbers = tracking.trackingNumbers?.filter(Boolean) ?? [];
+  if (numbers.length > 1) {
+    const urls = tracking.trackingUrls?.filter(Boolean) ?? [];
+    return { numbers, ...company, ...(urls.length ? { urls } : {}) };
+  }
+  return {
+    number: numbers[0] ?? tracking.trackingNumber,
+    ...company,
+    ...(tracking.trackingUrl ? { url: tracking.trackingUrl } : {}),
+  };
 }
 
 function canCreateFulfillment(order: FulfillmentOrderNode): boolean {
@@ -147,11 +186,7 @@ export async function fulfillShopifyOrderWithTracking(
           fulfillmentOrderId: fulfillmentOrder.id,
         })),
         notifyCustomer: tracking.notifyCustomer ?? true,
-        trackingInfo: {
-          number: tracking.trackingNumber,
-          ...(tracking.trackingCompany ? { company: tracking.trackingCompany } : {}),
-          ...(tracking.trackingUrl ? { url: tracking.trackingUrl } : {}),
-        },
+        trackingInfo: trackingInfoFor(tracking),
       },
       message: "Fulfilled from AlphaOS",
     },
@@ -191,4 +226,30 @@ export async function fulfillShopifyOrderWithTracking(
     closed,
     closeWarning,
   };
+}
+
+/**
+ * Replace the tracking on a fulfillment already made: a later parcel of a split print, after the first was
+ * written back on its own (lib/print/tracking.ts). Pass every number the order has, not only the new one.
+ */
+export async function updateShopifyFulfillmentTracking(
+  shopId: string,
+  fulfillmentId: string,
+  creds: ShopifyCredentials,
+  tracking: ShopifyTrackingInput,
+): Promise<ShopifyFulfillmentResult> {
+  const client = new ShopifyClient(shopId, creds);
+  const data = await client.graphql<FulfillmentTrackingInfoUpdateData>(FULFILLMENT_TRACKING_UPDATE_MUTATION, {
+    fulfillmentId,
+    trackingInfoInput: trackingInfoFor(tracking),
+    notifyCustomer: tracking.notifyCustomer ?? true,
+  });
+  const payload = data.fulfillmentTrackingInfoUpdate;
+  if (payload.userErrors.length || !payload.fulfillment) {
+    throw new ShopifyApiError(
+      422,
+      `Shopify tracking update failed: ${userErrorMessage(payload.userErrors) || "No fulfillment was updated."}`,
+    );
+  }
+  return { fulfillmentId: payload.fulfillment.id, fulfillmentStatus: payload.fulfillment.status, closed: false, closeWarning: null };
 }

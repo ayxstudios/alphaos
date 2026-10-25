@@ -55,6 +55,8 @@ const LABELS: Record<string, string> = {
   "message.reply_classification_decided": "Reply decided",
   "print.manual_started": "Print started by hand",
   "print.reconcile_tracking_added": "Tracking found",
+  "print.reconcile_part_shipped": "Part of the print shipped, buyer emailed",
+  "print.reconcile_store_tracking": "Tracking sent to the shop",
   "print.reconcile_missing": "Print job missing",
   "style.learned": "Style learned",
   "style.set_once": "Style set",

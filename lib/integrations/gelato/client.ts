@@ -31,8 +31,8 @@ function log(event: string, fields: Record<string, unknown>) {
   console.log(JSON.stringify({ ts: new Date().toISOString(), integration: "gelato", event, ...fields }));
 }
 
-function gelatoStatusToNormalized(order: GelatoOrder): NormalizedProviderOrder {
-  const shipments = (order.items ?? []).flatMap((item) =>
+export function gelatoStatusToNormalized(order: GelatoOrder): NormalizedProviderOrder {
+  const itemShipments = (order.items ?? []).flatMap((item) =>
     (item.fulfillments ?? []).map((f) => ({
       trackingNumber: f.trackingCode,
       carrier: f.shipmentMethodName ?? f.shipmentMethodUid ?? null,
@@ -43,17 +43,35 @@ function gelatoStatusToNormalized(order: GelatoOrder): NormalizedProviderOrder {
   const statusMap: Record<string, NormalizedProviderOrder["status"]> = {
     created: "created",
     passed: "created",
+    in_production: "created",
     printed: "printed",
     shipped: "shipped",
+    in_transit: "shipped",
     delivered: "delivered",
     failed: "failed",
     canceled: "canceled",
   };
+  const status = statusMap[order.fulfillmentStatus] ?? "created";
+  // A live v4 order carries its tracking in shipment.packages[], not on the items (every real order read
+  // 2026-10-26: 48 with a package, none with item fulfillments), so until then no Gelato tracking was ever picked up.
+  // A package gets its code while the order is still in production (the label is made early), so it only counts
+  // once Gelato says the order has left: a buyer is never told it shipped while it is still being made.
+  const left = status === "shipped" || status === "delivered";
+  const packageShipments = (left ? (order.shipment?.packages ?? []) : [])
+    .filter((p) => p.trackingCode)
+    .map((p) => ({
+      trackingNumber: p.trackingCode!,
+      carrier: order.shipment?.shipmentMethodName ?? order.shipment?.shipmentMethodUid ?? null,
+      trackingUrl: p.trackingUrl ?? null,
+      shippedAt: order.shippedAt ?? order.updatedAt ?? null,
+    }));
+  const seen = new Set<string>();
+  const shipments = [...itemShipments, ...packageShipments].filter((s) => !seen.has(s.trackingNumber) && !!seen.add(s.trackingNumber));
   return {
     provider: "gelato",
     providerOrderId: order.id,
     referenceId: order.orderReferenceId ?? null,
-    status: statusMap[order.fulfillmentStatus] ?? "created",
+    status,
     rawStatus: order.fulfillmentStatus,
     reason: order.fulfillmentStatus === "failed" || order.fulfillmentStatus === "canceled" ? "Gelato reported the order as " + order.fulfillmentStatus + "." : null,
     shipments,

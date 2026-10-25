@@ -59,7 +59,36 @@ export const GELATO_FIXTURES: Record<string, GelatoOrder> = {
     updatedAt: "2026-09-06T10:00:00.000Z",
     items: [{ id: "item-1", itemReferenceId: "1", fulfillmentStatus: "created" }],
   },
+  // A paid order Gelato split by production site (Lori PC32062: canvas + frame), in the live v4 shape: tracking in
+  // shipment.packages, every part listing all of them in connectedOrderIds. PC-1101: both parts on their way.
+  "PC-1101": splitPart("e1e5a3a2-6f00-4e3f-93cf-4449f0405a01", "PC-1101", ["e1e5a3a2-6f00-4e3f-93cf-4449f0405a02"], "9400111899223100001101"),
+  "PC-1101#2": splitPart("e1e5a3a2-6f00-4e3f-93cf-4449f0405a02", "PC-1101", ["e1e5a3a2-6f00-4e3f-93cf-4449f0405a01"], "9400111899223100001102"),
+  // PC-1102: the canvas is on its way, the frame is still being made (no package yet).
+  "PC-1102": splitPart("f2f6b4b3-7011-4f4f-a4df-5559f0506b01", "PC-1102", ["f2f6b4b3-7011-4f4f-a4df-5559f0506b02"], "9400111899223100001201"),
+  "PC-1102#2": splitPart("f2f6b4b3-7011-4f4f-a4df-5559f0506b02", "PC-1102", ["f2f6b4b3-7011-4f4f-a4df-5559f0506b01"], null),
 };
+
+/** One part of a split Gelato order; a tracking code = in transit since an hour ago, none = still in production. */
+export function splitPart(id: string, referenceId: string, others: string[], trackingCode: string | null): GelatoOrder {
+  const status = trackingCode ? "in_transit" : "in_production";
+  return {
+    id,
+    orderReferenceId: referenceId,
+    fulfillmentStatus: status,
+    createdAt: "2026-10-20T10:00:00.000Z",
+    updatedAt: new Date().toISOString(),
+    shippedAt: trackingCode ? new Date(Date.now() - 60 * 60 * 1000).toISOString() : null,
+    connectedOrderIds: [id, ...others],
+    items: [{ id: `${id}-item`, itemReferenceId: "1", fulfillmentStatus: status }],
+    shipment: {
+      shipmentMethodName: "USPS Ground Advantage",
+      shipmentMethodUid: "usps_ground_advantage",
+      packages: trackingCode
+        ? [{ id: `${id}-pkg`, orderId: id, trackingCode, trackingUrl: `https://tools.usps.com/go/TrackConfirmAction?tLabels=${trackingCode}` }]
+        : [],
+    },
+  };
+}
 
 /**
  * Mock shops (lib/mock) send orders like PC32041 / LM32007 to print. Any

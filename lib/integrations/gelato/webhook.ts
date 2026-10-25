@@ -53,8 +53,10 @@ export function normalizeGelatoWebhookEvent(evt: GelatoWebhookEvent): Normalized
   const statusMap: Record<string, NormalizedProviderOrder["status"]> = {
     created: "created",
     passed: "created",
+    in_production: "created",
     printed: "printed",
     shipped: "shipped",
+    in_transit: "shipped",
     delivered: "delivered",
     failed: "failed",
     canceled: "canceled",
