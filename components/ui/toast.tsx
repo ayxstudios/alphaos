@@ -38,7 +38,8 @@ type ToastItem = ToastOptions & { id: number };
 const MAX_VISIBLE = 3;
 const DEFAULT_DURATION = 4000;
 
-const ToastContext = createContext<((opts: ToastOptions) => void) | null>(null);
+/** Shows a toast; the returned function takes it away early (a step it announced did not happen after all). */
+const ToastContext = createContext<((opts: ToastOptions) => () => void) | null>(null);
 
 export function useToast() {
   const ctx = useContext(ToastContext);
@@ -83,6 +84,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         opts.duration ?? DEFAULT_DURATION,
       );
       timers.current.set(id, timer);
+      return () => dismiss(id);
     },
     [dismiss],
   );

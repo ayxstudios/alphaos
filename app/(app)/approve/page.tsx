@@ -10,7 +10,7 @@ import { PendingApprovalsHost } from "@/components/qc/pending-approvals";
 import { parseSkip } from "@/components/qc/pending-approvals-store";
 import { ApproveScreen } from "@/components/qc/approve-screen";
 import { StreamTabs } from "@/components/qc/approve-streams";
-import { CaseScreen } from "@/components/qc/case-screen";
+import { CaseDeck } from "@/components/qc/case-screen";
 import { EmptyState, Page } from "@/components/ui";
 import { CheckCircle } from "@/components/ui/icons";
 
@@ -47,6 +47,7 @@ export default async function ApprovePage({ searchParams }: { searchParams: Prom
   // Approvals still in their Stop window stay out of the queue (an explicitly opened ?o= never hides itself).
   // Started now, awaited only where the page needs the list itself (the Cases stream, or nothing else left).
   // A plain /approve may land on the Cases stream (nothing else left), so it reads fresh too.
+  const casesAt = Date.now();
   const casesP: Promise<CaseCard[] | null> | undefined = isOwner ? (wantCases || (!asked && !o) ? listCases() : listCasesForCount()) : undefined;
   const q = await getOwnerApproveQueue(
     user,
@@ -86,25 +87,8 @@ export default async function ApprovePage({ searchParams }: { searchParams: Prom
         </div>
       );
     }
-    if (cases.length === 0) {
-      return (
-        <div className="flex flex-col gap-4">
-          {tabs}
-          <Page className="max-w-xl">
-            <EmptyState icon={CheckCircle} headline="No cases" body="Nothing needs you. I settle customer problems myself and bring you only the ones I can't." />
-          </Page>
-        </div>
-      );
-    }
-    const at = Math.max(0, cases.findIndex((x) => x.id === c));
-    const card = cases[at];
-    const nextId = cases.length > 1 ? cases[(at + 1) % cases.length].id : null;
-    return (
-      <div className="flex flex-col gap-4">
-        {tabs}
-        <CaseScreen key={card.id} card={card} position={at + 1} total={cases.length} nextId={nextId} />
-      </div>
-    );
+    // The whole pile goes to the screen: a swipe shows the next case at once (components/qc/case-screen.tsx).
+    return <CaseDeck cards={cases} at={casesAt} startId={c ?? null} counts={{ new: counts.new, revision: counts.revision }} />;
   }
 
   if (queue.length === 0) {
@@ -131,14 +115,16 @@ export default async function ApprovePage({ searchParams }: { searchParams: Prom
 
   const index = start;
   const nextId = queue.length > 1 ? queue[(index + 1) % queue.length] : null;
-  // The buyer's other orders load in their own connection beside the order (one buyer, several orders), the picture
-  // check beside them (shown before the tap), and the next order's artwork URLs, so its picture downloads meanwhile.
-  const [item, sameBuyer, nextArt, matchStop, twiceStop] = await Promise.all([
+  // The buyer's other orders load in their own connection beside the order (one buyer, several orders), and the next
+  // order's artwork URLs, so its picture downloads meanwhile. The picture checks (up to 2.5 s each, shown before the
+  // tap) stream in after the order is on screen (2026-10-25: they held every order page ~3 s).
+  const matchStops = Promise.all([getPictureMatchStop(queue[index]), getDuplicateSlotsStop(user, queue[index])])
+    .then((found) => found.filter((x) => x !== null))
+    .catch(() => []);
+  const [item, sameBuyer, nextArt] = await Promise.all([
     getApproveItem(user, queue[index]),
     getSameBuyerView(user, queue[index]),
     getArtworkPreloadUrls(user, nextId),
-    getPictureMatchStop(queue[index]),
-    getDuplicateSlotsStop(user, queue[index]),
   ]);
   if (!item) redirect(`/approve?s=${q.stream}`);
 
@@ -155,7 +141,7 @@ export default async function ApprovePage({ searchParams }: { searchParams: Prom
         takenBy={takenBy}
         sameBuyer={sameBuyer}
         nextArt={nextArt}
-        matchStops={[matchStop, twiceStop].filter((x) => x !== null)}
+        matchStops={matchStops}
       />
     </div>
   );

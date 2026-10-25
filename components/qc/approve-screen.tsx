@@ -4,7 +4,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { Suspense, use, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 
 import { releaseClaim, useApproveClaim } from "@/components/qc/approve-claim";
 import { QcPicturePicker, useQcPictures } from "@/components/qc/attachment-picker";
@@ -12,10 +12,10 @@ import {
   approvalStore,
   approveHref,
   FULL_PREFETCH,
+  markSentBack,
   PendingApprovalsHost,
   PendingApprovalsInline,
   setApproveStream,
-  usePendingApprovals,
 } from "@/components/qc/pending-approvals";
 import { AutoQcBadge, AutoQcNotes } from "@/components/qc/auto-qc";
 import { BottomDock } from "@/components/qc/bottom-dock";
@@ -45,8 +45,11 @@ type Props = {
   sameBuyer?: SameBuyerView | null;
   /** The next order's artwork URLs, fetched in the background so it opens with its picture (2026-10-22). */
   nextArt?: string[];
-  /** The picture check's match and the same-file-twice check (getPictureMatchStop, getDuplicateSlotsStop), shown before the tap like Auto QC's. */
-  matchStops?: ApproveStop[];
+  /**
+   * The picture check's match and the same-file-twice check (getPictureMatchStop, getDuplicateSlotsStop), shown before
+   * the tap like Auto QC's. They take up to 2.5 s each, so since 2026-10-25 they stream in after the order is on screen.
+   */
+  matchStops?: Promise<ApproveStop[]>;
 };
 
 /**
@@ -55,14 +58,67 @@ type Props = {
  */
 const REWARM_MS = 185_000;
 
-/** The send back, through the plain route (POST /api/approve/reject): no server action, so the preloaded next order stays. */
-async function postReject(input: OwnerRejectInput): Promise<ApproveActionResult> {
-  const res = await fetch("/api/approve/reject", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+/** A stop that came in this recently was not read yet: Approve leaves it to the send's own check (a Send anyway row). */
+const STOP_READ_MS = 800;
+
+/** The send back, through the plain route (POST /api/approve/reject): no server action, so the preloaded next order stays. null = no answer. */
+async function postReject(input: OwnerRejectInput): Promise<ApproveActionResult | null> {
+  try {
+    const res = await fetch("/api/approve/reject", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(30_000),
+    });
+    return (await res.json()) as ApproveActionResult;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Send back in the background (2026-10-25: "when you click something it waits then goes to the next one"): the screen
+ * has already moved on. A dropped connection is tried once more (a repeat is safe: the server answers "Already checked"
+ * when the first landed); one that still does not go through says so with Try again, the same note, ticks and pictures,
+ * and the note waits on the order if they open it instead.
+ */
+async function deliverReject(input: OwnerRejectInput, label: string, toast: ReturnType<typeof useToast>): Promise<void> {
+  markSentBack(input.orderId);
+  let res = await postReject(input);
+  if (!res) {
+    await new Promise((r) => setTimeout(r, 2000));
+    res = await postReject(input);
+  }
+  const noteKey = `approve-note:${input.orderId}`;
+  if (res?.ok) {
+    window.sessionStorage.removeItem(noteKey);
+    toast({ variant: "success", title: res.title, description: res.description });
+    return;
+  }
+  if (res && (res.code === "stale" || res.code === "claimed")) {
+    toast(
+      res.code === "claimed"
+        ? { variant: "warning", title: res.message, description: `Your note on ${label} was not sent.` }
+        : { variant: "warning", title: "Already checked", description: res.message },
+    );
+    return;
+  }
+  markSentBack(input.orderId, false);
+  if (input.note.trim()) window.sessionStorage.setItem(noteKey, input.note);
+  toast({
+    variant: "danger",
+    title: `${label} was not sent back`,
+    description: res?.message ?? "The connection dropped.",
+    duration: 30_000,
+    action: { label: "Try again", onClick: () => void deliverReject(input, label, toast) },
   });
-  return (await res.json()) as ApproveActionResult;
+}
+
+/** The streamed stops (matchStops), handed up once they are in. */
+function StopsIn({ from, onIn }: { from: Promise<ApproveStop[]>; onIn: (stops: ApproveStop[]) => void }) {
+  const stops = use(from);
+  useEffect(() => onIn(stops), [stops, onIn]);
+  return null;
 }
 
 function dueText(iso: string | null): { text: string; late: boolean } | null {
@@ -77,7 +133,7 @@ function whenText(iso: string): string {
   return new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 }
 
-export function ApproveScreen({ item, position, total, nextId, others, takenBy, sameBuyer = null, nextArt = [], matchStops = [] }: Props) {
+export function ApproveScreen({ item, position, total, nextId, others, takenBy, sameBuyer = null, nextArt = [], matchStops: matchStopsIn }: Props) {
   const { ctx } = item;
   const router = useRouter();
   const toast = useToast();
@@ -93,23 +149,30 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
   useEffect(() => {
     if (takenBy) toast({ variant: "info", title: `${takenBy} is checking that one`, description: "Here is the next one." });
   }, [takenBy, toast]);
-  usePendingApprovals(); // re-render when the skip list changes (Skip link)
   setApproveStream(item.isRevision ? "revision" : "new"); // before any href below is built
-  // The page Approve and Reject move to (this order skipped), preloaded so the swap is instant.
-  const afterApprove = approveHref(nextId, undefined, ctx.orderId);
-  const afterSkip = nextId ? approveHref(nextId) : null;
+  // The pages Approve, Reject and Skip move to (this order skipped), preloaded so the swap is instant. Built once per
+  // order (2026-10-25): they carry the approvals still sending in ?skip=, and one finishing while this order was open
+  // changed the address, threw the preloaded page away and held the next tap ~3 s for a fresh one.
+  const { afterApprove, afterSkip, stopHere } = useMemo(
+    () => ({
+      afterApprove: approveHref(nextId, undefined, ctx.orderId),
+      afterSkip: nextId ? approveHref(nextId) : null,
+      stopHere: approveHref(ctx.orderId, ctx.orderId),
+    }),
+    [nextId, ctx.orderId],
+  );
   useEffect(() => {
     const warm = () => {
       router.prefetch(afterApprove, FULL_PREFETCH);
       // Where Stop lands: this same order, pinned. Warm before Approve is tapped.
-      router.prefetch(approveHref(ctx.orderId, ctx.orderId), FULL_PREFETCH);
+      router.prefetch(stopHere, FULL_PREFETCH);
       if (afterSkip) router.prefetch(afterSkip, FULL_PREFETCH);
     };
     warm();
     // A careful look takes longer than the 3 minute preload.
     const t = window.setInterval(warm, REWARM_MS);
     return () => window.clearInterval(t);
-  }, [afterApprove, afterSkip, ctx.orderId, router, item]);
+  }, [afterApprove, afterSkip, stopHere, router, item]);
   // The next order's artwork (5-8 MB) downloads while this one is looked at, after this one's own picture.
   const nextArtKey = nextArt.join("\n");
   useEffect(() => {
@@ -126,12 +189,11 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
     return () => window.clearTimeout(t);
   }, [nextArtKey]);
   const [pending, startTransition] = useTransition();
-  const [busy, setBusy] = useState<"reject" | "missing" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [stopOpen, setStopOpen] = useState(false);
   const [note, setNote] = useState("");
-  // A note typed before an app update reload comes back, panel open (see callAction).
+  // A note whose send back did not go through comes back, panel open (deliverReject).
   useEffect(() => {
     const key = `approve-note:${ctx.orderId}`;
     const kept = window.sessionStorage.getItem(key);
@@ -144,7 +206,9 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
   // Auto QC's wrong-file or revision-not-done finding and the picture check's match, shown before the tap. Approve
   // still sends it (Ayser 2026-10-22: "Do not do the popup thing", "its something I already approved"): the approval
   // carries the line below, and the server logs it on the order.
-  const stops = [item.stop, ...matchStops].filter((x): x is ApproveStop => !!x);
+  const [matchStops, setMatchStops] = useState<{ stops: ApproveStop[]; at: number }>({ stops: [], at: 0 });
+  const stopsIn = useCallback((list: ApproveStop[]) => setMatchStops({ stops: list, at: Date.now() }), []);
+  const stops = [item.stop, ...matchStops.stops].filter((x): x is ApproveStop => !!x);
   const pictures = useQcPictures(ctx.orderId);
   // Which artwork the viewer shows: the new version, the one before it (revisions) or the AI fix (2026-10-14).
   const [view, setView] = useState<"new" | "before" | "fix">("new");
@@ -196,55 +260,26 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
     return () => window.removeEventListener("keydown", onKey);
   }, [enlarged]);
 
-  // fresh: false only after Approve, whose target URL is new and was fully
-  // prefetched above; a refresh there purged that prefetch and held this
-  // order on screen for ~6 s while the server re-rendered.
+  // fresh: false after Approve and Send back, whose target was fully prefetched above; a refresh there purged that
+  // prefetch and held this order on screen for ~6 s while the server re-rendered.
   function goNext(fresh = true) {
     startTransition(() => {
-      router.replace(approveHref(nextId));
+      router.replace(fresh ? approveHref(nextId) : afterApprove);
       if (fresh) router.refresh();
     });
-  }
-
-  // Yousif 2026-10-14: a dropped connection or an app update mid-session left
-  // "Sending back..." spinning forever with nothing sent. Every call now ends:
-  // a thrown error or a 30 s stall frees the button with a reason, and a retry
-  // is safe because the server answers "Already checked" when the first landed.
-  async function callAction<T>(run: () => Promise<T>): Promise<T | null> {
-    try {
-      return await Promise.race([
-        run(),
-        new Promise<never>((_, fail) => setTimeout(() => fail(new Error("timeout")), 30_000)),
-      ]);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (/server action/i.test(msg)) {
-        // The page is older than the live app: reload onto this order, note kept.
-        if (note.trim()) window.sessionStorage.setItem(`approve-note:${ctx.orderId}`, note);
-        setError("AlphaOS was just updated, reloading. Tap again once it opens.");
-        window.location.assign(`/approve?o=${ctx.orderId}`);
-        return null;
-      }
-      setError(
-        msg === "timeout"
-          ? "No answer after 30 seconds, it may not have gone through. Check your connection and tap again."
-          : "That didn't go through (connection dropped). Tap again.",
-      );
-      return null;
-    } finally {
-      setBusy(null);
-    }
   }
 
   // Yousif 2026-10-14: no "Sending..." wait. The approval is queued with a short
   // Stop window (components/qc/pending-approvals.tsx) and the screen moves on.
   function approve() {
     setError(null);
+    // A picture check that only just came in was not seen: the send's own check stops on it and offers Send anyway.
+    const seen = [item.stop, ...(Date.now() - matchStops.at >= STOP_READ_MS ? matchStops.stops : [])].filter((x): x is ApproveStop => !!x);
     approvalStore.enqueue({
       orderId: ctx.orderId,
       orderNumber: ctx.orderNumber,
       customerName: ctx.customerName,
-      ...(stops.length ? { overrideReason: `Approved on the Approve screen with this shown: ${stops.map((x) => x.message).join(" ")}` } : {}),
+      ...(seen.length ? { overrideReason: `Approved on the Approve screen with this shown: ${seen.map((x) => x.message).join(" ")}` } : {}),
     });
     goNext(false);
   }
@@ -257,7 +292,7 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
     goNext(false);
   }
 
-  async function reject() {
+  function reject() {
     if (!note.trim()) {
       setError("Write what needs fixing first.");
       return;
@@ -266,7 +301,7 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
       setError(pictures.busy ? "Wait for the pictures to finish uploading." : "Retry or remove the picture that did not upload.");
       return;
     }
-    await sendBack("reject", {
+    sendBack({
       note,
       failedKeys: picked,
       attachmentAssetIds: pictures.assetIds,
@@ -276,33 +311,17 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
 
   // One tap: the missing portrait note goes back as is (it marks the Count check).
   function sendBackMissing() {
-    void sendBack("missing", { note: missingNote, failedKeys: [] });
+    sendBack({ note: missingNote, failedKeys: [] });
   }
 
-  async function sendBack(kind: "reject" | "missing", input: Omit<OwnerRejectInput, "orderId">) {
-    setBusy(kind);
+  // Like Approve, Send back moves on at once (to the page preloaded for Approve) and the send goes in the background.
+  function sendBack(input: Omit<OwnerRejectInput, "orderId">) {
     setError(null);
-    const res = await callAction(() => postReject({ orderId: ctx.orderId, ...input }));
-    if (!res) return;
-    if (!res.ok) {
-      if (res.code === "stale" || res.code === "claimed") {
-        toast(
-          res.code === "claimed"
-            ? { variant: "warning", title: res.message, description: "Your note was not sent." }
-            : { variant: "warning", title: "Already checked", description: res.message },
-        );
-        goNext();
-        return;
-      }
-      setError(res.message);
-      return;
-    }
-    toast({ variant: "success", title: res.title, description: res.description });
-    // The preloaded page (this order skipped, the same one Approve uses): no refresh, it would throw that away.
-    startTransition(() => router.replace(approveHref(nextId, undefined, ctx.orderId)));
+    void deliverReject({ orderId: ctx.orderId, ...input }, `#${ctx.orderNumber}`, toast);
+    goNext(false);
   }
 
-  const locked = busy !== null || pending;
+  const locked = pending;
   const says = ctx.orderSays;
   const rejectButton = (
     <button
@@ -326,6 +345,11 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
     // one-line text (a same-buyer order title, a portrait button) and ran off a phone's edge (2026-10-22).
     <div className="mx-auto flex w-full min-w-0 max-w-5xl flex-col gap-4" data-testid="approve-screen" data-kind={item.isRevision ? "revision" : "new"}>
       <PendingApprovalsHost />
+      {matchStopsIn ? (
+        <Suspense fallback={null}>
+          <StopsIn from={matchStopsIn} onIn={stopsIn} />
+        </Suspense>
+      ) : null}
       {/* Where am I in the pile */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 flex-col">
@@ -340,9 +364,9 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
           <span>
             {position} of {total} to check
           </span>
-          {nextId ? (
+          {afterSkip ? (
             <Link
-              href={approveHref(nextId)}
+              href={afterSkip}
               onClick={() => releaseClaim(ctx.orderId)}
               className={cn("ml-1 inline-flex min-h-11 items-center gap-1 rounded-input px-2 font-medium text-pigment hover:bg-pigment-soft sm:min-h-0 sm:py-1", focusRing)}
             >
@@ -715,14 +739,8 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
                 className={cn("h-12 rounded-input bg-rose px-3 text-base font-semibold text-surface disabled:opacity-60", focusRing)}
               >
                 {/* The full label is wider than half a phone screen. */}
-                {busy === "reject" ? (
-                  "Sending back..."
-                ) : (
-                  <>
-                    <span className="sm:hidden">Send back</span>
-                    <span className="hidden sm:inline">Send back to designer</span>
-                  </>
-                )}
+                <span className="sm:hidden">Send back</span>
+                <span className="hidden sm:inline">Send back to designer</span>
               </button>
             </div>
           </div>
@@ -737,14 +755,8 @@ export function ApproveScreen({ item, position, total, nextId, others, takenBy, 
               data-testid="send-back-missing"
               className={cn("inline-flex h-14 flex-col items-center justify-center rounded-input bg-rose px-2 text-surface disabled:opacity-60", focusRing)}
             >
-              {busy === "missing" ? (
-                <span className="text-lg font-semibold">Sending back...</span>
-              ) : (
-                <>
-                  <span className="text-lg font-semibold leading-tight">Send back</span>
-                  <span className="max-w-full truncate text-xs leading-tight">{missingWho} missing</span>
-                </>
-              )}
+              <span className="text-lg font-semibold leading-tight">Send back</span>
+              <span className="max-w-full truncate text-xs leading-tight">{missingWho} missing</span>
             </button>
           </div>
         ) : (

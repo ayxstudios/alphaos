@@ -4,7 +4,6 @@ import { auth } from "@/lib/auth";
 import type { RequestUser } from "@/lib/db";
 import { ownerApproveCore, type ApproveActionResult } from "@/lib/qc/owner-approve";
 import { ownerRejectCore, type OwnerRejectInput } from "@/lib/qc/owner-reject";
-import { writeDecision, writeUndo, type CaseDecision, type CaseWrite } from "@/lib/cases/cards";
 
 export type { ApproveActionResult };
 
@@ -37,25 +36,4 @@ export async function ownerReject(input: OwnerRejectInput): Promise<ApproveActio
   const staff = await requireStaff();
   if ("error" in staff) return staff.error;
   return ownerRejectCore(staff.user, staff.name, input);
-}
-
-/**
- * A swipe on a customer case (the Cases stream, 2026-10-21). Owners only (admin): the agent does what the card says, and a
- * case can be money or a customer's reply. The decision is recorded on the case's card; the agent queues it, waits its
- * 30 s undo window and carries it out, so a wrong swipe can still be undone (undoCase).
- */
-export async function decideCase(input: CaseDecision): Promise<CaseWrite> {
-  const session = await auth();
-  if (!session?.user) return { ok: false, message: "Please sign in again." };
-  if (session.user.role !== "admin") return { ok: false, message: "Only the owners can decide cases." };
-  if (typeof input?.id !== "string" || !input.id) return { ok: false, message: "That case could not be found." };
-  if (input.decision === "own" && !String(input.ownerText ?? "").trim()) return { ok: false, message: "Write what to do first." };
-  return writeDecision(input);
-}
-
-export async function undoCase(id: string): Promise<CaseWrite> {
-  const session = await auth();
-  if (!session?.user || session.user.role !== "admin") return { ok: false, message: "Only the owners can decide cases." };
-  if (typeof id !== "string" || !id) return { ok: false, message: "That case could not be found." };
-  return writeUndo(id);
 }

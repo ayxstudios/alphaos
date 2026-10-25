@@ -1,15 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { decideCase, undoCase } from "@/app/(app)/approve/actions";
+import { StreamTabs } from "@/components/qc/approve-streams";
 import { BottomDock } from "@/components/qc/bottom-dock";
-import { useToast } from "@/components/ui";
-import { ArrowRight, Check, Pencil } from "@/components/ui/icons";
+import { EmptyState, Page, useToast } from "@/components/ui";
+import { ArrowRight, Check, CheckCircle, Pencil } from "@/components/ui/icons";
 import { focusRing } from "@/components/ui/styles";
-import { CASE_AUTO_AFTER_H, NO_REPLY, type CaseCard, type CaseKind } from "@/lib/cases/cards";
+import { CASE_AUTO_AFTER_H, NO_REPLY, type CaseCard, type CaseKind, type CaseWrite } from "@/lib/cases/cards";
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,6 +15,11 @@ import { cn } from "@/lib/utils";
  * agent would do, ready to do in one tap. The agent tries to solve a case itself first: only the ones it cannot settle
  * reach this screen. A swipe records the decision and the agent does it after a 30 s undo window; a case nobody swipes
  * for 24 h is done on the agent's own pick.
+ *
+ * Since 2026-10-25 ("when you click something it waits then goes to the next one ... it should be faster") the whole
+ * pile lives on the screen (CaseDeck): a tap shows the next case at once and the swipe is recorded in the background
+ * (POST /api/approve/cases). One that does not go through comes back into the pile with a note; Undo puts it back on
+ * screen. The list refreshes itself every minute without moving the case being read.
  */
 
 const KIND: Record<CaseKind, { label: string; tone: string }> = {
@@ -57,70 +60,250 @@ export function caseHref(id: string | null): string {
   return id ? `/approve?s=cases&c=${encodeURIComponent(id)}` : "/approve?s=cases";
 }
 
-export function CaseScreen({ card, position, total, nextId }: { card: CaseCard; position: number; total: number; nextId: string | null }) {
-  const router = useRouter();
+export type CaseChoice =
+  | { decision: "tick"; replyEdit: string; actionsOff: number[] }
+  | { decision: "own"; ownerText: string }
+  | { decision: "sorted" };
+
+/**
+ * Swipes made in this tab: case id -> when the agent recorded it (Infinity while it is on its way). Module-wide, so a copy
+ * of the page from the router cache (up to 3 min old) or a list read before the swipe landed never shows it again.
+ */
+const decided = new Map<string, number>();
+/** The server's clock and the phone's can differ by a few seconds. */
+const CLOCK_SLACK_MS = 10_000;
+const REFRESH_MS = 60_000;
+/** A second tap this soon after the next case appeared was meant for the last one (a double tap): never decide unseen. */
+const DOUBLE_TAP_MS = 450;
+
+/** The cards still to decide, from a list read at `at`. */
+function undecided(list: CaseCard[], at: number): CaseCard[] {
+  return list.filter((c) => {
+    const t = decided.get(c.id);
+    return t === undefined || at > t + CLOCK_SLACK_MS;
+  });
+}
+
+async function call(body: Record<string, unknown>): Promise<CaseWrite> {
+  try {
+    const res = await fetch("/api/approve/cases", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
+    });
+    return ((await res.json().catch(() => null)) as CaseWrite | null) ?? { ok: false, message: "That didn't go through." };
+  } catch {
+    return { ok: false, message: "That didn't go through (connection dropped)." };
+  }
+}
+
+const why = (m: string) => (/didn't go through/i.test(m) ? "the connection dropped." : /[.!?]$/.test(m.trim()) ? m.trim() : `${m.trim()}.`);
+
+export function CaseDeck({
+  cards: initial,
+  at,
+  startId,
+  counts,
+}: {
+  cards: CaseCard[];
+  /** When the server read `cards` (ms). */
+  at: number;
+  startId: string | null;
+  counts: { new: number; revision: number };
+}) {
   const toast = useToast();
-  const [pending, startTransition] = useTransition();
+  const [cards, setCards] = useState(() => undecided(initial, at));
+  const [currentId, setCurrentId] = useState<string | null>(() => {
+    const list = undecided(initial, at);
+    return (list.find((c) => c.id === startId) ?? list[0])?.id ?? null;
+  });
+  const listAt = useRef(at);
+  const shownId = useRef<string | null>(null);
+  const movedAt = useRef(0);
+  const lastRead = useRef(Date.now());
+
+  const index = Math.max(0, cards.findIndex((c) => c.id === currentId));
+  const current = cards[index] ?? null;
+  useEffect(() => {
+    shownId.current = current?.id ?? null;
+  });
+
+  const show = useCallback((id: string | null) => {
+    setCurrentId(id);
+    movedAt.current = Date.now();
+    window.history.replaceState(null, "", caseHref(id));
+    window.scrollTo({ top: 0 });
+  }, []);
+
+  /** A newer list in: new cases join, settled ones leave, the case on screen stays put. */
+  const merge = useCallback((list: CaseCard[], when: number) => {
+    if (when < listAt.current) return;
+    listAt.current = when;
+    setCards((prev) => {
+      const next = undecided(list, when).map((c) => {
+        const mine = prev.find((p) => p.id === c.id);
+        return mine?.failedNote && !c.failedNote ? { ...c, failedNote: mine.failedNote } : c;
+      });
+      const id = shownId.current;
+      const pos = prev.findIndex((p) => p.id === id);
+      // Settled elsewhere while being read: it stays until they move on (a tap on it then says so).
+      if (id && pos >= 0 && !decided.has(id) && !next.some((c) => c.id === id)) next.splice(Math.min(pos, next.length), 0, prev[pos]);
+      return next;
+    });
+  }, []);
+
+  const refresh = useCallback(async () => {
+    const started = Date.now();
+    lastRead.current = started;
+    try {
+      const res = await fetch("/api/approve/cases", { cache: "no-store" });
+      const j = (await res.json()) as { ok?: boolean; cards?: CaseCard[] };
+      if (j.ok && Array.isArray(j.cards)) merge(j.cards, started);
+    } catch {
+      // The next tick tries again; the pile on screen is still right.
+    }
+  }, [merge]);
+
+  // A new list from the server (the tab tapped again, a link to one case): merge it, and open the case it names.
+  useEffect(() => {
+    merge(initial, at);
+  }, [initial, at, merge]);
+  useEffect(() => {
+    if (startId) setCurrentId(startId);
+  }, [startId]);
+
+  useEffect(() => {
+    if (Date.now() - at > 15_000) void refresh(); // a copy from the router cache
+    const tick = setInterval(() => {
+      if (document.visibilityState === "visible") void refresh();
+    }, REFRESH_MS);
+    const back = () => {
+      if (document.visibilityState === "visible" && Date.now() - lastRead.current > 20_000) void refresh();
+    };
+    document.addEventListener("visibilitychange", back);
+    return () => {
+      clearInterval(tick);
+      document.removeEventListener("visibilitychange", back);
+    };
+  }, [at, refresh]);
+
+  /** Back into the pile where it was. */
+  function put(card: CaseCard, pos: number, failedNote: string | null) {
+    setCards((prev) => (prev.some((c) => c.id === card.id) ? prev : [...prev.slice(0, pos), { ...card, failedNote }, ...prev.slice(pos)]));
+  }
+
+  function decide(card: CaseCard, choice: CaseChoice, what: string) {
+    if (Date.now() - movedAt.current < DOUBLE_TAP_MS) return;
+    const pos = Math.max(0, cards.findIndex((c) => c.id === card.id));
+    const rest = cards.filter((c) => c.id !== card.id);
+    decided.set(card.id, Infinity);
+    setCards(rest);
+    show(rest.length ? rest[pos % rest.length].id : null);
+
+    const said: { unsay?: () => void } = {}; // the "I'll do it" toast, taken back if it did not go in
+    const sent = call({ op: "decide", id: card.id, ...choice }).then((res) => {
+      if (res.ok) {
+        decided.set(card.id, Date.now());
+        return true;
+      }
+      said.unsay?.();
+      if (res.conflict) {
+        decided.set(card.id, Date.now());
+        toast({ variant: "info", title: "Already decided", description: `${card.title}: it was settled on another screen.` });
+        return false;
+      }
+      decided.delete(card.id);
+      put(card, pos, why(res.message));
+      toast({
+        variant: "warning",
+        title: "That one didn't go through",
+        description: `${card.title}. It's back in Cases.`,
+        duration: 15_000,
+        action: { label: "Open", onClick: () => show(card.id) },
+      });
+      return false;
+    });
+
+    said.unsay = toast({
+      variant: "success",
+      title: what,
+      description: "I'll do it in a moment.",
+      duration: 25_000,
+      action: {
+        label: "Undo",
+        onClick: () => {
+          void (async () => {
+            if (!(await sent)) return; // it never went in (a failed one is already back in the pile)
+            const u = await call({ op: "undo", id: card.id });
+            if (!u.ok) {
+              toast({ variant: "warning", title: "Too late to undo", description: u.message });
+              return;
+            }
+            decided.delete(card.id);
+            put(card, pos, null);
+            show(card.id);
+            toast({ variant: "info", title: "Undone, it's back in Cases" });
+          })();
+        },
+      },
+    });
+  }
+
+  const tabs = <StreamTabs active="cases" counts={{ ...counts, cases: cards.length }} casesUrgent={cards.some((x) => x.urgent)} />;
+  if (!current) {
+    return (
+      <div className="flex flex-col gap-4">
+        {tabs}
+        <Page className="max-w-xl">
+          <EmptyState icon={CheckCircle} headline="No cases" body="Nothing needs you. I settle customer problems myself and bring you only the ones I can't." />
+        </Page>
+      </div>
+    );
+  }
+  const next = cards.length > 1 ? cards[(index + 1) % cards.length].id : null;
+  return (
+    <div className="flex flex-col gap-4">
+      {tabs}
+      <CaseScreen
+        key={current.id}
+        card={current}
+        position={index + 1}
+        total={cards.length}
+        onSkip={next ? () => show(next) : null}
+        onDecide={(choice, what) => decide(current, choice, what)}
+      />
+    </div>
+  );
+}
+
+function CaseScreen({
+  card,
+  position,
+  total,
+  onSkip,
+  onDecide,
+}: {
+  card: CaseCard;
+  position: number;
+  total: number;
+  onSkip: (() => void) | null;
+  onDecide: (choice: CaseChoice, what: string) => void;
+}) {
   const [reply, setReply] = useState(card.suggestedReply ?? "");
   const [off, setOff] = useState<number[]>([]);
   const [elsewhere, setElsewhere] = useState(false);
   const [own, setOwn] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const kind = KIND[card.kind];
   const hasPick = !!card.suggestedReply || card.suggestedActions.length > 0;
   const auto = autoEligible(card) ? autoIn(card.raisedAt) : null;
-  const locked = busy || pending;
-
-  function move() {
-    startTransition(() => {
-      router.replace(caseHref(nextId));
-      router.refresh();
-    });
-  }
-
-  async function send(input: Parameters<typeof decideCase>[0], what: string) {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await Promise.race([
-        decideCase(input),
-        new Promise<never>((_, fail) => setTimeout(() => fail(new Error("timeout")), 30_000)),
-      ]);
-      if (!res.ok) {
-        setError(res.message);
-        return;
-      }
-      toast({
-        variant: "success",
-        title: what,
-        description: "Recorded. I'll do it in a moment.",
-        duration: 25_000,
-        action: {
-          label: "Undo",
-          onClick: () => {
-            void undoCase(card.id).then((u) => {
-              toast(u.ok ? { variant: "info", title: "Undone, it's back in Cases" } : { variant: "warning", title: "Too late to undo", description: u.message });
-              router.refresh();
-            });
-          },
-        },
-      });
-      move();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(/server action/i.test(msg) ? "AlphaOS was just updated. Reload the page, then tap again." : "That didn't go through. Tap again.");
-    } finally {
-      setBusy(false);
-    }
-  }
 
   function doMyPick() {
     const asSuggested = reply.trim() === (card.suggestedReply ?? "").trim();
     // An emptied reply box = send her nothing; an edited one goes as written; untouched = the agent's own words.
     const replyEdit = asSuggested ? "" : reply.trim() ? reply : NO_REPLY;
-    void send({ id: card.id, decision: "tick", replyEdit, actionsOff: off }, "Doing my pick");
+    onDecide({ decision: "tick", replyEdit, actionsOff: off }, "Doing my pick");
   }
 
   const links = card.links.filter((l) => /^https?:\/\//.test(l.url));
@@ -131,10 +314,10 @@ export function CaseScreen({ card, position, total, nextId }: { card: CaseCard; 
         <span>
           {position} of {total} to decide
         </span>
-        {nextId ? (
-          <Link href={caseHref(nextId)} className={cn("inline-flex min-h-11 items-center gap-1 rounded-input px-2 font-medium text-pigment hover:bg-pigment-soft sm:min-h-0 sm:py-1", focusRing)}>
+        {onSkip ? (
+          <button type="button" onClick={onSkip} data-testid="case-skip" className={cn("inline-flex min-h-11 items-center gap-1 rounded-input px-2 font-medium text-pigment hover:bg-pigment-soft sm:min-h-0 sm:py-1", focusRing)}>
             Skip <ArrowRight size={14} />
-          </Link>
+          </button>
         ) : null}
       </div>
 
@@ -222,7 +405,6 @@ export function CaseScreen({ card, position, total, nextId }: { card: CaseCard; 
                         <input
                           type="checkbox"
                           checked={on}
-                          disabled={locked}
                           onChange={() => setOff((o) => (on ? [...o, i] : o.filter((x) => x !== i)))}
                           className="mt-1 size-5 shrink-0 accent-sage"
                         />
@@ -241,7 +423,6 @@ export function CaseScreen({ card, position, total, nextId }: { card: CaseCard; 
                 <textarea
                   id="case-reply"
                   value={reply}
-                  disabled={locked}
                   onChange={(e) => setReply(e.target.value)}
                   rows={6}
                   placeholder="Leave empty to send her nothing"
@@ -260,11 +441,6 @@ export function CaseScreen({ card, position, total, nextId }: { card: CaseCard; 
       </section>
 
       <BottomDock>
-        {error ? (
-          <p role="alert" className="rounded-input bg-rose/10 px-3 py-2 text-sm text-rose">
-            {error}
-          </p>
-        ) : null}
         {elsewhere ? (
           <div className="flex flex-col gap-3" data-testid="own-panel">
             <label htmlFor="case-own" className="text-sm font-semibold text-ink">
@@ -280,13 +456,13 @@ export function CaseScreen({ card, position, total, nextId }: { card: CaseCard; 
               className={cn("w-full rounded-input border border-line bg-surface px-3 py-2 text-base text-ink placeholder:text-slate", focusRing)}
             />
             <div className="grid grid-cols-2 gap-3">
-              <button type="button" disabled={locked} onClick={() => setElsewhere(false)} className={cn("h-12 rounded-input border border-line text-base font-medium text-ink disabled:opacity-50", focusRing)}>
+              <button type="button" onClick={() => setElsewhere(false)} className={cn("h-12 rounded-input border border-line text-base font-medium text-ink disabled:opacity-50", focusRing)}>
                 Cancel
               </button>
               <button
                 type="button"
-                disabled={locked || !own.trim()}
-                onClick={() => void send({ id: card.id, decision: "own", ownerText: own.trim() }, "Doing it your way")}
+                disabled={!own.trim()}
+                onClick={() => onDecide({ decision: "own", ownerText: own.trim() }, "Doing it your way")}
                 data-testid="case-own-send"
                 className={cn("h-12 rounded-input bg-pigment px-3 text-base font-semibold text-surface disabled:opacity-60", focusRing)}
               >
@@ -299,18 +475,16 @@ export function CaseScreen({ card, position, total, nextId }: { card: CaseCard; 
             {hasPick ? (
               <button
                 type="button"
-                disabled={locked}
                 onClick={doMyPick}
                 data-testid="case-pick"
                 className={cn("col-span-2 inline-flex h-14 items-center justify-center gap-2 rounded-input bg-sage text-lg font-semibold text-surface disabled:opacity-60", focusRing)}
               >
-                <Check size={20} /> {busy ? "Recording..." : "Do my pick"}
+                <Check size={20} /> Do my pick
               </button>
             ) : null}
             <button
               type="button"
-              disabled={locked}
-              onClick={() => void send({ id: card.id, decision: "sorted" }, "Marked as sorted")}
+              onClick={() => onDecide({ decision: "sorted" }, "Marked as sorted")}
               data-testid="case-sorted"
               className={cn("inline-flex h-12 items-center justify-center rounded-input border-2 border-line text-base font-semibold text-ink disabled:opacity-50", focusRing)}
             >
@@ -318,11 +492,7 @@ export function CaseScreen({ card, position, total, nextId }: { card: CaseCard; 
             </button>
             <button
               type="button"
-              disabled={locked}
-              onClick={() => {
-                setElsewhere(true);
-                setError(null);
-              }}
+              onClick={() => setElsewhere(true)}
               data-testid="case-else"
               className={cn("inline-flex h-12 items-center justify-center gap-2 rounded-input border-2 border-pigment text-base font-semibold text-pigment disabled:opacity-50", focusRing)}
             >

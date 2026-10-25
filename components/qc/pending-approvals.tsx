@@ -96,8 +96,20 @@ export function setApproveStream(stream: "new" | "revision" | null) {
   streamHint = stream;
 }
 
+/**
+ * Orders sent back from this tab in the last few minutes (2026-10-25): Send back moves on at once and the send goes in
+ * the background, so the order stays out of the queue until the server has it as sent back.
+ */
+const sentBack = new Map<string, number>();
+const SENT_BACK_HIDE_MS = 3 * 60_000;
+export function markSentBack(orderId: string, on = true) {
+  if (on) sentBack.set(orderId, Date.now());
+  else sentBack.delete(orderId);
+}
+
 export function approveHref(orderId: string | null, exclude?: string, also?: string): string {
-  const skip = approvalStore.skipIds().filter((id) => id !== exclude);
+  const back = [...sentBack].filter(([, at]) => Date.now() - at < SENT_BACK_HIDE_MS).map(([id]) => id);
+  const skip = [...new Set([...approvalStore.skipIds(), ...back])].filter((id) => id !== exclude);
   if (also && also !== exclude && !skip.includes(also)) skip.push(also);
   const q = new URLSearchParams();
   if (orderId) q.set("o", orderId);

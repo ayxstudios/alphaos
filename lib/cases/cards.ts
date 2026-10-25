@@ -113,7 +113,8 @@ export type CaseDecision =
   | { id: string; decision: "own"; ownerText: string }
   | { id: string; decision: "sorted" };
 
-export type CaseWrite = { ok: true } | { ok: false; message: string };
+/** conflict = the agent already had a decision for it (the other owner, or its own pick): the card is gone either way. */
+export type CaseWrite = { ok: true } | { ok: false; message: string; conflict?: boolean };
 
 async function post(path: string, body: Record<string, unknown>): Promise<CaseWrite> {
   const origin = base();
@@ -128,7 +129,7 @@ async function post(path: string, body: Record<string, unknown>): Promise<CaseWr
     });
     const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
     if (res.ok && j.ok) return { ok: true };
-    return { ok: false, message: j.error || "That didn't go through. Tap again." };
+    return { ok: false, message: j.error || "That didn't go through. Tap again.", conflict: res.status === 409 };
   } catch {
     return { ok: false, message: "That didn't go through (connection dropped). Tap again." };
   }
