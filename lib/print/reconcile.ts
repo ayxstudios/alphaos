@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 
 import { withSystemContext, type Tx } from "@/lib/db";
 import { getBusinessPrintCredentials } from "@/lib/db/credentials";
@@ -120,7 +120,17 @@ async function loadCandidates(tx: Tx, businessId: string): Promise<CandidateOrde
         .where(and(inArray(orderItems.orderId, ids), eq(orderItems.productType, "physical")))
     ).map((r) => r.orderId),
   );
-  return rows.filter((r) => physicalOrderIds.has(r.id)) as CandidateOrder[];
+  // A part already at the printer is followed whatever the items say: a legacy stub's only item can be digital
+  // (Lori PC32062, canvas + frame at Gelato).
+  const atPrinterOrderIds = new Set(
+    (
+      await tx
+        .select({ orderId: printJobs.orderId })
+        .from(printJobs)
+        .where(and(inArray(printJobs.orderId, ids), isNotNull(printJobs.providerOrderId)))
+    ).map((r) => r.orderId),
+  );
+  return rows.filter((r) => physicalOrderIds.has(r.id) || atPrinterOrderIds.has(r.id)) as CandidateOrder[];
 }
 
 // The least advanced part speaks for a split order: it is only shipped once every part is.
@@ -157,7 +167,7 @@ function classify(result: NormalizedProviderOrder): "matched" | "shipped" | "pro
 }
 
 /**
- * Reconcile every printing/stale-approved physical order for one business.
+ * Reconcile every printing/stale-approved physical order (or one with a part at the printer) for one business.
  * Runs inside withSystemContext (background job, no signed-in user). Every
  * side effect (order transition, Alpha event) is gated by
  * claimReconcileEvent so a concurrent webhook and cron tick, or two cron

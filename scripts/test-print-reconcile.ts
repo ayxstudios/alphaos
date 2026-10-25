@@ -69,7 +69,7 @@ const ids = {
   selfHeal: randomUUID(), // PC-1004, approved/no job/25h old, gelato -> self-heals to printing
   lumaSelfHeal: randomUUID(), // PC-2001, approved/no job/25h old, lumaprints -> self-heals to shipped
   splitBoth: randomUUID(), // PC-1101, printing, two gelato parts both in transit -> shipped, one email
-  splitOne: randomUUID(), // PC-1102, printing, one part in transit, one in production -> waits
+  splitOne: randomUUID(), // PC-1102, printing, one part in transit, one in production -> waits; a legacy stub (only item digital)
   customerId: randomUUID(),
 };
 const orderIds = Object.values(ids).filter((v) => v !== ids.businessId && v !== ids.shopId && v !== ids.customerId);
@@ -117,7 +117,8 @@ async function setup() {
         businessId: ids.businessId,
         orderId,
         title: "A3 Framed Print",
-        productType: "physical" as const,
+        // Lori PC32062: a legacy stub's only item is digital, but its parts are at the printer, so it is followed.
+        productType: (orderId === ids.splitOne ? "digital" : "physical") as "digital" | "physical",
         figureCount: 1,
         figureCountSource: "manual" as const,
       })),
@@ -352,7 +353,7 @@ async function main() {
     const oneParts = await partsOf(ids.splitOne);
     const oneResult = run1.results.find((r) => r.orderId === ids.splitOne);
     report(
-      "split order, one part shipped an hour ago: its tracking recorded, order stays printing, no email yet",
+      "split order (a legacy stub, only item digital, followed for its printer parts), one part shipped an hour ago: its tracking recorded, order stays printing, no email yet",
       oneResult?.outcome === "matched" &&
         (await orderStatus(ids.splitOne)) === "printing" &&
         oneParts[0].trackingNumber === "9400111899223100001201" &&
