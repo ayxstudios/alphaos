@@ -11,9 +11,10 @@ import {
   orders,
   orderItems,
   earnings,
+  activityLog,
   type StyleDailyLimit,
 } from "@/lib/db/schema";
-import { liveOrderWhere } from "@/lib/orders/archive";
+import { isSettledArchiveReason, liveOrderWhere } from "@/lib/orders/archive";
 import { sendDesignerBrief } from "@/lib/notifications/designer-events";
 import { findStyle, getAgentDesignerId, markQueuedForAgent } from "@/lib/agent/ai-core";
 import { getAgentConfig } from "@/lib/agent/config";
@@ -52,6 +53,13 @@ export async function hasReferencePhoto(tx: Tx, orderId: string): Promise<boolea
     .where(and(eq(assets.orderId, orderId), eq(assets.type, "reference"), isNull(assets.deletedAt)))
     .limit(1);
   return Boolean(reference);
+}
+
+export class ArchivedOrderError extends Error {
+  constructor(orderId: string, reason: string) {
+    super(`Order ${orderId} was archived as not owed (${reason}); a person has to reopen it before it is assigned.`);
+    this.name = "ArchivedOrderError";
+  }
 }
 
 export class MissingReferencePhotoError extends Error {
@@ -279,6 +287,27 @@ export async function createAssignment(
   // Hard stop (Yousif 2026-10-18, "designers keep saying there's photos
   // missing"): no designer ever receives an order without a reference photo.
   if (!(await hasReferencePhoto(tx, input.orderId))) throw new MissingReferencePhotoError(input.orderId);
+
+  // An assigned order is live work (audit 2026-10-25: #CPS10281 sat archived
+  // on Slamet's board with a revision owed, so no live-only view saw it). An
+  // archive settled on purpose ("not needed", duplicate, "ignore this order")
+  // refuses; any other archive is lifted here, on the record.
+  const [arch] = await tx
+    .select({ archivedAt: orders.archivedAt, archiveReason: orders.archiveReason })
+    .from(orders)
+    .where(eq(orders.id, input.orderId))
+    .limit(1);
+  if (arch?.archivedAt) {
+    if (isSettledArchiveReason(arch.archiveReason)) throw new ArchivedOrderError(input.orderId, arch.archiveReason ?? "");
+    await tx.update(orders).set({ archivedAt: null, archiveReason: null }).where(eq(orders.id, input.orderId));
+    await tx.insert(activityLog).values({
+      businessId: input.businessId,
+      orderId: input.orderId,
+      actorId: input.assignedBy,
+      action: "order.unarchived_on_assign",
+      metadata: { archivedAt: arch.archivedAt.toISOString(), archiveReason: arch.archiveReason ?? null, designerId: input.designerId },
+    });
+  }
 
   // The approval opens the database guards (migrations 0063 and 0064) for this
   // one move only; a hand-back to the same designer opens 0064 for that alone.
