@@ -11,7 +11,7 @@ import { parseSkip } from "@/components/qc/pending-approvals-store";
 import { ApproveScreen } from "@/components/qc/approve-screen";
 import { StreamTabs } from "@/components/qc/approve-streams";
 import { CaseDeck } from "@/components/qc/case-screen";
-import { EmptyState, Page } from "@/components/ui";
+import { EmptyState, Page, Skeleton } from "@/components/ui";
 import { CheckCircle } from "@/components/ui/icons";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +22,38 @@ type Counts = { new: number; revision: number };
 async function TabsWithCases({ active, counts, cases }: { active: Stream; counts: Counts; cases: Promise<CaseCard[] | null> }) {
   const list = await cases;
   return <StreamTabs active={active} counts={{ ...counts, cases: list?.length ?? null }} casesUrgent={!!list?.some((x) => x.urgent)} />;
+}
+
+/** The Cases stream once its list is in. Opened from the tabs it streams in after a placeholder, so the tab moves at once. */
+async function CasesBody({ cases, at, startId, counts }: { cases: Promise<CaseCard[] | null> | CaseCard[] | null; at: number; startId: string | null; counts: Counts }) {
+  const list = await cases;
+  if (!list) {
+    return (
+      <div className="flex flex-col gap-4">
+        <StreamTabs active="cases" counts={{ ...counts, cases: null }} />
+        <Page className="max-w-xl">
+          <EmptyState icon={CheckCircle} headline="Cases did not load" body="I couldn't reach the case list just now. Reload in a minute; nothing is lost." />
+        </Page>
+      </div>
+    );
+  }
+  // The whole pile goes to the screen: a swipe shows the next case at once (components/qc/case-screen.tsx).
+  return <CaseDeck cards={list} at={at} startId={startId} counts={counts} />;
+}
+
+function CasesLoading({ counts }: { counts: Counts }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <StreamTabs active="cases" counts={{ ...counts, cases: null }} casesPending />
+      <Page className="max-w-xl">
+        <div className="flex flex-col gap-3" aria-busy="true">
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="h-64 rounded-card" />
+          <Skeleton className="h-12 rounded-card" />
+        </div>
+      </Page>
+    </div>
+  );
 }
 
 /**
@@ -59,7 +91,8 @@ export default async function ApprovePage({ searchParams }: { searchParams: Prom
 
   // No stream asked for and nothing in the order streams: the cases are what is left.
   const ordersLeft = counts.new + counts.revision > 0;
-  const casesNow = casesP && (wantCases || (!asked && !o && !ordersLeft)) ? await casesP : undefined;
+  // The Cases tab itself does not wait here: its list streams in behind a placeholder (CasesBody).
+  const casesNow = casesP && !asked && !o && !ordersLeft ? await casesP : undefined;
   const active: Stream = wantCases || (!asked && !o && !ordersLeft && (casesNow?.length ?? 0) > 0) ? "cases" : q.stream;
   const tabs = !casesP ? (
     <StreamTabs active={active} counts={{ new: counts.new, revision: counts.revision }} />
@@ -76,19 +109,13 @@ export default async function ApprovePage({ searchParams }: { searchParams: Prom
   );
 
   if (active === "cases") {
-    const cases = casesNow;
-    if (cases === null || cases === undefined) {
-      return (
-        <div className="flex flex-col gap-4">
-          {tabs}
-          <Page className="max-w-xl">
-            <EmptyState icon={CheckCircle} headline="Cases did not load" body="I couldn't reach the case list just now. Reload in a minute; nothing is lost." />
-          </Page>
-        </div>
-      );
-    }
-    // The whole pile goes to the screen: a swipe shows the next case at once (components/qc/case-screen.tsx).
-    return <CaseDeck cards={cases} at={casesAt} startId={c ?? null} counts={{ new: counts.new, revision: counts.revision }} />;
+    const two = { new: counts.new, revision: counts.revision };
+    if (casesNow !== undefined) return <CasesBody cases={casesNow} at={casesAt} startId={c ?? null} counts={two} />;
+    return (
+      <Suspense fallback={<CasesLoading counts={two} />}>
+        <CasesBody cases={casesP ?? null} at={casesAt} startId={c ?? null} counts={two} />
+      </Suspense>
+    );
   }
 
   if (queue.length === 0) {

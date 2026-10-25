@@ -83,7 +83,9 @@ export async function listCases(): Promise<CaseCard[] | null> {
   const origin = base();
   if (!origin) return null;
   try {
-    const res = await fetch(`${origin}/api/cards?k=${encodeURIComponent(process.env.NEEDS_YOU_KEY!)}`, { cache: "no-store", signal: AbortSignal.timeout(4000) });
+    // live=1: only the waiting cards. The full answer also carries the last 200 handled ones (415 KB, ~3.8 s) and kept
+    // tripping the timeout, so the tab said "Cases did not load" (2026-10-25); live only is ~80 KB in 1 to 2 s.
+    const res = await fetch(`${origin}/api/cards?k=${encodeURIComponent(process.env.NEEDS_YOU_KEY!)}&live=1`, { cache: "no-store", signal: AbortSignal.timeout(6000) });
     if (!res.ok) return null;
     const j = (await res.json()) as { live?: Row[] };
     const cards = (j.live ?? []).map(toCard);
