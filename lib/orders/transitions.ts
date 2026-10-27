@@ -185,6 +185,8 @@ export type TransitionInput = {
   wrongFileChecked?: boolean;
 };
 
+export type TransitionResult = { status: OrderStatus; warnings?: string[] };
+
 /** Legal staff transitions out of a status — used to render VA queue actions. */
 export function staffTransitionsFrom(status: OrderStatus): OrderStatus[] {
   return Object.entries(GRAPH)
@@ -193,12 +195,12 @@ export function staffTransitionsFrom(status: OrderStatus): OrderStatus[] {
 }
 
 /** Transition triggered by a signed-in user (board server actions). */
-export function transition(actor: RequestUser, input: TransitionInput): Promise<{ status: OrderStatus }> {
+export function transition(actor: RequestUser, input: TransitionInput): Promise<TransitionResult> {
   return withUserContext(actor, (tx) => runTransition(tx, actor, input));
 }
 
 /** Transition triggered by no user (proof link, webhooks, importers, cron). */
-export function transitionAsSystem(input: TransitionInput): Promise<{ status: OrderStatus }> {
+export function transitionAsSystem(input: TransitionInput): Promise<TransitionResult> {
   return withSystemContext((tx) => runTransition(tx, { id: SYSTEM_ACTOR_ID, role: "system" }, input));
 }
 
@@ -209,8 +211,10 @@ export function transitionAsSystem(input: TransitionInput): Promise<{ status: Or
  * rather than opening a second transaction. Request/system callers should use
  * `transition` / `transitionAsSystem`, which open the correctly-scoped tx.
  */
-export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput): Promise<{ status: OrderStatus }> {
+export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput): Promise<TransitionResult> {
   const { orderId, to, expectedFrom } = input;
+  /** Notes the move went through with (a designer's same-picture heads-up). */
+  const warnings: string[] = [];
 
   // Lock the row; RLS also scopes visibility (designers only see their own).
   const [order] = await tx
@@ -261,6 +265,7 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
       businessId: order.businessId,
       overrideReason: input.overrideReason,
       via: "submit",
+      warnings,
     });
     if (wrong) throw new PreconditionError(wrong.message);
     // two portraits she asked to be different, handed in as one file (Shelby PC32228, Kara PC32205)
@@ -413,7 +418,7 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
     metadata: logMeta,
   });
 
-  return { status: to };
+  return warnings.length ? { status: to, warnings } : { status: to };
 }
 
 /* --- side effects ------------------------------------------------------- */

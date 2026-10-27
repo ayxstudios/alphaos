@@ -33,7 +33,7 @@ import { assertKeysBelongTo, assertStoredImage } from "@/lib/uploads/verify";
 import { hashColumnsForKeys } from "@/lib/qc/asset-hash";
 
 export type MoveResult =
-  | { ok: true; status: OrderStatus }
+  | { ok: true; status: OrderStatus; warnings?: string[] }
   | { ok: false; code: string; message: string };
 
 /**
@@ -54,10 +54,10 @@ export async function moveOrder(
 
   try {
     const overrideReason = typeof metadata?.overrideReason === "string" ? metadata.overrideReason : undefined;
-    const { status } = await transition(user, { orderId, to, expectedFrom, metadata, overrideReason });
+    const { status, warnings } = await transition(user, { orderId, to, expectedFrom, metadata, overrideReason });
     revalidatePath("/board");
     revalidatePath("/orders");
-    return { ok: true, status };
+    return warnings?.length ? { ok: true, status, warnings } : { ok: true, status };
   } catch (err) {
     if (err instanceof OrderTransitionError) {
       // The internal not-found text carries the order UUID and RLS wording;

@@ -75,6 +75,7 @@
     "test:same-buyer": "tsx scripts/test-same-buyer.ts",
     "test:image-hash": "tsx scripts/test-image-hash.ts",
     "test:wrong-file": "tsx scripts/test-wrong-file.ts",
+    "test:wrong-file-gate": "tsx scripts/test-wrong-file-gate.ts",
     "test:revision-stop": "tsx scripts/test-revision-stop.ts",
     "test:duplicate-slots": "tsx scripts/test-duplicate-slots.ts",
     "test:approve-stop": "tsx scripts/test-approve-stop.ts",

@@ -157,6 +157,15 @@ export function describeEvent(e: CardEvent, viewerRole?: "admin" | "va" | "desig
       return "updated the order details";
     case "order.tracking_added":
       return "added tracking";
+    case "order.wrong_file_heads_up": {
+      // The designer saw this as a toast; QC sees which order to compare with.
+      if (designer) return null;
+      const matches = Array.isArray(e.metadata?.matches) ? (e.metadata.matches as { matchOrderNumber?: unknown }[]) : [];
+      const nums = [...new Set(matches.map((m) => (typeof m?.matchOrderNumber === "string" ? m.matchOrderNumber : "")).filter(Boolean))];
+      return nums.length
+        ? `handed in a picture that is also on order ${nums.join(" and ")}: check which order it belongs to`
+        : "handed in a picture that is also on another order: check which order it belongs to";
+    }
     case "order.same_buyer_noted":
       return "noted that this customer has other orders";
     case "email.sent":

@@ -196,7 +196,10 @@ export function DesignerBoard({
       });
       return false;
     }
-    if (to === "awaitingQc" && viewerRole === "designer") {
+    if (to === "awaitingQc" && res.warnings?.length) {
+      // Sent, with a same-picture heads-up (lib/qc/wrong-file.ts): the designer says which order is which.
+      toast({ variant: "warning", title: `${card.orderNumber} sent for QC`, description: res.warnings.join(" "), duration: 12000 });
+    } else if (to === "awaitingQc" && viewerRole === "designer") {
       toast({ variant: "success", title: `${card.orderNumber} sent for QC` });
     }
     router.refresh();

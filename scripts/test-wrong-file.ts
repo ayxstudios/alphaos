@@ -2,7 +2,16 @@ import assert from "node:assert/strict";
 
 import { orientationOf } from "../lib/orders/same-buyer";
 import { FINE_H, FINE_W, fineSigFromGray, inkDifference } from "../lib/qc/image-hash";
-import { type WrongFileInput, evaluateWrongFile, wrongFileMessage, wrongFileWarnings } from "../lib/qc/wrong-file";
+import {
+  type SlotFile,
+  type WrongFileInput,
+  designerHeadsUpMessage,
+  evaluateWrongFile,
+  isDesignerHeadsUp,
+  wentToCustomer,
+  wrongFileMessage,
+  wrongFileWarnings,
+} from "../lib/qc/wrong-file";
 
 const base = "f0f0f0f0f0f0f0f0";
 /** `base` with the lowest `n` bits flipped = hamming distance n. */
@@ -113,6 +122,65 @@ function main() {
   assert.equal(orientationOf([line([{ name: "Orientation", value: "Landscape" }])] as never), "landscape");
   assert.equal(orientationOf([line([])] as never, "please use portrait orientation"), "portrait");
   assert.equal(orientationOf([line([])] as never), null);
+
+  // 27 Oct, Jerome: Alyssa's portrait (4213333468) also put on Erin's 4204560873, neither sent yet.
+  // The match is there, but a designer's hand-in goes through on it with a heads-up naming the other order.
+  const mixup = evaluateWrongFile({
+    ...empty,
+    target: { assetId: "alyssa", dhash: base, fineSig: A },
+    recent: [{ assetId: "on-erin", dhash: away(0), fineSig: A, orderNumber: "4204560873", sent: false }],
+  });
+  assert.equal(mixup.blocked, true);
+  assert.equal(mixup.reasons[0].matchSent, false);
+  assert.ok(mixup.reasons.every(isDesignerHeadsUp));
+  assert.match(designerHeadsUpMessage(mixup.reasons) ?? "", /also on order 4204560873\. If it does not belong there, upload that order's own portrait/);
+  // QC (staff) still stops on it, with words that fit: neither copy has gone out.
+  assert.match(wrongFileMessage(mixup.reasons) ?? "", /also on order 4204560873, where it has not gone to the customer yet/);
+  // Unknown standing counts as sent: never a heads-up.
+  assert.equal(rec.reasons.some(isDesignerHeadsUp), false);
+  assert.equal(designerHeadsUpMessage(rec.reasons), null);
+
+  // A sent match outranks a closer unsent one, so the hand-in is stopped on the sent one.
+  const both = evaluateWrongFile({
+    ...empty,
+    target: { assetId: "t", dhash: base, fineSig: drawing(1, 2) },
+    recent: [
+      { assetId: "unsent-copy", dhash: away(0), fineSig: drawing(1, 2), orderNumber: "PC7", sent: false },
+      { assetId: "sent-copy", dhash: away(4), fineSig: drawing(1, 1), orderNumber: "PC8", sent: true },
+    ],
+  });
+  assert.equal(both.reasons[0].matchAssetId, "sent-copy");
+  assert.equal(both.reasons.some(isDesignerHeadsUp), false);
+  assert.match(wrongFileMessage(both.reasons) ?? "", /artwork on order PC8\. Upload the right file/);
+  // The buyer's other order only unsent, but a sent copy on another order: the sent one still blocks.
+  const sibUnsent = evaluateWrongFile({
+    ...empty,
+    target: { assetId: "t", dhash: base, fineSig: A },
+    siblings: [{ assetId: "sib", dhash: away(0), fineSig: A, orderNumber: "PC31", sent: false }],
+    recent: [{ assetId: "old", dhash: away(2), fineSig: A, orderNumber: "PC20", sent: true }],
+  });
+  assert.deepEqual(
+    sibUnsent.reasons.map((r) => [r.kind, r.matchSent ?? "sent"]),
+    [
+      ["other_order", false],
+      ["recent_art", "sent"],
+    ],
+  );
+  assert.equal(sibUnsent.reasons.every(isDesignerHeadsUp), false);
+  assert.match(wrongFileMessage(sibUnsent.reasons) ?? "", /artwork on order PC20/);
+
+  // Did a file go to its own customer?
+  const t = (h: number) => new Date(Date.UTC(2026, 9, 27, h));
+  const file = (id: string, h: number, extra: Partial<SlotFile> = {}): SlotFile => ({ id, itemId: "i1", unit: 1, createdAt: t(h), deletedAt: null, ...extra });
+  const m = { ...file("m", 10), type: "submission" };
+  assert.equal(wentToCustomer({ ...m, type: "final" }, [], []), true);
+  assert.equal(wentToCustomer(m, [file("m", 10)], []), false, "never passed QC");
+  assert.equal(wentToCustomer(m, [file("m", 10)], [t(12)]), true, "current when its order passed QC");
+  assert.equal(wentToCustomer(m, [file("m", 10)], [t(9)]), false, "QC pass before it was uploaded");
+  assert.equal(wentToCustomer(m, [file("m", 10), file("n", 11)], [t(12)]), false, "replaced before the pass");
+  assert.equal(wentToCustomer(m, [file("m", 10), file("n", 11, { deletedAt: t(11.5) })], [t(12)]), true, "the replacement was removed before the pass");
+  assert.equal(wentToCustomer(m, [file("m", 10), file("n", 11, { unit: 2 })], [t(12)]), true, "a newer file in another portrait slot");
+  assert.equal(wentToCustomer(m, [file("m", 10), file("n", 13)], [t(12)]), true, "replaced only after it went out");
 
   console.log("wrong-file: all checks passed");
 }
