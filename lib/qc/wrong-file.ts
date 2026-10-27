@@ -156,8 +156,11 @@ export function wrongFileMessage(reasons: WrongFileReason[]): string | null {
             ? `artwork on order ${blocking.matchOrderNumber}`
             : "artwork on another order"
           : blocking.note;
-  return blocking.kind === "auto_qc"
-    ? `Auto QC says this is the wrong file: ${blocking.note}. Upload the right file for this order.`
+  if (blocking.kind === "auto_qc") return `Auto QC says this is the wrong file: ${blocking.note}. Upload the right file for this order.`;
+  // The same picture on two orders blocks both: say how to clear the other one (2026-10-27).
+  const other = blocking.kind === "other_order" || blocking.kind === "recent_art" ? blocking.matchOrderNumber : null;
+  return other
+    ? `This file looks like ${what}. Upload the right file for this order. If this file really belongs here, upload the right file to order ${other} first, then submit this one again.`
     : `This file looks like ${what}. Upload the right file for this order.`;
 }
 
@@ -222,6 +225,22 @@ async function withHash(tx: Tx, row: AssetRow): Promise<AssetRow> {
   if (!cols.dhash) return row;
   await tx.update(assets).set(cols).where(eq(assets.id, row.id));
   return { ...row, ...cols };
+}
+
+/**
+ * The ids that are still their own order's current artwork. A version the
+ * designer has since replaced is no longer that order's art (2026-10-27: one
+ * picture put on two orders by mistake kept blocking the right order even
+ * after the wrong one got its own file).
+ */
+async function stillCurrent(tx: Tx, ids: string[]): Promise<string[]> {
+  if (!ids.length) return [];
+  const rows = await tx.select({ id: assets.id, orderId: assets.orderId }).from(assets).where(inArray(assets.id, ids));
+  const current = new Set<string>();
+  for (const orderId of new Set(rows.map((r) => r.orderId).filter((v): v is string => !!v))) {
+    for (const id of await currentArtworkIds(tx, orderId)) current.add(id);
+  }
+  return ids.filter((id) => current.has(id));
 }
 
 /** Rows as stored, nothing computed. */
@@ -336,7 +355,7 @@ export async function checkWrongFileTx(tx: Tx, orderId: string, assetId: string)
         .map((x) => x.id)
     : [];
   const recentNumbers = new Map(recentRows.map((r) => [r.id, orderNumberOf(r)]));
-  const recent = (await inReach(tx, target, await storedRows(tx, nearIds), budget)).map((r) => ({
+  const recent = (await inReach(tx, target, await storedRows(tx, await stillCurrent(tx, nearIds)), budget)).map((r) => ({
     assetId: r.id,
     dhash: r.dhash,
     fineSig: r.fineSig,

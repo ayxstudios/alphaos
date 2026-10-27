@@ -68,6 +68,7 @@
     "test:assign-guards": "tsx scripts/test-assign-guards.ts",
     "test:r2-env": "tsx scripts/test-r2-env-guard.ts",
     "test:portrait-slots": "tsx scripts/test-portrait-slots.ts",
+    "test:portrait-title": "tsx scripts/test-portrait-title-guard.ts",
     "test:proof-files": "tsx scripts/test-proof-files.ts",
     "test:proof-multi": "tsx scripts/test-proof-multi.ts",
     "test:review-ask": "tsx scripts/test-review-ask.ts",

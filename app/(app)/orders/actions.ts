@@ -33,6 +33,7 @@ import { reassignOrder } from "@/lib/agent/ai-designer";
 import { aiDesignerChoosable } from "@/lib/agent/ai-designer-choice";
 import { addComment } from "@/lib/orders/card-detail";
 import { setOrderUrgent } from "@/lib/orders/urgent";
+import { isAddOnItem, loadClassifyConfig } from "@/lib/orders/portrait-item";
 import {
   freshShopifyCredentials,
   fulfillShopifyOrderWithTracking,
@@ -713,12 +714,19 @@ async function decideReplySuggestion(
 
 export type StyleActionResult = { ok: true } | { ok: false; message: string };
 
-/** Distinct portrait products in an order — what a style/rule applies to. */
+/**
+ * Distinct portrait products in an order — what a style/rule applies to. Add-on
+ * lines are skipped (an order of nothing but add-ons keeps them all): 2026-10-26
+ * "teach for all" on a CPS order taught Watercolor Pets to the Print & Ship title.
+ */
 async function orderProducts(tx: Tx, orderId: string): Promise<Product[]> {
-  const items = await tx
-    .select({ title: orderItems.title, sku: orderItems.sku })
+  const all = await tx
+    .select({ title: orderItems.title, sku: orderItems.sku, style: orderItems.style })
     .from(orderItems)
     .where(eq(orderItems.orderId, orderId));
+  const cfg = all.length > 1 ? await loadClassifyConfig(tx, orderId) : null;
+  const portraits = all.filter((it) => !isAddOnItem(it, cfg));
+  const items = portraits.length ? portraits : all;
   const seen = new Set<string>();
   const out: Product[] = [];
   for (const it of items) {

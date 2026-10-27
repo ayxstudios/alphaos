@@ -9,7 +9,8 @@ import { listBusinessStyles, routingStyleMatch, shopStyleChoices } from "@/lib/d
 import { referenceUploadProblem } from "@/lib/uploads/verify";
 import { withSizeOption } from "@/lib/orders/size-option";
 import { hashColumnsFor } from "@/lib/qc/asset-hash";
-import { loadClassifyConfig, pickPortraitItem } from "@/lib/orders/portrait-item";
+import { isAddOnItem, loadClassifyConfig, pickPortraitItem } from "@/lib/orders/portrait-item";
+import type { ClassifyConfig } from "@/lib/integrations/classify";
 
 /**
  * The core of "complete an imported awaiting_details order", shared by the VA
@@ -38,6 +39,26 @@ export type CompleteDetailsInput = {
   /** Print size / canvas, saved as a Size option on the item (undefined = leave options alone). */
   size?: string;
 };
+
+/**
+ * The title the portrait line is saved with. Never another line's title or an
+ * add-on title over a real portrait title (2026-10-27, CPS 4213709410: the form
+ * showed the Print & Ship add-on's title, the save renamed the dog portrait to
+ * it, and the order then asked the designer for a second portrait). Pure.
+ */
+export function portraitTitleToSave(
+  productTitle: string | null | undefined,
+  item: { id: string; title: string | null; sku: string | null } | undefined,
+  items: { id: string; title: string | null }[],
+  cfg: ClassifyConfig | null,
+): string | null {
+  const asked = productTitle?.trim() || null;
+  const own = item?.title?.trim() || null;
+  if (!asked || !own || asked === own || items.length < 2) return asked;
+  if (isAddOnItem({ title: own, sku: item?.sku }, cfg)) return asked;
+  const borrowed = items.some((i) => i.id !== item?.id && i.title?.trim() === asked) || isAddOnItem({ title: asked }, cfg);
+  return borrowed ? own : asked;
+}
 
 export type CompleteDetailsActor = { id: string; role: "admin" | "va" | "designer" | "helper" | "system" };
 
@@ -160,11 +181,12 @@ export async function completeOrderDetailsCore(
       .where(eq(orderItems.orderId, order.id))
       .orderBy(asc(orderItems.id))
       .for("update");
-    const existingItem = lockedItems.length > 1 ? pickPortraitItem(lockedItems, await loadClassifyConfig(tx, order.id)) ?? undefined : lockedItems[0];
+    const classifyCfg = lockedItems.length > 1 ? await loadClassifyConfig(tx, order.id) : null;
+    const existingItem = lockedItems.length > 1 ? pickPortraitItem(lockedItems, classifyCfg) ?? undefined : lockedItems[0];
     // No style given (2026-10-23: the agent's intake often sends none, and the
     // ranker then gave CPS watercolor orders to whoever was first in line):
     // keep the item's own, else the catalog route for its title; never a guess.
-    const title = input.productTitle?.trim() || null;
+    const title = portraitTitleToSave(input.productTitle, existingItem, lockedItems, classifyCfg);
     const given = input.style?.trim() || null;
     const kept = given ? null : existingItem?.style?.trim() || null;
     const routed = given || kept ? null : routingStyleMatch(title, existingItem?.sku, await listBusinessStyles(tx, businessId));

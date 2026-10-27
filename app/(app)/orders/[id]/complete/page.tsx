@@ -9,10 +9,10 @@ import {
   shops,
   businesses,
   customers,
-  orderItems,
   assets,
 } from "@/lib/db/schema";
 import { sizeFromOptions } from "@/lib/orders/size-option";
+import { loadPortraitItem } from "@/lib/orders/portrait-item";
 import { isR2Configured } from "@/lib/storage/r2";
 import { shopStyleChoices } from "@/lib/designers/styles";
 import { resolveStyle } from "@/lib/integrations/etsy/figures";
@@ -79,19 +79,10 @@ export default async function CompleteOrderPage({
     }
   }
 
-  const [item] = await withUserContext(user, (tx) =>
-    tx
-      .select({
-        title: orderItems.title,
-        figureCount: orderItems.figureCount,
-        style: orderItems.style,
-        productType: orderItems.productType,
-        options: orderItems.options,
-      })
-      .from(orderItems)
-      .where(eq(orderItems.orderId, order.id))
-      .limit(1),
-  );
+  // The portrait line, never whichever row comes first (2026-10-27, CPS 4213709410:
+  // the form showed the Print & Ship line, the save renamed the dog portrait to it
+  // and the designer was asked for a second portrait that does not exist).
+  const item = await withUserContext(user, (tx) => loadPortraitItem(tx, order.id));
   const [photoCountRow] = await withUserContext(user, (tx) =>
     tx
       .select({ count: sql<number>`count(*)::int` })
