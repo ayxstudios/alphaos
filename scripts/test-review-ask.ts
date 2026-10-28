@@ -17,5 +17,9 @@ const body = reviewAskBody("Lynn", "Custom Portrait Shop");
 assert.match(body, /Hi Lynn/);
 assert.match(body, /review on Etsy/i);
 assert.match(body, /Purchases and reviews/);
-assert.doesNotMatch(body, /Ayser|Yousif|Mel|AI|bot/);
+assert.doesNotMatch(body, /Ayser|Yousif|AI|bot/);
+// the shop's one person signs it, never "the team" (Yousif 2026-10-28)
+assert.doesNotMatch(body, /\bteam\b|\bour\b|\bwe\b/i);
+assert.match(body, /Kindest Regards,\nMel$/);
+assert.match(reviewAskBody("Lynn", "PixArt", "Regards,\nBrianna"), /Regards,\nBrianna$/);
 console.log("test-review-ask: ok");

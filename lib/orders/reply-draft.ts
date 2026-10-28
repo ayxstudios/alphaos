@@ -2,6 +2,7 @@ import { desc, eq } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { businesses, customers, orders, proofs } from "@/lib/db/schema";
+import { signOffFor } from "@/lib/email/template-meta";
 import {
   DEFAULT_TEMPLATES,
   resolveTemplate,
@@ -90,8 +91,9 @@ export async function getReplyDraftContext(user: RequestUser, orderId: string): 
   });
 }
 
+// signed by the shop's one person, never "the team" (Yousif 2026-10-28)
 const BLANK_BODY = (ctx: ReplyDraftContext) =>
-  `Hi ${ctx.customerFirst},\n\n\n\nWarmly,\nThe ${ctx.businessName} team`;
+  `Hi ${ctx.customerFirst},\n\n\n\n${signOffFor({ name: ctx.businessName })}`;
 
 /** Render a template (or the blank starting point) with this order's real facts. */
 export async function renderReplyDraft(

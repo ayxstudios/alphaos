@@ -3,142 +3,122 @@ import { and, eq } from "drizzle-orm";
 import type { Tx } from "@/lib/db";
 import { businesses, emailTemplates } from "@/lib/db/schema";
 
+import { signOffFor, withPhotoWords } from "./template-meta";
 import type { BusinessTemplateIdentity, EmailTemplate, TemplateKey, TemplateVars } from "./template-meta";
 
-export { EDITABLE_TEMPLATE_KEYS, TEMPLATE_META } from "./template-meta";
+export { EDITABLE_TEMPLATE_KEYS, TEMPLATE_META, signOffFor, withPhotoWords } from "./template-meta";
 export type { BusinessTemplateIdentity, EmailTemplate, TemplateKey, TemplateVars } from "./template-meta";
 
 /**
  * Built-in defaults used when a business has not customised a template. Editing a
  * template writes an email_templates row that overrides the matching default.
+ *
+ * Every buyer email is written and signed by the shop's one person, who is also
+ * the artist (Yousif 2026-10-28): first person, "I", never "the team", "our
+ * artist" or "one of our artists". {{sign_off}} is filled by resolveTemplate from
+ * the business (signOffFor). No em dashes (house rule).
  */
 export const DEFAULT_TEMPLATES: Record<TemplateKey, EmailTemplate> = {
   photo_request: {
-    subject: "We're ready to start your {{business_name}} portrait: send your photos",
+    subject: "Ready to start your {{business_name}} portrait: please send your photos",
     body: `Hi {{first_name}},
 
-Thanks for your order ({{order_number}})! To get started on your custom portrait, we just need your photos.
+Thank you so much for your order ({{order_number}})! To get started on your portrait, I just need your photos.
 
-Please upload them here:
+You can upload them here:
 {{upload_link}}
 
-Reply to this email if you have any questions, we're happy to help.
+Or just reply to this email with them attached. If you have any questions, I'm happy to help.
 
-Warmly,
-The {{business_name}} team`,
+{{sign_off}}`,
   },
   proof_ready: {
-    subject: "Your {{business_name}} portrait proof is ready",
+    subject: "Your {{business_name}} portrait is ready",
     body: `Hi {{first_name}},
 
-Your portrait for order {{order_number}} is ready to review! Take a look and let us know what you think:
+Your portrait for order {{order_number}} is ready! Take a look and let me know what you think:
 
 {{proof_link}}
 
-If everything looks perfect, you can approve it right there. If you'd like any changes, just tell us what to tweak.
+If you love it, you can approve it right there. If you'd like any changes, just tell me what to tweak.
 
-Warmly,
-The {{business_name}} team`,
+{{sign_off}}`,
   },
   proof_ready_digital_single: {
-    subject: "Your {{business_name}} portrait proof is ready",
+    subject: "Your {{business_name}} portrait is ready",
     body: `Hi {{first_name}}!
 
-Your digital portrait from {{business_name}} is now ready for you. Attached to this email is the high-resolution image.
+Your portrait is ready! I've attached the high-resolution image to this email.
 
-If there's anything you'd like us to refine or adjust, please let us know.
+You can approve it or ask for changes here: {{proof_link}}. You can also just reply to this email with anything you'd like changed.
 
-You can approve or request changes here: {{proof_link}}. You can also simply reply to this email with feedback.
-
-Warm regards,
-The {{business_name}} team`,
+{{sign_off}}`,
   },
   proof_ready_digital_multi: {
-    subject: "Your {{business_name}} portrait proofs are ready",
+    subject: "Your {{business_name}} portraits are ready",
     body: `Hi {{first_name}}!
 
-Your digital portraits from {{business_name}} are now ready for you. Attached to this email are the high-resolution images.
+Your portraits are ready! I've attached the high-resolution images to this email.
 
-If there's anything you'd like us to refine or adjust, please let us know.
+You can approve them or ask for changes here: {{proof_link}}. You can also just reply to this email with anything you'd like changed.
 
-You can approve or request changes here: {{proof_link}}. You can also simply reply to this email with feedback.
-
-Warm regards,
-The {{business_name}} team`,
+{{sign_off}}`,
   },
   proof_ready_physical_single: {
-    subject: "Your {{business_name}} portrait proof is ready",
+    subject: "Your {{business_name}} portrait is ready",
     body: `Hi {{first_name}}!
 
-Your portrait proof from {{business_name}} is now ready for you. Attached to this email is the high-resolution image.
+Your portrait is ready for you to look over! I've attached the high-resolution image to this email.
 
-If there's anything you'd like us to refine or adjust, please let us know.
+You can approve it or ask for changes here: {{proof_link}}. You can also just reply to this email with anything you'd like changed. Once you approve it, I'll send it off to be printed and shipped to you.
 
-Once you confirm, we will send it to be printed and shipped.
-
-You can approve or request changes here: {{proof_link}}. You can also simply reply to this email with feedback.
-
-Warm regards,
-The {{business_name}} team`,
+{{sign_off}}`,
   },
   proof_ready_physical_multi: {
-    subject: "Your {{business_name}} portrait proofs are ready",
+    subject: "Your {{business_name}} portraits are ready",
     body: `Hi {{first_name}}!
 
-Your portrait proofs from {{business_name}} are now ready for you. Attached to this email are the high-resolution images.
+Your portraits are ready for you to look over! I've attached the high-resolution images to this email.
 
-If there's anything you'd like us to refine or adjust, please let us know.
+You can approve them or ask for changes here: {{proof_link}}. You can also just reply to this email with anything you'd like changed. Once you approve them, I'll send them off to be printed and shipped to you.
 
-Once you confirm, we will send them to be printed and shipped.
-
-You can approve or request changes here: {{proof_link}}. You can also simply reply to this email with feedback.
-
-Warm regards,
-The {{business_name}} team`,
+{{sign_off}}`,
   },
   revision_received: {
-    subject: "Your revised {{business_name}} portrait is ready",
+    subject: "Your updated {{business_name}} portrait is ready",
     body: `Hi {{first_name}},
 
-Thank you for your patience. Here's the revised portrait. Please let me know what you think of this updated version. :)
+Here's your updated portrait! Let me know what you think. :)
 
-You can approve or request changes here: {{proof_link}}. You can also simply reply to this email with feedback.
+You can approve it or ask for changes here: {{proof_link}}. You can also just reply to this email with anything you'd like changed.
 
-Have a great day ahead!
-
-Warm regards,
-The {{business_name}} team`,
+{{sign_off}}`,
   },
   order_received: {
-    subject: "We've got your order, {{first_name}}!",
+    subject: "Thanks for your order, {{first_name}}!",
     body: `Hi {{first_name}},
 
-Thank you for your order ({{order_number}}) with {{business_name}}! We're excited to get started.
+Thank you so much for your order ({{order_number}})! I can't wait to get started on your portrait.
 
-We'll keep you posted as your portrait moves along, and you'll get a link to review the finished piece before anything is finalized.
+I'll send you a link to look over your portrait before anything is final. If you have a question in the meantime, just reply to this email.
 
-Reply to this email any time if you have a question.
-
-Warmly,
-The {{business_name}} team`,
+{{sign_off}}`,
   },
   in_design: {
-    subject: "Your {{business_name}} portrait is now with the artist",
+    subject: "I've started on your {{business_name}} portrait",
     body: `Hi {{first_name}},
 
-Good news, order {{order_number}} is now in the hands of one of our artists! We'll send you a proof to review as soon as it's ready.
+Good news, I've started on your portrait for order {{order_number}}! I'll send it to you to look over as soon as it's ready.
 
-Warmly,
-The {{business_name}} team`,
+{{sign_off}}`,
   },
   printing: {
     subject: "Your {{business_name}} portrait is being printed",
     body: `Hi {{first_name}},
 
-You approved your portrait for order {{order_number}}, thank you! It's now on its way to our print team, and we'll email you tracking details the moment it ships.
+Thank you for approving your portrait for order {{order_number}}! It's being printed now, and I'll email you the tracking details as soon as it ships.
 
-Warmly,
-The {{business_name}} team`,
+{{sign_off}}`,
   },
   shipped: {
     subject: "Your {{business_name}} order has shipped!",
@@ -149,145 +129,125 @@ Your order {{order_number}} has shipped!
 Tracking number: {{tracking_number}}
 Track your package: {{tracking_url}}
 
-Thanks so much for choosing {{business_name}}, we hope you love it.
+Thanks so much for supporting my shop, I hope you love it!
 
-Warmly,
-The {{business_name}} team`,
+{{sign_off}}`,
   },
   photo_reminder: {
     subject: "Still waiting on your photos for order {{order_number}}",
     body: `Hi {{first_name}},
 
-We're ready to start on your {{business_name}} portrait but still need your photos for order {{order_number}}.
+Just a quick reminder that I'm ready to start your {{business_name}} portrait for order {{order_number}}, I just need your photos.
 
-Please upload them here, it only takes a minute:
+You can upload them here, it only takes a minute:
 {{upload_link}}
 
-Reply to this email if you have any questions.
+Already sent them another way? Just reply to this email and let me know.
 
-Warmly,
-The {{business_name}} team`,
+{{sign_off}}`,
   },
   photo_shortfall: {
-    subject: "One more thing for your {{business_name}} portrait (order {{order_number}})",
+    subject: "A quick question about your {{business_name}} portrait (order {{order_number}})",
     body: `Hi {{first_name}},
 
-Thanks for sending your photos for order {{order_number}}! Your portrait has {{photos_need}} people or pets in it, and we have {{photos_have}} photo(s) so far.
-
-So our artist can get every face just right, please add a clear photo of each one here:
+Thanks so much for your {{photos_have_noun}}! Your order is for a portrait of {{photos_need_words}}, so if you have a clear photo of each of them, you can add them here:
 {{upload_link}}
 
-If one photo already shows everyone, just reply and let us know and we'll get started.
+If what you've sent already shows {{photos_need_all}} clearly, just reply and let me know and I'll get started.
 
-Warmly,
-The {{business_name}} team`,
+{{sign_off}}`,
   },
   proof_reminder: {
-    subject: "Your {{business_name}} proof is waiting for you",
+    subject: "Your {{business_name}} portrait is waiting for you",
     body: `Hi {{first_name}},
 
-Just a friendly reminder that your portrait proof for order {{order_number}} is ready and waiting for your review:
+Just a friendly reminder that your portrait for order {{order_number}} is ready for you to look over:
 
 {{proof_link}}
 
-If we don't hear from you after a little while, we'll go ahead and finalize it as-is so your order isn't delayed, but we'd love your feedback first!
+If I don't hear from you after a little while, I'll finalize it as it is so your order isn't held up, but I'd love your feedback first!
 
-Warmly,
-The {{business_name}} team`,
+{{sign_off}}`,
   },
 };
 
+const PIXART_PRINT_LINE = `Limited time only! Want to get your portrait printed at a discount? Use this link here:
+https://pixartcreatives.co/products/print-ship`;
+
 export const PIXART_TEMPLATES: Partial<Record<TemplateKey, EmailTemplate>> = {
   proof_ready_digital_single: {
-    subject: "Your PixArt portrait proof is ready",
+    subject: "Your PixArt portrait is ready",
     body: `Hi {{first_name}}!
 
-Your digital portrait from PixArt Creatives is now ready for you. Attached to this email is the high-resolution image of your beloved pet.
+Your digital portrait from PixArt Creatives is ready! I've attached the high-resolution image of your beloved pet to this email.
 
-We've captured the unique personality and essence of your pet in this stunning portrait. If there's anything you'd like us to refine or adjust, please let us know. Our team is dedicated to ensuring your pet's portrait exceeds your expectations.
+I hope I've captured your pet's personality just right. If there's anything you'd like me to refine or adjust, just let me know.
 
-Limited time only! Want to get your portrait printed at a discount? Use this link here:
-https://pixartcreatives.co/products/print-ship
+${PIXART_PRINT_LINE}
 
-Thank you for choosing PixArt Creatives to create a timeless representation of your furry friend. We hope this portrait brings you joy and becomes a cherished memory.
+Thank you for choosing PixArt Creatives. I hope this portrait brings you joy and becomes a cherished memory.
 
-Feel free to reply to this email if you have any questions or need further assistance.
+You can approve it or ask for changes here: {{proof_link}}. You can also simply reply to this email with any feedback.
 
-You can approve or request changes here: {{proof_link}}. You can also simply reply to this email with any feedback.
-
-Warm regards,
-The PixArt Creatives Team`,
+{{sign_off}}`,
   },
   proof_ready_digital_multi: {
-    subject: "Your PixArt portrait proofs are ready",
+    subject: "Your PixArt portraits are ready",
     body: `Hi {{first_name}}!
 
-Your digital portraits from PixArt Creatives are now ready for you. Attached to this email is the high-resolution image of your beloved pets.
+Your digital portraits from PixArt Creatives are ready! I've attached the high-resolution images of your beloved pets to this email.
 
-We've captured the unique personality and essence of your pets in these stunning portraits. If there's anything you'd like us to refine or adjust, please let us know. Our team is dedicated to ensuring your pet portraits exceed your expectations.
+I hope I've captured your pets' personalities just right. If there's anything you'd like me to refine or adjust, just let me know.
 
-Limited time only! Want to get your portrait printed at a discount? Use this link here:
-https://pixartcreatives.co/products/print-ship
+${PIXART_PRINT_LINE}
 
-Thank you for choosing PixArt Creatives to create a timeless representation of your furry friends. We hope this portrait brings you joy and becomes a cherished memory.
+Thank you for choosing PixArt Creatives. I hope these portraits bring you joy and become a cherished memory.
 
-Feel free to reply to this email if you have any questions or need further assistance.
+You can approve them or ask for changes here: {{proof_link}}. You can also simply reply to this email with any feedback.
 
-You can approve or request changes here: {{proof_link}}. You can also simply reply to this email with any feedback.
-
-Warm regards,
-The PixArt Creatives Team`,
+{{sign_off}}`,
   },
   proof_ready_physical_single: {
-    subject: "Your PixArt portrait proof is ready",
+    subject: "Your PixArt portrait is ready",
     body: `Hi {{first_name}}!
 
-Your portrait from PixArt Creatives is now ready for you. Attached to this email is the high-resolution image of your beloved pet.
+Your portrait from PixArt Creatives is ready! I've attached the high-resolution image of your beloved pet to this email.
 
-We've captured the unique personality and essence of your pet in this stunning portrait. If there's anything you'd like us to refine or adjust, please let us know. Our team is dedicated to ensuring your pet's portrait exceeds your expectations.
+I hope I've captured your pet's personality just right. If there's anything you'd like me to refine or adjust, just let me know.
 
-Once you confirm, we will have it sent to our printing department to be printed and shipped off to you.
+Once you approve it, I'll send it off to be printed and shipped to you.
 
-Thank you for choosing PixArt Creatives to create a timeless representation of your furry friend. We hope this portrait brings you joy and becomes a cherished memory.
+Thank you for choosing PixArt Creatives. I hope this portrait brings you joy and becomes a cherished memory.
 
-Feel free to reply to this email if you have any questions or need further assistance.
+You can approve it or ask for changes here: {{proof_link}}. You can also simply reply to this email with any feedback.
 
-You can approve or request changes here: {{proof_link}}. You can also simply reply to this email with any feedback.
-
-Warm regards,
-The PixArt Creatives Team`,
+{{sign_off}}`,
   },
   proof_ready_physical_multi: {
-    subject: "Your PixArt portrait proofs are ready",
+    subject: "Your PixArt portraits are ready",
     body: `Hi {{first_name}}!
 
-Your portraits from PixArt Creatives are now ready for you. Attached to this email are the high-resolution images of your beloved pets.
+Your portraits from PixArt Creatives are ready! I've attached the high-resolution images of your beloved pets to this email.
 
-We've captured the unique personality and essence of your pets in these stunning portraits. If there's anything you'd like us to refine or adjust, please let us know. Our team is dedicated to ensuring your pets' portraits exceed your expectations.
+I hope I've captured your pets' personalities just right. If there's anything you'd like me to refine or adjust, just let me know.
 
-Once you confirm, we will have them sent to our printing department to be printed and shipped off to you.
+Once you approve them, I'll send them off to be printed and shipped to you.
 
-Thank you for choosing PixArt Creatives to create a timeless representation of your furry friends. We hope this portrait brings you joy and becomes a cherished memory.
+Thank you for choosing PixArt Creatives. I hope these portraits bring you joy and become a cherished memory.
 
-Feel free to reply to this email if you have any questions or need further assistance.
+You can approve them or ask for changes here: {{proof_link}}. You can also simply reply to this email with any feedback.
 
-You can approve or request changes here: {{proof_link}}. You can also simply reply to this email with any feedback.
-
-Warm regards,
-The PixArt Creatives Team`,
+{{sign_off}}`,
   },
   revision_received: {
-    subject: "Your revised PixArt portrait is ready",
+    subject: "Your updated PixArt portrait is ready",
     body: `Hi {{first_name}}!
 
-Thank you for your patience. Here's the revised portrait. Please let me know what you think of this updated version. :)
+Here's your updated portrait! Let me know what you think. :)
 
-You can approve or request changes here: {{proof_link}}. You can also simply reply to this email with any feedback.
+You can approve it or ask for changes here: {{proof_link}}. You can also simply reply to this email with any feedback.
 
-Have a great day ahead!
-
-Warm regards,
-The PixArt Creatives Team`,
+{{sign_off}}`,
   },
 };
 
@@ -318,20 +278,35 @@ export async function resolveTemplate(
     .from(emailTemplates)
     .where(and(eq(emailTemplates.businessId, businessId), eq(emailTemplates.key, key)))
     .limit(1);
-  if (row) return row;
   const [business] = await tx
-    .select({ name: businesses.name, slug: businesses.slug })
+    .select({ name: businesses.name, slug: businesses.slug, agentConfig: businesses.agentConfig })
     .from(businesses)
     .where(eq(businesses.id, businessId))
     .limit(1);
-  return defaultTemplateForBusiness(business ?? {}, key);
+  const template = row ?? defaultTemplateForBusiness(business ?? {}, key);
+  return withSignOff(template, signOffFor({ ...(business ?? {}), replySignOff: replySignOffOf(business?.agentConfig) }));
+}
+
+/** agent_config.replySignOff, read the way lib/agent/config.ts reads it (no import: that module pulls in print routing). */
+function replySignOffOf(agentConfig: unknown): string | null {
+  const v = agentConfig && typeof agentConfig === "object" ? (agentConfig as { replySignOff?: unknown }).replySignOff : null;
+  return typeof v === "string" && v.trim() && v.length <= 200 ? v : null;
+}
+
+/** Put the shop person's closing lines where a template says {{sign_off}}. */
+export function withSignOff(template: EmailTemplate, signOff: string): EmailTemplate {
+  const fill = (input: string) => input.replace(/\{\{\s*sign_off\s*\}\}/g, () => signOff);
+  return { subject: fill(template.subject), body: fill(template.body) };
 }
 
 /** Substitute `{{variable}}` placeholders. Unknown/omitted variables render empty. */
 export function renderTemplate(
   template: EmailTemplate,
-  vars: TemplateVars,
+  rawVars: TemplateVars,
 ): EmailTemplate {
+  // A template that reached here without resolveTemplate (a fallback default)
+  // still closes with the shop's person, never a blank line or "the team".
+  const vars = withPhotoWords({ sign_off: signOffFor({ name: rawVars.business_name }), ...rawVars });
   return {
     subject: substitute(template.subject, vars),
     body: substitute(template.body, vars),

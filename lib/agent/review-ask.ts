@@ -17,6 +17,7 @@ import type { Tx } from "@/lib/db";
 import { activityLog, messages, orderItems } from "@/lib/db/schema";
 
 import type { ReplyIntent } from "@/lib/email/reply-classifier";
+import { signOffFor } from "@/lib/email/template-meta";
 
 export const REVIEW_ASK_ACTION = "agent.review_asked";
 
@@ -44,16 +45,16 @@ export function reviewAskBlocker(f: ReviewAskFacts): string | null {
   return null;
 }
 
-export function reviewAskBody(firstName: string, businessName: string): string {
+/** In the owners' own review-ask words (Yousif 2026-10-20), from the shop's one person, never "the team" (2026-10-28). */
+export function reviewAskBody(firstName: string, businessName: string, signOff?: string | null): string {
   return [
     `Hi ${firstName},`,
     "",
-    "So glad you love it! Thank you for letting us know, it truly made our day.",
+    "I'm so glad you love it! Thanks so much for supporting my shop!",
     "",
-    "If you have a moment, we would be so grateful if you shared your thoughts in a review on Etsy. You can find the order under Purchases and reviews in your Etsy account; it only takes a minute and means a lot to our small shop.",
+    "If you have a moment, it would mean the world to me if you left a review on Etsy, only if you want to! You can find the order under Purchases and reviews in your Etsy account.",
     "",
-    "Warmly,",
-    `The ${businessName} team`,
+    signOffFor({ name: businessName, replySignOff: signOff }),
   ].join("\n");
 }
 
