@@ -40,7 +40,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   if (decision === "approve") {
     const res = await approveOwnerReview(id, owner.id);
     return res.ok
-      ? NextResponse.json({ ok: true, decision, messageId: res.messageId })
+      ? NextResponse.json({ ok: true, decision, messageId: res.messageId, ...(res.held ? { heldForSiblings: res.held } : {}) })
       : NextResponse.json({ error: res.code, message: res.message }, { status: res.code === "not_waiting" ? 409 : 422 });
   }
   const reason = typeof body?.reason === "string" ? body.reason.trim().slice(0, 1000) : "";

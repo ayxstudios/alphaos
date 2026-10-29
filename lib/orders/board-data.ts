@@ -39,6 +39,12 @@ import {
   SENT_BACK_FROM,
   WITH_CUSTOMER_STATUSES,
 } from "@/lib/orders/board-constants";
+import {
+  SIBLING_RELEASED_ACTION,
+  SIBLING_WAITING_ACTION,
+  togetherWaitingNote,
+  type SiblingSignal,
+} from "@/lib/orders/deliver-together";
 import { resolveAttachmentViews } from "@/lib/qc/attachment-urls";
 import type { QcAttachmentView } from "@/lib/qc/attachments";
 import type { OrderStatus } from "./transitions";
@@ -113,6 +119,12 @@ export type BoardCard = {
   sameBuyer: string | null;
   /** The other orders' numbers, for the short chip on the card. */
   sameBuyerNumbers: string[];
+  /**
+   * Deliver together (lib/orders/deliver-together.ts): her other portrait
+   * passed QC and its proof waits for this order, so she gets them together.
+   * A quiet label only, never a message. Null when nothing waits on it.
+   */
+  togetherWaiting: string | null;
 };
 
 type OrderRow = {
@@ -174,6 +186,59 @@ async function sameBuyerSiblings(user: RequestUser, rows: OrderRow[]): Promise<M
   }
 }
 
+/** Statuses where a held proof can wait on the card (being drawn or checked). */
+const TOGETHER_STATUSES = new Set<string>(["ready_to_assign", "in_design", "awaiting_qc", "awaiting_approval"]);
+/** A hold lasts at most about 3 days: older signal rows cannot be open. */
+const TOGETHER_SIGNAL_DAYS = 7;
+
+/**
+ * The deliver-together label for each card a held proof waits on, from the
+ * signal rows on the card's own order. Its own read-only transaction; an
+ * extra, so a failure leaves the cards without the label.
+ */
+async function togetherWaitingNotes(user: RequestUser, rows: OrderRow[]): Promise<Map<string, string>> {
+  const ids = rows.filter((o) => TOGETHER_STATUSES.has(o.status)).map((o) => o.id);
+  const out = new Map<string, string>();
+  if (!ids.length) return out;
+  try {
+    const since = new Date(Date.now() - TOGETHER_SIGNAL_DAYS * 86_400_000);
+    const signals = await withUserContext(user, (tx) =>
+      tx
+        .select({ orderId: activityLog.orderId, action: activityLog.action, metadata: activityLog.metadata, createdAt: activityLog.createdAt })
+        .from(activityLog)
+        .where(
+          and(
+            inArray(activityLog.orderId, ids),
+            inArray(activityLog.action, [SIBLING_WAITING_ACTION, SIBLING_RELEASED_ACTION]),
+            gte(activityLog.createdAt, since),
+          ),
+        ),
+    );
+    const byOrder = new Map<string, SiblingSignal[]>();
+    for (const r of signals) {
+      if (!r.orderId) continue;
+      const list = byOrder.get(r.orderId);
+      if (list) list.push(r);
+      else byOrder.set(r.orderId, [r]);
+    }
+    const now = new Date();
+    for (const [orderId, list] of byOrder) {
+      const note = togetherWaitingNote(list, now);
+      if (note) out.set(orderId, note);
+    }
+  } catch (err) {
+    console.log(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        level: "warn",
+        event: "board_together_failed",
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
+  return out;
+}
+
 async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]> {
   if (!rows.length) return [];
   const viewerRole = user.role;
@@ -188,7 +253,7 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
   // split over read-only transactions that run side by side (two here, a third
   // for the same-buyer note below); each sets its own RLS GUCs (withUserContext),
   // so scoping is unchanged.
-  const [[items, refs, customerRows], [failRows, revRows, vaRevisionRows, submissionRows], siblingsByOrder] = await Promise.all([
+  const [[items, refs, customerRows], [failRows, revRows, vaRevisionRows, submissionRows], siblingsByOrder, togetherByOrder] = await Promise.all([
     withUserContext(user, (tx) => Promise.all([
     tx
       .select({
@@ -267,6 +332,7 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
       : Promise.resolve([]),
     ])),
     sameBuyerSiblings(user, rows),
+    togetherWaitingNotes(user, rows),
   ]);
   // Ready for QC: the newest portrait version is newer than the last send-back.
   const lastSendBack = new Map<string, number>();
@@ -450,6 +516,7 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
     urgentReason: o.urgentAt ? o.urgentReason : null,
     sameBuyer: sameBuyer.get(o.id)?.sentence ?? null,
     sameBuyerNumbers: sameBuyer.get(o.id)?.numbers ?? [],
+    togetherWaiting: togetherByOrder.get(o.id) ?? null,
   }));
 }
 

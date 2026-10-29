@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { cn, styleLabel } from "@/lib/utils";
 import { Avatar, Button, CopyButton, CopyField, Disclosure, StatusChip, useToast } from "@/components/ui";
 import { focusRing } from "@/components/ui/styles";
-import { AlertTriangle, Brush, Camera, Check, Users, X } from "@/components/ui/icons";
+import { AlertTriangle, Brush, Camera, Check, Clock, Users, X } from "@/components/ui/icons";
 import { Countdown } from "./countdown";
 import { RevisionHistory } from "./revision-history";
 import {
@@ -226,6 +226,17 @@ export function CardModal({
                   <span className="font-semibold">Same buyer. </span>
                   {card.sameBuyer}
                 </p>
+              </div>
+            )}
+            {/* Deliver together: her other portrait passed QC and waits for this one. */}
+            {card.togetherWaiting && (
+              <div
+                role="note"
+                data-testid="together-waiting-note"
+                className="flex items-start gap-2 rounded-input border border-line bg-canvas p-3 text-sm text-ink"
+              >
+                <Clock size={15} className="mt-0.5 shrink-0 text-slate" />
+                <p className="min-w-0 break-words">{card.togetherWaiting}</p>
               </div>
             )}
             <CardUploadPanel

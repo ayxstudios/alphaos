@@ -77,6 +77,9 @@ export async function approveQcAction(orderId: string): Promise<DayResult> {
     signature,
   });
   refresh(orderId);
+  if (sent.ok && sent.held) {
+    return { ok: true, message: `Passed. The proof waits to go with her other order ${sent.held.waitingOn} (${ctx.orderNumber}).` };
+  }
   return sent.ok
     ? { ok: true, message: `Proof sent to the buyer (${ctx.orderNumber}).` }
     : { ok: false, message: sent.message };
@@ -156,6 +159,7 @@ export async function approveOwnerReviewAction(orderId: string): Promise<DayResu
   if (!user || user.role !== "admin") return { ok: false, message: "Only an owner can approve an AI portrait." };
   const res = await approveOwnerReview(orderId, user.id);
   refresh(orderId);
+  if (res.ok && res.held) return { ok: true, message: `Approved. The proof waits to go with her other order ${res.held.waitingOn}.` };
   return res.ok ? { ok: true, message: "Approved. Proof sent to the buyer." } : { ok: false, message: res.message };
 }
 

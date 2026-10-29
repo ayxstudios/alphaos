@@ -33,6 +33,8 @@ import {
 import { adminApproval, loadReworkHold, reworkAllows, reworkStaysMessage } from "@/lib/orders/rework";
 import { boardHolds, loadBoardHolder, staysOnBoardMessage } from "@/lib/orders/board-hold";
 import { getOrderPortraits, resolveSlotTag } from "@/lib/orders/portraits";
+import { numbersPhrase } from "@/lib/orders/deliver-together";
+import { deliverTogetherFor, recordDeliveryHold, releaseSiblingHolds } from "@/lib/orders/deliver-together-db";
 import { runTransition, type OrderStatus } from "@/lib/orders/transitions";
 import { loadProofFilePick, portraitList } from "@/lib/proofs/files";
 import { assetKey, extFor, isR2Configured, presignGet, presignUpload } from "@/lib/storage/r2";
@@ -593,7 +595,14 @@ async function findHeldDraft(tx: Tx, orderId: string) {
   return m ?? null;
 }
 
-export type ApproveResult = { ok: true; messageId: string } | { ok: false; code: string; message: string };
+export type ApproveResult =
+  | {
+      ok: true;
+      messageId: string;
+      /** Approved, but held to go with the buyer's other order (lib/orders/deliver-together.ts). */
+      held?: { waitingOn: string; holdUntil: string };
+    }
+  | { ok: false; code: string; message: string };
 
 /**
  * The owner approves a held AI portrait: the held proof email goes out, the
@@ -612,9 +621,38 @@ export async function approveOwnerReview(orderId: string, userId: string): Promi
     if (!o || o.aiState !== "owner_review") return { ok: false as const, code: "not_waiting", message: "This order is not waiting for owner approval." };
     const held = await findHeldDraft(tx, orderId);
     if (!held) return { ok: false as const, code: "no_draft", message: "The held proof email is missing. Send the proof from the order page." };
-    return { ok: true as const, businessId: o.businessId, held };
+    // Deliver together: her other portrait order is still being drawn, so the
+    // approved proof waits for it (never past its own due time).
+    const together = await deliverTogetherFor(tx, orderId);
+    if (together?.hold) {
+      await tx.update(orders).set({ aiState: "with_buyer" }).where(eq(orders.id, orderId));
+      await recordDeliveryHold(tx, {
+        orderId,
+        businessId: o.businessId,
+        messageId: held.id,
+        proofId: held.proofId,
+        decision: together,
+        passedBy: userId,
+        delivery: held.channel === "etsy" ? "etsy" : "email",
+      });
+      await tx.insert(activityLog).values({
+        businessId: o.businessId,
+        orderId,
+        actorId: userId,
+        action: "ai.owner_approved",
+        metadata: { messageId: held.id, heldForSiblings: true },
+      });
+      return {
+        ok: true as const,
+        businessId: o.businessId,
+        held,
+        heldFor: { waitingOn: numbersPhrase(together.waitingOn), holdUntil: together.holdUntil?.toISOString() ?? "" },
+      };
+    }
+    return { ok: true as const, businessId: o.businessId, held, heldFor: null };
   });
   if (!prep.ok) return prep;
+  if (prep.heldFor) return { ok: true, messageId: prep.held.id, held: prep.heldFor };
 
   const sent = await sendMessage(prep.held.id, { approvedById: userId, markRetryableFailed: true });
   if (!sent.ok) return { ok: false, code: "email_failed", message: `The proof email did not send: ${sent.error}` };
@@ -644,6 +682,8 @@ export async function approveOwnerReview(orderId: string, userId: string): Promi
       { businessId: prep.businessId, orderId, actorId: userId, action: "ai.owner_approved", metadata: { messageId: prep.held.id } },
     ]);
   });
+  // Her other orders' held proofs that waited on this one go now too.
+  await releaseSiblingHolds((fn) => withSystemContext(fn), orderId, userId);
   return { ok: true, messageId: prep.held.id };
 }
 

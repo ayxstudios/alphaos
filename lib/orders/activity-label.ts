@@ -1,3 +1,5 @@
+import { formatAt } from "@/lib/time";
+
 /**
  * Plain-English name for an activity_log action key, for the order page and
  * customer page feeds. Status moves (`order.<status>`) read as the status;
@@ -44,6 +46,10 @@ const LABELS: Record<string, string> = {
   "order.awaiting_approval": "Awaiting approval",
   "order.fulfillment_only": "Fulfilment only",
   "proof.viewed": "Proof viewed",
+  "proof.held_for_siblings": "Proof held to go with her other order",
+  "proof.hold_released": "Held proof let go",
+  "proof.sibling_waiting": "Her other portrait waits for this one",
+  "proof.sibling_released": "Her other portrait went out",
   "email.sent": "Email sent",
   "email.send_failed": "Email failed",
   "email.composed": "Email written",
@@ -78,9 +84,39 @@ export function activityLabel(action: string): string {
  * so it says which thread it came in on (lib/agent/buyer-orders.ts writes it).
  */
 export function activityDetail(action: string, metadata: Record<string, unknown> | null | undefined): string | null {
+  if (action === "proof.held_for_siblings" || action === "proof.hold_released") return holdDetail(action, metadata);
+  if (action === "proof.sibling_waiting") {
+    const n = typeof metadata?.heldOrderNumber === "string" ? metadata.heldOrderNumber.trim() : "";
+    return `${n ? (n.startsWith("#") ? n : `#${n}`) : "Her other order"} passed QC and goes to her together with this one.`;
+  }
   if (action !== "message.received" || !metadata || metadata.linkedBy !== "mention") return null;
   const from = typeof metadata.fromOrderNumber === "string" ? metadata.fromOrderNumber.trim() : "";
   return from
     ? `A reply on ${from} names this order. Check which order they mean.`
     : "A reply on another order of this buyer names this order. Check which order they mean.";
+}
+
+const RELEASE_WORDS: Record<string, string> = {
+  she_asked: "She wrote in, so it went at once.",
+  group_ready: "Her other order is ready, so they went together.",
+  due: "Sent before its due time.",
+  send_now: "Sent now by hand.",
+  sent_elsewhere: "It had already been sent from the outbox.",
+  discarded: "The held email was discarded, so nothing went.",
+  order_moved: "The order moved on, so the held email did not go.",
+  superseded: "A newer proof replaced it, so it did not go.",
+};
+
+/** The deliver-together lines (lib/orders/deliver-together.ts): what it waits on, or why it went. */
+function holdDetail(action: string, metadata: Record<string, unknown> | null | undefined): string | null {
+  if (!metadata) return null;
+  if (action === "proof.hold_released") return RELEASE_WORDS[String(metadata.reason ?? "")] ?? null;
+  const waiting = Array.isArray(metadata.waitingOn)
+    ? (metadata.waitingOn as { number?: unknown }[]).map((w) => String(w?.number ?? "")).filter(Boolean).map((n) => (n.startsWith("#") ? n : `#${n}`))
+    : [];
+  const until = typeof metadata.holdUntil === "string" ? metadata.holdUntil : null;
+  const when = until
+    ? formatAt(until, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }, "its due time")
+    : "its due time";
+  return `Waits for ${waiting.length ? waiting.join(", ") : "her other order"}. Sends when that passes QC, or at ${when} at the latest.`;
 }

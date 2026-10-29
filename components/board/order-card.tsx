@@ -49,6 +49,7 @@ export function OrderCard({
     if (!card.figuresResolved) urgent.push({ text: "Figures ?", tone: "amber" });
     // One buyer, several orders: a short pill; the other numbers are in the card that opens.
     if (card.sameBuyerNumbers.length) urgent.push({ text: "Same buyer", tone: "amber" });
+    if (card.togetherWaiting) urgent.push({ text: "Other portrait waits", tone: "amber" });
     return (
       <div
         onClick={onOpen}

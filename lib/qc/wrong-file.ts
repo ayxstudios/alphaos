@@ -42,6 +42,7 @@ import { isDesignerLike } from "@/lib/auth/roles";
 import { withSystemContext, type RequestUser, type Tx } from "@/lib/db";
 import { activityLog, assets, autoQcChecks, orderItems, orders } from "@/lib/db/schema";
 import { orderNumberOf, loadSameBuyerContext, orientationOf } from "@/lib/orders/same-buyer";
+import { loadProofFilePick } from "@/lib/proofs/files";
 import { hashColumnsFor } from "@/lib/qc/asset-hash";
 import { sameIds } from "@/lib/qc/auto-qc";
 import { SAME_PICTURE_DISTANCE, aspectOf, hamming, samePicture } from "@/lib/qc/image-hash";
@@ -199,6 +200,17 @@ export function designerHeadsUpMessage(reasons: WrongFileReason[]): string | nul
   const where = [...new Set(reasons.filter(isDesignerHeadsUp).map((r) => (r.matchOrderNumber ? `order ${r.matchOrderNumber}` : "another order")))];
   if (!where.length) return null;
   return `The same picture is also on ${where.join(" and ")}. If it does not belong there, upload ${where.length === 1 ? "that order's" : "each order's"} own portrait on its card.`;
+}
+
+/**
+ * The files a QC pass sends: one per portrait from the proof pick (what the
+ * email and the proof page carry), else the newest per slot. Two untagged
+ * files on a 2-portrait order share one slot key, so currentArtworkIds alone
+ * checked only one of them.
+ */
+export async function outgoingArtworkIds(tx: Tx, orderId: string): Promise<string[]> {
+  const picked = (await loadProofFilePick(tx, orderId)).files.map((f) => f.assetId);
+  return picked.length ? picked : currentArtworkIds(tx, orderId);
 }
 
 /** Warnings only (never block): orientation. */
@@ -569,7 +581,12 @@ export async function wrongFileGate(
   if (actor.role === "system") return null;
   // The AI Studio's own submission is judged by Auto QC (wrongFile), not by this hash check.
   if (input.via === "submit" && (await isAgentAssigned(tx, input.orderId))) return null;
-  const ids = input.assetIds?.length ? input.assetIds : await currentArtworkIds(tx, input.orderId);
+  // A QC pass checks every portrait's file going out, not only the first (portraits 2..N too).
+  const ids = input.assetIds?.length
+    ? input.assetIds
+    : input.via === "qc_pass"
+      ? await outgoingArtworkIds(tx, input.orderId)
+      : await currentArtworkIds(tx, input.orderId);
   if (!ids.length) return null;
   const reasons: WrongFileReason[] = [];
   for (const id of ids) {
