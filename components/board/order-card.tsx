@@ -168,6 +168,7 @@ export function OrderCard({
             ))}
           </ul>
         )}
+        {card.styleNote && <p className="line-clamp-3 text-xs text-amber">{card.styleNote}</p>}
 
         {/* The shop's raw options as one human line ("2 people + 1 pet ·
             8x10 · Rush order"); every option in full is one tap away, in the

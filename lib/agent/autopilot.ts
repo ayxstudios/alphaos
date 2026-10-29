@@ -38,7 +38,7 @@ import { ensureAgentDesigner } from "./ai-core";
 import { queuePhotoRequest, queuePhotoShortfall } from "@/lib/email/dispatch";
 import { shopStyleChoices } from "@/lib/designers/styles";
 import type { EtsyIntegrationConfig, EtsyTransaction } from "@/lib/integrations/etsy/types";
-import { businessSlaHours, createAssignment, runAutoAssign } from "@/lib/orders/assign";
+import { businessSlaHours, createAssignment, drawsDisney, isDisneyStyle, runAutoAssign } from "@/lib/orders/assign";
 import { classifyOrder, type ClassifyConfig } from "@/lib/integrations/classify";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { agentOrderScope, legacyQuiet } from "./scope";
@@ -1070,8 +1070,9 @@ async function backlogCheck(tx: Tx, order: { id: string; businessId: string }, d
 /**
  * Why nobody is eligible, per designer on the roster: the same hard filters
  * as rankCandidates in lib/orders/assign.ts (every portrait's style, daily
- * capacity, max active). Portraits in 2+ styles that no one designer draws
- * say so in the headline (2026-10-29).
+ * capacity, max active). Portraits in 2+ styles need only the primary
+ * portrait's style (rankForOrder's fallback); when nobody draws even that, the
+ * headline says no designer does them all (2026-10-29).
  */
 export async function whyNoDesigner(
   tx: Tx,
@@ -1127,9 +1128,13 @@ export async function whyNoDesigner(
     wip.set(r.designerId, Number(r.n));
   }
 
+  const need = styles.length > 1 ? styles.slice(0, 1) : styles;
+  // A Disney portrait next to a plain primary still needs a Disney designer.
+  const disneyToo = need.some(isDisneyStyle) ? null : (styles.find(isDisneyStyle) ?? null);
   const detail = roster.map((r) => {
     const blockers: string[] = [];
-    for (const s of missingStyles(r.styles, styles)) blockers.push(`does not do ${s}`);
+    for (const s of missingStyles(r.styles, need)) blockers.push(`does not do ${s}`);
+    if (disneyToo && !drawsDisney(r.styles)) blockers.push(`does not do ${disneyToo}`);
     const t = today.get(r.designerId) ?? 0;
     if (t >= r.dailyCapacity) blockers.push(`at daily capacity (${t}/${r.dailyCapacity})`);
     const w = wip.get(r.designerId) ?? 0;
@@ -1137,11 +1142,10 @@ export async function whyNoDesigner(
     return { designerId: r.designerId, name: r.name, blockers };
   });
   const noStyle = detail.filter((d) => d.blockers.some((b) => b.startsWith("does not do"))).length;
-  const gap = multiStyleGap(styles, roster.map((r) => r.styles));
+  const nobodyForPrimary = styles.length > 0 && noStyle === detail.length;
+  const gap = nobodyForPrimary ? multiStyleGap(styles, roster.map((r) => r.styles)) : null;
   const headline =
     gap ??
-    (styles.length === 1 && noStyle === detail.length
-      ? `nobody does ${style}`
-      : `${detail.length} designer(s), all blocked by style or capacity`);
+    (nobodyForPrimary ? `nobody does ${style}` : `${detail.length} designer(s), all blocked by style or capacity`);
   return { headline, style, styles, roster: detail };
 }

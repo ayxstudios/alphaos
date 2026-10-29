@@ -21,7 +21,7 @@ import {
   shops,
   users,
 } from "@/lib/db/schema";
-import { businessSlaHours, loadRankedCandidates } from "@/lib/orders/assign";
+import { businessSlaHours, drawsDisney, drawsOnlyDisney, isDisneyStyle, rankForOrder } from "@/lib/orders/assign";
 import { loadReworkHold, reworkBound, reworkKeeper, reworkOwnerName, type ReworkHold } from "@/lib/orders/rework";
 import { archivedUnfinishedWhere } from "@/lib/orders/archive";
 import { buyerWordsWhere } from "@/lib/reminders/buyer-replied";
@@ -29,7 +29,7 @@ import { reassignOrder } from "./ai-designer";
 import { agentOrderScope, legacyQuiet } from "./scope";
 import { openExceptionTx } from "./exceptions";
 import { portraitStylesOf } from "@/lib/orders/portrait-item";
-import { coversStyles, multiStyleAdvice, stylesLabel, stylesOfInput } from "@/lib/orders/order-styles";
+import { coveredCount, coversStyles, multiStyleAdvice, stylesLabel, stylesOfInput } from "@/lib/orders/order-styles";
 
 const HOUR = 3_600_000;
 export const CLOSED_STATUSES = ["cancelled", "complete", "delivered", "shipped"];
@@ -607,9 +607,12 @@ export async function suggestDesigner(tx: Tx, businessId: string, style: string 
     .innerJoin(users, and(eq(users.id, designerBusinesses.userId), eq(users.active, true), eq(users.role, "designer")))
     .innerJoin(designerProfiles, eq(designerProfiles.userId, designerBusinesses.userId))
     .where(and(eq(designerBusinesses.businessId, businessId), eq(designerProfiles.isAgent, false)));
-  const best = roster
-    .filter((r) => r.cap > 0 && coversStyles(r.styles, wanted))
-    .sort((a, b) => b.cap - a.cap || a.rank - b.rank)[0];
+  const pick = (required: string[]) =>
+    roster
+      .filter((r) => r.cap > 0 && coversStyles(r.styles, required))
+      .sort((a, b) => coveredCount(b.styles, wanted) - coveredCount(a.styles, wanted) || b.cap - a.cap || a.rank - b.rank)[0];
+  // Nobody draws every style: the primary portrait's designer (rankForOrder's fallback).
+  const best = pick(wanted) ?? (wanted.length > 1 ? pick(wanted.slice(0, 1)) : undefined);
   return best?.name ?? null;
 }
 
@@ -986,14 +989,29 @@ export type OverflowPick = { designerId: string; name: string | null; dailyCapac
  * busy for: draws it, a daily limit of 2 or more (0 is paused, 1 a deliberate
  * throttle; a per-style quota counts the same way), under max active orders
  * when that is set. Biggest daily limit first, then rank, then the shortest
- * not-started queue. An order in 2+ styles: only a designer who draws every
- * one, at the tightest of their quotas for them.
+ * not-started queue. An order in 2+ styles: a designer who draws every one,
+ * at the tightest of their quotas for them; nobody like that = one who draws
+ * the primary portrait's style, most of the order's styles first (the same
+ * fallback as rankForOrder, never a Disney-only designer for a plain primary).
  */
 export async function pickOverflowDesigner(tx: Tx, businessId: string, style: string | string[]): Promise<OverflowPick | null> {
   const wanted = stylesOfInput(Array.isArray(style) ? { styles: style } : { style });
   if (!wanted.length) return null;
+  const all = await overflowAmong(tx, businessId, wanted, wanted);
+  if (all || wanted.length < 2) return all;
+  return overflowAmong(tx, businessId, wanted, wanted.slice(0, 1));
+}
+
+async function overflowAmong(tx: Tx, businessId: string, wanted: string[], required: string[]): Promise<OverflowPick | null> {
+  const primaryOnly = required.length < wanted.length;
+  const disney = wanted.some(isDisneyStyle);
   const roster = (await humanRoster(tx, businessId))
-    .filter((r) => coversStyles(r.styles, wanted))
+    .filter((r) => coversStyles(r.styles, required))
+    .filter(
+      (r) =>
+        !primaryOnly ||
+        ((!disney || drawsDisney(r.styles)) && (isDisneyStyle(required[0]) || !drawsOnlyDisney(r.styles))),
+    )
     .map((r) => {
       const quotas = wanted.map((s) => styleQuotaLimit(r.limits, s, businessId)).filter((q): q is number => q != null);
       return { ...r, cap: quotas.length ? Math.min(r.cap, ...quotas) : r.cap };
@@ -1022,7 +1040,10 @@ export async function pickOverflowDesigner(tx: Tx, businessId: string, style: st
     .filter((r) => r.maxActive === 0 || (wip.get(r.designerId) ?? 0) < r.maxActive)
     .sort(
       (a, b) =>
-        b.cap - a.cap || a.rank - b.rank || (queue.get(a.designerId) ?? 0) - (queue.get(b.designerId) ?? 0),
+        (primaryOnly ? coveredCount(b.styles, wanted) - coveredCount(a.styles, wanted) : 0) ||
+        b.cap - a.cap ||
+        a.rank - b.rank ||
+        (queue.get(a.designerId) ?? 0) - (queue.get(b.designerId) ?? 0),
     )[0];
   return best ? { designerId: best.designerId, name: best.name, dailyCapacity: best.cap, queue: queue.get(best.designerId) ?? 0 } : null;
 }
@@ -1059,8 +1080,11 @@ export async function noDesignerRecommendation(
     return `Set the style on the order${product ? ` (or map "${product}" to a style)` : ""}, then it goes to a designer.`;
   }
   const roster = await humanRoster(tx, businessId);
-  const drawers = roster.filter((r) => coversStyles(r.styles, wanted));
-  const what = wanted.join(" and ");
+  // Nobody draws every style: the primary portrait's designers would take it
+  // (rankForOrder's fallback), so they are the ones to free up.
+  const allDrawers = roster.filter((r) => coversStyles(r.styles, wanted));
+  const drawers = allDrawers.length || wanted.length < 2 ? allDrawers : roster.filter((r) => coversStyles(r.styles, [style]));
+  const what = allDrawers.length ? wanted.join(" and ") : style;
   if (drawers.length) {
     const names = drawers.map((r) => r.name ?? "a designer").join(" and ");
     return `${names} draw${drawers.length === 1 ? "s" : ""} ${what} but ${drawers.length === 1 ? "is" : "are"} paused or at a limit. Raise a daily limit, or give it to another designer.`;
@@ -1106,7 +1130,7 @@ export type HumanPick = {
 export async function pickHumanDesigner(tx: Tx, businessId: string, style: string | string[] | null): Promise<HumanPick | null> {
   const styles = stylesOfInput(Array.isArray(style) ? { styles: style } : { style });
   if (!styles.length) return null;
-  const [top] = await loadRankedCandidates(tx, { businessId, styles });
+  const [top] = (await rankForOrder(tx, { businessId, styles })).ranked;
   if (top) {
     const [u] = await tx.select({ name: users.name }).from(users).where(eq(users.id, top.designerId)).limit(1);
     return { designerId: top.designerId, name: u?.name ?? null, overflow: false, queue: 0, dailyCapacity: top.dailyCapacity };

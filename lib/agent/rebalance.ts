@@ -10,13 +10,14 @@ import { and, desc, eq, sql } from "drizzle-orm";
 
 import { holdAlphaPushesIf } from "@/lib/alpha/client";
 import { withSystemContext, type Tx } from "@/lib/db";
-import { activityLog, assets, assignments, businesses, orders, users } from "@/lib/db/schema";
-import { createAssignment, hasReferencePhoto, loadRankedCandidates } from "@/lib/orders/assign";
+import { activityLog, assets, assignments, businesses, designerProfiles, orders, users } from "@/lib/db/schema";
+import { createAssignment, hasReferencePhoto, rankForOrder } from "@/lib/orders/assign";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { agentOrderScope, legacyQuiet } from "./scope";
 
 import { loadCapacityModel, type DesignerLoad } from "./capacity";
 import { portraitStylesOf } from "@/lib/orders/portrait-item";
+import { coversStyles } from "@/lib/orders/order-styles";
 
 export type RebalanceMove = {
   orderId: string;
@@ -96,13 +97,23 @@ async function moveOne(
   tx: Tx,
   input: { businessId: string; order: Movable; from: DesignerLoad; awayIds: Set<string>; reason: string },
 ): Promise<RebalanceMove | null> {
-  const ranked = await loadRankedCandidates(tx, {
+  const styles = await portraitStylesOf(tx, input.order.orderId);
+  const { ranked, fallback } = await rankForOrder(tx, {
     businessId: input.businessId,
-    // Every portrait's style: the new designer must draw them all.
-    styles: await portraitStylesOf(tx, input.order.orderId),
+    // Every portrait's style: one who draws them all, else the primary's (rankForOrder).
+    styles,
     excludeDesignerId: input.from.designerId,
     orderId: input.order.orderId,
   });
+  // Never move a two-style order off a designer who draws both to one who does not.
+  if (fallback) {
+    const [from] = await tx
+      .select({ styles: designerProfiles.styles })
+      .from(designerProfiles)
+      .where(eq(designerProfiles.userId, input.from.designerId))
+      .limit(1);
+    if (coversStyles(from?.styles, styles)) return null;
+  }
   // Same ranking as assignment, minus anyone who is away right now.
   const target = ranked.find((c) => !input.awayIds.has(c.designerId));
   if (!target) return null;

@@ -5,7 +5,9 @@
 //   1. add-on lines (Fast Track, Print & Ship, rush) are never a portrait;
 //   2. each portrait line keeps its own style when the order's style is set;
 //   3. the designer picked draws EVERY style on the order; nobody like that =
-//      unassigned, and the card says why;
+//      a designer who draws the PRIMARY portrait's style (most of the order's
+//      styles first), with a note on the order and the brief; nobody even for
+//      the primary = unassigned, and the card says why;
 //   4. the brief and the board list every portrait.
 // Pure rules first, then the real paths against a throwaway business of its
 // own ("Multi Style <stamp>"), deleted again at the end. Never run against
@@ -24,18 +26,32 @@ import { whyNoDesigner } from "../lib/agent/autopilot";
 import { noDesignerRecommendation } from "../lib/agent/limbo";
 import { SYSTEM_ACTOR_ID, withSystemContext } from "../lib/db";
 import * as schema from "../lib/db/schema";
-import { assets, assignments, businesses, designerBusinesses, designerProfiles, orderItems, orders, shops, styles, users } from "../lib/db/schema";
+import {
+  activityLog,
+  alphaEvents,
+  assets,
+  assignments,
+  businesses,
+  designerBusinesses,
+  designerProfiles,
+  orderItems,
+  orders,
+  shops,
+  styles,
+  users,
+} from "../lib/db/schema";
 import { isAddOnItem, isAddOnTitle } from "../lib/orders/add-ons";
 import { combineQuotas, rankCandidates, runAutoAssign, type Candidate } from "../lib/orders/assign";
 import { completeOrderDetailsCore } from "../lib/orders/complete-details";
 import { applyOrderStyle, planItemStyles, type StyleItem } from "../lib/orders/item-styles";
-import { multiStyleGap } from "../lib/orders/order-styles";
+import { multiStyleGap, STYLE_FALLBACK_ACTION, styleFallbackNote } from "../lib/orders/order-styles";
 import { pickPortraitItem, portraitStylesFrom, portraitStylesOf } from "../lib/orders/portrait-item";
 import { buildPortraitSlots } from "../lib/orders/portraits";
 import { loadOrderBrief, portraitBriefLines } from "../lib/notifications/designer-events";
 import type { BusinessStyle } from "../lib/designers/styles";
-import type { BoardCard } from "../lib/orders/board-data";
-import { cardLabels, portraitLine } from "../components/board/card-meta";
+import { getDesignerBoard, type BoardCard } from "../lib/orders/board-data";
+import { activityDetail } from "../lib/orders/activity-label";
+import { cardLabels, describeEvent, portraitLine } from "../components/board/card-meta";
 
 let failed = 0;
 const check = (name: string, ok: boolean, detail = "") => {
@@ -46,11 +62,15 @@ const check = (name: string, ok: boolean, detail = "") => {
 const WP = "Watercolor People";
 const DP = "Disney Pet";
 const PETS = "Watercolor Pets";
+const HOUSE = "Watercolor House";
+const OIL = "Oil Painting";
 
 // Real CPS / PixArt shaped titles.
 const PEOPLE_TITLE = "Custom Watercolor Family Portrait from Photo, Personalized Couple Gift";
 const DISNEY_TITLE = "Custom Disney Pet Portrait, Cartoon Pet Drawing from Photo";
 const PETS_TITLE = "Custom Watercolor Pet Portrait, Pet Memorial Art";
+const HOUSE_TITLE = "Custom Watercolor House Portrait, New Home Gift";
+const OIL_TITLE = "Custom Oil Painting from Photo";
 const PLAIN_TITLE = "Custom Portrait from Your Photo, Digital Download";
 const FAST_TRACK = "Fast Track My Order";
 const PRINT_SHIP = "Print & Ship My Order - ADD-ON LISTING";
@@ -164,6 +184,63 @@ function pureTests() {
   );
   check("rank: no style still open to everyone", rankCandidates(roster, { styles: [] }).length === roster.length);
 
+  // Nobody draws every style: the fallback to the PRIMARY portrait's style.
+  const fb = rankCandidates(roster, { styles: [WP, PETS], match: "primary" });
+  check(
+    "fallback: People + Pets, nobody draws both -> who draws the primary (People), never Pets only",
+    fb[0]?.designerId === "people" && !fb.some((c) => c.designerId === "pets"),
+    JSON.stringify(fb.map((c) => c.designerId)),
+  );
+  const wide = [cand("people", [WP], 1), cand("wide", [WP, HOUSE], 5), cand("pets", [PETS], 1)];
+  const fbWide = rankCandidates(wide, { styles: [WP, PETS, HOUSE], match: "primary" });
+  check(
+    "fallback: most of the order's styles first, then the usual rank",
+    JSON.stringify(fbWide.map((c) => c.designerId)) === JSON.stringify(["wide", "people"]),
+    JSON.stringify(fbWide.map((c) => c.designerId)),
+  );
+  const noDuo = roster.filter((c) => c.designerId !== "duo");
+  check(
+    "fallback: a plain primary next to a Disney portrait still needs a Disney designer, never a Disney-only one",
+    rankCandidates(noDuo, { styles: [WP, DP], match: "primary" }).length === 0,
+  );
+  check(
+    "fallback: a Disney primary goes to the Disney designer (Disney rules unchanged)",
+    JSON.stringify(rankCandidates(noDuo, { styles: [DP, WP], match: "primary" }).map((c) => c.designerId)) === JSON.stringify(["disney"]),
+  );
+  check(
+    "fallback: one style, the same list as before",
+    JSON.stringify(rankCandidates(roster, { styles: [WP], match: "primary" }).map((c) => c.designerId)) === JSON.stringify(one.map((c) => c.designerId)),
+  );
+
+  // The note on the order and the brief.
+  check(
+    "note: the owner's wording",
+    styleFallbackNote([WP, PETS], [WP], "Abdul", true) ===
+      "Also has a Watercolor Pets portrait; no designer lists both Watercolor People and Watercolor Pets: Abdul draws it in that style.",
+    String(styleFallbackNote([WP, PETS], [WP], "Abdul", true)),
+  );
+  check(
+    "note: someone lists both but is busy",
+    styleFallbackNote([PETS, HOUSE], [PETS], "Jerome", false) ===
+      "Also has a Watercolor House portrait; no free designer lists both Watercolor Pets and Watercolor House: Jerome draws it in that style.",
+    String(styleFallbackNote([PETS, HOUSE], [PETS], "Jerome", false)),
+  );
+  check("note: an before a vowel", /^Also has an Oil Painting portrait;/.test(styleFallbackNote([WP, OIL], [WP], "Slamet", true) ?? ""));
+  check(
+    "note: three styles, two drawn in their own style",
+    styleFallbackNote([WP, PETS, HOUSE], [WP], "Abdul", true) ===
+      "Also has Watercolor Pets and Watercolor House portraits; no designer lists all of Watercolor People, Watercolor Pets and Watercolor House: Abdul draws them in those styles.",
+    String(styleFallbackNote([WP, PETS, HOUSE], [WP], "Abdul", true)),
+  );
+  check("note: none when the designer lists every style", styleFallbackNote([WP, DP], [WP, DP], "Duo", true) === null);
+  check("note: none for one style", styleFallbackNote([WP], [PETS], "Pets", true) === null);
+  const noteMeta = { note: "Also has a Watercolor Pets portrait; x" };
+  check("note: the activity row reads as the note", activityDetail(STYLE_FALLBACK_ACTION, noteMeta) === noteMeta.note);
+  check(
+    "note: the card timeline reads it",
+    describeEvent({ action: STYLE_FALLBACK_ACTION, metadata: noteMeta } as unknown as Parameters<typeof describeEvent>[0]) === `noted: ${noteMeta.note}`,
+  );
+
   // Quotas: an order in two styles must fit in each style's group.
   const q = (limit: number, usedToday: number, priority = 1, overflow = false) => ({ limit, usedToday, priority, overflow });
   check("quota: one group = itself", JSON.stringify(combineQuotas([q(3, 1)])) === JSON.stringify(q(3, 1)));
@@ -213,6 +290,7 @@ const ids = {
   disney: randomUUID(),
   duo: randomUUID(),
   pets: randomUUID(),
+  house: randomUUID(),
   va: randomUUID(),
 };
 
@@ -224,6 +302,7 @@ async function setup() {
       { id: ids.disney, email: `ms-disney-${stamp}@example.test`, name: "Disney Painter", role: "designer" },
       { id: ids.duo, email: `ms-duo-${stamp}@example.test`, name: "Duo Painter", role: "designer" },
       { id: ids.pets, email: `ms-pets-${stamp}@example.test`, name: "Pet Painter", role: "designer" },
+      { id: ids.house, email: `ms-house-${stamp}@example.test`, name: "House Painter", role: "designer" },
       { id: ids.va, email: `ms-va-${stamp}@example.test`, name: "Style VA", role: "va" },
     ]);
     await tx.insert(designerProfiles).values([
@@ -232,12 +311,18 @@ async function setup() {
       // Rank 5: never first for a one-style order, the only one for People + Disney.
       { userId: ids.duo, dailyCapacity: 20, styles: [WP, DP], rank: 5 },
       { userId: ids.pets, dailyCapacity: 20, styles: [PETS], rank: 1 },
+      // Lists Pets AND House: the one who draws both for a Pets + House order.
+      { userId: ids.house, dailyCapacity: 20, styles: [PETS, HOUSE], rank: 5 },
     ]);
-    await tx.insert(designerBusinesses).values([ids.people, ids.disney, ids.duo, ids.pets].map((userId) => ({ userId, businessId: ids.biz })));
+    await tx
+      .insert(designerBusinesses)
+      .values([ids.people, ids.disney, ids.duo, ids.pets, ids.house].map((userId) => ({ userId, businessId: ids.biz })));
     await tx.insert(styles).values([
       { businessId: ids.biz, name: WP, titleMatches: ["Watercolor Family Portrait"] },
       { businessId: ids.biz, name: DP, titleMatches: ["Disney Pet Portrait"] },
       { businessId: ids.biz, name: PETS, titleMatches: ["Watercolor Pet Portrait"] },
+      { businessId: ids.biz, name: HOUSE, titleMatches: ["Watercolor House Portrait"] },
+      { businessId: ids.biz, name: OIL, titleMatches: ["Oil Painting"] },
     ]);
     await tx.insert(shops).values({
       id: ids.shop,
@@ -313,6 +398,30 @@ const itemStyles = (orderId: string) =>
     ).sort((a, b) => (a.id < b.id ? -1 : 1)),
   );
 
+const setCapacity = (designerId: string, dailyCapacity: number) =>
+  withSystemContext((tx) => tx.update(designerProfiles).set({ dailyCapacity }).where(eq(designerProfiles.userId, designerId)));
+
+const fallbackNotes = (orderId: string) =>
+  withSystemContext(async (tx) =>
+    (
+      await tx
+        .select({ metadata: activityLog.metadata })
+        .from(activityLog)
+        .where(and(eq(activityLog.orderId, orderId), eq(activityLog.action, STYLE_FALLBACK_ACTION)))
+    ).map((r) => r.metadata as { note?: string; designerId?: string }),
+  );
+
+const briefText = (orderId: string, designerId: string) =>
+  withSystemContext(async (tx) => {
+    const rows = await tx
+      .select({ text: alphaEvents.text })
+      .from(alphaEvents)
+      .where(and(eq(alphaEvents.orderId, orderId), eq(alphaEvents.type, "designer.brief"), eq(alphaEvents.toUserId, designerId)));
+    return rows.map((r) => r.text).join("\n");
+  });
+
+const assign = (orderId: string) => withSystemContext((tx) => runAutoAssign(tx, { orderId, businessId: ids.biz, assignedBy: null }));
+
 async function dbTests() {
   // ---- Etsy shape: no item styles, completed with ONE chosen style ----------
   // Watercolor People + Disney Pet + Fast Track on one receipt. Completing it
@@ -349,32 +458,106 @@ async function dbTests() {
   check("brief: total figures leave the add-on out", brief?.figureCount === 3, String(brief?.figureCount));
   check("brief: both styles on the brief", JSON.stringify(brief?.styles) === JSON.stringify([WP, DP]), JSON.stringify(brief?.styles));
 
-  // ---- Two styles nobody draws together ---------------------------------------
+  // ---- Two styles nobody draws together: the primary style's designer -------
+  // CPS live: Watercolor People = Abdul, Slamet; Watercolor Pets = David,
+  // Jerome; nobody lists both. A family-plus-dog receipt never strands.
   const gap = await mkOrder({ status: "ready_to_assign", items: [{ title: PEOPLE_TITLE, style: WP }, { title: PETS_TITLE, style: PETS }] });
-  const r = await withSystemContext((tx) => runAutoAssign(tx, { orderId: gap.id, businessId: ids.biz, assignedBy: null }));
-  check("assign: Watercolor People + Watercolor Pets, nobody draws both -> unassigned", r.assigned === null && (await holder(gap.id)) === null, JSON.stringify(r));
-  const why = await withSystemContext((tx) => whyNoDesigner(tx, ids.biz, gap.id));
+  const r = await assign(gap.id);
+  check("fallback: People + Pets, nobody draws both -> the rank 1 People designer (the primary)", r.assigned === ids.people && (await holder(gap.id)) === ids.people, JSON.stringify(r));
+  const wantNote =
+    "Also has a Watercolor Pets portrait; no designer lists both Watercolor People and Watercolor Pets: People Painter draws it in that style.";
+  const gapNotes = await fallbackNotes(gap.id);
+  check("fallback: one note on the order, the owner's wording", gapNotes.length === 1 && gapNotes[0].note === wantNote && gapNotes[0].designerId === ids.people, JSON.stringify(gapNotes));
+  const gapBrief = await briefText(gap.id, ids.people);
   check(
-    "reason: the card says two styles, no designer does both",
-    why.headline === "two styles on one order (Watercolor People + Watercolor Pets): no designer does both",
+    "fallback: the brief lists both portraits with their styles and carries the note",
+    gapBrief.includes(`Portrait 1: ${WP}`) && gapBrief.includes(`Portrait 2: ${PETS}`) && gapBrief.includes(wantNote),
+    gapBrief,
+  );
+  const board = await getDesignerBoard({ id: ids.people, role: "designer" }, ids.people, ids.biz, { includeEarnings: false });
+  const gapCard = Object.values(board.columns).flat().find((c) => c.orderId === gap.id);
+  check("fallback: the designer's card shows the note", gapCard?.styleNote === wantNote, JSON.stringify(gapCard?.styleNote));
+  check("fallback: both style pills on the card", JSON.stringify(gapCard?.styles) === JSON.stringify([WP, PETS]), JSON.stringify(gapCard?.styles));
+
+  // Someone lists both but is full: the primary's designer, "no free designer".
+  await setCapacity(ids.house, 0);
+  const busy = await mkOrder({ status: "ready_to_assign", items: [{ title: PETS_TITLE, style: PETS }, { title: HOUSE_TITLE, style: HOUSE }] });
+  await assign(busy.id);
+  check("fallback: Pets + House, the one who draws both is full -> the Pets designer", (await holder(busy.id)) === ids.pets, String(await holder(busy.id)));
+  const busyNotes = await fallbackNotes(busy.id);
+  check(
+    "fallback: the note says no FREE designer lists both",
+    busyNotes[0]?.note === "Also has a Watercolor House portrait; no free designer lists both Watercolor Pets and Watercolor House: Pet Painter draws it in that style.",
+    JSON.stringify(busyNotes),
+  );
+  await setCapacity(ids.house, 20);
+
+  // Who draws both is free: as before, and no note.
+  const pair = await mkOrder({ status: "ready_to_assign", items: [{ title: PETS_TITLE, style: PETS }, { title: HOUSE_TITLE, style: HOUSE }] });
+  await assign(pair.id);
+  check("assign: Pets + House -> the rank 5 designer who draws both, over rank 1 Pets", (await holder(pair.id)) === ids.house);
+  check("assign: no note when the designer draws both", (await fallbackNotes(pair.id)).length === 0);
+
+  // Nobody even for the primary: unassigned, and the card says why.
+  const none = await mkOrder({ status: "ready_to_assign", items: [{ title: OIL_TITLE, style: OIL }, { title: PEOPLE_TITLE, style: WP }] });
+  const rn = await assign(none.id);
+  check("assign: Oil Painting (nobody) + Watercolor People -> unassigned", rn.assigned === null && (await holder(none.id)) === null, JSON.stringify(rn));
+  const why = await withSystemContext((tx) => whyNoDesigner(tx, ids.biz, none.id));
+  check(
+    "reason: nobody for the primary either = two styles, no designer does both",
+    why.headline === "two styles on one order (Oil Painting + Watercolor People): no designer does both",
     why.headline,
   );
   const peopleRow = why.roster.find((d) => d.designerId === ids.people);
-  check("reason: each designer's missing style is named", !!peopleRow?.blockers.includes(`does not do ${PETS}`), JSON.stringify(peopleRow));
+  check("reason: the primary style is what a designer is missing", !!peopleRow?.blockers.includes(`does not do ${OIL}`), JSON.stringify(peopleRow));
   const advice = await withSystemContext((tx) => noDesignerRecommendation(tx, ids.biz, why.styles, null));
   check(
     "reason: what to do names who draws each style",
-    /Nobody draws both Watercolor People and Watercolor Pets/.test(advice) && /Watercolor Pets: Pet Painter/.test(advice),
+    /Nobody draws both Oil Painting and Watercolor People/.test(advice) && /Oil Painting: nobody/.test(advice) && /Watercolor People: People Painter/.test(advice),
     advice,
   );
 
-  // A person picking by hand gets the same rule.
-  const toPeople = await reassignOrder(gap.id, ids.people, ids.va, {});
+  // A plain primary next to a Disney portrait: the Disney rules stay.
+  await setCapacity(ids.duo, 0);
+  const plainDisney = await mkOrder({ status: "ready_to_assign", items: [{ title: PEOPLE_TITLE, style: WP }, { title: DISNEY_TITLE, style: DP }] });
+  await assign(plainDisney.id);
+  check("disney: People + Disney Pet, the duo full -> unassigned (never People only, never Disney only)", (await holder(plainDisney.id)) === null, String(await holder(plainDisney.id)));
+  const whyPd = await withSystemContext((tx) => whyNoDesigner(tx, ids.biz, plainDisney.id));
+  const pdPeople = whyPd.roster.find((d) => d.designerId === ids.people);
+  check("disney: the People designer is blocked by the Disney portrait", !!pdPeople?.blockers.includes(`does not do ${DP}`), JSON.stringify(whyPd));
+  check("disney: not the 'no designer does both' line (the duo draws both, just full)", !/no designer does both/.test(whyPd.headline), whyPd.headline);
+  await setCapacity(ids.duo, 20);
+
+  // ---- A person picking by hand gets the same rule ------------------------------
+  const byHand = await mkOrder({ status: "ready_to_assign", items: [{ title: PEOPLE_TITLE, style: WP }, { title: PETS_TITLE, style: PETS }] });
+  const toPets = await reassignOrder(byHand.id, ids.pets, ids.va, {});
   check(
-    "reassign: a VA cannot give it to someone who draws one of the two",
-    !toPeople.ok && toPeople.code === "not_eligible" && /does not draw Watercolor Pets/.test(toPeople.message),
-    JSON.stringify(toPeople),
+    "reassign: nobody draws both -> refused for a designer who does not draw the primary",
+    !toPets.ok && toPets.code === "not_eligible" && /Pet Painter does not draw Watercolor People/.test(toPets.message),
+    JSON.stringify(toPets),
   );
+  const toPeople = await reassignOrder(byHand.id, ids.people, ids.va, {});
+  check("reassign: nobody draws both -> a designer who draws the primary may take it", toPeople.ok, JSON.stringify(toPeople));
+  check("reassign: the note is written for a move by hand too", (await fallbackNotes(byHand.id))[0]?.designerId === ids.people);
+
+  const covered = await mkOrder({ status: "ready_to_assign", items: [{ title: PETS_TITLE, style: PETS }, { title: HOUSE_TITLE, style: HOUSE }] });
+  const toPetsOnly = await reassignOrder(covered.id, ids.pets, ids.va, {});
+  check(
+    "reassign: someone free draws both -> a designer missing one is refused, and told who",
+    !toPetsOnly.ok && toPetsOnly.code === "not_eligible" && /does not draw Watercolor House/.test(toPetsOnly.message) && /House Painter, who draws both/.test(toPetsOnly.message),
+    JSON.stringify(toPetsOnly),
+  );
+  const disneyFirst = await mkOrder({ status: "ready_to_assign", items: [{ title: DISNEY_TITLE, style: DP }, { title: PEOPLE_TITLE, style: WP }] });
+  const toDisney = await reassignOrder(disneyFirst.id, ids.disney, ids.va, {});
+  check(
+    "reassign: Disney + People with the duo free -> the Disney-only designer is refused, the duo named",
+    !toDisney.ok && /does not draw Watercolor People/.test(toDisney.message) && /Duo Painter/.test(toDisney.message),
+    JSON.stringify(toDisney),
+  );
+  await setCapacity(ids.duo, 0);
+  const toDisney2 = await reassignOrder(disneyFirst.id, ids.disney, ids.va, {});
+  check("reassign: Disney + People, the duo full -> the Disney designer (Disney primary) may take it", toDisney2.ok, JSON.stringify(toDisney2));
+  await setCapacity(ids.duo, 20);
 
   // ---- One style: unchanged -----------------------------------------------------
   const single = await mkOrder({ status: "ready_to_assign", items: [{ title: PEOPLE_TITLE, style: WP }] });
@@ -413,7 +596,7 @@ async function cleanup() {
   const pool = new Pool({ connectionString: process.env.DIRECT_URL ?? process.env.DATABASE_URL! });
   const ownerDb = drizzle(pool, { schema });
   try {
-    const userIds = [ids.people, ids.disney, ids.duo, ids.pets, ids.va];
+    const userIds = [ids.people, ids.disney, ids.duo, ids.pets, ids.house, ids.va];
     const res = await ownerDb.execute(sql`
       select c.table_name from information_schema.columns c
       join information_schema.tables t on t.table_schema = c.table_schema and t.table_name = c.table_name and t.table_type = 'BASE TABLE'

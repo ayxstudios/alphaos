@@ -206,7 +206,15 @@ function contactPayload(contact: DesignerContact | null): Record<string, unknown
  */
 export async function sendDesignerBrief(
   tx: Tx,
-  input: { orderId: string; designerId: string; dueAt: Date | null; reason?: string | null; now?: Date },
+  input: {
+    orderId: string;
+    designerId: string;
+    dueAt: Date | null;
+    reason?: string | null;
+    /** Portraits in 2+ styles and this designer does not list them all: which one they draw in its own style. */
+    styleNote?: string | null;
+    now?: Date;
+  },
 ): Promise<string | null> {
   const now = input.now ?? new Date();
   const [brief, contact] = await Promise.all([
@@ -224,6 +232,7 @@ export async function sendDesignerBrief(
   const perPortrait = portraitBriefLines(brief.portraits);
   if (perPortrait.length) {
     lines.push(...perPortrait);
+    if (input.styleNote) lines.push(input.styleNote);
   } else {
     if (brief.title) lines.push(`Product: ${brief.title}.`);
     lines.push(`Style: ${brief.style ?? "not set"}. ${figuresText(brief.figureCount)}.`);
@@ -256,6 +265,7 @@ export async function sendDesignerBrief(
       figureCount: brief.figureCount,
       options: brief.options,
       ...(brief.portraits.length > 1 ? { styles: brief.styles, portraits: brief.portraits } : {}),
+      ...(input.styleNote ? { styleNote: input.styleNote } : {}),
       sameBuyer,
       dueAt: input.dueAt?.toISOString() ?? null,
       dueAtLocal: input.dueAt ? formatInTimezone(input.dueAt, contact?.timezone) : null,

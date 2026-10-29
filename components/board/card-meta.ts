@@ -179,6 +179,8 @@ export function describeEvent(e: CardEvent, viewerRole?: "admin" | "va" | "desig
     }
     case "order.same_buyer_noted":
       return "noted that this customer has other orders";
+    case "order.style_fallback":
+      return typeof e.metadata?.note === "string" ? `noted: ${e.metadata.note}` : "noted a second style on this order";
     case "email.sent":
       return "emailed the customer";
     case "order.on_hold":

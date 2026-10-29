@@ -41,7 +41,14 @@ import {
   StaysOnBoardError,
 } from "@/lib/orders/board-hold";
 import { portraitStylesOf } from "@/lib/orders/portrait-item";
-import { coversStyles, missingStyles, stylesOfInput } from "@/lib/orders/order-styles";
+import {
+  coveredCount,
+  coversStyles,
+  missingStyles,
+  STYLE_FALLBACK_ACTION,
+  styleFallbackNote,
+  stylesOfInput,
+} from "@/lib/orders/order-styles";
 
 export const DESIGNER_SLA_HOURS = 24;
 
@@ -172,7 +179,8 @@ export type EligibilityRefusal = { code: "not_eligible"; message: string };
  * draws that style, a plain order never to a Disney-only designer (Mar), and the
  * AI Studio only where the order's style has the AI designer switched on (the
  * designer-only businesses and styles never do) and it needs one portrait.
- * Portraits in 2+ styles: only a designer who draws every one of them.
+ * Portraits in 2+ styles: a designer who draws every one of them, else
+ * (nobody eligible does) one who draws the primary portrait's style.
  * Callers let an owner or admin override it.
  */
 export async function eligibilityRefusal(
@@ -211,11 +219,32 @@ export async function eligibilityRefusal(
   }
 
   const missing = missingStyles(d?.styles, styles);
-  const multi = (gaps: string[]) =>
-    refuse(`${who} does not draw ${gaps.join(" or ")}. This order has portraits in ${styles.join(" and ")}: give it to a designer who draws ${both}.`);
+  // Portraits in 2+ styles, the same rule as auto-assign (rankForOrder): a
+  // designer missing one is refused only while someone eligible draws every
+  // style; with nobody like that, a designer who draws the primary portrait's
+  // style may take it and draws the other one in its own style.
+  const multi = async (gaps: string[]): Promise<EligibilityRefusal | null> => {
+    const all = (await loadRankedCandidates(tx, { businessId: input.businessId, styles, orderId: input.orderId })).filter(
+      (c) => c.designerId !== input.designerId,
+    );
+    if (all.length) {
+      const named = await tx
+        .select({ name: users.name })
+        .from(users)
+        .where(inArray(users.id, all.slice(0, 3).map((c) => c.designerId)));
+      const names = named.map((n) => n.name ?? "a designer").join(" or ");
+      return refuse(`${who} does not draw ${gaps.join(" or ")}. This order has portraits in ${styles.join(" and ")}: give it to ${names}, who draws ${both}.`);
+    }
+    const primary = styles[0];
+    const drawsPrimary = coversStyles(d?.styles, [primary]) || (disney && isDisneyStyle(primary) && drawsDisney(d?.styles));
+    if (drawsPrimary) return null;
+    return refuse(
+      `${who} does not draw ${primary}. Nobody free draws ${styles.join(" and ")} together, so it goes to a designer who draws ${primary}, the main portrait.`,
+    );
+  };
   if (disney) {
     // disneyRefusal already limits it to a Disney designer; a second portrait
-    // in a plain style (Watercolor People next to a Disney Pet) still needs one who draws it.
+    // in a plain style (Watercolor People next to a Disney Pet) still needs drawing.
     const plainGaps = styles.length > 1 ? missing.filter((s) => !isDisneyStyle(s)) : [];
     return plainGaps.length ? multi(plainGaps) : null;
   }
@@ -347,20 +376,84 @@ export async function createAssignment(
 
   // The AI Studio agent has no phone or chat: it reads its jobs from the API.
   const [profile] = await tx
-    .select({ isAgent: designerProfiles.isAgent })
+    .select({ isAgent: designerProfiles.isAgent, styles: designerProfiles.styles, name: users.name })
     .from(designerProfiles)
+    .innerJoin(users, eq(users.id, designerProfiles.userId))
     .where(eq(designerProfiles.userId, input.designerId))
     .limit(1);
   if (!profile?.isAgent) {
+    const styleNote = await noteStyleFallback(tx, {
+      orderId: input.orderId,
+      businessId: input.businessId,
+      designerId: input.designerId,
+      designerStyles: profile?.styles ?? [],
+      designerName: profile?.name ?? null,
+      actorId: input.assignedBy,
+    });
     await sendDesignerBrief(tx, {
       orderId: input.orderId,
       designerId: input.designerId,
       dueAt,
       reason: input.reason ?? null,
+      styleNote,
     });
   }
 
   return { assignmentId: row.id, dueAt };
+}
+
+/**
+ * An order whose portraits are in 2+ styles went to a designer who does not
+ * list them all (the primary-style fallback, or a move by hand): one
+ * activity_log note on the order for the card, and the same words for the
+ * brief. Written once per designer and wording. Null when they list every style.
+ */
+async function noteStyleFallback(
+  tx: Tx,
+  input: {
+    orderId: string;
+    businessId: string;
+    designerId: string;
+    designerStyles: string[];
+    designerName: string | null;
+    actorId: string | null;
+  },
+): Promise<string | null> {
+  const styles = await portraitStylesOf(tx, input.orderId);
+  if (styles.length < 2 || coversStyles(input.designerStyles, styles)) return null;
+  const roster = await tx
+    .select({ styles: designerProfiles.styles })
+    .from(designerBusinesses)
+    .innerJoin(users, and(eq(users.id, designerBusinesses.userId), eq(users.active, true), eq(users.role, "designer")))
+    .innerJoin(designerProfiles, eq(designerProfiles.userId, designerBusinesses.userId))
+    .where(and(eq(designerBusinesses.businessId, input.businessId), eq(designerProfiles.isAgent, false)));
+  const nobodyListsAll = !roster.some((r) => coversStyles(r.styles, styles));
+  const note = styleFallbackNote(styles, input.designerStyles, input.designerName, nobodyListsAll);
+  if (!note) return null;
+  const [last] = await tx
+    .select({ metadata: activityLog.metadata })
+    .from(activityLog)
+    .where(and(eq(activityLog.orderId, input.orderId), eq(activityLog.action, STYLE_FALLBACK_ACTION)))
+    .orderBy(sql`${activityLog.createdAt} desc`)
+    .limit(1);
+  const prior = (last?.metadata ?? null) as { designerId?: string; note?: string } | null;
+  if (prior?.designerId !== input.designerId || prior?.note !== note) {
+    await tx.insert(activityLog).values({
+      businessId: input.businessId,
+      orderId: input.orderId,
+      actorId: input.actorId,
+      action: STYLE_FALLBACK_ACTION,
+      metadata: {
+        note,
+        designerId: input.designerId,
+        designerName: input.designerName,
+        styles,
+        missing: missingStyles(input.designerStyles, styles),
+        nobodyListsAll,
+      },
+    });
+  }
+  return note;
 }
 
 export type Candidate = {
@@ -388,6 +481,8 @@ export type Candidate = {
 export type RankedCandidate = Candidate & {
   styleMatch: boolean;
   remainingCapacity: number;
+  /** How many of the order's styles the designer lists. */
+  covers: number;
 };
 
 /**
@@ -407,22 +502,30 @@ export type RankedCandidate = Candidate & {
  *  4. Disney only — a Disney order (a Disney style, or `disney` from its
  *     titles when no style is set) goes only to a designer who draws Disney.
  *
+ * `match: "primary"` is the fallback for 2+ styles nobody eligible draws all
+ * of (rankForOrder): designers who list the PRIMARY style (styles[0]), most of
+ * the order's styles first, then the order below. Never a Disney-only designer
+ * for a plain primary.
+ *
  * Order among the eligible: manual rank (asc) -> most remaining capacity ->
  * lowest work-in-progress -> best 30-day on-time rate.
  */
 export function rankCandidates(
   candidates: Candidate[],
-  order: { style?: string | null; styles?: string[] | null; disney?: boolean },
+  order: { style?: string | null; styles?: string[] | null; disney?: boolean; match?: "all" | "primary" },
 ): RankedCandidate[] {
   const styles = stylesOfInput(order);
   const disney = !!order.disney || styles.some(isDisneyStyle);
+  const primaryOnly = order.match === "primary" && styles.length > 1;
+  const required = primaryOnly ? styles.slice(0, 1) : styles;
   const quotaOpen = (c: Candidate) => !c.styleQuota || c.styleQuota.usedToday < c.styleQuota.limit;
 
   const eligible = candidates
     .map((c) => ({
       ...c,
-      styleMatch: styles.length > 0 && coversStyles(c.styles, styles),
+      styleMatch: required.length > 0 && coversStyles(c.styles, required),
       remainingCapacity: c.dailyCapacity - c.ordersAssignedToday,
+      covers: coveredCount(c.styles, styles),
     }))
     .filter(
       (c) =>
@@ -434,7 +537,9 @@ export function rankCandidates(
         // Strict: a styled order goes only to a designer who draws every style.
         (styles.length === 0 || c.styleMatch) &&
         // A Disney order, styled or not, goes only to a Disney designer.
-        (!disney || drawsDisney(c.styles)),
+        (!disney || drawsDisney(c.styles)) &&
+        // The fallback never hands a plain primary to a Disney-only designer.
+        !(primaryOnly && !isDisneyStyle(required[0]) && drawsOnlyDisney(c.styles)),
     );
 
   // Designers holding a per-style quota for this style are served first, in
@@ -446,6 +551,7 @@ export function rankCandidates(
     c.styleQuota && quotaOpen(c) ? c.styleQuota.priority : Number.MAX_SAFE_INTEGER;
   eligible.sort(
     (a, b) =>
+      (primaryOnly ? b.covers - a.covers : 0) ||
       quotaPriority(a) - quotaPriority(b) ||
       a.rank - b.rank ||
       b.remainingCapacity - a.remainingCapacity ||
@@ -569,6 +675,8 @@ export async function loadRankedCandidates(
     styles?: string[] | null;
     excludeDesignerId?: string | null;
     orderId?: string | null;
+    /** "primary" = the 2+ style fallback (rankCandidates). */
+    match?: "all" | "primary";
   },
 ): Promise<RankedCandidate[]> {
   const styles = stylesOfInput(input);
@@ -707,7 +815,24 @@ export async function loadRankedCandidates(
   }));
 
   const disney = styles.some(isDisneyStyle) || (input.orderId ? await loadIsDisneyOrder(tx, input.orderId) : false);
-  return rankCandidates(candidates, { styles, disney });
+  return rankCandidates(candidates, { styles, disney, match: input.match });
+}
+
+/**
+ * The ranking an order's portraits get (2026-10-29): a designer who draws
+ * every style first; nobody eligible like that = the fallback, designers who
+ * draw the primary portrait's style, most of the order's styles first
+ * (fallback true), so a two-style order never strands because nobody lists
+ * both. One style = loadRankedCandidates as before.
+ */
+export async function rankForOrder(
+  tx: Tx,
+  input: { businessId: string; styles: string[]; orderId?: string | null; excludeDesignerId?: string | null },
+): Promise<{ ranked: RankedCandidate[]; fallback: boolean }> {
+  const all = await loadRankedCandidates(tx, input);
+  if (all.length || input.styles.length < 2) return { ranked: all, fallback: false };
+  const primary = await loadRankedCandidates(tx, { ...input, match: "primary" });
+  return { ranked: primary, fallback: primary.length > 0 };
 }
 
 /**
@@ -716,9 +841,11 @@ export async function loadRankedCandidates(
  * assignment). If nobody is eligible the order stays ready_to_assign with no
  * active assignment — it surfaces in the VA "Unassigned" tab.
  *
- * An order with portraits in 2+ styles (2026-10-29) goes to ONE designer who
- * draws every one of them, so the buyer gets all her portraits together;
- * nobody like that = unassigned, and the autopilot card says why.
+ * An order with portraits in 2+ styles (2026-10-29) goes to ONE designer, so
+ * the buyer gets all her portraits together: one who draws every style, else
+ * one who draws the primary portrait's style (rankForOrder; the order and the
+ * brief carry a note saying so). Nobody for the primary either = unassigned,
+ * and the autopilot card says why.
  *
  * A revision or failed QC never goes through the ranking: it goes back to the
  * designer who has it or drew it, at any load (keepRework). When none of them
@@ -770,7 +897,7 @@ export async function runAutoAssign(
     return { assigned: agentId };
   }
 
-  const ranked = await loadRankedCandidates(tx, { businessId: order.businessId, styles, orderId: order.orderId });
+  const { ranked } = await rankForOrder(tx, { businessId: order.businessId, styles, orderId: order.orderId });
   if (!ranked.length) return { assigned: null, styles };
   const chosen = ranked[0].designerId;
 
@@ -880,6 +1007,6 @@ export async function findNextEligibleDesigner(
   tx: Tx,
   input: { businessId: string; style?: string | null; styles?: string[] | null; excludeDesignerId: string; orderId?: string | null },
 ): Promise<string | null> {
-  const ranked = await loadRankedCandidates(tx, input);
+  const { ranked } = await rankForOrder(tx, { ...input, styles: stylesOfInput(input) });
   return ranked[0]?.designerId ?? null;
 }

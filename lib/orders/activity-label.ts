@@ -27,6 +27,7 @@ const LABELS: Record<string, string> = {
   "order.details_updated": "Details updated",
   "order.tracking_added": "Tracking added",
   "order.same_buyer_noted": "Buyer's other orders noted",
+  "order.style_fallback": "Second style drawn by the main portrait's designer",
   "order.marked_urgent": "Marked urgent",
   "order.cleared_urgent": "No longer urgent",
   "order.reopened_by_buyer": "Reopened: the buyer wrote",
@@ -78,6 +79,7 @@ export function activityLabel(action: string): string {
  * so it says which thread it came in on (lib/agent/buyer-orders.ts writes it).
  */
 export function activityDetail(action: string, metadata: Record<string, unknown> | null | undefined): string | null {
+  if (action === "order.style_fallback") return typeof metadata?.note === "string" ? metadata.note : null;
   if (action !== "message.received" || !metadata || metadata.linkedBy !== "mention") return null;
   const from = typeof metadata.fromOrderNumber === "string" ? metadata.fromOrderNumber.trim() : "";
   return from

@@ -26,7 +26,7 @@ import { loadProofFilePick } from "@/lib/proofs/files";
 import { sizedImageUrl } from "@/lib/images";
 import { personalizationOf } from "@/lib/orders/options-summary";
 import { portraitLinesOf } from "@/lib/orders/add-ons";
-import { distinctStyles } from "@/lib/orders/order-styles";
+import { distinctStyles, STYLE_FALLBACK_ACTION } from "@/lib/orders/order-styles";
 import { pickPortraitItem } from "@/lib/orders/portrait-item";
 import {
   loadDesignerSiblings,
@@ -86,6 +86,11 @@ export type BoardCard = {
    * one-portrait order, whose card reads as before.
    */
   portraits: BoardPortrait[];
+  /**
+   * Portraits in 2+ styles and the designer holding it does not list them all
+   * (nobody did): which portrait they draw in its own style. Null otherwise.
+   */
+  styleNote: string | null;
   /**
    * The customer's personalization (names, wording for the art), verbatim,
    * from EVERY item: what a designer copies onto the portrait. `item` is the
@@ -153,6 +158,8 @@ type OrderRow = {
   notes: string | null;
   urgentAt: Date | null;
   urgentReason: string | null;
+  /** The designer of the active assignment, if any. */
+  assignedDesignerId: string | null;
 };
 
 type Tx = Parameters<Parameters<typeof withUserContext>[1]>[0];
@@ -212,7 +219,7 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
   // split over read-only transactions that run side by side (two here, a third
   // for the same-buyer note below); each sets its own RLS GUCs (withUserContext),
   // so scoping is unchanged.
-  const [[items, refs, customerRows], [failRows, revRows, vaRevisionRows, submissionRows], siblingsByOrder] = await Promise.all([
+  const [[items, refs, customerRows, styleNoteRows], [failRows, revRows, vaRevisionRows, submissionRows], siblingsByOrder] = await Promise.all([
     withUserContext(user, (tx) => Promise.all([
     tx
       .select({
@@ -243,6 +250,12 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
             .from(customers)
             .where(inArray(customers.id, custIds))
       : Promise.resolve([]),
+    // Two styles, a designer who does not list both (lib/orders/assign.ts STYLE_FALLBACK_ACTION).
+    tx
+      .select({ orderId: activityLog.orderId, metadata: activityLog.metadata })
+      .from(activityLog)
+      .where(and(inArray(activityLog.orderId, ids), eq(activityLog.action, STYLE_FALLBACK_ACTION)))
+      .orderBy(desc(activityLog.createdAt)),
     ])),
     withUserContext(user, (tx) => Promise.all([
     revisionIds.length
@@ -480,6 +493,16 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
     if (sentence) sameBuyer.set(o.id, { sentence, numbers: siblings.map((x) => x.number) });
   }
 
+  // The newest style note per order, only while that designer still holds it.
+  const styleNote = new Map<string, string>();
+  const holderOf = new Map(rows.map((o) => [o.id, o.assignedDesignerId]));
+  for (const r of styleNoteRows) {
+    if (!r.orderId || styleNote.has(r.orderId)) continue;
+    const meta = (r.metadata ?? {}) as { note?: unknown; designerId?: unknown };
+    if (typeof meta.note === "string" && meta.designerId === holderOf.get(r.orderId)) styleNote.set(r.orderId, meta.note);
+    else styleNote.set(r.orderId, "");
+  }
+
   const iso = (d: Date | null) => (d ? d.toISOString() : null);
   return rows.map((o) => ({
     orderId: o.id,
@@ -497,6 +520,7 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
     title: title.get(o.id) ?? null,
     options: options.get(o.id) ?? [],
     portraits: portraits.get(o.id) ?? [],
+    styleNote: styleNote.get(o.id) || null,
     personalization: personalization.get(o.id) ?? [],
     notes: o.notes,
     source: o.source,
@@ -570,6 +594,7 @@ const BOARD_ROW_SELECT = {
   status: orders.status,
   dueAt: orders.dueAt,
   assignmentDueAt: assignments.dueAt,
+  assignedDesignerId: assignments.designerId,
   businessId: orders.businessId,
   customerId: orders.customerId,
   revisionCount: orders.revisionCount,

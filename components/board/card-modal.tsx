@@ -282,6 +282,7 @@ export function CardModal({
                     </li>
                   ))}
                 </ul>
+                {card.styleNote && <p className="mt-2 text-sm text-amber">{card.styleNote}</p>}
               </section>
             )}
 
