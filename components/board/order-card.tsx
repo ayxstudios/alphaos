@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import { AlertTriangle, Camera } from "@/components/ui/icons";
 import { Countdown } from "./countdown";
-import { cardLabels, LABEL_CLASS, optionName, revisionNote } from "./card-meta";
+import { cardLabels, LABEL_CLASS, optionName, portraitLine, revisionNote } from "./card-meta";
 import type { BoardCard } from "@/lib/orders/board-data";
 import { isWithCustomer } from "@/lib/orders/board-constants";
 import { optionsSummary } from "@/lib/orders/options-summary";
@@ -157,6 +157,19 @@ export function OrderCard({
         {card.title && (
           <p className="line-clamp-2 text-sm text-ink">{card.title}</p>
         )}
+
+        {/* 2+ portraits: each on its own line (style, figures, product), so
+            none is drawn in the wrong style or forgotten. */}
+        {card.portraits.length > 1 && (
+          <ul className="flex flex-col gap-0.5 text-xs text-ink">
+            {card.portraits.map((p) => (
+              <li key={p.slots[0]} className="truncate" title={portraitLine(p)}>
+                {portraitLine(p)}
+              </li>
+            ))}
+          </ul>
+        )}
+        {card.styleNote && <p className="line-clamp-3 text-xs text-amber">{card.styleNote}</p>}
 
         {/* The shop's raw options as one human line ("2 people + 1 pet ·
             8x10 · Rush order"); every option in full is one tap away, in the

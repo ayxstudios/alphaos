@@ -9,7 +9,9 @@ import { listBusinessStyles, routingStyleMatch, shopStyleChoices } from "@/lib/d
 import { referenceUploadProblem } from "@/lib/uploads/verify";
 import { withSizeOption } from "@/lib/orders/size-option";
 import { hashColumnsFor } from "@/lib/qc/asset-hash";
-import { isAddOnItem, loadClassifyConfig, pickPortraitItem } from "@/lib/orders/portrait-item";
+import { isAddOnItem, portraitLinesOf } from "@/lib/orders/add-ons";
+import { applyOrderStyle } from "@/lib/orders/item-styles";
+import { loadClassifyConfig, pickPortraitItem } from "@/lib/orders/portrait-item";
 import type { ClassifyConfig } from "@/lib/integrations/classify";
 
 /**
@@ -191,17 +193,20 @@ export async function completeOrderDetailsCore(
     const kept = given ? null : existingItem?.style?.trim() || null;
     const routed = given || kept ? null : routingStyleMatch(title, existingItem?.sku, await listBusinessStyles(tx, businessId));
     const style = given ?? kept ?? (routed && styleAllowed(routed, styleChoices) ? routed : null);
+    // A style the VA picked by hand is a hand-set: the order page shows it
+    // as chosen (not "Defaulted ... please confirm") and a re-resolve keeps it.
+    // A kept style keeps its lock; a routed one is a rule's, never locked.
+    const styleLocked = given ? (input.styleLocked ?? true) : kept ? (existingItem?.styleLocked ?? false) : false;
+    // Two or more portrait lines (2026-10-29): each keeps its own style
+    // (applyOrderStyle below); one line takes the chosen style as before.
+    const perItem = portraitLinesOf(lockedItems, classifyCfg).length > 1;
     const itemValues = {
       businessId,
       orderId: order.id,
       title,
       figureCount,
       figureCountSource: figureCount != null ? (input.figureCountSource ?? ("manual" as const)) : null,
-      style,
-      // A style the VA picked by hand is a hand-set: the order page shows it
-      // as chosen (not "Defaulted ... please confirm") and a re-resolve keeps it.
-      // A kept style keeps its lock; a routed one is a rule's, never locked.
-      styleLocked: given ? (input.styleLocked ?? true) : kept ? (existingItem?.styleLocked ?? false) : false,
+      ...(perItem ? {} : { style, styleLocked }),
       productType: input.productType,
       // Only touch options when the form carried a size, so an imported
       // order's other options are never lost.
@@ -212,6 +217,16 @@ export async function completeOrderDetailsCore(
     } else {
       await tx.insert(orderItems).values(itemValues);
     }
+    const itemStyles = perItem
+      ? await applyOrderStyle(tx, {
+          orderId: order.id,
+          businessId,
+          chosen: style,
+          chosenLocked: styleLocked,
+          allowed: (s) => styleAllowed(s, styleChoices),
+          items: lockedItems.map((i) => (i.id === existingItem?.id ? { ...i, title } : i)),
+        })
+      : null;
 
     const assetRows = [
       ...r2Keys.map((r2Key) => ({
@@ -279,7 +294,12 @@ export async function completeOrderDetailsCore(
         action: "order.details_updated",
         fromState: order.status,
         toState: order.status,
-        metadata: { photoCount, style, ...(style && !given ? { styleVia: kept ? "kept" : "catalog" } : {}) },
+        metadata: {
+          photoCount,
+          style,
+          ...(style && !given ? { styleVia: kept ? "kept" : "catalog" } : {}),
+          ...(itemStyles ? { itemStyles } : {}),
+        },
       });
     }
 

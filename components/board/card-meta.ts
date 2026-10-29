@@ -3,6 +3,7 @@ import type { CardEvent } from "@/lib/orders/card-detail";
 import type { OrderStatus } from "@/lib/orders/transitions";
 import { formatAt } from "@/lib/time";
 import { styleLabel } from "@/lib/utils";
+import { portraitList } from "@/lib/orders/portrait-list";
 
 /** Label tones map onto the design tokens — no colour outside the palette. */
 export type LabelTone = "neutral" | "pigment" | "amber" | "rose" | "sage" | "urgent";
@@ -18,6 +19,14 @@ export const LABEL_CLASS: Record<LabelTone, string> = {
   // Solid, so URGENT never reads as just another QC-failed pill.
   urgent: "bg-rose text-surface",
 };
+
+/** "Portrait 2 · Disney Pet · 1 figure · Custom Disney Pet Portrait": one portrait line of a 2+ portrait card. */
+export function portraitLine(p: BoardCard["portraits"][number]): string {
+  const figures = p.figureCount == null ? "figures not set" : `${p.figureCount} figure${p.figureCount === 1 ? "" : "s"}`;
+  return [portraitList(p.slots), p.style ? styleLabel(p.style) : "style not set", figures, p.title?.trim() || null]
+    .filter(Boolean)
+    .join(" · ");
+}
 
 /** "Same buyer: also PC32131" for a card whose buyer has other orders: the first two numbers, then "+N". */
 export function sameBuyerLabel(numbers: string[]): string {
@@ -41,7 +50,9 @@ export function cardLabels(card: BoardCard): CardLabel[] {
 
   if (card.customerRevision) labels.push({ text: "Revision", tone: "pigment" });
   if (card.qcFail) labels.push({ text: "QC failed", tone: "rose" });
-  if (card.style) labels.push({ text: styleLabel(card.style), tone: "sage" });
+  // Portraits in 2+ styles: one pill per style, so nobody draws them all alike.
+  if (card.styles.length > 1) for (const s of card.styles) labels.push({ text: styleLabel(s), tone: "sage" });
+  else if (card.style) labels.push({ text: styleLabel(card.style), tone: "sage" });
   if (!card.figuresResolved) labels.push({ text: "Figures ?", tone: "amber" });
   return labels;
 }
@@ -170,6 +181,8 @@ export function describeEvent(e: CardEvent, viewerRole?: "admin" | "va" | "desig
     }
     case "order.same_buyer_noted":
       return "noted that this customer has other orders";
+    case "order.style_fallback":
+      return typeof e.metadata?.note === "string" ? `noted: ${e.metadata.note}` : "noted a second style on this order";
     case "email.sent":
       return "emailed the customer";
     case "order.on_hold":

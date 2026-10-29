@@ -17,7 +17,7 @@ import {
   type TogetherOrder,
   type TogetherSibling,
 } from "@/lib/orders/deliver-together";
-import { ADD_ON_TITLE } from "@/lib/orders/portraits";
+import { ADD_ON_TITLE } from "@/lib/orders/add-ons";
 import { buyerWordsWhere } from "@/lib/reminders/buyer-replied";
 import { loadSameBuyerContext, orderNumberOf } from "@/lib/orders/same-buyer";
 

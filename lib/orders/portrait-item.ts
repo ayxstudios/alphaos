@@ -2,27 +2,14 @@ import { asc, eq } from "drizzle-orm";
 
 import type { Tx } from "@/lib/db";
 import { orderItems, orders, shops } from "@/lib/db/schema";
-import { isNonPortraitLine, type ClassifyConfig } from "@/lib/integrations/classify";
-import { ADD_ON_TITLE } from "@/lib/orders/portraits";
+import type { ClassifyConfig } from "@/lib/integrations/classify";
+import { isAddOnItem, portraitLinesOf } from "@/lib/orders/add-ons";
 
-/** Add-on listings (Print & Ship, upgrades) carry a style row but nothing to draw: never a route. */
-export const ADDON_STYLE = /print\s*&\s*ship|add-?on/i;
+// The add-on recognizer lives in lib/orders/add-ons.ts (one definition); re-exported for older imports.
+export { ADDON_STYLE, isAddOnItem } from "@/lib/orders/add-ons";
 
 /** An order item as far as picking its portrait needs it. */
 export type PickableItem = { id: string; title: string | null; sku: string | null; style: string | null };
-
-/**
- * An add-on line (Print & Ship, rush, upgrade): the shop's non-portrait SKU or
- * title list, the built-in add-on title words, or an add-on style name. It
- * rides along with a portrait and is never what the order is routed by.
- */
-export function isAddOnItem(item: { title?: string | null; sku?: string | null; style?: string | null }, cfg: ClassifyConfig | null | undefined): boolean {
-  return (
-    isNonPortraitLine({ sku: item.sku, title: item.title }, cfg) ||
-    ADD_ON_TITLE.test(item.title ?? "") ||
-    ADDON_STYLE.test(item.style ?? "")
-  );
-}
 
 /**
  * The one item an order is routed by (2026-10-25: a bare `limit 1` read an
@@ -59,4 +46,38 @@ export async function loadPortraitItem(tx: Tx, orderId: string) {
 /** The style the order is routed by: its portrait item's, trimmed, or null. */
 export async function loadPortraitStyle(tx: Tx, orderId: string): Promise<string | null> {
   return (await loadPortraitItem(tx, orderId))?.style?.trim() || null;
+}
+
+/**
+ * Every style the order's portraits need, primary first (the one
+ * pickPortraitItem routes by), then the other portrait lines' in id order;
+ * distinct (any case), trimmed, add-on lines left out. A line with no style
+ * adds nothing. Pure.
+ */
+export function portraitStylesFrom(items: PickableItem[], cfg: ClassifyConfig | null | undefined): string[] {
+  const primary = pickPortraitItem(items, cfg);
+  const lines = [...portraitLinesOf(items, cfg)].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of [primary, ...lines]) {
+    const style = item?.style?.trim();
+    if (!style || seen.has(style.toLowerCase())) continue;
+    seen.add(style.toLowerCase());
+    out.push(style);
+  }
+  return out;
+}
+
+/**
+ * The styles an order routes by (2026-10-29: two portraits in two styles on
+ * one receipt). One designer draws the whole order, so they must draw every
+ * one of these. Empty = no portrait line has a style yet.
+ */
+export async function portraitStylesOf(tx: Tx, orderId: string): Promise<string[]> {
+  const items = await tx
+    .select({ id: orderItems.id, title: orderItems.title, sku: orderItems.sku, style: orderItems.style })
+    .from(orderItems)
+    .where(eq(orderItems.orderId, orderId))
+    .orderBy(asc(orderItems.id));
+  return portraitStylesFrom(items, items.length > 1 ? await loadClassifyConfig(tx, orderId) : null);
 }

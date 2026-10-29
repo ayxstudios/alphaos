@@ -2,7 +2,8 @@ import { asc, eq } from "drizzle-orm";
 
 import { withUserContext, type RequestUser, type Tx } from "@/lib/db";
 import { orderItems, styles } from "@/lib/db/schema";
-import { ADDON_STYLE, loadClassifyConfig, pickPortraitItem, type PickableItem } from "@/lib/orders/portrait-item";
+import { ADDON_STYLE } from "@/lib/orders/add-ons";
+import { loadClassifyConfig, portraitStylesFrom, type PickableItem } from "@/lib/orders/portrait-item";
 
 export type BusinessStyle = {
   id: string;
@@ -94,6 +95,15 @@ export async function hasRoutingStyles(tx: Tx, businessId: string): Promise<bool
  * a style stay as they are; nothing matched = nothing written.
  */
 export async function fillRoutingStyle(tx: Tx, businessId: string, orderId: string): Promise<string | null> {
+  return (await fillRoutingStyles(tx, businessId, orderId))[0] ?? null;
+}
+
+/**
+ * fillRoutingStyle for every portrait: fills the style-less items the same way
+ * and returns every portrait's style afterwards, the primary first
+ * (portraitStylesFrom). A second portrait in another style is never lost.
+ */
+export async function fillRoutingStyles(tx: Tx, businessId: string, orderId: string): Promise<string[]> {
   const items = await tx
     .select({ id: orderItems.id, title: orderItems.title, sku: orderItems.sku, style: orderItems.style })
     .from(orderItems)
@@ -109,7 +119,7 @@ export async function fillRoutingStyle(tx: Tx, businessId: string, orderId: stri
     }
     filled.push({ ...item, style });
   }
-  return pickPortraitItem(filled, filled.length > 1 ? await loadClassifyConfig(tx, orderId) : null)?.style ?? null;
+  return portraitStylesFrom(filled, filled.length > 1 ? await loadClassifyConfig(tx, orderId) : null);
 }
 
 export type StyleMatch = {

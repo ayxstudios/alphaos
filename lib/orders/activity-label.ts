@@ -29,6 +29,7 @@ const LABELS: Record<string, string> = {
   "order.details_updated": "Details updated",
   "order.tracking_added": "Tracking added",
   "order.same_buyer_noted": "Buyer's other orders noted",
+  "order.style_fallback": "Second style drawn by the main portrait's designer",
   "order.marked_urgent": "Marked urgent",
   "order.cleared_urgent": "No longer urgent",
   "order.reopened_by_buyer": "Reopened: the buyer wrote",
@@ -89,6 +90,7 @@ export function activityDetail(action: string, metadata: Record<string, unknown>
     const n = typeof metadata?.heldOrderNumber === "string" ? metadata.heldOrderNumber.trim() : "";
     return `${n ? (n.startsWith("#") ? n : `#${n}`) : "Her other order"} passed QC and goes to her together with this one.`;
   }
+  if (action === "order.style_fallback") return typeof metadata?.note === "string" ? metadata.note : null;
   if (action !== "message.received" || !metadata || metadata.linkedBy !== "mention") return null;
   const from = typeof metadata.fromOrderNumber === "string" ? metadata.fromOrderNumber.trim() : "";
   return from

@@ -79,6 +79,10 @@ import { AskAlpha } from "@/components/alpha/ask-alpha";
 import { ComposeButton } from "@/components/emails/compose-button";
 import { styles as stylesTable } from "@/lib/db/schema";
 import { currentMatchForProduct, countOrdersForProduct } from "@/lib/orders/style-learning";
+import { portraitLinesOf } from "@/lib/orders/add-ons";
+import { loadClassifyConfig, pickPortraitItem } from "@/lib/orders/portrait-item";
+import { portraitList } from "@/lib/orders/portrait-list";
+import { clampItemQuantity } from "@/lib/orders/item-quantity";
 import { formatAt } from "@/lib/time";
 import { sizedImageUrl } from "@/lib/images";
 import { activityDetail, activityLabel } from "@/lib/orders/activity-label";
@@ -340,6 +344,7 @@ export default async function OrderDetailPage({
         style: orderItems.style,
         styleLocked: orderItems.styleLocked,
         productType: orderItems.productType,
+        quantity: orderItems.quantity,
       })
       .from(orderItems)
       .where(eq(orderItems.orderId, id)),
@@ -482,24 +487,40 @@ export default async function OrderDetailPage({
       : Promise.resolve([]);
   // Style setter data: the order's first product, its current rule match, and
   // how many orders a rule change would touch. Powers the inline "Set style".
+  // A 2+ portrait order (2026-10-29) gets one bar per portrait line, so each
+  // portrait's own style can be read and fixed; add-on lines get none.
   const styleSetterP = itemsP.then((items) => {
-    const primaryProduct = items[0] ? { title: items[0].title, sku: items[0].sku } : null;
-    return staffView && primaryProduct
+    return staffView && items.length
       ? withUserContext(user, async (tx) => {
           const list = await tx
             .select({ id: stylesTable.id, name: stylesTable.name })
             .from(stylesTable)
             .where(eq(stylesTable.businessId, order.businessId))
             .orderBy(asc(stylesTable.name));
-          const match = await currentMatchForProduct(tx, order.businessId, primaryProduct);
-          const affected = await countOrdersForProduct(tx, order.businessId, primaryProduct);
-          return {
-            styles: list,
-            currentStyle: items[0]!.style ?? null,
-            via: match.via,
-            affected,
-            locked: !!items[0]!.styleLocked,
-          };
+          const sorted = [...items].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+          const cfg = sorted.length > 1 ? await loadClassifyConfig(tx, order.id) : null;
+          const lines = portraitLinesOf(sorted, cfg);
+          const perLine = lines.length > 1;
+          const shown = perLine ? lines : [pickPortraitItem(sorted, cfg) ?? sorted[0]!];
+          // Numbered as the upload picker and QC number portraits (a line bought twice is two).
+          let next = 1;
+          const numbers = shown.map((it) => Array.from({ length: clampItemQuantity(it.quantity) }, () => next++));
+          const setters = await Promise.all(
+            shown.map(async (it, n) => {
+              const product = { title: it.title, sku: it.sku };
+              const match = await currentMatchForProduct(tx, order.businessId, product);
+              const affected = await countOrdersForProduct(tx, order.businessId, product);
+              return {
+                itemId: perLine ? it.id : undefined,
+                itemLabel: perLine ? `${portraitList(numbers[n])}${it.title ? `: ${it.title}` : ""}` : undefined,
+                currentStyle: it.style ?? null,
+                via: match.via,
+                affected,
+                locked: !!it.styleLocked,
+              };
+            }),
+          );
+          return { styles: list, setters };
         })
       : null;
   });
@@ -732,16 +753,19 @@ export default async function OrderDetailPage({
         </div>
       </DataPanel>
 
-      {styleSetter && (
+      {styleSetter?.setters.map((setter) => (
         <OrderStyleSetter
+          key={setter.itemId ?? "order"}
           orderId={order.id}
-          currentStyle={styleSetter.currentStyle}
-          via={styleSetter.via}
-          affected={styleSetter.affected}
-          locked={styleSetter.locked}
+          currentStyle={setter.currentStyle}
+          via={setter.via}
+          affected={setter.affected}
+          locked={setter.locked}
           styles={styleSetter.styles}
+          itemId={setter.itemId}
+          itemLabel={setter.itemLabel}
         />
-      )}
+      ))}
 
       {heldProof && (
         <HeldProofCard

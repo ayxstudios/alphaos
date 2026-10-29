@@ -14,7 +14,7 @@
  * designer's quiet window carries payload.deliverAfter = window end (the daemon
  * honours it). Escalations (reassigned, va.attention) never wait.
  */
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 
 import type { Tx } from "@/lib/db";
 import { sendAlphaEvent } from "@/lib/alpha/client";
@@ -22,10 +22,24 @@ import { assignments, customerPublic, orderItems, orders, proofs, qcChecks } fro
 import { loadDesignerContact, type DesignerContact } from "@/lib/designers/profile";
 import { DEFAULT_TIMEZONE, formatInTimezone, isValidTimezone, quietWindowEnd } from "@/lib/designers/quiet-hours";
 import { recordSameBuyerForDesigner } from "@/lib/orders/same-buyer";
+import { portraitLinesOf } from "@/lib/orders/add-ons";
+import { distinctStyles } from "@/lib/orders/order-styles";
+import { loadClassifyConfig, pickPortraitItem } from "@/lib/orders/portrait-item";
+import { clampItemQuantity } from "@/lib/orders/item-quantity";
+import { portraitList } from "@/lib/orders/portrait-list";
 import type { ChecklistSnapshot, ItemResults } from "@/lib/qc/checklist";
 import { LOGIN_FREE_LINK_SECONDS, resolveAttachmentViews } from "@/lib/qc/attachment-urls";
 import { isR2Configured, presignGet } from "@/lib/storage/r2";
 import { appUrl } from "@/lib/urls";
+
+/** One portrait line of an order, as a designer reads it; a line bought twice is two portrait numbers. */
+export type BriefPortrait = {
+  slots: number[];
+  style: string | null;
+  figureCount: number | null;
+  title: string | null;
+  options: { name: string; value: string }[];
+};
 
 type OrderBrief = {
   id: string;
@@ -33,9 +47,13 @@ type OrderBrief = {
   number: string;
   customerFirstName: string | null;
   style: string | null;
+  /** Every portrait's style, the primary first (one entry on a one-style order). */
+  styles: string[];
   figureCount: number | null;
   title: string | null;
   options: { name: string; value: string }[];
+  /** Every portrait line in id order, add-ons left out (one entry on a one-line order). */
+  portraits: BriefPortrait[];
   notes: string | null;
 };
 
@@ -61,26 +79,48 @@ export async function loadOrderBrief(tx: Tx, orderId: string): Promise<OrderBrie
 
   const items = await tx
     .select({
+      id: orderItems.id,
+      sku: orderItems.sku,
+      quantity: orderItems.quantity,
       figureCount: orderItems.figureCount,
       style: orderItems.style,
       title: orderItems.title,
       options: orderItems.options,
     })
     .from(orderItems)
-    .where(eq(orderItems.orderId, orderId));
+    .where(eq(orderItems.orderId, orderId))
+    .orderBy(asc(orderItems.id));
+
+  // The portrait lines only (2026-10-29): an add-on (Print & Ship, Fast Track)
+  // has nothing to draw, and the primary portrait leads, never an add-on row.
+  const cfg = items.length > 1 ? await loadClassifyConfig(tx, orderId) : null;
+  const lines = portraitLinesOf(items, cfg);
+  const primary = pickPortraitItem(lines, cfg);
+  const ordered = primary ? [primary, ...lines.filter((it) => it !== primary)] : lines;
+  const optionsOf = (it: (typeof items)[number]) => (Array.isArray(it.options) ? it.options : []);
 
   let figures: number | null = 0;
   let style: string | null = null;
   let title: string | null = null;
   let options: { name: string; value: string }[] = [];
-  for (const it of items) {
+  for (const it of lines) {
     if (it.figureCount == null) figures = null;
     else if (figures != null) figures += it.figureCount;
+  }
+  for (const it of ordered) {
     if (it.style && !style) style = it.style;
     if (it.title && !title) title = it.title;
-    if (Array.isArray(it.options) && it.options.length && !options.length) options = it.options;
+    if (optionsOf(it).length && !options.length) options = optionsOf(it);
   }
-  if (!items.length) figures = null;
+  if (!lines.length) figures = null;
+  let next = 1;
+  const portraits: BriefPortrait[] = lines.map((it) => ({
+    slots: Array.from({ length: clampItemQuantity(it.quantity) }, () => next++),
+    style: it.style?.trim() || null,
+    figureCount: it.figureCount,
+    title: it.title,
+    options: optionsOf(it),
+  }));
 
   let customerFirstName: string | null = null;
   if (order.customerId) {
@@ -99,11 +139,37 @@ export async function loadOrderBrief(tx: Tx, orderId: string): Promise<OrderBrie
     number: order.platformOrderName ?? order.platformOrderId,
     customerFirstName,
     style,
+    styles: distinctStyles(ordered.map((it) => it.style)),
     figureCount: figures,
     title,
     options,
+    portraits,
     notes: order.notes,
   };
+}
+
+/** The style words a message uses: "Watercolor People + Disney Pet" on a two-style order. */
+function briefStyleText(brief: OrderBrief, none: string): string {
+  return brief.styles.length > 1 ? brief.styles.join(" + ") : (brief.style ?? none);
+}
+
+/**
+ * One line per portrait on a 2+ portrait order (2026-10-29: two portraits in
+ * two styles, the brief named only the first): style, figures, product and
+ * options. Pure; empty on a one-portrait order, whose brief reads as before.
+ */
+export function portraitBriefLines(portraits: BriefPortrait[]): string[] {
+  if (portraits.length < 2) return [];
+  const total = portraits.reduce((n, p) => n + p.slots.length, 0);
+  const out = [`This order has ${total} portraits, all for you: draw every one, the customer gets them together.`];
+  portraits.forEach((p) => {
+    const opts = optionsText(p.options);
+    out.push(
+      `${portraitList(p.slots)}: ${p.style ?? "style not set"}, ${figuresText(p.figureCount)}${p.title ? `, ${p.title}` : ""}.` +
+        (opts ? ` Options: ${opts}.` : ""),
+    );
+  });
+  return out;
 }
 
 function figuresText(n: number | null): string {
@@ -140,7 +206,15 @@ function contactPayload(contact: DesignerContact | null): Record<string, unknown
  */
 export async function sendDesignerBrief(
   tx: Tx,
-  input: { orderId: string; designerId: string; dueAt: Date | null; reason?: string | null; now?: Date },
+  input: {
+    orderId: string;
+    designerId: string;
+    dueAt: Date | null;
+    reason?: string | null;
+    /** Portraits in 2+ styles and this designer does not list them all: which one they draw in its own style. */
+    styleNote?: string | null;
+    now?: Date;
+  },
 ): Promise<string | null> {
   const now = input.now ?? new Date();
   const [brief, contact] = await Promise.all([
@@ -155,10 +229,16 @@ export async function sendDesignerBrief(
 
   const lines: string[] = [];
   lines.push(`New order for you: ${brief.number}.`);
-  if (brief.title) lines.push(`Product: ${brief.title}.`);
-  lines.push(`Style: ${brief.style ?? "not set"}. ${figuresText(brief.figureCount)}.`);
-  const opts = optionsText(brief.options);
-  if (opts) lines.push(`Options: ${opts}.`);
+  const perPortrait = portraitBriefLines(brief.portraits);
+  if (perPortrait.length) {
+    lines.push(...perPortrait);
+    if (input.styleNote) lines.push(input.styleNote);
+  } else {
+    if (brief.title) lines.push(`Product: ${brief.title}.`);
+    lines.push(`Style: ${brief.style ?? "not set"}. ${figuresText(brief.figureCount)}.`);
+    const opts = optionsText(brief.options);
+    if (opts) lines.push(`Options: ${opts}.`);
+  }
   if (brief.notes) lines.push(`Notes: ${brief.notes}`);
   if (sameBuyer) lines.push(sameBuyer);
   if (brief.customerFirstName) lines.push(`Customer: ${brief.customerFirstName}.`);
@@ -184,6 +264,8 @@ export async function sendDesignerBrief(
       style: brief.style,
       figureCount: brief.figureCount,
       options: brief.options,
+      ...(brief.portraits.length > 1 ? { styles: brief.styles, portraits: brief.portraits } : {}),
+      ...(input.styleNote ? { styleNote: input.styleNote } : {}),
       sameBuyer,
       dueAt: input.dueAt?.toISOString() ?? null,
       dueAtLocal: input.dueAt ? formatInTimezone(input.dueAt, contact?.timezone) : null,
@@ -207,7 +289,7 @@ export async function sendDesignerNudge(
   const links = orderLinks(brief.id);
   const due = input.dueAt ? ` It is due ${formatInTimezone(input.dueAt, contact?.timezone)}.` : "";
   const text =
-    `Quick check on order ${brief.number} (${brief.style ?? "no style"}, ${figuresText(brief.figureCount)}). ` +
+    `Quick check on order ${brief.number} (${briefStyleText(brief, "no style")}, ${figuresText(brief.figureCount)}). ` +
     `It has been ${Math.floor(input.hoursSinceAssigned)} hours and no portrait has been uploaded yet.${due} ` +
     `If you cannot do it, reply now so it can be moved. Otherwise it moves to another designer at 48 hours. ` +
     `Upload here: ${links.boardUrl}`;
