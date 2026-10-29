@@ -48,6 +48,14 @@ import { duplicateSlotsGate } from "@/lib/qc/duplicate-slots";
 import { revisionStopGate } from "@/lib/qc/revision-stop";
 import { wrongFileGate } from "@/lib/qc/wrong-file";
 import { holdForOwnerReview, ownerReviewRequired } from "@/lib/agent/ai-designer";
+import { numbersPhrase } from "@/lib/orders/deliver-together";
+import {
+  closeSupersededHolds,
+  deliverTogetherFor,
+  recordDeliveryHold,
+  releaseSiblingHolds,
+  type Runner,
+} from "@/lib/orders/deliver-together-db";
 import { loadProofFilePick, portraitList } from "@/lib/proofs/files";
 import { generateProofToken } from "@/lib/proofs/tokens";
 import { proofUrl } from "@/lib/urls";
@@ -71,6 +79,8 @@ export type QcResult =
       emails?: number;
       /** How many of those did not go out yet (the outbox retries them). */
       unsent?: number;
+      /** Passed, but the proof waits to go with the buyer's other order (lib/orders/deliver-together.ts). */
+      held?: { waitingOn: string; holdUntil: string };
     }
   | { ok: false; code: string; message: string };
 
@@ -347,6 +357,11 @@ export async function confirmQcPassAndSend(input: {
     // and the order moves on, but the proof email is held as a draft. A held
     // proof is that one draft, so it is never split over several emails.
     const hold = await ownerReviewRequired(tx, ctx.order.id, ctx.order.businessId);
+    // Deliver together: her other portrait order is still being drawn, so this
+    // proof waits for it (never past its own due time). An AI proof decides this
+    // when the owner approves it (approveOwnerReview).
+    const together = hold ? null : await deliverTogetherFor(tx, ctx.order.id);
+    const holdForSiblings = !!together?.hold;
     if (hold && set.parts.length > 1) {
       return {
         ok: false as const,
@@ -405,6 +420,7 @@ export async function confirmQcPassAndSend(input: {
     return {
       ok: true as const,
       hold,
+      together: holdForSiblings ? together : null,
       messageId: message.id,
       businessId: ctx.order.businessId,
       orderId: ctx.order.id,
@@ -427,7 +443,7 @@ export async function confirmQcPassAndSend(input: {
   // QC). An Etsy delivery is only a queued row, so it is released after the
   // move, and a failed move leaves nothing for the shop desk to send.
   const sent =
-    prepared.hold || prepared.delivery === "etsy"
+    prepared.hold || prepared.together || prepared.delivery === "etsy"
       ? ({ ok: true } as const)
       : await sendMessage(prepared.messageId, {
           approvedById: user.id,
@@ -462,12 +478,14 @@ export async function confirmQcPassAndSend(input: {
   // The first email is out: queue the rest of a split proof before the order
   // moves on, so they are owed whatever happens next (the outbox sends any
   // queued email this action does not get to).
-  const restIds = prepared.rest.length ? await queueRestOfProof(user, prepared, input.templateKey) : [];
+  // A held proof keeps the rest as drafts too; they go when it is let go.
+  const restIds = prepared.rest.length ? await queueRestOfProof(user, prepared, input.templateKey, !!prepared.together) : [];
+  const userRun: Runner = (fn) => withUserContext(user, fn);
 
   try {
     // An Etsy proof is queued in the same transaction as the move: the order
     // never waits for approval with its proof stuck as an unsent draft.
-    const queueEtsy = prepared.delivery === "etsy" && !prepared.hold;
+    const queueEtsy = prepared.delivery === "etsy" && !prepared.hold && !prepared.together;
     const { status } = await withUserContext(user, async (tx) => {
       const moved = await runTransition(tx, user, {
         orderId: input.orderId,
@@ -479,8 +497,23 @@ export async function confirmQcPassAndSend(input: {
           signature: input.signature,
           via: prepared.delivery === "etsy" ? "qc_etsy_queue" : "qc_email_send",
           messageId: prepared.messageId,
+          ...(prepared.together ? { heldForSiblings: true } : {}),
         },
       });
+      // A proof held from an earlier pass of this order never goes now.
+      await closeSupersededHolds(tx, prepared.orderId, prepared.messageId, user.id);
+      // Held in the same step as the move, so the order never waits with a draft nobody lets go.
+      if (prepared.together) {
+        await recordDeliveryHold(tx, {
+          orderId: prepared.orderId,
+          businessId: prepared.businessId,
+          messageId: prepared.messageId,
+          proofId: prepared.proofId,
+          decision: prepared.together,
+          passedBy: user.id,
+          delivery: prepared.delivery,
+        });
+      }
       if (queueEtsy) {
         await tx
           .update(messages)
@@ -503,9 +536,20 @@ export async function confirmQcPassAndSend(input: {
       revalidate(input.orderId);
       return { ok: true, status, delivery: prepared.delivery };
     }
+    if (prepared.together) {
+      revalidate(input.orderId);
+      return {
+        ok: true,
+        status,
+        delivery: prepared.delivery,
+        held: { waitingOn: numbersPhrase(prepared.together.waitingOn), holdUntil: prepared.together.holdUntil?.toISOString() ?? "" },
+      };
+    }
     if (queueEtsy) {
       // Queued, not delivered: proofs.sent_at is stamped by the shop desk once
       // the Etsy message has really gone out (and the row is marked sent).
+      // Her other orders' held proofs that waited on this one go now too.
+      await releaseSiblingHolds(userRun, prepared.orderId, user.id);
       revalidate(input.orderId);
       return { ok: true, status, delivery: "etsy" };
     }
@@ -526,27 +570,39 @@ export async function confirmQcPassAndSend(input: {
       });
     });
     const unsent = (prepared.emails - 1 - restIds.length) + (await sendRestOfProof(user, prepared, restIds));
+    await releaseSiblingHolds(userRun, prepared.orderId, user.id);
     revalidate(input.orderId);
     return { ok: true, status, delivery: "email", ...(prepared.emails > 1 ? { emails: prepared.emails, unsent } : {}) };
   } catch (err) {
     const message = err instanceof OrderTransitionError ? err.message : String(err);
-    if (prepared.delivery === "etsy") {
-      // Nothing reached the buyer either way. If the order did not move (the
-      // move and the queueing roll back together), park the row as failed so
-      // the shop desk never sends it and a second Approve is not blocked by
-      // the send guard. If it moved but the owner hold failed, keep the draft.
+    if (prepared.delivery === "etsy" || prepared.together) {
+      // Nothing reached the buyer either way (an Etsy row or a proof held for
+      // her other order). If the order did not move (the move, the queueing and
+      // the hold roll back together), park the rows as failed so nobody sends
+      // them and a second Approve is not blocked by the send guard. If it moved
+      // but the owner hold failed, keep the draft.
       const moved = await withUserContext(user, async (tx) => {
         const [now] = await tx.select({ status: orders.status }).from(orders).where(eq(orders.id, prepared.orderId));
         if (now?.status !== input.expectedFrom) return true;
         await tx
           .update(messages)
           .set({ status: "failed", error: `The order did not move on: ${message}` })
-          .where(and(eq(messages.id, prepared.messageId), inArray(messages.status, ["draft", "queued"])));
+          .where(
+            and(
+              eq(messages.orderId, prepared.orderId),
+              inArray(messages.status, ["draft", "queued"]),
+              sql`(${messages.id} = ${prepared.messageId} or ${messages.metadata}->'proofEmail'->>'firstMessageId' = ${prepared.messageId})`,
+            ),
+          );
         return false;
       });
       revalidate(input.orderId);
       if (moved) {
-        return { ok: false, code: "hold_failed", message: `The order moved on, but its Etsy message was not set up. Tell an admin. (${message})` };
+        return {
+          ok: false,
+          code: "hold_failed",
+          message: `The order moved on, but its ${prepared.delivery === "etsy" ? "Etsy message" : "held proof"} was not set up. Tell an admin. (${message})`,
+        };
       }
       return { ok: false, code: "transition_failed", message: `The order did not move on, so nothing went to the buyer. Try again. (${message})` };
     }
@@ -582,7 +638,7 @@ type RestOfProof = {
  * first email is already with the customer, so this never throws: a failure
  * is reported to the team and the order still moves on.
  */
-async function queueRestOfProof(user: RequestUser, proof: RestOfProof, templateKey: TemplateKey): Promise<string[]> {
+async function queueRestOfProof(user: RequestUser, proof: RestOfProof, templateKey: TemplateKey, held = false): Promise<string[]> {
   try {
     return await withUserContext(user, async (tx) => {
       const ids: string[] = [];
@@ -595,8 +651,9 @@ async function queueRestOfProof(user: RequestUser, proof: RestOfProof, templateK
             customerId: proof.customerId,
             direction: "outbound",
             channel: "email",
-            status: "queued",
-            approvedBy: user.id,
+            // Held to go with her other order: a draft until the hold is let go (lib/orders/deliver-together-db.ts).
+            status: held ? "draft" : "queued",
+            approvedBy: held ? null : user.id,
             templateKey,
             proofId: proof.proofId,
             subject: partSubject(proof.subject, part.n, proof.emails),

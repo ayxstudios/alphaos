@@ -26,7 +26,7 @@ import { onRevisionEdge } from "@/lib/agent/ai-core";
 import { aiQcRefusal } from "@/lib/qc/ai-qc-gate";
 import { duplicateSlotsGate } from "@/lib/qc/duplicate-slots";
 import { revisionStopGate } from "@/lib/qc/revision-stop";
-import { currentArtworkIds, wrongFileGate } from "@/lib/qc/wrong-file";
+import { outgoingArtworkIds, wrongFileGate } from "@/lib/qc/wrong-file";
 import { resetRevisionDeadline, runAutoAssign } from "./assign";
 import { SENT_BACK_FROM } from "./board-constants";
 import { prepareProofForApproval, queueStageEmail } from "@/lib/email/dispatch";
@@ -290,7 +290,7 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
       const unfinished = await revisionStopGate(tx, actor, {
         orderId,
         businessId: order.businessId,
-        assetIds: await currentArtworkIds(tx, orderId),
+        assetIds: await outgoingArtworkIds(tx, orderId),
         overrideReason: input.overrideReason,
         via: "qc_pass",
       });

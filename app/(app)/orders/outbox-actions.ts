@@ -14,6 +14,8 @@ import { anthropicFeaturesEnabled } from "@/lib/ai/anthropic";
 import { classifyProofReply } from "@/lib/email/reply-classifier";
 import { mergeReplyClassification } from "@/lib/integrations/gmail/inbound";
 import { adoptSenderAsCustomer } from "@/lib/email/link-reply";
+import { holdOf } from "@/lib/orders/deliver-together";
+import { releaseHeldProof } from "@/lib/orders/deliver-together-db";
 
 export type OutboxActionResult = { ok: true; message?: string } | { ok: false; message: string };
 
@@ -72,6 +74,22 @@ export async function approveAndSend(messageId: string): Promise<OutboxActionRes
     return m ?? null;
   });
   if (!meta) return { ok: false, message: "Message not found" };
+
+  // A proof held to go with the buyer's other order: sent through its release,
+  // so the hold is closed, the proof is marked sent and the order history says so.
+  const hold = holdOf(meta.metadata);
+  if (hold && !hold.releasedAt) {
+    const released = await releaseHeldProof(messageId, { reason: "send_now", byUserId: user.id, run: (fn) => withUserContext(user, fn) });
+    revalidatePath("/orders");
+    revalidatePath("/emails");
+    if (meta.orderId) revalidatePath(`/orders/${meta.orderId}`);
+    if (!released.ok) return { ok: false, message: released.message };
+    return { ok: true, message: released.closed ? "Nothing sent: it already went or the order moved on" : "Email sent" };
+  }
+  // A closed hold whose draft is still here was replaced or its order moved on: never send it.
+  if (hold?.releasedAt && !["send_now", "group_ready", "due", "she_asked"].includes(hold.releaseReason ?? "")) {
+    return { ok: false, message: "This proof was replaced by a newer one or its order moved on, so it cannot be sent." };
+  }
 
   const res = await sendMessage(messageId, { approvedById: user.id, markRetryableFailed: true });
   if (!res.ok) {
@@ -154,6 +172,8 @@ export async function markEmailSentManually(messageId: string, reasonRaw: string
     return m;
   });
   if (!meta) return { ok: false, message: "Only draft or failed emails can be marked sent manually" };
+  // A held proof sent by hand: close its hold (the proof is marked sent there).
+  if (holdOf(meta.metadata)) await releaseHeldProof(messageId, { reason: "send_now", byUserId: user.id, run: (fn) => withUserContext(user, fn) });
   const advanced = await advanceQcEmailIfNeeded(user, meta.orderId, meta.proofId, meta.metadata);
   if (!advanced.ok) return advanced;
   revalidatePath("/orders");
@@ -172,7 +192,7 @@ export async function discardDraft(messageId: string, reasonRaw: string): Promis
 
   return withUserContext(user, async (tx) => {
     const [m] = await tx
-      .select({ businessId: messages.businessId, orderId: messages.orderId, status: messages.status })
+      .select({ businessId: messages.businessId, orderId: messages.orderId, status: messages.status, metadata: messages.metadata })
       .from(messages)
       .where(and(eq(messages.id, messageId), eq(messages.direction, "outbound")));
     if (!m || m.status === "sent") return { ok: false as const, message: "Only unsent emails can be discarded" };
@@ -187,7 +207,11 @@ export async function discardDraft(messageId: string, reasonRaw: string): Promis
     revalidatePath("/orders");
     revalidatePath("/emails");
     revalidatePath("/dashboard");
-    return { ok: true as const, message: "Draft discarded" };
+    return { ok: true as const, message: "Draft discarded", held: !!holdOf(m.metadata) };
+  }).then(async (res) => {
+    // A held proof discarded: its hold is closed on the order history, nothing is sent.
+    if (res.ok && res.held) await releaseHeldProof(messageId, { reason: "send_now", byUserId: user.id, run: (fn) => withUserContext(user, fn) });
+    return res.ok ? { ok: true as const, message: res.message } : res;
   });
 }
 

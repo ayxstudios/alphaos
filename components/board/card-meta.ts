@@ -33,6 +33,8 @@ export function cardLabels(card: BoardCard): CardLabel[] {
   if (card.urgent) labels.push({ text: "Urgent", tone: "urgent" });
   // One buyer, several orders: next to the urgent pill, so nobody mixes up their files.
   if (card.sameBuyerNumbers.length) labels.push({ text: sameBuyerLabel(card.sameBuyerNumbers), tone: "amber" });
+  // Deliver together: her other portrait passed and waits for this one. Quiet, no message.
+  if (card.togetherWaiting) labels.push({ text: "Her other portrait waits", tone: "neutral" });
   if (card.source === "manual") labels.push({ text: "Manual", tone: "amber" });
   else if (card.source === "etsy") labels.push({ text: "Etsy", tone: "neutral" });
   else if (card.source === "shopify") labels.push({ text: "Shopify", tone: "neutral" });

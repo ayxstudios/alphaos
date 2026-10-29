@@ -68,6 +68,8 @@ import { OrderRevisionForm } from "@/components/orders/order-revision-form";
 import { OrderReassignForm } from "@/components/orders/order-reassign-form";
 import { OrderStyleSetter } from "@/components/orders/order-style-setter";
 import { SameBuyerCard } from "@/components/orders/same-buyer";
+import { HeldProofCard } from "@/components/orders/held-proof-card";
+import { heldProofFor } from "@/lib/orders/deliver-together-db";
 import { getSameBuyerView } from "@/lib/orders/same-buyer-view";
 import { TrackingCompleteForm } from "@/components/orders/tracking-complete-form";
 import { OrderCompleteButton } from "@/components/orders/order-complete-button";
@@ -424,7 +426,9 @@ export default async function OrderDetailPage({
   );
   // One buyer, several orders: the buyer's other orders (staff only), in their own connection beside the rest.
   const sameBuyerP = getSameBuyerView(user, id);
-  const pending = [itemsP, assignmentP, qcP, printP, timelineP, detailP, proofP, sameBuyerP];
+  // A proof held to go with the buyer's other order (lib/orders/deliver-together.ts): staff only, never blocks the page.
+  const heldP = staffView ? withUserContext(user, (tx) => heldProofFor(tx, id)).catch(() => null) : Promise.resolve(null);
+  const pending = [itemsP, assignmentP, qcP, printP, timelineP, detailP, proofP, sameBuyerP, heldP];
   // A hidden or missing order 404s before these are awaited; never leave them unhandled.
   for (const promise of pending) promise.catch(() => {});
 
@@ -500,8 +504,8 @@ export default async function OrderDetailPage({
       : null;
   });
 
-  const [items, assignment, qcRows, printRows, timelineRows, detail, designers, proofRows, shopifyMedia, styleSetter, sameBuyer] =
-    await Promise.all([itemsP, assignmentP, qcP, printP, timelineP, detailP, designersP, proofP, shopifyMediaP, styleSetterP, sameBuyerP]);
+  const [items, assignment, qcRows, printRows, timelineRows, detail, designers, proofRows, shopifyMedia, styleSetter, sameBuyer, heldProof] =
+    await Promise.all([itemsP, assignmentP, qcP, printP, timelineP, detailP, designersP, proofP, shopifyMediaP, styleSetterP, sameBuyerP, heldP]);
 
   const timeline = staffView ? timelineRows : [];
   const customerName = staffView
@@ -524,7 +528,7 @@ export default async function OrderDetailPage({
   const references = detail.images.filter((image) => image.type === "reference");
   const hasPhysicalItem = items.some((item) => item.productType === "physical");
   const latestTracking = printRows.find((print) => print.trackingNumber);
-  const nextAction = nextSuggestedAction({
+  const suggested = nextSuggestedAction({
     orderId: order.id,
     status: order.status as OrderStatus,
     hasDesigner,
@@ -532,6 +536,9 @@ export default async function OrderDetailPage({
     hasTracking: Boolean(latestTracking?.trackingNumber),
     hasPhysical: hasPhysicalItem,
   });
+  const nextAction: NextAction = heldProof
+    ? { kind: "info", label: "Passed QC. The proof waits to go with her other order" }
+    : suggested;
   // "PixArt Etsy", not "PixArt Etsy · Etsy": the platform only when the shop name lacks it.
   const platformName = titleCase(order.shopPlatform ?? order.source);
   const sourceLabel = order.shopName?.toLowerCase().includes(platformName.toLowerCase())
@@ -733,6 +740,15 @@ export default async function OrderDetailPage({
           affected={styleSetter.affected}
           locked={styleSetter.locked}
           styles={styleSetter.styles}
+        />
+      )}
+
+      {heldProof && (
+        <HeldProofCard
+          orderId={order.id}
+          waitingOn={heldProof.hold.waitingOn.map((w) => ({ id: w.id, number: w.number }))}
+          holdUntil={heldProof.hold.holdUntil}
+          canSend={editable}
         />
       )}
 

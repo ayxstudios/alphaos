@@ -10,6 +10,12 @@ import type { ItemResults } from "@/lib/qc/checklist";
 import { aiQcRefusal } from "@/lib/qc/ai-qc-gate";
 import { applyAiFixes, type AppliedFix } from "@/lib/qc/auto-qc-fix";
 import { getQcContext } from "@/lib/qc/data";
+import { formatAt } from "@/lib/time";
+
+/** "Thu 30 Oct, 2:15 pm AEDT": when a held proof goes at the latest. */
+function holdUntilWords(iso: string): string {
+  return formatAt(iso, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }, "its due time");
+}
 
 /** How an approved proof leaves: emailed, queued for an Etsy message (no email on file), or held for an owner. */
 export type ApproveDelivery = "email" | "etsy" | "held";
@@ -79,6 +85,8 @@ export async function ownerApproveCore(
     overrideReason: opts.overrideReason,
   });
   if (!sent.ok) return { ok: false, code: sent.code, message: sent.message };
+  // Passed, held to go with her other order (lib/orders/deliver-together.ts).
+  let held = sent.held ?? null;
 
   const [row] = await withUserContext(user, (tx) =>
     tx.select({ aiState: orders.aiState }).from(orders).where(eq(orders.id, orderId)),
@@ -92,6 +100,7 @@ export async function ownerApproveCore(
     if (!released.ok) {
       return { ok: false, code: released.code, message: `Approved, but the proof is still held: ${released.message}` };
     }
+    if (released.held) held = released.held;
   }
   if (applied.length) {
     // Best effort: the proof already went; a failed WhatsApp queue row never undoes it.
@@ -105,6 +114,14 @@ export async function ownerApproveCore(
   }
   revalidatePath("/approve");
   const who = ctx.customerName && ctx.customerName !== "-" ? ctx.customerName : "the buyer";
+  if (held) {
+    return {
+      ok: true,
+      title: "Approved, held to go together",
+      description: `${ctx.orderNumber}: comes together with her other order ${held.waitingOn}. It sends when that passes QC, or at ${holdUntilWords(held.holdUntil)} at the latest.`,
+      delivery: "held",
+    };
+  }
   if (sent.delivery === "etsy") {
     return {
       ok: true,

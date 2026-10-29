@@ -9,6 +9,7 @@ import { Badge, Button, Page, Textarea, useToast } from "@/components/ui";
 import { Check, XCircle } from "@/components/ui/icons";
 import { shortcutFor, type ItemResults } from "@/lib/qc/checklist";
 import { portraitList } from "@/lib/orders/portrait-list";
+import { formatAt } from "@/lib/time";
 import type { QcContext } from "@/lib/qc/data";
 import { SameBuyerStrip } from "@/components/orders/same-buyer";
 import type { SameBuyerView } from "@/lib/orders/same-buyer-view";
@@ -142,7 +143,16 @@ export function QcScreen({
   const handleResult = useCallback(
     (res: QcResult, successTitle: string) => {
       if (res.ok) {
-        toast({ variant: "success", title: successTitle });
+        // Held to go with the buyer's other order (lib/orders/deliver-together.ts).
+        toast(
+          res.held
+            ? {
+                variant: "success",
+                title: "Passed. The proof waits for her other order",
+                description: `It goes with ${res.held.waitingOn} when that passes QC, or at ${formatAt(res.held.holdUntil, { weekday: "short", hour: "numeric", minute: "2-digit" }, "its due time")} at the latest.`,
+              }
+            : { variant: "success", title: successTitle },
+        );
         advance();
       } else if (res.code === "stale") {
         toast({ variant: "warning", title: "Already moved", description: res.message });
