@@ -33,7 +33,9 @@ import { reassignOrder } from "@/lib/agent/ai-designer";
 import { aiDesignerChoosable } from "@/lib/agent/ai-designer-choice";
 import { addComment } from "@/lib/orders/card-detail";
 import { setOrderUrgent } from "@/lib/orders/urgent";
-import { isAddOnItem, loadClassifyConfig } from "@/lib/orders/portrait-item";
+import { isAddOnItem } from "@/lib/orders/add-ons";
+import { applyOrderStyle } from "@/lib/orders/item-styles";
+import { loadClassifyConfig } from "@/lib/orders/portrait-item";
 import {
   freshShopifyCredentials,
   fulfillShopifyOrderWithTracking,
@@ -718,12 +720,13 @@ export type StyleActionResult = { ok: true } | { ok: false; message: string };
  * Distinct portrait products in an order — what a style/rule applies to. Add-on
  * lines are skipped (an order of nothing but add-ons keeps them all): 2026-10-26
  * "teach for all" on a CPS order taught Watercolor Pets to the Print & Ship title.
+ * With `itemId`, only that line's product (one portrait of a two-style order).
  */
-async function orderProducts(tx: Tx, orderId: string): Promise<Product[]> {
+async function orderProducts(tx: Tx, orderId: string, itemId?: string | null): Promise<Product[]> {
   const all = await tx
     .select({ title: orderItems.title, sku: orderItems.sku, style: orderItems.style })
     .from(orderItems)
-    .where(eq(orderItems.orderId, orderId));
+    .where(itemId ? and(eq(orderItems.orderId, orderId), eq(orderItems.id, itemId)) : eq(orderItems.orderId, orderId));
   const cfg = all.length > 1 ? await loadClassifyConfig(tx, orderId) : null;
   const portraits = all.filter((it) => !isAddOnItem(it, cfg));
   const items = portraits.length ? portraits : all;
@@ -738,8 +741,23 @@ async function orderProducts(tx: Tx, orderId: string): Promise<Product[]> {
   return out;
 }
 
-/** "Just this order": set + lock the style on this order only, no rule change. */
-export async function setOrderStyleOnce(orderId: string, styleId: string): Promise<StyleActionResult> {
+/** The order line `itemId` names, when it belongs to this order. */
+async function orderLine(tx: Tx, orderId: string, itemId: string) {
+  const [item] = await tx
+    .select({ id: orderItems.id })
+    .from(orderItems)
+    .where(and(eq(orderItems.id, itemId), eq(orderItems.orderId, orderId)));
+  return item ?? null;
+}
+
+/**
+ * "Just this order": set + lock the style on this order only, no rule change.
+ * With `itemId`, that one portrait line only (a two-style order). Without it,
+ * one portrait takes the style (as before) and 2+ portraits each keep their
+ * own (applyOrderStyle: a hand-set line stays, else its catalog match, else
+ * this style); add-on lines get none.
+ */
+export async function setOrderStyleOnce(orderId: string, styleId: string, itemId?: string | null): Promise<StyleActionResult> {
   const user = await requireStaff();
   if ("error" in user) return { ok: false, message: user.error };
   return withUserContext(user, async (tx) => {
@@ -750,28 +768,39 @@ export async function setOrderStyleOnce(orderId: string, styleId: string): Promi
       .from(styles)
       .where(and(eq(styles.id, styleId), eq(styles.businessId, order.businessId)));
     if (!style) return { ok: false, message: "Style not found" };
-    await tx.update(orderItems).set({ style: style.name, styleLocked: true }).where(eq(orderItems.orderId, orderId));
+    let itemStyles: { id: string; style: string | null }[];
+    if (itemId) {
+      if (!(await orderLine(tx, orderId, itemId))) return { ok: false, message: "That portrait is not on this order" };
+      await tx.update(orderItems).set({ style: style.name, styleLocked: true }).where(eq(orderItems.id, itemId));
+      itemStyles = [{ id: itemId, style: style.name }];
+    } else {
+      itemStyles = await applyOrderStyle(tx, { orderId, businessId: order.businessId, chosen: style.name, chosenLocked: true });
+    }
     await logStyleLearning(tx, {
       businessId: order.businessId,
       actorId: user.id,
       orderId,
       action: "style.set_once",
-      metadata: { style: style.name },
+      metadata: { style: style.name, itemStyles, ...(itemId ? { itemId } : {}) },
     });
     revalidatePath(`/orders/${orderId}`);
     return { ok: true };
   });
 }
 
-/** "Teach for all": add rules for this order's products and backfill every order. */
-export async function teachOrderStyle(orderId: string, styleId: string): Promise<StyleActionResult> {
+/**
+ * "Teach for all": add rules for this order's products and backfill every order.
+ * With `itemId`, only that portrait line's product learns the style.
+ */
+export async function teachOrderStyle(orderId: string, styleId: string, itemId?: string | null): Promise<StyleActionResult> {
   const user = await requireStaff();
   if ("error" in user) return { ok: false, message: user.error };
   return withUserContext(user, async (tx) => {
     const [order] = await tx.select({ businessId: orders.businessId }).from(orders).where(eq(orders.id, orderId));
     if (!order) return { ok: false, message: "Order not found" };
+    if (itemId && !(await orderLine(tx, orderId, itemId))) return { ok: false, message: "That portrait is not on this order" };
     const bid = order.businessId;
-    const products = await orderProducts(tx, orderId);
+    const products = await orderProducts(tx, orderId, itemId);
     let ordersUpdated = 0;
     let ruleChanged = false;
     const learned: Record<string, unknown>[] = [];
@@ -784,10 +813,22 @@ export async function teachOrderStyle(orderId: string, styleId: string): Promise
       learned.push({ product: p, style: res.styleName, ruleKind: res.ruleKind, ruleValue: res.ruleValue, priorRule });
     }
     // A locked item on THIS order would be skipped by the backfill; unlock + set it
-    // so "teach" always reflects on the order the VA is looking at.
+    // so "teach" always reflects on the order the VA is looking at (that one
+    // line with `itemId`, else every portrait line: never an add-on).
     if (products.length) {
       const [style] = await tx.select({ name: styles.name }).from(styles).where(eq(styles.id, styleId));
-      if (style) await tx.update(orderItems).set({ style: style.name, styleLocked: false }).where(eq(orderItems.orderId, orderId));
+      if (style && itemId) {
+        await tx.update(orderItems).set({ style: style.name, styleLocked: false }).where(eq(orderItems.id, itemId));
+      } else if (style) {
+        const all = await tx
+          .select({ id: orderItems.id, title: orderItems.title, sku: orderItems.sku, style: orderItems.style })
+          .from(orderItems)
+          .where(eq(orderItems.orderId, orderId));
+        const cfg = all.length > 1 ? await loadClassifyConfig(tx, orderId) : null;
+        const lines = all.filter((it) => !isAddOnItem(it, cfg));
+        const ids = (lines.length ? lines : all).map((it) => it.id);
+        await tx.update(orderItems).set({ style: style.name, styleLocked: false }).where(inArray(orderItems.id, ids));
+      }
     }
     await logStyleLearning(tx, {
       businessId: bid,
@@ -802,8 +843,8 @@ export async function teachOrderStyle(orderId: string, styleId: string): Promise
   });
 }
 
-/** "Teach as a new style": create the style, then teach this order's products. */
-export async function teachOrderStyleNew(orderId: string, nameRaw: string): Promise<StyleActionResult> {
+/** "Teach as a new style": create the style, then teach this order's products (or the `itemId` line's). */
+export async function teachOrderStyleNew(orderId: string, nameRaw: string, itemId?: string | null): Promise<StyleActionResult> {
   const user = await requireStaff();
   if ("error" in user) return { ok: false, message: user.error };
   const name = nameRaw.trim();
@@ -820,7 +861,7 @@ export async function teachOrderStyleNew(orderId: string, nameRaw: string): Prom
   });
   if (created == null) return { ok: false, message: "Order not found" };
   if (typeof created !== "string") return { ok: false, message: `A style called "${name}" already exists` };
-  return teachOrderStyle(orderId, created);
+  return teachOrderStyle(orderId, created, itemId);
 }
 
 /** A Postgres unique violation (23505), optionally on one named constraint. */

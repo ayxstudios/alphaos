@@ -25,9 +25,13 @@ export type OrderStyleSetterProps = {
   /** This order's style was hand-set ("just this order") — treat as confirmed. */
   locked: boolean;
   styles: { id: string; name: string }[];
+  /** One portrait line of a 2+ portrait order: the actions set (and teach) this line only. */
+  itemId?: string;
+  /** That line's short label ("Portrait 2: Custom Disney Pet Portrait"). */
+  itemLabel?: string;
 };
 
-export function OrderStyleSetter({ orderId, currentStyle: rawStyle, via, affected, locked, styles }: OrderStyleSetterProps) {
+export function OrderStyleSetter({ orderId, currentStyle: rawStyle, via, affected, locked, styles, itemId, itemLabel }: OrderStyleSetterProps) {
   // An item saved with no style (e.g. Complete details left blank) carries ""
   // or null; either way there is no style name to show.
   const currentStyle = rawStyle?.trim() || null;
@@ -64,9 +68,9 @@ export function OrderStyleSetter({ orderId, currentStyle: rawStyle, via, affecte
 
   const teach = () =>
     choice === NEW
-      ? run(() => teachOrderStyleNew(orderId, newName.trim()), `Learned as ${newName.trim()}`)
-      : run(() => teachOrderStyle(orderId, choice), `Learned as ${targetName}`);
-  const once = () => run(() => setOrderStyleOnce(orderId, choice), "Style set for this order");
+      ? run(() => teachOrderStyleNew(orderId, newName.trim(), itemId), `Learned as ${newName.trim()}`)
+      : run(() => teachOrderStyle(orderId, choice, itemId), `Learned as ${targetName}`);
+  const once = () => run(() => setOrderStyleOnce(orderId, choice, itemId), itemId ? "Style set for this portrait" : "Style set for this order");
 
   // For a defaulted order, confirming keeps the current (default) style as a real rule.
   const defaultStyleId = defaulted
@@ -80,9 +84,9 @@ export function OrderStyleSetter({ orderId, currentStyle: rawStyle, via, affecte
     const flagged = defaulted || !currentStyle;
     return (
       <div className={flagged ? `${bar} bg-amber/5` : `${bar} bg-surface`}>
-        <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-slate">
-          <Brush size={14} />
-          Style
+        <span className="inline-flex min-w-0 items-center gap-1.5 text-xs font-medium text-slate">
+          <Brush size={14} className="shrink-0" />
+          {itemLabel ? <span className="truncate" title={itemLabel}>Style · {itemLabel}</span> : "Style"}
         </span>
         {defaulted ? (
           <span className="font-medium text-amber">
@@ -103,9 +107,9 @@ export function OrderStyleSetter({ orderId, currentStyle: rawStyle, via, affecte
   return (
     <div className={`${bar} bg-surface`}>
       <div className="flex w-full flex-wrap items-center gap-2">
-        <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-medium text-slate">
-          <Brush size={14} />
-          Style
+        <span className="inline-flex min-w-0 items-center gap-1.5 text-xs font-medium text-slate">
+          <Brush size={14} className="shrink-0" />
+          {itemLabel ? <span className="truncate" title={itemLabel}>Style · {itemLabel}</span> : "Style"}
         </span>
         <Select value={choice} onChange={(e) => setChoice(e.currentTarget.value)} aria-label="Choose style" className="h-9 w-44">
           <option value="">Choose style…</option>
@@ -138,7 +142,7 @@ export function OrderStyleSetter({ orderId, currentStyle: rawStyle, via, affecte
             size="sm"
             className="ml-auto"
             loading={pending}
-            onClick={() => run(() => teachOrderStyle(orderId, defaultStyleId), `Confirmed as ${styleLabel(currentStyle)}`)}
+            onClick={() => run(() => teachOrderStyle(orderId, defaultStyleId, itemId), `Confirmed as ${styleLabel(currentStyle)}`)}
           >
             Confirm and keep {styleLabel(currentStyle)}
           </Button>

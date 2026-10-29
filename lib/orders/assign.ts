@@ -21,7 +21,7 @@ import { getAgentConfig } from "@/lib/agent/config";
 import { getOrderPortraits } from "@/lib/orders/portraits";
 import { loadOrderTotal, toOrderTotal, type OrderTotal } from "@/lib/orders/order-total";
 import { routeDisneyPeople } from "@/lib/orders/disney-people";
-import { fillRoutingStyle, hasRoutingStyles } from "@/lib/designers/styles";
+import { fillRoutingStyles, hasRoutingStyles } from "@/lib/designers/styles";
 import {
   loadReworkHold,
   reworkAllows,
@@ -40,7 +40,8 @@ import {
   staysOnBoardMessage,
   StaysOnBoardError,
 } from "@/lib/orders/board-hold";
-import { loadPortraitStyle } from "@/lib/orders/portrait-item";
+import { portraitStylesOf } from "@/lib/orders/portrait-item";
+import { coversStyles, missingStyles, stylesOfInput } from "@/lib/orders/order-styles";
 
 export const DESIGNER_SLA_HOURS = 24;
 
@@ -171,6 +172,7 @@ export type EligibilityRefusal = { code: "not_eligible"; message: string };
  * draws that style, a plain order never to a Disney-only designer (Mar), and the
  * AI Studio only where the order's style has the AI designer switched on (the
  * designer-only businesses and styles never do) and it needs one portrait.
+ * Portraits in 2+ styles: only a designer who draws every one of them.
  * Callers let an owner or admin override it.
  */
 export async function eligibilityRefusal(
@@ -187,11 +189,16 @@ export async function eligibilityRefusal(
   const refuse = (message: string): EligibilityRefusal => ({ code: "not_eligible", message });
 
   const disney = await loadIsDisneyOrder(tx, input.orderId);
-  let style = await loadPortraitStyle(tx, input.orderId);
-  if (!style) style = await fillRoutingStyle(tx, input.businessId, input.orderId);
+  // Every portrait's style (2026-10-29): one designer draws the whole order.
+  const styles = await fillRoutingStyles(tx, input.businessId, input.orderId);
+  const style = styles[0] ?? null;
+  const both = styles.length === 2 ? "both" : "all of them";
 
   if (d?.isAgent) {
     if (disney) return refuse(`This is a Disney order and the AI Studio does not draw Disney. Give it to a Disney designer.`);
+    if (styles.length > 1) {
+      return refuse(`This order has portraits in ${styles.join(" and ")}, and the AI Studio draws one portrait per job. Give it to a designer who draws ${both}.`);
+    }
     const styleRow = await findStyle(tx, input.businessId, style);
     if (!styleRow?.aiDesignerEnabled) {
       return refuse(
@@ -203,13 +210,20 @@ export async function eligibilityRefusal(
     return null;
   }
 
-  if (disney) return null; // disneyRefusal already limits it to a Disney designer
+  const missing = missingStyles(d?.styles, styles);
+  const multi = (gaps: string[]) =>
+    refuse(`${who} does not draw ${gaps.join(" or ")}. This order has portraits in ${styles.join(" and ")}: give it to a designer who draws ${both}.`);
+  if (disney) {
+    // disneyRefusal already limits it to a Disney designer; a second portrait
+    // in a plain style (Watercolor People next to a Disney Pet) still needs one who draws it.
+    const plainGaps = styles.length > 1 ? missing.filter((s) => !isDisneyStyle(s)) : [];
+    return plainGaps.length ? multi(plainGaps) : null;
+  }
   if (drawsOnlyDisney(d?.styles)) {
     return refuse(`${who} draws only Disney and this is not a Disney order. Give it to a designer who draws ${style ?? "its style"}.`);
   }
-  if (style && !(d?.styles ?? []).some((s) => s.trim().toLowerCase() === style!.trim().toLowerCase())) {
-    return refuse(`${who} does not draw ${style}. Give it to a designer who does.`);
-  }
+  if (missing.length && styles.length > 1) return multi(missing);
+  if (missing.length) return refuse(`${who} does not draw ${missing[0]}. Give it to a designer who does.`);
   return null;
 }
 
@@ -366,6 +380,7 @@ export type Candidate = {
    * assignments already fell in the group. Null = no quota for this style:
    * eligible as before, but ordered after quota-holding designers.
    * overflow = past the limit they stay eligible as if unquota'd (by rank).
+   * An order in 2+ styles touches a group per style: combineQuotas folds them.
    */
   styleQuota?: { limit: number; priority: number; usedToday: number; overflow?: boolean } | null;
 };
@@ -384,7 +399,9 @@ export type RankedCandidate = Candidate & {
  *     (in_design / awaiting_qc), so a designer with a lot on their plate isn't
  *     handed more even if today's count is still low.
  *  3. STRICT style match — when the order has a style, only designers who list
- *     that style are eligible. An order with no style is open to everyone.
+ *     that style are eligible; an order whose portraits are in 2+ styles goes
+ *     only to a designer who lists EVERY one of them (one designer per order).
+ *     An order with no style is open to everyone.
  *     (If no eligible designer exists the order stays unassigned — the caller
  *     surfaces it in the VA "Unassigned" tab.)
  *  4. Disney only — a Disney order (a Disney style, or `disney` from its
@@ -395,16 +412,16 @@ export type RankedCandidate = Candidate & {
  */
 export function rankCandidates(
   candidates: Candidate[],
-  order: { style?: string | null; disney?: boolean },
+  order: { style?: string | null; styles?: string[] | null; disney?: boolean },
 ): RankedCandidate[] {
-  const style = order.style?.trim().toLowerCase() || null;
-  const disney = !!order.disney || isDisneyStyle(style);
+  const styles = stylesOfInput(order);
+  const disney = !!order.disney || styles.some(isDisneyStyle);
   const quotaOpen = (c: Candidate) => !c.styleQuota || c.styleQuota.usedToday < c.styleQuota.limit;
 
   const eligible = candidates
     .map((c) => ({
       ...c,
-      styleMatch: !!style && c.styles.some((s) => s.trim().toLowerCase() === style),
+      styleMatch: styles.length > 0 && coversStyles(c.styles, styles),
       remainingCapacity: c.dailyCapacity - c.ordersAssignedToday,
     }))
     .filter(
@@ -414,8 +431,8 @@ export function rankCandidates(
         // Under the per-style daily quota, when one covers this style
         // (an overflow group stays eligible past it, see quotaPriority).
         (quotaOpen(c) || !!c.styleQuota?.overflow) &&
-        // Strict: a styled order goes only to a matching designer.
-        (style === null || c.styleMatch) &&
+        // Strict: a styled order goes only to a designer who draws every style.
+        (styles.length === 0 || c.styleMatch) &&
         // A Disney order, styled or not, goes only to a Disney designer.
         (!disney || drawsDisney(c.styles)),
     );
@@ -476,6 +493,41 @@ export function quotaGroupFor(
   );
 }
 
+/**
+ * Every quota group an order touches: one per style it uses (the first match
+ * for each, as quotaGroupFor), each group once. An order in two styles is
+ * counted in each style's group (quotaUsed reads every item's style), so it
+ * has to fit in each of them too.
+ */
+export function quotaGroupsFor(
+  limits: StyleDailyLimit[] | null | undefined,
+  order: { businessId: string; styles: string[]; total?: OrderTotal | null },
+): StyleDailyLimit[] {
+  const out: StyleDailyLimit[] = [];
+  for (const style of order.styles) {
+    const g = quotaGroupFor(limits, { businessId: order.businessId, style, total: order.total });
+    if (g && !out.includes(g)) out.push(g);
+  }
+  return out;
+}
+
+type QuotaState = NonNullable<Candidate["styleQuota"]>;
+
+/**
+ * One quota state from the groups an order touches. Any group full (and not
+ * overflow) = that one, so the designer is out; any group full with overflow =
+ * eligible as if unquota'd; all open = the best (lowest) priority. One group =
+ * itself, so a single-style order is ranked exactly as before. Pure.
+ */
+export function combineQuotas(states: QuotaState[]): QuotaState | null {
+  if (!states.length) return null;
+  const full = states.filter((q) => q.usedToday >= q.limit);
+  const hard = full.find((q) => !q.overflow);
+  if (hard) return hard;
+  if (full.length) return full[0];
+  return [...states].sort((a, b) => a.priority - b.priority)[0];
+}
+
 /** One of a designer's assignments today, as a quota group sees it. */
 export type QuotaUse = {
   assignmentId: string;
@@ -501,7 +553,8 @@ export function quotaUsed(group: StyleDailyLimit, uses: QuotaUse[]): number {
 }
 
 /**
- * Ranked, eligible candidates for a business + style, straight from the DB.
+ * Ranked, eligible candidates for a business + style(s), straight from the DB.
+ * `styles` (every portrait's style) wins over `style` (one style, older callers).
  * Shared by auto-assign (entry into ready_to_assign) and the SLA-sweep
  * reassign step (48 h, no submission) — `excludeDesignerId` drops the
  * currently-assigned designer so a reassignment never picks the same person.
@@ -510,8 +563,15 @@ export function quotaUsed(group: StyleDailyLimit, uses: QuotaUse[]): number {
  */
 export async function loadRankedCandidates(
   tx: Tx,
-  input: { businessId: string; style: string | null; excludeDesignerId?: string | null; orderId?: string | null },
+  input: {
+    businessId: string;
+    style?: string | null;
+    styles?: string[] | null;
+    excludeDesignerId?: string | null;
+    orderId?: string | null;
+  },
 ): Promise<RankedCandidate[]> {
+  const styles = stylesOfInput(input);
   const roster = await tx
     .select({
       designerId: designerProfiles.userId,
@@ -571,11 +631,12 @@ export async function loadRankedCandidates(
   // holds a group covering this order (its business pool, its style, its value
   // gate), count today's assignments in that pool whose order style falls
   // inside the group (only an order's first assignment when newOrdersOnly).
+  // An order in 2+ styles touches each style's group (combineQuotas).
   const total = input.orderId ? await loadOrderTotal(tx, input.orderId) : null;
-  const quotaFor = new Map<string, NonNullable<Candidate["styleQuota"]>>();
+  const quotaFor = new Map<string, QuotaState>();
   const holders = roster.flatMap((r) => {
-    const group = quotaGroupFor(r.styleDailyLimits, { businessId: input.businessId, style: input.style, total });
-    return group ? [{ designerId: r.designerId, group }] : [];
+    const groups = quotaGroupsFor(r.styleDailyLimits, { businessId: input.businessId, styles, total });
+    return groups.length ? [{ designerId: r.designerId, groups }] : [];
   });
   if (holders.length) {
     const today = await tx
@@ -597,7 +658,7 @@ export async function loadRankedCandidates(
             assignments.designerId,
             holders.map((h) => h.designerId),
           ),
-          inArray(assignments.businessId, [...new Set(holders.flatMap((h) => quotaPool(h.group)))]),
+          inArray(assignments.businessId, [...new Set(holders.flatMap((h) => h.groups.flatMap(quotaPool)))]),
           gte(assignments.assignedAt, sql`date_trunc('day', now())`),
         ),
       );
@@ -611,12 +672,10 @@ export async function loadRankedCandidates(
           total: toOrderTotal(r.total, r.currency),
           firstForOrder: r.firstForOrder === true,
         }));
-      quotaFor.set(h.designerId, {
-        limit: h.group.limit,
-        priority: h.group.priority,
-        usedToday: quotaUsed(h.group, uses),
-        overflow: h.group.overflow === true,
-      });
+      const state = combineQuotas(
+        h.groups.map((g) => ({ limit: g.limit, priority: g.priority, usedToday: quotaUsed(g, uses), overflow: g.overflow === true })),
+      );
+      if (state) quotaFor.set(h.designerId, state);
     }
   }
 
@@ -647,8 +706,8 @@ export async function loadRankedCandidates(
     styleQuota: quotaFor.get(r.designerId) ?? null,
   }));
 
-  const disney = isDisneyStyle(input.style) || (input.orderId ? await loadIsDisneyOrder(tx, input.orderId) : false);
-  return rankCandidates(candidates, { style: input.style, disney });
+  const disney = styles.some(isDisneyStyle) || (input.orderId ? await loadIsDisneyOrder(tx, input.orderId) : false);
+  return rankCandidates(candidates, { styles, disney });
 }
 
 /**
@@ -656,6 +715,10 @@ export async function loadRankedCandidates(
  * ranks them, and assigns the top one (deactivating any prior active
  * assignment). If nobody is eligible the order stays ready_to_assign with no
  * active assignment — it surfaces in the VA "Unassigned" tab.
+ *
+ * An order with portraits in 2+ styles (2026-10-29) goes to ONE designer who
+ * draws every one of them, so the buyer gets all her portraits together;
+ * nobody like that = unassigned, and the autopilot card says why.
  *
  * A revision or failed QC never goes through the ranking: it goes back to the
  * designer who has it or drew it, at any load (keepRework). When none of them
@@ -665,18 +728,18 @@ export async function loadRankedCandidates(
 export async function runAutoAssign(
   tx: Tx,
   order: { orderId: string; businessId: string; assignedBy: string | null },
-): Promise<{ assigned: string | null; reworkHeld?: ReworkHold; missingPhoto?: boolean; noStyle?: boolean }> {
+): Promise<{ assigned: string | null; reworkHeld?: ReworkHold; missingPhoto?: boolean; noStyle?: boolean; styles?: string[] }> {
   // No photo = nobody is picked and nothing throws: the caller parks the order
   // (autopilot raises a card, a transition still succeeds) until a reference
   // photo is attached, then the next pass assigns it.
   if (!(await hasReferencePhoto(tx, order.orderId))) return { assigned: null, missingPhoto: true };
 
-  // The style comes off the order's PORTRAIT item, never an add-on line that
-  // happens to be the first row (portrait-item.ts).
-  let style = await loadPortraitStyle(tx, order.orderId);
+  // The styles come off the order's PORTRAIT items, never an add-on line
+  // (portrait-item.ts): every portrait's style, the primary first.
+  let styles = await portraitStylesOf(tx, order.orderId);
 
   const hold = await loadReworkHold(tx, order.orderId);
-  if (reworkBound(hold)) return keepRework(tx, order, hold, style);
+  if (reworkBound(hold)) return keepRework(tx, order, hold, styles);
 
   // Already on a person's board: it stays there, never re-ranked away
   // (Yousif 2026-10-21, lib/orders/board-hold.ts).
@@ -686,30 +749,29 @@ export async function runAutoAssign(
   // No style = no route (2026-10-23: CPS watercolor pets and couples saved with
   // no style went to whoever ranked first). Read it off the catalog; still none
   // in a business that has styles = nobody is picked and the caller raises it.
-  // A Disney order keeps its Disney-only route even unstyled.
-  if (!style) {
-    style = await fillRoutingStyle(tx, order.businessId, order.orderId);
-    if (!style && !(await loadIsDisneyOrder(tx, order.orderId)) && (await hasRoutingStyles(tx, order.businessId))) {
-      return { assigned: null, noStyle: true };
-    }
+  // A Disney order keeps its Disney-only route even unstyled. A second
+  // portrait with no style yet gets its own catalog style here too.
+  styles = await fillRoutingStyles(tx, order.businessId, order.orderId);
+  if (!styles.length && !(await loadIsDisneyOrder(tx, order.orderId)) && (await hasRoutingStyles(tx, order.businessId))) {
+    return { assigned: null, noStyle: true };
   }
 
   // A PixArt Disney order whose buyer names a person becomes Disneyfy People,
   // so only the Disney people designer is offered it (Yousif 2026-10-21).
-  style = (await routeDisneyPeople(tx, order.orderId, order.businessId)) ?? style;
+  if (await routeDisneyPeople(tx, order.orderId, order.businessId)) styles = await portraitStylesOf(tx, order.orderId);
 
   // A product with the AI designer switched on goes to the agent, not a human,
   // unless the order needs 2+ separate portraits (two lines, or one bought
   // twice): the AI draws one portrait per job, so those go to a person. A
   // Disney order never goes to the agent, only to a Disney designer.
-  const agentId = await aiDesignerFor(tx, order.businessId, order.orderId, style);
+  const agentId = await aiDesignerFor(tx, order.businessId, order.orderId, styles);
   if (agentId) {
     await queueForAgent(tx, order, agentId);
     return { assigned: agentId };
   }
 
-  const ranked = await loadRankedCandidates(tx, { businessId: order.businessId, style, orderId: order.orderId });
-  if (!ranked.length) return { assigned: null };
+  const ranked = await loadRankedCandidates(tx, { businessId: order.businessId, styles, orderId: order.orderId });
+  if (!ranked.length) return { assigned: null, styles };
   const chosen = ranked[0].designerId;
 
   await createAssignment(tx, {
@@ -722,9 +784,11 @@ export async function runAutoAssign(
   return { assigned: chosen };
 }
 
-/** The business's AI Studio when the AI may draw this order (style switched on, not Disney, one portrait); else null. */
-async function aiDesignerFor(tx: Tx, businessId: string, orderId: string, style: string | null): Promise<string | null> {
-  const styleRow = await findStyle(tx, businessId, style);
+/** The business's AI Studio when the AI may draw this order (one style, switched on, not Disney, one portrait); else null. */
+async function aiDesignerFor(tx: Tx, businessId: string, orderId: string, styles: string[]): Promise<string | null> {
+  // Portraits in 2+ styles are 2+ portraits: the AI draws one per job.
+  if (styles.length > 1) return null;
+  const styleRow = await findStyle(tx, businessId, styles[0] ?? null);
   if (!styleRow?.aiDesignerEnabled) return null;
   if (await loadIsDisneyOrder(tx, orderId)) return null;
   if ((await getOrderPortraits(tx, orderId)).length >= 2) return null;
@@ -763,7 +827,7 @@ async function keepRework(
   tx: Tx,
   order: { orderId: string; businessId: string; assignedBy: string | null },
   hold: ReworkHold,
-  style: string | null,
+  styles: string[],
 ): Promise<{ assigned: string | null; reworkHeld?: ReworkHold }> {
   const keeper = await reworkKeeper(tx, order.businessId, hold);
   if (!keeper) return { assigned: null, reworkHeld: hold };
@@ -773,7 +837,7 @@ async function keepRework(
   if (boardHolds(holder, keeper.designerId)) return { assigned: holder!.designerId };
 
   if (keeper.isAgent) {
-    const agentId = await aiDesignerFor(tx, order.businessId, order.orderId, style);
+    const agentId = await aiDesignerFor(tx, order.businessId, order.orderId, styles);
     if (agentId !== keeper.designerId) return { assigned: null, reworkHeld: hold };
     await queueForAgent(tx, order, agentId);
     return { assigned: agentId };
@@ -814,7 +878,7 @@ async function keepRework(
  */
 export async function findNextEligibleDesigner(
   tx: Tx,
-  input: { businessId: string; style: string | null; excludeDesignerId: string; orderId?: string | null },
+  input: { businessId: string; style?: string | null; styles?: string[] | null; excludeDesignerId: string; orderId?: string | null },
 ): Promise<string | null> {
   const ranked = await loadRankedCandidates(tx, input);
   return ranked[0]?.designerId ?? null;

@@ -17,6 +17,7 @@ import {
   eventActor,
   LABEL_CLASS,
   optionName,
+  portraitLine,
   relativeTime,
   revisionNote,
 } from "./card-meta";
@@ -262,6 +263,28 @@ export function CardModal({
 
             <Gallery images={detail?.images ?? null} cover={card.thumbnailUrl} />
 
+            {/* 2+ portraits (2026-10-29): every one on its own line with its
+                own style, figures and options; all are drawn and delivered together. */}
+            {card.portraits.length > 1 && (
+              <section className="rounded-input bg-canvas px-3 py-2.5" aria-label="Portraits">
+                <p className="text-xs font-medium text-slate">
+                  {card.portraits.reduce((n, p) => n + p.slots.length, 0)} portraits on this order: draw every one
+                </p>
+                <ul className="mt-1.5 flex flex-col gap-2">
+                  {card.portraits.map((p) => (
+                    <li key={p.slots[0]} className="min-w-0">
+                      <span className="block break-words text-sm font-medium text-ink [overflow-wrap:anywhere]">{portraitLine(p)}</span>
+                      {p.options.length > 0 && (
+                        <span className="block break-words text-xs text-slate [overflow-wrap:anywhere]">
+                          {p.options.map((o) => `${optionName(o.name)}: ${o.value}`).join(" · ")}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
             {/* What goes ON the art, exactly as the customer typed it, from
                 every item, each with its own Copy button. */}
             {card.personalization.length > 0 && (
@@ -441,7 +464,11 @@ export function CardModal({
           <Meta label="Figures">
             <span className="text-sm text-ink">
               {card.figuresResolved ? card.figureCount : "Not set yet"}
-              {card.style ? ` · ${styleLabel(card.style)}` : ""}
+              {card.styles.length > 1
+                ? ` · ${card.styles.map(styleLabel).join(" + ")}`
+                : card.style
+                  ? ` · ${styleLabel(card.style)}`
+                  : ""}
             </span>
           </Meta>
           <Meta label="Source">

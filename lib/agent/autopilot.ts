@@ -39,7 +39,7 @@ import { queuePhotoRequest, queuePhotoShortfall } from "@/lib/email/dispatch";
 import { shopStyleChoices } from "@/lib/designers/styles";
 import type { EtsyIntegrationConfig, EtsyTransaction } from "@/lib/integrations/etsy/types";
 import { businessSlaHours, createAssignment, runAutoAssign } from "@/lib/orders/assign";
-import { classifyOrder, isNonPortraitLine, type ClassifyConfig } from "@/lib/integrations/classify";
+import { classifyOrder, type ClassifyConfig } from "@/lib/integrations/classify";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { agentOrderScope, legacyQuiet } from "./scope";
 import { completeOrderDetailsCore } from "@/lib/orders/complete-details";
@@ -73,7 +73,9 @@ import { clearUnmatchedReplies, type ClearMailResult } from "./junk-mail";
 import { closeNothingLeft } from "./needs-you-desk";
 import { sendOwnerDigest, type OwnerDigestResult } from "./owner-digest";
 import { runQcOverduePass, type QcOverdueResult } from "./qc-overdue";
-import { loadPortraitStyle } from "@/lib/orders/portrait-item";
+import { loadPortraitStyle, portraitStylesOf } from "@/lib/orders/portrait-item";
+import { isAddOnItem } from "@/lib/orders/add-ons";
+import { missingStyles, multiStyleGap } from "@/lib/orders/order-styles";
 
 /** How long a customer has to answer the shortfall email before a human is asked. */
 export const PHOTO_SHORTFALL_GRACE_HOURS = 72;
@@ -586,10 +588,10 @@ async function intakeStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
         : [];
 
       // The product this order is for, checked against the business catalog.
-      // Add-on lines (Print & Ship, rush upgrades) are never the product: skip them,
+      // Add-on lines (Print & Ship, Fast Track, rush upgrades) are never the product: skip them,
       // or an add-on listed first on a mixed order opens a bogus "New product" card.
       const firstTx = (order.rawImport as { transactions?: { title?: string | null; sku?: string | null }[] } | null)
-        ?.transactions?.find((t) => !isNonPortraitLine(t, shop?.config as ClassifyConfig | null));
+        ?.transactions?.find((t) => !isAddOnItem(t, shop?.config as ClassifyConfig | null));
       const listingTitle = firstTx?.title?.trim() || null;
       const catalog = listingTitle
         ? await findCatalogStyle(tx, order.businessId, { title: listingTitle, sku: firstTx?.sku })
@@ -1026,7 +1028,7 @@ async function assignStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
       // style's main designer takes it into their queue; their due date moves
       // out by the queue (orders.due_at never moves).
       const why = await whyNoDesigner(tx, order.businessId, order.id);
-      const overflow = why.style ? await pickOverflowDesigner(tx, order.businessId, why.style) : null;
+      const overflow = why.styles.length ? await pickOverflowDesigner(tx, order.businessId, why.styles) : null;
       if (overflow) {
         const sla = (await businessSlaHours(tx, order.businessId)).order;
         const dueAtHours = sla + 24 * Math.floor(overflow.queue / overflow.dailyCapacity);
@@ -1050,7 +1052,7 @@ async function assignStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
       // Nobody draws the style (or it is unknown): the owner hears at once, with what I would do.
       bump((r) => (r.noEligibleDesigner += 1));
       const product = lines.find((l) => l.title)?.title ?? null;
-      const recommendation = await noDesignerRecommendation(tx, order.businessId, why.style, product);
+      const recommendation = await noDesignerRecommendation(tx, order.businessId, why.styles, product);
       await raise(tx, bump, ctx.now, order, "no_eligible_designer",
         `Order #${orderLabel(order)}: no designer can take it (${why.headline})`,
         { ...why, recommendation });
@@ -1067,14 +1069,22 @@ async function backlogCheck(tx: Tx, order: { id: string; businessId: string }, d
 
 /**
  * Why nobody is eligible, per designer on the roster: the same hard filters
- * as rankCandidates in lib/orders/assign.ts (style, daily capacity, max active).
+ * as rankCandidates in lib/orders/assign.ts (every portrait's style, daily
+ * capacity, max active). Portraits in 2+ styles that no one designer draws
+ * say so in the headline (2026-10-29).
  */
-async function whyNoDesigner(
+export async function whyNoDesigner(
   tx: Tx,
   businessId: string,
   orderId: string,
-): Promise<{ headline: string; style: string | null; roster: { designerId: string; name: string | null; blockers: string[] }[] }> {
-  const style = await loadPortraitStyle(tx, orderId);
+): Promise<{
+  headline: string;
+  style: string | null;
+  styles: string[];
+  roster: { designerId: string; name: string | null; blockers: string[] }[];
+}> {
+  const styles = await portraitStylesOf(tx, orderId);
+  const style = styles[0] ?? null;
 
   const roster = await tx
     .select({
@@ -1089,7 +1099,7 @@ async function whyNoDesigner(
     .innerJoin(designerProfiles, eq(designerProfiles.userId, designerBusinesses.userId))
     // The AI Studio agent is never a human candidate (same filter as loadRankedCandidates).
     .where(and(eq(designerBusinesses.businessId, businessId), eq(designerProfiles.isAgent, false)));
-  if (!roster.length) return { headline: "no active designers on this business", style, roster: [] };
+  if (!roster.length) return { headline: "no active designers on this business", style, styles, roster: [] };
 
   const ids = roster.map((r) => r.designerId);
   const today = new Map<string, number>();
@@ -1117,10 +1127,9 @@ async function whyNoDesigner(
     wip.set(r.designerId, Number(r.n));
   }
 
-  const wanted = style?.toLowerCase() ?? null;
   const detail = roster.map((r) => {
     const blockers: string[] = [];
-    if (wanted && !(r.styles ?? []).some((s) => s.trim().toLowerCase() === wanted)) blockers.push(`does not do ${style}`);
+    for (const s of missingStyles(r.styles, styles)) blockers.push(`does not do ${s}`);
     const t = today.get(r.designerId) ?? 0;
     if (t >= r.dailyCapacity) blockers.push(`at daily capacity (${t}/${r.dailyCapacity})`);
     const w = wip.get(r.designerId) ?? 0;
@@ -1128,9 +1137,11 @@ async function whyNoDesigner(
     return { designerId: r.designerId, name: r.name, blockers };
   });
   const noStyle = detail.filter((d) => d.blockers.some((b) => b.startsWith("does not do"))).length;
+  const gap = multiStyleGap(styles, roster.map((r) => r.styles));
   const headline =
-    wanted && noStyle === detail.length
+    gap ??
+    (styles.length === 1 && noStyle === detail.length
       ? `nobody does ${style}`
-      : `${detail.length} designer(s), all blocked by style or capacity`;
-  return { headline, style, roster: detail };
+      : `${detail.length} designer(s), all blocked by style or capacity`);
+  return { headline, style, styles, roster: detail };
 }

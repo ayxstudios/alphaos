@@ -66,6 +66,7 @@
     "test:limbo": "tsx scripts/test-limbo.ts",
     "test:routing-guard": "tsx scripts/test-routing-guard.ts",
     "test:assign-guards": "tsx scripts/test-assign-guards.ts",
+    "test:multi-style": "tsx scripts/test-multi-style.ts",
     "test:r2-env": "tsx scripts/test-r2-env-guard.ts",
     "test:portrait-slots": "tsx scripts/test-portrait-slots.ts",
     "test:portrait-title": "tsx scripts/test-portrait-title-guard.ts",

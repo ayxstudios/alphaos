@@ -25,6 +25,9 @@ import { clampItemQuantity } from "@/lib/orders/item-quantity";
 import { loadProofFilePick } from "@/lib/proofs/files";
 import { sizedImageUrl } from "@/lib/images";
 import { personalizationOf } from "@/lib/orders/options-summary";
+import { portraitLinesOf } from "@/lib/orders/add-ons";
+import { distinctStyles } from "@/lib/orders/order-styles";
+import { pickPortraitItem } from "@/lib/orders/portrait-item";
 import {
   loadDesignerSiblings,
   productLineOf,
@@ -72,9 +75,17 @@ export type BoardCard = {
   figureCount: number;
   figuresResolved: boolean;
   style: string | null;
+  /** Every portrait's style, the primary first (one entry on a one-style order). */
+  styles: string[];
   /** Product title + variant options for the designer ("what am I making"). */
   title: string | null;
   options: { name: string; value: string }[];
+  /**
+   * Each portrait line on its own (2026-10-29: two portraits in two styles,
+   * the card showed only the first), add-ons left out. Empty on a
+   * one-portrait order, whose card reads as before.
+   */
+  portraits: BoardPortrait[];
   /**
    * The customer's personalization (names, wording for the art), verbatim,
    * from EVERY item: what a designer copies onto the portrait. `item` is the
@@ -113,6 +124,19 @@ export type BoardCard = {
   sameBuyer: string | null;
   /** The other orders' numbers, for the short chip on the card. */
   sameBuyerNumbers: string[];
+};
+
+/**
+ * One portrait line on a card: its portrait numbers (a line bought twice is
+ * two, numbered as the upload picker and QC number them), style, figures,
+ * product and options.
+ */
+export type BoardPortrait = {
+  slots: number[];
+  style: string | null;
+  figureCount: number | null;
+  title: string | null;
+  options: { name: string; value: string }[];
 };
 
 type OrderRow = {
@@ -192,6 +216,7 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
     withUserContext(user, (tx) => Promise.all([
     tx
       .select({
+        id: orderItems.id,
         orderId: orderItems.orderId,
         figureCount: orderItems.figureCount,
         style: orderItems.style,
@@ -293,17 +318,49 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
   const fig = new Map<string, number>();
   const hasNull = new Map<string, boolean>();
   const style = new Map<string, string>();
+  const styles = new Map<string, string[]>();
   const title = new Map<string, string>();
   const options = new Map<string, { name: string; value: string }[]>();
+  const portraits = new Map<string, BoardPortrait[]>();
   const itemCount = new Map<string, number>();
+  const itemsOf = new Map<string, typeof items>();
   for (const it of items) {
     itemCount.set(it.orderId, (itemCount.get(it.orderId) ?? 0) + 1);
-    fig.set(it.orderId, (fig.get(it.orderId) ?? 0) + (it.figureCount ?? 0));
-    if (it.figureCount == null) hasNull.set(it.orderId, true);
-    if (it.style && !style.has(it.orderId)) style.set(it.orderId, it.style);
-    if (it.title && !title.has(it.orderId)) title.set(it.orderId, it.title);
-    if (Array.isArray(it.options) && it.options.length && !options.has(it.orderId)) {
-      options.set(it.orderId, it.options as { name: string; value: string }[]);
+    const list = itemsOf.get(it.orderId);
+    if (list) list.push(it);
+    else itemsOf.set(it.orderId, [it]);
+  }
+  // Portrait lines only (add-ons have nothing to draw), in id order, the
+  // primary portrait leading for the card's own style, title and options. The
+  // built-in add-on words only: a designer cannot read the shop's own list.
+  const optionsOf = (it: (typeof items)[number]) =>
+    Array.isArray(it.options) ? (it.options as { name: string; value: string }[]) : [];
+  for (const [orderId, all] of itemsOf) {
+    const lines = portraitLinesOf([...all].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)), null);
+    const primary = pickPortraitItem(lines, null);
+    const ordered = primary ? [primary, ...lines.filter((it) => it !== primary)] : lines;
+    for (const it of lines) {
+      fig.set(orderId, (fig.get(orderId) ?? 0) + (it.figureCount ?? 0));
+      if (it.figureCount == null) hasNull.set(orderId, true);
+    }
+    for (const it of ordered) {
+      if (it.style && !style.has(orderId)) style.set(orderId, it.style);
+      if (it.title && !title.has(orderId)) title.set(orderId, it.title);
+      if (optionsOf(it).length && !options.has(orderId)) options.set(orderId, optionsOf(it));
+    }
+    styles.set(orderId, distinctStyles(ordered.map((it) => it.style)));
+    if (lines.length > 1) {
+      let next = 1;
+      portraits.set(
+        orderId,
+        lines.map((it) => ({
+          slots: Array.from({ length: clampItemQuantity(it.quantity) }, () => next++),
+          style: it.style?.trim() || null,
+          figureCount: it.figureCount,
+          title: it.title,
+          options: optionsOf(it),
+        })),
+      );
     }
   }
 
@@ -436,8 +493,10 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
     figureCount: fig.get(o.id) ?? 0,
     figuresResolved: !hasNull.get(o.id),
     style: style.get(o.id) ?? null,
+    styles: styles.get(o.id) ?? [],
     title: title.get(o.id) ?? null,
     options: options.get(o.id) ?? [],
+    portraits: portraits.get(o.id) ?? [],
     personalization: personalization.get(o.id) ?? [],
     notes: o.notes,
     source: o.source,

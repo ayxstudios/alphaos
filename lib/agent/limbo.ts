@@ -28,7 +28,8 @@ import { buyerWordsWhere } from "@/lib/reminders/buyer-replied";
 import { reassignOrder } from "./ai-designer";
 import { agentOrderScope, legacyQuiet } from "./scope";
 import { openExceptionTx } from "./exceptions";
-import { loadPortraitStyle } from "@/lib/orders/portrait-item";
+import { portraitStylesOf } from "@/lib/orders/portrait-item";
+import { coversStyles, multiStyleAdvice, stylesLabel, stylesOfInput } from "@/lib/orders/order-styles";
 
 const HOUR = 3_600_000;
 export const CLOSED_STATUSES = ["cancelled", "complete", "delivered", "shipped"];
@@ -593,10 +594,13 @@ export function stuckWords(
   }
 }
 
-/** The designer I would give a style to: draws it, not AI Studio, not paused, biggest daily limit, then rank. */
-export async function suggestDesigner(tx: Tx, businessId: string, style: string | null): Promise<string | null> {
-  if (!style) return null;
-  const want = style.trim().toLowerCase();
+/**
+ * The designer I would give a style to: draws it, not AI Studio, not paused,
+ * biggest daily limit, then rank. Several styles: one who draws every one.
+ */
+export async function suggestDesigner(tx: Tx, businessId: string, style: string | string[] | null): Promise<string | null> {
+  const wanted = stylesOfInput(Array.isArray(style) ? { styles: style } : { style });
+  if (!wanted.length) return null;
   const roster = await tx
     .select({ name: users.name, styles: designerProfiles.styles, cap: designerProfiles.dailyCapacity, rank: designerProfiles.rank })
     .from(designerBusinesses)
@@ -604,7 +608,7 @@ export async function suggestDesigner(tx: Tx, businessId: string, style: string 
     .innerJoin(designerProfiles, eq(designerProfiles.userId, designerBusinesses.userId))
     .where(and(eq(designerBusinesses.businessId, businessId), eq(designerProfiles.isAgent, false)));
   const best = roster
-    .filter((r) => r.cap > 0 && (r.styles ?? []).some((s) => s.trim().toLowerCase() === want))
+    .filter((r) => r.cap > 0 && coversStyles(r.styles, wanted))
     .sort((a, b) => b.cap - a.cap || a.rank - b.rank)[0];
   return best?.name ?? null;
 }
@@ -660,8 +664,11 @@ export async function watchWaitingStates(
       // opened stays open; owner-digest.ts skips it and the staff lists still show it.
       if (f.legacyQuiet) continue;
       res.limbo++;
-      const suggestion = ["not_assigned", "no_designer"].includes(w.reason) ? await suggestDesigner(tx, businessId, f.style) : null;
-      const words = stuckWords(w.reason, f, suggestion, now);
+      // Who would take it: every portrait's style, not the first row's (2026-10-29).
+      const needsDesigner = ["not_assigned", "no_designer"].includes(w.reason);
+      const styles = needsDesigner ? await portraitStylesOf(tx, f.id) : [];
+      const suggestion = needsDesigner ? await suggestDesigner(tx, businessId, styles.length ? styles : f.style) : null;
+      const words = stuckWords(w.reason, styles.length > 1 ? { ...f, style: stylesLabel(styles) } : f, suggestion, now);
       const last = f.decision && f.decision.reason === w.reason ? { at: f.decision.at.toISOString(), note: f.decision.note } : null;
       const detail = {
         reason: w.reason,
@@ -951,7 +958,6 @@ async function humanRoster(tx: Tx, businessId: string): Promise<RosterRow[]> {
 }
 
 const norm = (s: string) => s.trim().toLowerCase();
-const draws = (r: Pick<RosterRow, "styles">, style: string) => (r.styles ?? []).some((s) => norm(s) === norm(style));
 
 /**
  * A per-style daily quota covering this style in this business (its businessId
@@ -980,14 +986,17 @@ export type OverflowPick = { designerId: string; name: string | null; dailyCapac
  * busy for: draws it, a daily limit of 2 or more (0 is paused, 1 a deliberate
  * throttle; a per-style quota counts the same way), under max active orders
  * when that is set. Biggest daily limit first, then rank, then the shortest
- * not-started queue.
+ * not-started queue. An order in 2+ styles: only a designer who draws every
+ * one, at the tightest of their quotas for them.
  */
-export async function pickOverflowDesigner(tx: Tx, businessId: string, style: string): Promise<OverflowPick | null> {
+export async function pickOverflowDesigner(tx: Tx, businessId: string, style: string | string[]): Promise<OverflowPick | null> {
+  const wanted = stylesOfInput(Array.isArray(style) ? { styles: style } : { style });
+  if (!wanted.length) return null;
   const roster = (await humanRoster(tx, businessId))
-    .filter((r) => draws(r, style))
+    .filter((r) => coversStyles(r.styles, wanted))
     .map((r) => {
-      const quota = styleQuotaLimit(r.limits, style, businessId);
-      return { ...r, cap: quota == null ? r.cap : Math.min(r.cap, quota) };
+      const quotas = wanted.map((s) => styleQuotaLimit(r.limits, s, businessId)).filter((q): q is number => q != null);
+      return { ...r, cap: quotas.length ? Math.min(r.cap, ...quotas) : r.cap };
     })
     .filter((r) => r.cap >= 2);
   if (!roster.length) return null;
@@ -1041,18 +1050,23 @@ export function styleSimilarity(a: string, b: string): number {
 export async function noDesignerRecommendation(
   tx: Tx,
   businessId: string,
-  style: string | null,
+  styleOrStyles: string | string[] | null,
   product: string | null,
 ): Promise<string> {
+  const wanted = stylesOfInput(Array.isArray(styleOrStyles) ? { styles: styleOrStyles } : { style: styleOrStyles });
+  const style = wanted[0] ?? null;
   if (!style) {
     return `Set the style on the order${product ? ` (or map "${product}" to a style)` : ""}, then it goes to a designer.`;
   }
   const roster = await humanRoster(tx, businessId);
-  const drawers = roster.filter((r) => draws(r, style));
+  const drawers = roster.filter((r) => coversStyles(r.styles, wanted));
+  const what = wanted.join(" and ");
   if (drawers.length) {
     const names = drawers.map((r) => r.name ?? "a designer").join(" and ");
-    return `${names} draw${drawers.length === 1 ? "s" : ""} ${style} but ${drawers.length === 1 ? "is" : "are"} paused or at a limit. Raise a daily limit, or give it to another designer.`;
+    return `${names} draw${drawers.length === 1 ? "s" : ""} ${what} but ${drawers.length === 1 ? "is" : "are"} paused or at a limit. Raise a daily limit, or give it to another designer.`;
   }
+  // Portraits in 2+ styles and no one designer draws every one (2026-10-29).
+  if (wanted.length > 1) return multiStyleAdvice(wanted, roster);
   let best: { name: string; style: string; score: number; cap: number; rank: number } | null = null;
   for (const r of roster) {
     if (r.cap <= 0) continue;
@@ -1089,14 +1103,15 @@ export type HumanPick = {
  * rank: loadRankedCandidates), else the style's main designer as overflow.
  * Never AI Studio. No style = nobody: a person sets the style first.
  */
-export async function pickHumanDesigner(tx: Tx, businessId: string, style: string | null): Promise<HumanPick | null> {
-  if (!style?.trim()) return null;
-  const [top] = await loadRankedCandidates(tx, { businessId, style });
+export async function pickHumanDesigner(tx: Tx, businessId: string, style: string | string[] | null): Promise<HumanPick | null> {
+  const styles = stylesOfInput(Array.isArray(style) ? { styles: style } : { style });
+  if (!styles.length) return null;
+  const [top] = await loadRankedCandidates(tx, { businessId, styles });
   if (top) {
     const [u] = await tx.select({ name: users.name }).from(users).where(eq(users.id, top.designerId)).limit(1);
     return { designerId: top.designerId, name: u?.name ?? null, overflow: false, queue: 0, dailyCapacity: top.dailyCapacity };
   }
-  const o = await pickOverflowDesigner(tx, businessId, style);
+  const o = await pickOverflowDesigner(tx, businessId, styles);
   return o ? { ...o, overflow: true } : null;
 }
 
@@ -1111,9 +1126,10 @@ export async function reworkHeldNote(
   orderId: string,
   hold: ReworkHold,
 ): Promise<{ headline: string; owner: string | null; suggest: string | null; recommendation: string }> {
-  const itemStyle = await loadPortraitStyle(tx, orderId);
+  const itemStyles = await portraitStylesOf(tx, orderId);
+  const itemStyle = itemStyles.length ? itemStyles.join(" and ") : null;
   const owner = await reworkOwnerName(tx, hold);
-  const pick = await pickHumanDesigner(tx, businessId, itemStyle);
+  const pick = await pickHumanDesigner(tx, businessId, itemStyles);
   const who = owner ?? "its designer";
   return {
     headline: `a revision of ${who}'s work and ${who} cannot take it back`,

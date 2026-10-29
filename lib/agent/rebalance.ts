@@ -16,7 +16,7 @@ import { liveOrderWhere } from "@/lib/orders/archive";
 import { agentOrderScope, legacyQuiet } from "./scope";
 
 import { loadCapacityModel, type DesignerLoad } from "./capacity";
-import { loadPortraitStyle } from "@/lib/orders/portrait-item";
+import { portraitStylesOf } from "@/lib/orders/portrait-item";
 
 export type RebalanceMove = {
   orderId: string;
@@ -98,7 +98,8 @@ async function moveOne(
 ): Promise<RebalanceMove | null> {
   const ranked = await loadRankedCandidates(tx, {
     businessId: input.businessId,
-    style: await loadPortraitStyle(tx, input.order.orderId),
+    // Every portrait's style: the new designer must draw them all.
+    styles: await portraitStylesOf(tx, input.order.orderId),
     excludeDesignerId: input.from.designerId,
     orderId: input.order.orderId,
   });

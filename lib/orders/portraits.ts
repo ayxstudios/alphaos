@@ -2,7 +2,8 @@ import { and, asc, eq } from "drizzle-orm";
 
 import type { Tx } from "@/lib/db";
 import { orderItems, orders, shops } from "@/lib/db/schema";
-import { isNonPortraitLine, type ClassifyConfig } from "@/lib/integrations/classify";
+import type { ClassifyConfig } from "@/lib/integrations/classify";
+import { portraitLinesOf } from "@/lib/orders/add-ons";
 import { clampItemQuantity } from "@/lib/orders/item-quantity";
 
 /**
@@ -44,13 +45,6 @@ function unitLabel(item: { title: string | null; variation: string | null }, uni
   return base ? `${base} · ${suffix}` : suffix;
 }
 
-/**
- * Add-on lines that ride along with a portrait (print & ship, rush, upgrades)
- * are never a portrait of their own, even when a shop has not listed them in
- * its non-portrait settings.
- */
-export const ADD_ON_TITLE = /^\s*(add[\s-]?on|rush|upgrade|express|priority)\b|\bprint\s*(&|and)\s*ship/i;
-
 /** An order item as far as the slot builder needs it. */
 export type PortraitItem = {
   id: string;
@@ -72,7 +66,7 @@ export type PortraitSlotOptions = {
 /**
  * The slots for an order's items (pure; getOrderPortraits loads the inputs).
  * `items` arrive in stable item order. Add-on / non-portrait lines are left
- * out (the shop's non-portrait SKU/title list plus ADD_ON_TITLE), but only
+ * out (lib/orders/add-ons.ts: the shop's non-portrait list plus the add-on titles), but only
  * when the order has 2+ lines and some line stays: a lone line is always a
  * portrait, and an order whose every line is an add-on keeps them all.
  */
@@ -81,11 +75,7 @@ export function buildPortraitSlots(
   cfg: ClassifyConfig | null,
   opts: PortraitSlotOptions = {},
 ): OrderPortrait[] {
-  const portraits =
-    items.length < 2
-      ? items
-      : items.filter((item) => !isNonPortraitLine(item, cfg) && !ADD_ON_TITLE.test(item.title ?? ""));
-  const lines = portraits.length ? portraits : items;
+  const lines = portraitLinesOf(items, cfg);
   const slots: OrderPortrait[] = [];
   for (const item of lines) {
     const quantity = opts.perLine ? 1 : clampItemQuantity(item.quantity);
