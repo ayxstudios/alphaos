@@ -165,12 +165,15 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
           isNull(assets.deletedAt),
         ),
       )
-      .orderBy(asc(assets.createdAt));
+      .orderBy(asc(assets.createdAt), asc(assets.id));
 
+    // Upload order, photos saved together broken by id: the gallery, version
+    // numbering and the pet slots' "photo 2" all count in it, the same order
+    // the photo check numbers her photos in (lib/photos/subjects.ts). Mapping
+    // keeps the SQL order; an image we can't resolve is dropped after.
     const r2Ok = isR2Configured();
-    const images: CardImage[] = [];
-    await Promise.all(
-      imageRows.map(async (a) => {
+    const resolved = await Promise.all(
+      imageRows.map(async (a): Promise<CardImage | null> => {
         let url = a.url ?? null;
         if (!url && a.storage === "r2" && a.r2Key && r2Ok) {
           try {
@@ -179,23 +182,19 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
             /* skip an image we can't resolve rather than fail the modal */
           }
         }
-        if (url) {
-          images.push({
-            id: a.id,
-            type: a.type as CardImage["type"],
-            url,
-            uploadedBy: a.uploadedByName ?? (isDesignerLike(user.role) ? null : a.uploadedByEmail) ?? null,
-            createdAt: a.createdAt.toISOString(),
-            slotKey: slotKeyOf({ orderItemId: a.orderItemId, portraitUnit: a.portraitUnit }),
-            portrait: null,
-          });
-        }
+        if (!url) return null;
+        return {
+          id: a.id,
+          type: a.type as CardImage["type"],
+          url,
+          uploadedBy: a.uploadedByName ?? (isDesignerLike(user.role) ? null : a.uploadedByEmail) ?? null,
+          createdAt: a.createdAt.toISOString(),
+          slotKey: slotKeyOf({ orderItemId: a.orderItemId, portraitUnit: a.portraitUnit }),
+          portrait: null,
+        };
       }),
     );
-
-    // Promise.all resolves out of order; the gallery and version numbering
-    // rely on upload order, so restore it.
-    images.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const images: CardImage[] = resolved.filter((image): image is CardImage => image !== null);
 
     const portraits = await getOrderPortraits(tx, orderId);
     const pick = portraits.length >= 2 ? await loadProofFilePick(tx, orderId, portraits) : null;

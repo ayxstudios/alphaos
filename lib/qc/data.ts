@@ -224,12 +224,14 @@ export async function getQcContext(
       .orderBy(desc(activityLog.createdAt))
       .limit(1);
 
-    // Reference photos (left pane).
+    // Reference photos (left pane), in the order the photo check numbers them
+    // (photos saved together broken by id), so the pet slots' "photo 2" is the
+    // second one here.
     const references = await tx
       .select({ id: assets.id, url: assets.url, storage: assets.storage, r2Key: assets.r2Key, uploadedBy: assets.uploadedBy })
       .from(assets)
       .where(and(eq(assets.orderId, orderId), eq(assets.type, "reference"), sql`${assets.deletedAt} is null`))
-      .orderBy(asc(assets.createdAt));
+      .orderBy(asc(assets.createdAt), asc(assets.id));
 
     // Delivered versions (right pane + history strip), oldest first.
     const versionRows = await tx
