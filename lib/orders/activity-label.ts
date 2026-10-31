@@ -1,4 +1,5 @@
 import { formatAt } from "@/lib/time";
+import { joinNames } from "@/lib/photos/subject-types";
 
 /**
  * Plain-English name for an activity_log action key, for the order page and
@@ -44,6 +45,9 @@ const LABELS: Record<string, string> = {
   "order.wrong_file_heads_up": "Handed in a picture that is also on another order",
   "order.revision_stop_override": "Sent although Auto QC said the revision was not done",
   "order.duplicate_slots_override": "Sent although two portraits were the same file",
+  "order.photo_subjects_checked": "Photos checked: who is in each",
+  "order.photo_subject_cleared": "Photo marked fine",
+  "order.photo_subjects_override": "Handed in without a clear face photo",
   "order.awaiting_approval": "Awaiting approval",
   "order.fulfillment_only": "Fulfilment only",
   "proof.viewed": "Proof viewed",
@@ -91,6 +95,8 @@ export function activityDetail(action: string, metadata: Record<string, unknown>
     return `${n ? (n.startsWith("#") ? n : `#${n}`) : "Her other order"} passed QC and goes to her together with this one.`;
   }
   if (action === "order.style_fallback") return typeof metadata?.note === "string" ? metadata.note : null;
+  const photo = photoSlotDetail(action, metadata);
+  if (photo !== undefined) return photo;
   if (action !== "message.received" || !metadata || metadata.linkedBy !== "mention") return null;
   const from = typeof metadata.fromOrderNumber === "string" ? metadata.fromOrderNumber.trim() : "";
   return from
@@ -121,4 +127,29 @@ function holdDetail(action: string, metadata: Record<string, unknown> | null | u
     ? formatAt(until, { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }, "its due time")
     : "its due time";
   return `Waits for ${waiting.length ? waiting.join(", ") : "her other order"}. Sends when that passes QC, or at ${when} at the latest.`;
+}
+
+const textList = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim() !== "") : []);
+
+/** The pet slots (lib/photos/subjects.ts): undefined = not one of its rows. */
+function photoSlotDetail(action: string, metadata: Record<string, unknown> | null | undefined): string | null | undefined {
+  const reason = typeof metadata?.reason === "string" ? metadata.reason.trim() : "";
+  if (action === "order.photo_subjects_checked") {
+    if (!Array.isArray(metadata?.subjects) || metadata.subjects.length === 0) return null;
+    const holding = textList(metadata.holding);
+    return holding.length ? `No clear face photo of ${joinNames(holding)} yet.` : "Every pet and person has a clear face photo.";
+  }
+  if (action === "order.photo_subject_cleared") {
+    const name = typeof metadata?.name === "string" ? metadata.name.trim() : "";
+    return name || reason ? [name, reason].filter(Boolean).join(": ") : null;
+  }
+  if (action === "order.photo_subjects_override") {
+    const names = joinNames(textList(metadata?.subjects));
+    return names || reason ? [names, reason].filter(Boolean).join(": ") : null;
+  }
+  if (action === "agent.photo_shortfall_drafted" && metadata?.via === "photo_subjects") {
+    const names = joinNames(textList(metadata.subjects));
+    return names ? `Asked her once for a clear face photo of ${names}.` : null;
+  }
+  return undefined;
 }

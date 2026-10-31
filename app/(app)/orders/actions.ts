@@ -32,6 +32,7 @@ import {
 import { reassignOrder } from "@/lib/agent/ai-designer";
 import { aiDesignerChoosable } from "@/lib/agent/ai-designer-choice";
 import { addComment } from "@/lib/orders/card-detail";
+import { clearPhotoSubject } from "@/lib/photos/subjects";
 import { setOrderUrgent } from "@/lib/orders/urgent";
 import { isAddOnItem } from "@/lib/orders/add-ons";
 import { applyOrderStyle } from "@/lib/orders/item-styles";
@@ -354,6 +355,26 @@ export async function addOrderComment(orderId: string, body: string): Promise<Co
   await addComment(user, orderId, text);
   revalidatePath(`/orders/${orderId}`);
   revalidatePath("/orders");
+  return { ok: true };
+}
+
+export type PhotoFineResult = { ok: true } | { ok: false; message: string };
+
+/**
+ * Staff mark the photo of a pet or person the photo check held as fine
+ * ("she has no other photo"): the slot stops holding the hand-in, the reason
+ * stays on the order and its "Pet photo missing" exception closes when nothing
+ * else holds (lib/photos/subjects.ts clearPhotoSubject).
+ */
+export async function markPhotoSubjectFine(orderId: string, key: string, reason: string): Promise<PhotoFineResult> {
+  const user = await requireStaff();
+  if ("error" in user) return { ok: false, message: user.error };
+  if (!orderId || !key) return { ok: false, message: "Order not found." };
+  const res = await withUserContext(user, (tx) => clearPhotoSubject(tx, user, { orderId, key, reason }));
+  if (!res.ok) return { ok: false, message: res.error };
+  revalidatePath(`/orders/${orderId}`);
+  revalidatePath(`/qc/${orderId}`);
+  revalidatePath("/exceptions");
   return { ok: true };
 }
 

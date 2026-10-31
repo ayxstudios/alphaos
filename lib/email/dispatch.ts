@@ -9,6 +9,7 @@ import { loadAssetAttachment } from "@/lib/email/attachments";
 import { generateProofToken } from "@/lib/proofs/tokens";
 import { proofUrl, uploadUrl } from "@/lib/urls";
 import { staleProofReminderReason, withdrawProofReminder } from "@/lib/reminders/buyer-replied";
+import { subjectAskVars, type PhotoSubject } from "@/lib/photos/subject-types";
 import {
   DEFAULT_TEMPLATES,
   renderTemplate,
@@ -251,6 +252,42 @@ export async function queuePhotoShortfall(
       upload_link: uploadUrl(order.uploadToken),
       photos_have: String(counts.have),
       photos_need: String(counts.need),
+    },
+  });
+}
+
+/**
+ * The one "clear face photo" ask (lib/photos/subjects.ts): names everyone the
+ * portrait is of and who has no clear face photo yet. A draft the agent outbox
+ * sends (agentConfig.autoSendReplies). Returns the message id, or null with no
+ * customer email.
+ */
+export async function queuePhotoSubjectAsk(
+  tx: Tx,
+  order: {
+    id: string;
+    businessId: string;
+    customerId: string | null;
+    platformOrderId: string;
+    platformOrderName?: string | null;
+    uploadToken: string;
+  },
+  ask: { have: number; all: Pick<PhotoSubject, "name" | "kind">[]; missing: Pick<PhotoSubject, "name" | "kind">[] },
+): Promise<string | null> {
+  const ctx = await readEmailContext(tx, order.businessId, order.customerId);
+  if (!ctx) return null;
+  return insertRendered(tx, {
+    businessId: order.businessId,
+    orderId: order.id,
+    customerId: order.customerId,
+    key: "photo_subject_ask",
+    status: "draft",
+    orderNumber: order.platformOrderName ?? order.platformOrderId,
+    ctx,
+    vars: {
+      upload_link: uploadUrl(order.uploadToken),
+      photos_have: String(ask.have),
+      ...subjectAskVars(ask.all, ask.missing),
     },
   });
 }

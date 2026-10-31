@@ -34,6 +34,7 @@ import { portraitList } from "@/lib/orders/portrait-list";
 import { buildRevisionHistory, revisionCopyText } from "@/lib/orders/revision-history";
 import { isWithCustomer, SENT_BACK_FROM } from "@/lib/orders/board-constants";
 import type { CardDetail, CardEvent, CardImage } from "@/lib/orders/card-detail";
+import { PhotoSubjectsPanel } from "@/components/orders/photo-subjects-panel";
 import { formatAt, formatDeadline } from "@/lib/time";
 import { QcPictures } from "@/components/qc/qc-pictures";
 import type { QcAttachmentView } from "@/lib/qc/attachments";
@@ -273,6 +274,22 @@ export function CardModal({
             )}
 
             <Gallery images={detail?.images ?? null} cover={card.thumbnailUrl} />
+
+            {/* The pet slots: who is in her photos and whose face is still missing. */}
+            <PhotoSubjectsPanel
+              subjects={detail?.photoSubjects}
+              photos={(detail?.images ?? []).filter((img) => img.type === "reference")}
+              where="card"
+              orderId={designerView ? undefined : card.orderId}
+              onMarked={() =>
+                loadCard(card.orderId)
+                  .then((d) => {
+                    setDetail(d);
+                    setEvents(d.events);
+                  })
+                  .catch(() => undefined)
+              }
+            />
 
             {/* 2+ portraits (2026-10-29): every one on its own line with its
                 own style, figures and options; all are drawn and delivered together. */}

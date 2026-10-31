@@ -11,7 +11,7 @@
 // a dry run does the same work and rolls each transaction back. Idempotent: a
 // tick right after a tick writes nothing.
 
-import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 
 import { holdAlphaPushesIf } from "@/lib/alpha/client";
 import { SYSTEM_ACTOR_ID, withSystemContext, type Tx } from "@/lib/db";
@@ -35,7 +35,9 @@ import { preparePrintOrder } from "@/lib/print/prepare";
 import { submitPrintOrder } from "@/lib/print/submit";
 import { getAgentConfig } from "./config";
 import { ensureAgentDesigner } from "./ai-core";
-import { queuePhotoRequest, queuePhotoShortfall } from "@/lib/email/dispatch";
+import { queuePhotoRequest, queuePhotoShortfall, queuePhotoSubjectAsk } from "@/lib/email/dispatch";
+import { PHOTO_SUBJECTS_CHECKED_ACTION, photoHoldingWhere, photoSigOf } from "@/lib/photos/subjects";
+import { holdingSubjects, joinNames } from "@/lib/photos/subject-types";
 import { shopStyleChoices } from "@/lib/designers/styles";
 import type { EtsyIntegrationConfig, EtsyTransaction } from "@/lib/integrations/etsy/types";
 import { businessSlaHours, createAssignment, drawsDisney, isDisneyStyle, runAutoAssign } from "@/lib/orders/assign";
@@ -92,6 +94,7 @@ const BATCH = 200;
 const REOPEN_AFTER_HOURS: Record<ExceptionKind, number | null> = {
   intake_unparsed: null,
   photo_count_mismatch: null,
+  photo_subject_missing: null,
   no_eligible_designer: 24,
   // Raised by the inbox pass (./inbox.ts), which asks again for every new reply.
   reply_unclear: 0,
@@ -749,6 +752,18 @@ async function queuePhotoRequestOnce(tx: Tx, order: OrderRef & { uploadToken: st
 // Intake (ii): photo count vs figures ordered
 // ---------------------------------------------------------------------------
 
+/**
+ * The named photo ask (photo_subject_ask) goes to orders placed from Sydney
+ * midnight on 31 Oct 2026; an older open order with a face missing goes to the
+ * team instead (Yousif 2026-10-31, Delaney plan phase 1: "Nothing new is sent
+ * to buyers").
+ */
+export const SUBJECT_ASKS_FROM = new Date("2026-10-30T13:00:00Z");
+/** The agent's photo check counts as running for a business that had a check this recently. */
+const CHECKER_LIVE_HOURS = 72;
+/** A new photo on a never-checked order waits this long for the photo check before the count rule speaks. */
+const CHECK_WAIT_HOURS = 2;
+
 async function completenessStep(ctx: TickCtx, businessId: string, outOfTime: () => boolean): Promise<void> {
   const photoCount = sql<number>`(
     select count(*)::int from ${assets}
@@ -761,7 +776,11 @@ async function completenessStep(ctx: TickCtx, businessId: string, outOfTime: () 
       .where(
         and(
           eq(orders.businessId, businessId),
-          inArray(orders.status, ["awaiting_photos", "ready_to_assign"]),
+          // Before anyone draws; while drawing only when a pet's face is still missing.
+          or(
+            inArray(orders.status, ["awaiting_photos", "ready_to_assign"]),
+            and(eq(orders.status, "in_design"), isNotNull(orders.photoSubjects), photoHoldingWhere()),
+          ),
           liveOrderWhere(),
           agentOrderScope(),
           // Legacy orders its buyer has not reached out on get no shortfall email (owner, 2026-10-17).
@@ -771,6 +790,20 @@ async function completenessStep(ctx: TickCtx, businessId: string, outOfTime: () 
       )
       .orderBy(orders.createdAt)
       .limit(BATCH),
+  );
+  if (!rows.length) return;
+  const [checking] = await withSystemContext((tx) =>
+    tx
+      .select({ id: activityLog.id })
+      .from(activityLog)
+      .where(
+        and(
+          eq(activityLog.businessId, businessId),
+          eq(activityLog.action, PHOTO_SUBJECTS_CHECKED_ACTION),
+          gte(activityLog.createdAt, new Date(ctx.now.getTime() - CHECKER_LIVE_HOURS * HOUR)),
+        ),
+      )
+      .limit(1),
   );
 
   for (const row of rows) {
@@ -785,28 +818,21 @@ async function completenessStep(ctx: TickCtx, businessId: string, outOfTime: () 
           platformOrderId: orders.platformOrderId,
           platformOrderName: orders.platformOrderName,
           uploadToken: orders.uploadToken,
+          photoSubjects: orders.photoSubjects,
+          placedAt: sql<string>`coalesce(${orders.placedAt}, ${orders.createdAt})`,
         })
         .from(orders)
         .where(eq(orders.id, row.id))
         .for("update");
-      if (!order || (order.status !== "awaiting_photos" && order.status !== "ready_to_assign")) return;
+      if (!order || !["awaiting_photos", "ready_to_assign", "in_design"].includes(order.status)) return;
 
-      const [count] = await tx
-        .select({ n: sql<number>`count(*)::int` })
+      const refs = await tx
+        .select({ id: assets.id, createdAt: assets.createdAt })
         .from(assets)
         .where(and(eq(assets.orderId, order.id), eq(assets.type, "reference"), isNull(assets.deletedAt)));
-      const items = await tx
-        .select({ figureCount: orderItems.figureCount, figureCountSource: orderItems.figureCountSource })
-        .from(orderItems)
-        .where(eq(orderItems.orderId, order.id));
-      const have = Number(count?.n ?? 0);
+      const have = refs.length;
       if (have === 0) return;
       bump((r) => (r.completenessChecked += 1));
-
-      const verdict = computeCompleteness({ photoCount: have, items });
-      // "unknown" means a guess somewhere: never block or bother anyone on it.
-      if (verdict.verdict !== "mismatch" || verdict.expectedFigures == null) return;
-      const need = verdict.expectedFigures;
 
       const [drafted] = await tx
         .select({ createdAt: activityLog.createdAt, metadata: activityLog.metadata })
@@ -814,6 +840,71 @@ async function completenessStep(ctx: TickCtx, businessId: string, outOfTime: () 
         .where(and(eq(activityLog.orderId, order.id), eq(activityLog.action, "agent.photo_shortfall_drafted")))
         .orderBy(desc(activityLog.createdAt))
         .limit(1);
+
+      // The pet slots (lib/photos/subjects.ts): once the photo check has looked
+      // at these exact photos, its named slots decide, not the photo count.
+      const ps = order.photoSubjects;
+      if (ps) {
+        // A new photo came in since: the photo check looks again first.
+        if (ps.photoSig !== photoSigOf(refs.map((r) => r.id))) return;
+        const waiting = holdingSubjects(ps);
+        if (!waiting.length) return;
+        const names = joinNames(waiting.map((s) => s.name));
+        const subjects = waiting.map((s) => ({ name: s.name, face: s.face, note: s.note }));
+        if (!drafted) {
+          // Asked once, by name. Her order is drawn from what she sent until the photo arrives.
+          const fromNow = new Date(order.placedAt).getTime() >= SUBJECT_ASKS_FROM.getTime();
+          const messageId =
+            fromNow && order.uploadToken
+              ? await queuePhotoSubjectAsk(tx, { ...order, uploadToken: order.uploadToken }, { have, all: ps.subjects, missing: waiting })
+              : null;
+          if (messageId) {
+            await logAgent(tx, order, "agent.photo_shortfall_drafted", {
+              have,
+              need: ps.subjects.length,
+              subjects: waiting.map((s) => s.name),
+              messageId,
+              via: "photo_subjects",
+            });
+            bump((r) => (r.photoShortfallDrafted += 1));
+            return;
+          }
+          await raise(tx, bump, ctx.now, order, "photo_subject_missing",
+            `Order #${orderLabel(order)}: no clear face photo of ${names}`,
+            {
+              subjects,
+              messageId: null,
+              reason: !fromNow
+                ? "an order from before the photo ask started: nothing new goes to the buyer"
+                : order.uploadToken
+                  ? "no customer email"
+                  : "no upload link",
+            });
+          return;
+        }
+        const askedAt = new Date(drafted.createdAt);
+        if (ctx.now.getTime() - askedAt.getTime() < PHOTO_SHORTFALL_GRACE_HOURS * HOUR) return;
+        const meta = (drafted.metadata ?? {}) as { messageId?: string | null };
+        await raise(tx, bump, ctx.now, order, "photo_subject_missing",
+          `Order #${orderLabel(order)}: no clear face photo of ${names}, customer asked ${askedAt.toISOString().slice(0, 10)}`,
+          { subjects, messageId: meta.messageId ?? null, askedAt: askedAt.toISOString() });
+        return;
+      }
+      if (order.status === "in_design") return;
+      // Never checked yet: while the photo check is running for this business,
+      // a photo that just landed gets its look before the count rule asks her.
+      const newest = Math.max(...refs.map((r) => new Date(r.createdAt).getTime()));
+      if (checking && ctx.now.getTime() - newest < CHECK_WAIT_HOURS * HOUR) return;
+
+      const items = await tx
+        .select({ figureCount: orderItems.figureCount, figureCountSource: orderItems.figureCountSource })
+        .from(orderItems)
+        .where(eq(orderItems.orderId, order.id));
+
+      const verdict = computeCompleteness({ photoCount: have, items });
+      // "unknown" means a guess somewhere: never block or bother anyone on it.
+      if (verdict.verdict !== "mismatch" || verdict.expectedFigures == null) return;
+      const need = verdict.expectedFigures;
 
       if (!drafted) {
         const messageId = order.uploadToken

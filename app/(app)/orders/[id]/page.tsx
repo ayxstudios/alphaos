@@ -62,6 +62,8 @@ import { getCardDetail } from "@/lib/orders/card-detail";
 import { formatAge } from "@/lib/orders/today-queue";
 import { defaultReplyTemplate } from "@/lib/orders/reply-draft";
 import { OrderCommentForm } from "@/components/orders/order-comment-form";
+import { PhotoSubjectsPanel } from "@/components/orders/photo-subjects-panel";
+import type { PhotoSubjects } from "@/lib/photos/subject-types";
 import { PhoneFold } from "@/components/ui/phone-fold";
 import { optionsSummary } from "@/lib/orders/options-summary";
 import { OrderRevisionForm } from "@/components/orders/order-revision-form";
@@ -917,10 +919,30 @@ export default async function OrderDetailPage({
               </div>
             ) : (
               <div className="mt-3 grid grid-cols-3 gap-2">
-                {references.map((image) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img key={image.id} src={sizedImageUrl(image.url, 480)} alt="" loading="lazy" decoding="async" className="aspect-square rounded-input object-cover shadow-card" />
-                ))}
+                {references.map((image, i) => {
+                  const caption = photoCaption(detail.photoSubjects, image.id, i);
+                  return (
+                    <figure key={image.id} className="flex min-w-0 flex-col gap-1">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={sizedImageUrl(image.url, 480)} alt="" loading="lazy" decoding="async" className="aspect-square rounded-input object-cover shadow-card" />
+                      {caption && (
+                        <figcaption className="truncate text-xs text-slate" title={caption}>
+                          {caption}
+                        </figcaption>
+                      )}
+                    </figure>
+                  );
+                })}
+              </div>
+            )}
+            {detail.photoSubjects && (
+              <div className="mt-4">
+                <PhotoSubjectsPanel
+                  subjects={detail.photoSubjects}
+                  photos={references}
+                  where={staffView ? "order" : "card"}
+                  orderId={editable ? order.id : undefined}
+                />
               </div>
             )}
           </DataPanel>
@@ -1297,4 +1319,13 @@ function Field({
       {sub && <p className="mt-1 text-sm text-slate">{sub}</p>}
     </div>
   );
+}
+
+/** "Photo 2: Jax, Rambo" under a reference photo once the photo check has seen it (the pet slots). */
+function photoCaption(ps: PhotoSubjects | null, assetId: string, index: number): string | null {
+  if (!ps?.photos || !(assetId in ps.photos)) return null;
+  const names = (ps.photos[assetId] ?? [])
+    .map((key) => ps.subjects.find((s) => s.key === key)?.name)
+    .filter((n): n is string => Boolean(n));
+  return names.length ? `Photo ${index + 1}: ${names.join(", ")}` : `Photo ${index + 1}`;
 }

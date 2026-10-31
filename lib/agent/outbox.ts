@@ -29,7 +29,7 @@ export const MAX_SEND_RETRIES = 3;
 /** Wait before retry n+1 once retry n has failed (retry 1 is due at once). */
 export const RETRY_BACKOFF_MINUTES = [15, 60] as const;
 /** Templates the agent writes itself; their drafts are the agent's to send. */
-const AGENT_TEMPLATES = ["photo_shortfall", "proof_reminder"] as const;
+const AGENT_TEMPLATES = ["photo_shortfall", "photo_subject_ask", "proof_reminder"] as const;
 /** A buyer asking about these gets a human, never an automatic answer. */
 const SENSITIVE = /\b(refund|money back|charge ?back|dispute|cancel(?:l?ation)?|quote|price|pricing|compensat\w*|legal|lawyer|complain\w*)\b/i;
 const FINISHED = ["delivered", "complete", "cancelled"] as const;

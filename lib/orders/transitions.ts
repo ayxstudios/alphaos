@@ -25,6 +25,7 @@ import {
 import { onRevisionEdge } from "@/lib/agent/ai-core";
 import { aiQcRefusal } from "@/lib/qc/ai-qc-gate";
 import { duplicateSlotsGate } from "@/lib/qc/duplicate-slots";
+import { photoSubjectsGate } from "@/lib/photos/subjects";
 import { revisionStopGate } from "@/lib/qc/revision-stop";
 import { outgoingArtworkIds, wrongFileGate } from "@/lib/qc/wrong-file";
 import { resetRevisionDeadline, runAutoAssign } from "./assign";
@@ -276,6 +277,14 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
       via: "submit",
     });
     if (twin) throw new PreconditionError(twin.message);
+    // a pet or person bought with no clear face photo yet (Delaney 4200623137: Rambo drawn from a guess)
+    const faceless = await photoSubjectsGate(tx, actor, {
+      orderId,
+      businessId: order.businessId,
+      overrideReason: input.overrideReason,
+      via: "submit",
+    });
+    if (faceless) throw new PreconditionError(faceless.message);
   }
   if (key === "awaiting_qc->awaiting_approval") {
     await assertEveryPortrait(tx, orderId, order.platformOrderId, "pass");

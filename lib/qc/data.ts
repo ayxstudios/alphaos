@@ -24,6 +24,7 @@ import { isR2Configured, presignGetStable } from "@/lib/storage/r2";
 import { currentMatchForProduct } from "@/lib/orders/style-learning";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
 import type { ProductOption } from "@/lib/db/schema";
+import type { PhotoSubjects } from "@/lib/photos/subject-types";
 
 export type QcImage = {
   id: string;
@@ -94,6 +95,8 @@ export type QcContext = {
   checklist: ChecklistSnapshot;
   /** Earlier failed QCs, newest first (only those with a reason or pictures). */
   pastFails: QcPastFail[];
+  /** Who is in her photos and whose face is still missing (lib/photos/subjects.ts); null = not checked yet. */
+  photoSubjects: PhotoSubjects | null;
 };
 
 const SUBMISSION_TYPES = ["submission", "final"] as const;
@@ -136,6 +139,7 @@ export async function getQcContext(
         dueAt: orders.dueAt,
         notes: orders.notes,
         rawImport: orders.rawImport,
+        photoSubjects: orders.photoSubjects,
       })
       .from(orders)
       .where(eq(orders.id, orderId));
@@ -303,6 +307,7 @@ export async function getQcContext(
       portraits,
       proofFiles,
       pastFails,
+      photoSubjects: order.photoSubjects ?? null,
       checklist: resolveChecklist({
         checklistVersion: shop?.checklistVersion ?? 1,
         integrationConfig: shop?.integrationConfig ?? null,

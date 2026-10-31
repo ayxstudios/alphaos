@@ -29,6 +29,7 @@ import { QcPictures } from "./qc-pictures";
 import { FailDialog } from "./fail-dialog";
 import { ShortcutLegend, LegendToggle } from "./shortcut-legend";
 import { SignatureInput, signatureName } from "./signature-input";
+import { PhotoSubjectsPanel } from "@/components/orders/photo-subjects-panel";
 
 const LEGEND_KEY = "qc-legend-dismissed";
 
@@ -389,6 +390,11 @@ export function QcScreen({
             <AutoQcBadge view={autoQc} />
             <AutoQcNotes view={autoQc} />
           </div>
+          {ctx.photoSubjects ? (
+            <div className="mb-4">
+              <PhotoSubjectsPanel subjects={ctx.photoSubjects} photos={ctx.references} where="qc" orderId={ctx.orderId} />
+            </div>
+          ) : null}
           <details ref={saysRef} className="group mb-4">
             <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-input bg-canvas px-3 text-sm font-semibold text-ink [&::-webkit-details-marker]:hidden">
               What the customer ordered

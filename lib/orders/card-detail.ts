@@ -7,6 +7,7 @@ import { isDesignerLike } from "@/lib/auth/roles";
 import { loadProofFilePick, type MissingPortrait } from "@/lib/proofs/files";
 import { getOrderPortraits, slotKeyOf, type OrderPortrait } from "./portraits";
 import type { OrderStatus } from "./transitions";
+import type { PhotoSubjects } from "@/lib/photos/subject-types";
 
 /**
  * One row of the card's unified history feed. Everything the order has ever
@@ -52,6 +53,8 @@ export type CardDetail = {
   portraits: OrderPortrait[];
   /** 2+ portrait orders: the portraits with no file yet (Submit for QC waits for every one). */
   missingPortraits: MissingPortrait[];
+  /** Who is in her photos and whose face is still missing (lib/photos/subjects.ts); null = not checked yet. */
+  photoSubjects: PhotoSubjects | null;
 };
 
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
@@ -198,7 +201,15 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
     const pick = portraits.length >= 2 ? await loadProofFilePick(tx, orderId, portraits) : null;
     for (const image of images) image.portrait = pick?.slotOf[image.id] ?? null;
 
-    return { events, images, portraits, missingPortraits: pick?.mode === "slots" ? pick.missing : [] };
+    const [slots] = await tx.select({ photoSubjects: orders.photoSubjects }).from(orders).where(eq(orders.id, orderId));
+
+    return {
+      events,
+      images,
+      portraits,
+      missingPortraits: pick?.mode === "slots" ? pick.missing : [],
+      photoSubjects: slots?.photoSubjects ?? null,
+    };
   });
 }
 

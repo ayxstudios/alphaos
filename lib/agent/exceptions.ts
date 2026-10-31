@@ -5,6 +5,8 @@ import { exceptions } from "@/lib/db/schema";
 
 export type ExceptionKind =
   | "photo_count_mismatch"
+  // A pet or person bought with no clear face photo (lib/photos/subjects.ts).
+  | "photo_subject_missing"
   | "intake_unparsed"
   | "no_eligible_designer"
   | "reply_unclear"

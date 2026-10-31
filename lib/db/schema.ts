@@ -21,6 +21,7 @@ import {
 import type { OnboardingState } from "../tour/state";
 import type { PrintRoutingRule } from "../print/routing-types";
 import type { AgentConfigInput } from "../agent/config-types";
+import type { PhotoSubjects } from "../photos/subject-types";
 
 /**
  * Database schema (Drizzle ORM, PostgreSQL / Neon).
@@ -135,6 +136,8 @@ export const emailTemplateKey = pgEnum("email_template_key", [
   "proof_reminder",
   // Agent autopilot: fewer photos than figures ordered (always a VA draft).
   "photo_shortfall",
+  // Agent autopilot: a pet or person bought with no clear face photo (0065).
+  "photo_subject_ask",
 ]);
 export const printProvider = pgEnum("print_provider", ["lumaprints", "gelato"]);
 export const printMethod = pgEnum("print_method", ["api", "manual"]);
@@ -648,6 +651,10 @@ export const orders = pgTable(
     // Raw platform payload kept for reference — e.g. the full Etsy receipt so a
     // VA can read the personalization / note-to-seller while completing details.
     rawImport: jsonb("raw_import"),
+    // Who is in her photos: a named slot per pet or person bought, how clear
+    // its face is, which photo shows whom (migration 0065, written by the
+    // agent's photo check). Null = never checked.
+    photoSubjects: jsonb("photo_subjects").$type<PhotoSubjects>(),
     // The order's grand total in the shop's currency at import (Shopify
     // totalPriceSet.shopMoney, Etsy receipt grandtotal; migration 0062). Null =
     // unknown (manual, Trello, legacy). Read by value-gated quota groups.

@@ -40,6 +40,8 @@ export const GRACE_HOURS: Record<string, number | null> = {
   legacy_order: 2,
   new_product: 2,
   photo_count_mismatch: null,
+  // The pet slots: the team's card on /exceptions, never an owner line (owner notifications 2026-10-27).
+  photo_subject_missing: null,
 };
 const OTHER_KIND_GRACE_HOURS = 2;
 export const DIGEST_EVERY_MINUTES = 60;

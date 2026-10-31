@@ -18,6 +18,7 @@ export const dynamic = "force-dynamic";
 
 const KIND_LABELS: Record<string, string> = {
   photo_count_mismatch: "Photo count",
+  photo_subject_missing: "Pet photo missing",
   intake_unparsed: "Intake needs a human",
   no_eligible_designer: "No designer free",
   reply_unclear: "Buyer reply unclear",
@@ -35,6 +36,11 @@ const KIND_LABELS: Record<string, string> = {
 /** The one thing to do, as a short imperative; `to` is where the primary button goes. */
 const TODO: Record<string, { line: string; button?: string; to?: "order" | "messages" }> = {
   photo_count_mismatch: { line: "Ask the buyer for one more photo.", button: "Open order", to: "order" },
+  photo_subject_missing: {
+    line: "Get a clear face photo from the buyer, or mark the photo fine on the order.",
+    button: "Open order",
+    to: "order",
+  },
   intake_unparsed: { line: "Fill in the order details.", button: "Open order", to: "order" },
   no_eligible_designer: { line: "Pick a designer for this order.", button: "Open order", to: "order" },
   // The buyer's thread lives on the order page (Email customer), so a reply on a known order opens the order.

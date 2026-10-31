@@ -25,6 +25,7 @@ import { businessSlaHours, drawsDisney, drawsOnlyDisney, isDisneyStyle, rankForO
 import { loadReworkHold, reworkBound, reworkKeeper, reworkOwnerName, type ReworkHold } from "@/lib/orders/rework";
 import { archivedUnfinishedWhere } from "@/lib/orders/archive";
 import { buyerWordsWhere } from "@/lib/reminders/buyer-replied";
+import { photoHoldingWhere } from "@/lib/photos/subjects";
 import { reassignOrder } from "./ai-designer";
 import { agentOrderScope, legacyQuiet } from "./scope";
 import { openExceptionTx } from "./exceptions";
@@ -36,6 +37,8 @@ export const CLOSED_STATUSES = ["cancelled", "complete", "delivered", "shipped"]
 const INTAKE_STATUSES = ["awaiting_details", "triage"];
 /** Someone started drawing it, or later. */
 const STARTED_STATUSES = ["in_design", "awaiting_qc", "awaiting_approval", "approved", "printing"];
+/** The portrait went to the buyer, or later. */
+const PAST_QC_STATUSES = ["awaiting_approval", "approved", "printing"];
 /**
  * Exceptions about something a buyer or a mailbox said. A closed order makes
  * them moot only when it closed AFTER they opened: a buyer writing about a
@@ -99,6 +102,8 @@ export type ExceptionFacts = {
   productOrdersHeld: boolean;
   /** reply_unclear / buyer_question: what the buyer wrote. */
   excerpt?: string | null;
+  /** photo_subject_missing: a pet or person bought still has no clear face photo (lib/photos/subjects.ts). */
+  photoHolding?: boolean;
 };
 
 /** A Gmail / Outlook emoji reaction: nothing to read, nothing to answer. Pure. */
@@ -132,6 +137,11 @@ export function staleReason(f: ExceptionFacts): string | null {
     case "photo_count_mismatch":
       if (someoneHasIt) return "went to a designer with the photos it had";
       if (STARTED_STATUSES.includes(st) && !f.aiFailedHold) return "went to design";
+      return null;
+    case "photo_subject_missing":
+      // Unlike the photo count, a designer having it is no answer: the face is still missing.
+      if (f.hasOrder && !f.photoHolding) return "every pet and person has a clear face photo";
+      if (PAST_QC_STATUSES.includes(st)) return "past QC";
       return null;
     case "intake_unparsed":
     case "legacy_order":
@@ -193,6 +203,7 @@ async function loadExceptionFacts(tx: Tx, businessId: string) {
             and lower(m2.address) = lower(${exceptions.detail}->>'to')
             and coalesce(m2.sent_at, m2.manual_sent_at, m2.created_at) > ${exceptions.createdAt})))`,
       excerpt: sql<string | null>`${exceptions.detail}->>'excerpt'`,
+      photoHolding: sql<boolean>`(${exceptions.kind} = 'photo_subject_missing' and ${photoHoldingWhere()})`,
       styleMapped: sql<boolean>`(${exceptions.kind} = 'new_product' and exists (
         select 1 from styles s where s.id = ${exceptions.detail}->>'styleId' and not s.auto_created))`,
       productOrdersHeld: sql<boolean>`(${exceptions.kind} = 'new_product' and exists (
@@ -428,7 +439,7 @@ async function loadOrderFacts(tx: Tx, businessId: string): Promise<OrderFacts[]>
       hasContact: sql<boolean>`coalesce(nullif(trim(${customers.email}), ''), null) is not null and ${customers.email} not like '%.invalid'`,
       lastChaseAt: sql<string | null>`(select max(m.created_at) from messages m where m.order_id = ${orders.id}
         and m.direction = 'outbound' and m.status in ('sent', 'queued')
-        and m.template_key in ('photo_request', 'photo_reminder', 'photo_shortfall'))`,
+        and m.template_key in ('photo_request', 'photo_reminder', 'photo_shortfall', 'photo_subject_ask'))`,
       parentLive: sql<boolean>`exists (select 1 from activity_log l join orders p on p.id::text = l.metadata->>'parentOrderId'
         where l.order_id = ${orders.id} and l.action = 'agent.addon_linked'
           and p.archived_at is null and p.status <> 'cancelled')`,

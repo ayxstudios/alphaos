@@ -138,6 +138,16 @@ function pureTests() {
     staleReason(facts({ kind: "photo_count_mismatch", status: "in_design", activeAssignment: true, activeIsAgent: true })) ===
       "went to a designer with the photos it had",
   );
+  check(
+    "L1 pet slots: closes once every face has a clear photo",
+    staleReason(facts({ kind: "photo_subject_missing", status: "in_design", activeAssignment: true, photoHolding: false })) ===
+      "every pet and person has a clear face photo",
+  );
+  check(
+    "L1 pet slots: a designer having it is no answer",
+    staleReason(facts({ kind: "photo_subject_missing", status: "in_design", activeAssignment: true, photoHolding: true })) === null,
+  );
+  check("L1 pet slots: past QC", staleReason(facts({ kind: "photo_subject_missing", status: "awaiting_approval", photoHolding: true })) === "past QC");
 
   const due = { slaHours: 24, urgentHours: 3 };
   check("handover hours: the SLA when the buyer's date is far", handoverDueHours({ ...due, orderDueAt: new Date(now.getTime() + 100 * HOUR) }, now) === 24);

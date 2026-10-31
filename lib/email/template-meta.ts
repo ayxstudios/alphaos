@@ -23,7 +23,10 @@ export type TemplateKey =
   | "proof_reminder"
   // Agent autopilot (lib/agent/autopilot.ts): fewer photos than figures
   // ordered. Always a draft; a VA approves it in the outbox.
-  | "photo_shortfall";
+  | "photo_shortfall"
+  // The pet slots (lib/photos/subjects.ts): a pet or person bought with no
+  // clear face photo yet, asked for once by name. A draft the outbox sends.
+  | "photo_subject_ask";
 
 /** The variables a template body/subject may reference, as `{{snake_case}}`. */
 export type TemplateVars = {
@@ -42,6 +45,12 @@ export type TemplateVars = {
   photos_need_words?: string;
   /** "both of them" / "all three of them", from photos_need when not given (renderTemplate). */
   photos_need_all?: string;
+  /** Everyone the portrait is of, as the buyer would say it: "Jax and Rambo" (lib/photos/subject-types.ts subjectAskVars). */
+  subject_names?: string;
+  /** Who has no clear face photo yet: "a clear photo of Rambo's face" / "clear photos of Jax's and Rambo's faces". */
+  subject_missing_faces?: string;
+  /** "If you have one, you can add it here:" / "If you have them, you can add them here:". */
+  subject_add_line?: string;
   /**
    * The shop person's own closing lines ("Kindest Regards,\nMel"). resolveTemplate
    * fills it from the business (agent_config.replySignOff, else the shop's persona);
@@ -128,6 +137,12 @@ export const TEMPLATE_META: Record<
     description: "Drafted by the agent when an order has fewer photos than people or pets ordered. Waits for approval.",
     variables: ["first_name", "order_number", "business_name", "photos_have", "photos_need", "photos_have_noun", "photos_need_words", "photos_need_all", "upload_link", "sign_off"],
   },
+  photo_subject_ask: {
+    label: "Clear face photo needed",
+    description:
+      "Goes out once by itself when a pet or person on the order has no clear face photo yet, naming who. The designer cannot hand the portrait in until the photo arrives or someone marks the photo fine.",
+    variables: ["first_name", "order_number", "business_name", "photos_have", "photos_have_noun", "subject_names", "subject_missing_faces", "subject_add_line", "upload_link", "sign_off"],
+  },
 };
 
 export const EDITABLE_TEMPLATE_KEYS: TemplateKey[] = [
@@ -144,6 +159,7 @@ export const EDITABLE_TEMPLATE_KEYS: TemplateKey[] = [
   "photo_reminder",
   "proof_reminder",
   "photo_shortfall",
+  "photo_subject_ask",
 ];
 
 /**
@@ -228,6 +244,9 @@ export function sampleTemplateVars(businessName: string, appOrigin: string): Tem
     tracking_url: "https://example.com/track/TEST123456789",
     photos_have: "1",
     photos_need: "3",
+    subject_names: "Jax and Rambo",
+    subject_missing_faces: "a clear photo of Rambo's face",
+    subject_add_line: "If you have one, you can add it here:",
     sign_off: signOffFor({ name: businessName }),
   });
 }

@@ -157,6 +157,17 @@ If what you've sent already shows {{photos_need_all}} clearly, just reply and le
 
 {{sign_off}}`,
   },
+  photo_subject_ask: {
+    subject: "A quick question about your {{business_name}} portrait (order {{order_number}})",
+    body: `Hi {{first_name}},
+
+Thanks so much for your {{photos_have_noun}}! I want to get {{subject_names}} just right, and I don't have {{subject_missing_faces}} yet. {{subject_add_line}}
+{{upload_link}}
+
+If you don't have any others, just reply and let me know and I'll work from what you've sent.
+
+{{sign_off}}`,
+  },
   proof_reminder: {
     subject: "Your {{business_name}} portrait is waiting for you",
     body: `Hi {{first_name}},
