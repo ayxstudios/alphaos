@@ -31,6 +31,7 @@ import {
 } from "@/lib/storage/r2";
 import { assertKeysBelongTo, assertStoredImage } from "@/lib/uploads/verify";
 import { hashColumnsForKeys } from "@/lib/qc/asset-hash";
+import { holdsPhotoSlot } from "@/lib/photos/subjects";
 
 export type MoveResult =
   | { ok: true; status: OrderStatus; warnings?: string[] }
@@ -302,7 +303,7 @@ export async function saveCardAssetUploads(input: {
         metadata: { type: input.type, count: r2Keys.length },
       });
 
-      if (!isDesignerLike(user.role) && input.type === "reference" && order.status === "awaiting_photos") {
+      if (!isDesignerLike(user.role) && input.type === "reference" && order.status === "awaiting_photos" && !(await holdsPhotoSlot(tx, order.id))) {
         await runTransition(tx, user, {
           orderId: order.id,
           to: "ready_to_assign",

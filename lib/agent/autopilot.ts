@@ -36,11 +36,12 @@ import { submitPrintOrder } from "@/lib/print/submit";
 import { getAgentConfig } from "./config";
 import { ensureAgentDesigner } from "./ai-core";
 import { queuePhotoRequest, queuePhotoShortfall, queuePhotoSubjectAsk } from "@/lib/email/dispatch";
-import { PHOTO_SUBJECTS_CHECKED_ACTION, photoHoldingWhere, photoSigOf } from "@/lib/photos/subjects";
+import { PHOTO_CHECK_WAIT_HOURS, PHOTO_SUBJECTS_CHECKED_ACTION, photoHoldingWhere, photoSigOf, waitingOnPhotoLine } from "@/lib/photos/subjects";
 import { holdingSubjects, joinNames } from "@/lib/photos/subject-types";
 import { shopStyleChoices } from "@/lib/designers/styles";
 import type { EtsyIntegrationConfig, EtsyTransaction } from "@/lib/integrations/etsy/types";
 import { businessSlaHours, createAssignment, drawsDisney, isDisneyStyle, runAutoAssign } from "@/lib/orders/assign";
+import { runTransition } from "@/lib/orders/transitions";
 import { classifyOrder, type ClassifyConfig } from "@/lib/integrations/classify";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { agentOrderScope, legacyQuiet } from "./scope";
@@ -761,8 +762,8 @@ async function queuePhotoRequestOnce(tx: Tx, order: OrderRef & { uploadToken: st
 export const SUBJECT_ASKS_FROM = new Date("2026-10-30T13:00:00Z");
 /** The agent's photo check counts as running for a business that had a check this recently. */
 const CHECKER_LIVE_HOURS = 72;
-/** A new photo on a never-checked order waits this long for the photo check before the count rule speaks. */
-const CHECK_WAIT_HOURS = 2;
+/** A new photo on a never-checked order waits this long for the photo check before the count rule speaks (and before it is assigned unchecked). */
+const CHECK_WAIT_HOURS = PHOTO_CHECK_WAIT_HOURS;
 
 async function completenessStep(ctx: TickCtx, businessId: string, outOfTime: () => boolean): Promise<void> {
   const photoCount = sql<number>`(
@@ -852,7 +853,7 @@ async function completenessStep(ctx: TickCtx, businessId: string, outOfTime: () 
         const names = joinNames(waiting.map((s) => s.name));
         const subjects = waiting.map((s) => ({ name: s.name, face: s.face, note: s.note }));
         if (!drafted) {
-          // Asked once, by name. Her order is drawn from what she sent until the photo arrives.
+          // Asked once, by name. Before a designer has it, the order waits for the photo (runAutoAssign parks it in awaiting_photos).
           const fromNow = new Date(order.placedAt).getTime() >= SUBJECT_ASKS_FROM.getTime();
           const messageId =
             fromNow && order.uploadToken
@@ -1073,13 +1074,32 @@ async function assignStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
         return;
       }
 
-      const { assigned, reworkHeld, missingPhoto, noStyle } = await runAutoAssign(tx, { orderId: order.id, businessId: order.businessId, assignedBy: null });
+      const { assigned, reworkHeld, missingPhoto, noStyle, photosHeld, subjects: heldSubjects, photosUnchecked } = await runAutoAssign(tx, { orderId: order.id, businessId: order.businessId, assignedBy: null });
       if (assigned) {
         await logAgent(tx, order, "agent.assigned", { designerId: assigned, via: "agent_autopilot" });
         bump((r) => (r.assigned += 1));
         await backlogCheck(tx, order, assigned, ctx.now);
         return;
       }
+
+      // Photo hold (Yousif 2026-10-31): a pet with no clear face photo means we
+      // have not given the designer everything she needs, so the order waits
+      // in awaiting_photos while the buyer ask / team card (completenessStep)
+      // gets the photo. The check landing clear releases it again.
+      if (photosHeld) {
+        const names = joinNames(heldSubjects ?? []);
+        await runTransition(tx, { id: SYSTEM_ACTOR_ID, role: "system" }, {
+          orderId: order.id,
+          to: "awaiting_photos",
+          expectedFrom: "ready_to_assign",
+          metadata: { via: "photo_subjects", reason: waitingOnPhotoLine((heldSubjects ?? []).map((name) => ({ name }))) },
+        });
+        await logAgent(tx, order, "agent.photo_hold_parked", { subjects: heldSubjects ?? [], line: `waiting on a photo of ${names}` });
+        return;
+      }
+      // Photos in, the check has not looked yet: it gets its two hours before
+      // she is assigned unchecked (runAutoAssign logs agent.photo_check_missed then).
+      if (photosUnchecked) return;
 
       // Hard stop (Yousif 2026-10-18): an order with no reference photo never
       // reaches a designer, not even the overflow pick. One card says where

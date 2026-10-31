@@ -279,8 +279,10 @@ export function CardModal({
             <PhotoSubjectsPanel
               subjects={detail?.photoSubjects}
               photos={(detail?.images ?? []).filter((img) => img.type === "reference")}
-              where="card"
               orderId={designerView ? undefined : card.orderId}
+              withDesigner={!["awaiting_details", "awaiting_photos", "ready_to_assign", "on_hold"].includes(card.status)}
+              askedAt={detail?.photoAskedAt ?? null}
+              quiet={designerView}
               onMarked={() =>
                 loadCard(card.orderId)
                   .then((d) => {

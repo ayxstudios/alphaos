@@ -2,18 +2,26 @@
  * The pet slots (Yousif 2026-10-31; Delaney 4200623137: Rambo was drawn from a
  * guess because none of her photos showed his face). The pure rules first,
  * then on a throwaway business of its own ("Photo Slots Test <stamp>"), which
- * is deleted again at the end. Proves:
+ * is deleted again at the end. The hold is at ASSIGNMENT, not at the designer's
+ * hand-in (Yousif 2026-10-31: "our job is to give the designers all the photos
+ * they need... Don't check after them after that"). Proves:
  *   1. a photo check about photos that changed since it was read is refused;
- *   2. a designer cannot hand in while a pet has no clear face photo, not even
- *      with a reason;
+ *   2. a designer is never stopped from handing in, whatever the slots say;
  *   3. only staff can mark the photo fine; that closes the team card, is
  *      logged once, and survives the next check of the same photos;
- *   4. a photo that came in after the check: the refusal says it is being
- *      checked, and staff can still hand it in with a reason (logged);
+ *   4. a re-check that fills a slot on an order already in design adds a plain
+ *      timeline line and sends the designer nothing;
  *   5. the check's queue: unchecked and changed orders, most urgent first,
  *      photos numbered in upload order;
  *   6. the agent asks a new order's buyer once, by name (a draft here); an
- *      order from before the ask started goes to the team with no email.
+ *      order from before the ask started goes to the team with no email;
+ *   7. staff assigning is refused with the pet's name, unless admin or va give
+ *      a reason (logged via 'assign'); the agent's auto-assign answers
+ *      photosHeld and autopilot parks the order in awaiting_photos;
+ *   8. an all-clear check or a staff clear releases it to ready_to_assign; a
+ *      check that still holds does not;
+ *   9. an unchecked order waits for the check, then is assigned anyway with
+ *      agent.photo_check_missed logged once.
  * Never run against production.
  */
 import "./load-env";
@@ -45,20 +53,25 @@ import {
 } from "../lib/db/schema";
 import { installMockTransport } from "../lib/mock/transport";
 import { activityDetail, activityLabel } from "../lib/orders/activity-label";
-import { OrderTransitionError, transition, type OrderStatus } from "../lib/orders/transitions";
+import { PhotoSubjectsHeldError, createAssignment, runAutoAssign } from "../lib/orders/assign";
+import { transition, type OrderStatus } from "../lib/orders/transitions";
 import { buyerName, holdingSubjects, joinNames, subjectAskVars, type PhotoSubject, type PhotoSubjects } from "../lib/photos/subject-types";
 import {
+  PHOTO_CHECK_MISSED_ACTION,
   PHOTO_SUBJECT_CLEARED_ACTION,
+  PHOTO_SUBJECT_FILLED_ACTION,
   PHOTO_SUBJECTS_CHECKED_ACTION,
   PHOTO_SUBJECTS_OVERRIDE_ACTION,
   buildSubjectJob,
   cleanSubjectCheck,
   clearPhotoSubject,
+  holdsPhotoSlot,
   keepStaffClears,
   listSubjectQueue,
   photoSigOf,
   photoSubjectsMessage,
   saveSubjectCheck,
+  waitingOnPhotoLine,
 } from "../lib/photos/subjects";
 
 let failed = 0;
@@ -173,7 +186,7 @@ function pureTests() {
   check(
     "refusal: names the pet and the order",
     fresh ===
-      "Order 4200623137: There is no clear face photo of Rambo yet, so it cannot go to QC. We are getting one from the buyer, and it lands on the card as soon as she sends it.",
+      "Order 4200623137: There is no clear face photo of Rambo yet, so it cannot go to a designer. We are getting one from the buyer, and the order goes on to a designer as soon as it lands on the card.",
     fresh,
   );
   const stale = photoSubjectsMessage([{ name: "Jax" }, { name: "Rambo" }], null, false);
@@ -195,9 +208,15 @@ function pureTests() {
       activityDetail("order.photo_subject_cleared", { name: "Rambo", reason: "She has no other photo" }) === "Rambo: She has no other photo",
   );
   check(
-    "history: handed in without one",
-    activityDetail("order.photo_subjects_override", { subjects: ["Jax", "Rambo"], reason: "owner checked" }) === "Jax and Rambo: owner checked",
+    "history: given to a designer without one",
+    activityDetail("order.photo_subjects_override", { subjects: ["Jax", "Rambo"], reason: "owner checked" }) === "Jax and Rambo: owner checked" &&
+      activityLabel("order.photo_subjects_override") === "Given to a designer without a clear face photo",
   );
+  check(
+    "history: a new photo fills a slot",
+    activityDetail("order.photo_subject_filled", { name: "Rambo", photoNumber: 7 }) === "New photo of Rambo added, photo 7",
+  );
+  check("waiting line: the words the card, page and dialog share", waitingOnPhotoLine([{ name: "Rambo" }]) === "Waiting on a photo of Rambo");
   check(
     "history: the one ask",
     activityDetail("agent.photo_shortfall_drafted", { via: "photo_subjects", subjects: ["Rambo"] }) === "Asked her once for a clear face photo of Rambo.",
@@ -314,17 +333,6 @@ const photoCards = (orderId: string) =>
       .where(and(eq(exceptions.orderId, orderId), eq(exceptions.kind, "photo_subject_missing"))),
   );
 
-/** The transition's refusal message, or null when it went through. */
-async function refusal(fn: () => Promise<unknown>): Promise<string | null> {
-  try {
-    await fn();
-    return null;
-  } catch (e) {
-    if (e instanceof OrderTransitionError) return e.message;
-    throw e;
-  }
-}
-
 /** What the agent's photo check would answer: Jax's face is clear in the first photo, Rambo only from behind. */
 const answer = (refs: string[]) => ({
   model: "test-vision",
@@ -365,16 +373,10 @@ async function dbTests() {
     JSON.stringify(checked.map((c) => c.metadata)),
   );
 
-  console.log("=== 2. the designer cannot hand it in while Rambo has no clear face photo ===");
-  const no1 = await refusal(() => submit(designer, order));
-  check(
-    "the hand-in is refused, naming Rambo and the order",
-    !!no1 && no1.includes("no clear face photo of Rambo yet") && no1.includes(`PS-SLOTS-${stamp}`) && no1.includes("We are getting one from the buyer"),
-    no1 ?? "NOT refused",
-  );
-  const no2 = await refusal(() => submit(designer, order, "she said it is fine"));
-  check("a designer's reason does not get past it", !!no2 && no2.includes("no clear face photo of Rambo"), no2 ?? "NOT refused");
-  check("the order stays with the designer", (await statusOf(order)) === "in_design");
+  console.log("=== 2. the designer is never stopped from handing in ===");
+  const handed = await submit(designer, order);
+  check("a designer hands it in with Rambo's face still missing", handed.status === "awaiting_qc" && (await statusOf(order)) === "awaiting_qc", `status ${await statusOf(order)}`);
+  check("nothing about it is logged as an override", (await logRows(order, PHOTO_SUBJECTS_OVERRIDE_ACTION)).length === 0);
 
   console.log("=== 3. only staff can mark the photo fine; that closes the team card ===");
   const cardId = await withSystemContext(
@@ -415,33 +417,43 @@ async function dbTests() {
   const recheck = await withSystemContext((tx) => saveSubjectCheck(tx, { orderId: order, photoSig: sig, ...answer([r1, r2]) }));
   const rambo3 = (await slotsOf(order))?.subjects.find((s) => s.key === "rambo");
   check("a new check of the same photos keeps the staff clear", recheck.ok && recheck.holding.length === 0 && rambo3?.cleared?.reason === reason, JSON.stringify(recheck));
-  const went = await submit(designer, order);
-  check("then the designer hands it in", went.status === "awaiting_qc" && (await statusOf(order)) === "awaiting_qc", `status ${await statusOf(order)}`);
 
-  console.log("=== 4. a photo that came in after the check ===");
+  console.log("=== 4. a photo that fills a slot while it is in design ===");
   const late = await mkOrder("LATE", { status: "in_design", assigned: true });
   const l1 = await addPhoto(late, "reference", 3);
   await addPhoto(late, "submission");
   const lateSaved = await withSystemContext((tx) => saveSubjectCheck(tx, { orderId: late, photoSig: photoSigOf([l1]), ...answer([l1]) }));
   check("checked: Rambo holds it", lateSaved.ok && lateSaved.holding.join() === "Rambo", JSON.stringify(lateSaved));
-  await addPhoto(late, "reference");
-  const no3 = await refusal(() => submit(designer, late));
-  check(
-    "the refusal says the new photo is being checked",
-    !!no3 && no3.includes("try again in about 20 minutes") && (await statusOf(late)) === "in_design",
-    no3 ?? "NOT refused",
+  const l2 = await addPhoto(late, "reference");
+  const lateOut = await outbound(late);
+  const filled = await withSystemContext((tx) =>
+    saveSubjectCheck(tx, {
+      orderId: late,
+      photoSig: photoSigOf([l1, l2]),
+      model: "test-vision",
+      subjects: [
+        { name: "Jax", kind: "pet", face: "clear", bestAssetId: l1, assetIds: [l1] },
+        { name: "Rambo", kind: "pet", face: "clear", bestAssetId: l2, assetIds: [l2] },
+      ],
+      extra: [],
+    }),
   );
-  const why = "Owner checked her new photo: Rambo's face is clear";
-  const staffGo = await submit(va, late, why);
-  const overrides = await logRows(late, PHOTO_SUBJECTS_OVERRIDE_ACTION);
-  const om = (overrides[0]?.metadata ?? {}) as { reason?: string; subjects?: string[]; via?: string };
+  check("the re-check fills Rambo's slot", filled.ok && filled.holding.length === 0, JSON.stringify(filled));
+  const fills = await logRows(late, PHOTO_SUBJECT_FILLED_ACTION);
+  const fm = (fills[0]?.metadata ?? {}) as { name?: string; photoNumber?: number };
   check(
-    "staff can hand it in with a reason, logged",
-    staffGo.status === "awaiting_qc" && overrides.length === 1 && overrides[0].actorId === ids.va && om.reason === why && om.subjects?.join() === "Rambo" && om.via === "submit",
-    JSON.stringify(om),
+    "a plain timeline line: new photo of Rambo, photo 2",
+    fills.length === 1 && fm.name === "Rambo" && fm.photoNumber === 2 && activityDetail(PHOTO_SUBJECT_FILLED_ACTION, fm) === "New photo of Rambo added, photo 2",
+    JSON.stringify(fm),
+  );
+  check(
+    "the designer is sent nothing and the order stays with her",
+    (await outbound(late)).length === lateOut.length && (await statusOf(late)) === "in_design",
   );
 
   console.log("=== 5. the photo check's queue ===");
+  // The buyer sends one more photo of the order in design: its check is out of date again.
+  await addPhoto(late, "reference", 0);
   const queued = await mkOrder("QUEUE", { status: "ready_to_assign", placedAt: new Date(Date.now() - 2 * HOUR) });
   const qb = await addPhoto(queued, "reference", 1);
   const qa = await addPhoto(queued, "reference", 2);
@@ -480,6 +492,9 @@ async function dbTests() {
   );
   const q2 = await listSubjectQueue({ businessIds: [ids.biz], limit: 50 });
   check("waiting on her approval with a changed photo: due, after the rest", q2.includes(approval) && q2.indexOf(late) < q2.indexOf(approval));
+  // Back to the order from section 4: she hands it in as usual, nothing is held on the way.
+  const lateGo = await submit(designer, late);
+  check("and she hands it in as usual", lateGo.status === "awaiting_qc" && (await logRows(late, PHOTO_SUBJECTS_OVERRIDE_ACTION)).length === 0);
   const job = await buildSubjectJob(queued, { md5: true });
   check(
     "the job numbers her photos in upload order",
@@ -538,6 +553,119 @@ async function dbTests() {
     (await outbound(fresh)).filter((m) => m.key === "photo_subject_ask").length === 1 && (await logRows(fresh, "agent.photo_shortfall_drafted")).length === 1,
   );
   check("a second tick raises no second card", (await photoCards(old)).length === 1 && (await outbound(old)).length === 0);
+
+  console.log("=== 7. assignment: staff are refused, the agent parks the order ===");
+  installMockTransport();
+  const assignBy = (user: RequestUser, orderId: string, overrideReason?: string) =>
+    withUserContext(user, (tx) =>
+      createAssignment(tx, {
+        orderId,
+        businessId: ids.biz,
+        designerId: ids.designer,
+        assignedBy: user.id,
+        photoGate: { role: user.role === "admin" ? "admin" : user.role === "va" ? "va" : "designer", overrideReason },
+      }),
+    );
+  const heldOrder = async (label: string, status: OrderStatus, hoursAgo = 3) => {
+    const id = await mkOrder(label, { status, placedAt: new Date(Date.now() - hoursAgo * HOUR) });
+    const ref = await addPhoto(id, "reference", hoursAgo);
+    const r = await withSystemContext((tx) => saveSubjectCheck(tx, { orderId: id, photoSig: photoSigOf([ref]), ...answer([ref]) }));
+    if (!r.ok) throw new Error(`setup: the check was not stored: ${r.error}`);
+    return { id, ref };
+  };
+  const gate = await heldOrder("GATE", "ready_to_assign");
+  const gateErr = await assignBy(va, gate.id).then(
+    () => null,
+    (e) => e,
+  );
+  check(
+    "staff assign is refused, naming Rambo",
+    gateErr instanceof PhotoSubjectsHeldError && gateErr.code === "photo_subject_missing" && gateErr.message.includes("no clear face photo of Rambo") && gateErr.message.includes("cannot go to a designer"),
+    gateErr instanceof Error ? gateErr.message : "NOT refused",
+  );
+  const thin = await assignBy(va, gate.id, "").then(
+    () => null,
+    (e) => e,
+  );
+  check("an empty reason does not get past it", thin instanceof PhotoSubjectsHeldError);
+  const designerTry = await assignBy(designer, gate.id, "she said it is fine").then(
+    () => null,
+    (e) => e,
+  );
+  // A designer never sees an unassigned order (RLS), so her try stops earlier still; the point is it never goes through.
+  check("a designer's reason does not get past it either", designerTry instanceof Error);
+  const activeOf = (orderId: string) =>
+    withSystemContext((tx) => tx.select({ id: assignments.id }).from(assignments).where(and(eq(assignments.orderId, orderId), eq(assignments.active, true))));
+  check("nothing was assigned", (await activeOf(gate.id)).length === 0);
+  const assignWhy = "Owner looked at photo 1: Rambo is fine";
+  await assignBy(va, gate.id, assignWhy);
+  const ov = await logRows(gate.id, PHOTO_SUBJECTS_OVERRIDE_ACTION);
+  const ovm = (ov[0]?.metadata ?? {}) as { reason?: string; subjects?: string[]; via?: string };
+  check(
+    "admin or va with a reason assigns it, logged via assign",
+    (await activeOf(gate.id)).length === 1 && ov.length === 1 && ov[0].actorId === ids.va && ovm.via === "assign" && ovm.reason === assignWhy && ovm.subjects?.join() === "Rambo",
+    JSON.stringify(ovm),
+  );
+
+  await withSystemContext((tx) => tx.update(businesses).set({ agentAssignEnabled: true }).where(eq(businesses.id, ids.biz)));
+  const agentHeld = await heldOrder("AGENTHELD", "ready_to_assign");
+  const auto = await withSystemContext((tx) => runAutoAssign(tx, { orderId: agentHeld.id, businessId: ids.biz, assignedBy: null }));
+  check("runAutoAssign answers photosHeld with the names", auto.assigned === null && auto.photosHeld === true && auto.subjects?.join() === "Rambo", JSON.stringify(auto));
+  check("and assigns nobody", (await activeOf(agentHeld.id)).length === 0);
+  await runAgentTick({ businessId: ids.biz });
+  check("autopilot parks it in awaiting_photos", (await statusOf(agentHeld.id)) === "awaiting_photos", `status ${await statusOf(agentHeld.id)}`);
+  const parked = await logRows(agentHeld.id, "agent.photo_hold_parked");
+  check("with a timeline note: waiting on a photo of Rambo", parked.length === 1 && activityDetail("agent.photo_hold_parked", parked[0].metadata as Record<string, unknown>) === "Waiting on a photo of Rambo");
+  await runAgentTick({ businessId: ids.biz });
+  check("a second tick parks nothing twice and assigns nobody", (await logRows(agentHeld.id, "agent.photo_hold_parked")).length === 1 && (await activeOf(agentHeld.id)).length === 0);
+
+  console.log("=== 8. release from awaiting_photos ===");
+  const clearAnswer = (ref: string) => ({
+    model: "test-vision",
+    subjects: [
+      { name: "Jax", kind: "pet", face: "clear", bestAssetId: ref, assetIds: [ref] },
+      { name: "Rambo", kind: "pet", face: "clear", bestAssetId: ref, assetIds: [ref] },
+    ],
+    extra: [],
+  });
+  const moved = async (orderId: string, via: string) =>
+    (await logRows(orderId, "order.ready_to_assign")).some((r) => (r.metadata as { via?: string }).via === via);
+  check("the parked order still holds a slot (the auto-moves leave it)", await withSystemContext((tx) => holdsPhotoSlot(tx, agentHeld.id)));
+  const stillHeld = await withSystemContext((tx) => saveSubjectCheck(tx, { orderId: agentHeld.id, photoSig: photoSigOf([agentHeld.ref]), ...answer([agentHeld.ref]) }));
+  check("a check that still holds does not release it", stillHeld.ok && (await statusOf(agentHeld.id)) === "awaiting_photos");
+  const allClear = await withSystemContext((tx) => saveSubjectCheck(tx, { orderId: agentHeld.id, photoSig: photoSigOf([agentHeld.ref]), ...clearAnswer(agentHeld.ref) }));
+  check(
+    "an all-clear check releases it (a logged system move)",
+    allClear.ok && (await statusOf(agentHeld.id)) !== "awaiting_photos" && (await moved(agentHeld.id, "photo_subjects")),
+    `status ${await statusOf(agentHeld.id)}`,
+  );
+  const byStaff = await heldOrder("STAFFCLEAR", "awaiting_photos");
+  const clearedLast = await withUserContext(va, (tx) => clearPhotoSubject(tx, va, { orderId: byStaff.id, key: "rambo", reason: "She has no other photo of Rambo" }));
+  check(
+    "a staff clear of the last held slot releases it",
+    clearedLast.ok && (await statusOf(byStaff.id)) !== "awaiting_photos" && (await moved(byStaff.id, "photo_subjects")),
+    `status ${await statusOf(byStaff.id)}`,
+  );
+  const heldThenNew = await heldOrder("HELDNEW", "awaiting_photos");
+  await addPhoto(heldThenNew.id, "reference");
+  check("a new photo makes the check stale, so the order may move", !(await withSystemContext((tx) => holdsPhotoSlot(tx, heldThenNew.id))));
+
+  console.log("=== 9. an unchecked order waits for the check, then goes anyway ===");
+  const waitingId = await mkOrder("UNCHECKED", { status: "ready_to_assign" });
+  await addPhoto(waitingId, "reference", 0);
+  const w1 = await withSystemContext((tx) => runAutoAssign(tx, { orderId: waitingId, businessId: ids.biz, assignedBy: null }));
+  check("a photo just in: it waits for the check", w1.assigned === null && w1.photosUnchecked === true, JSON.stringify(w1));
+  check("and logs nothing yet", (await logRows(waitingId, PHOTO_CHECK_MISSED_ACTION)).length === 0);
+  const lateId = await mkOrder("UNCHECKEDLATE", { status: "ready_to_assign", placedAt: new Date(Date.now() - 3 * HOUR) });
+  await addPhoto(lateId, "reference", 3);
+  const w2 = await withSystemContext((tx) => runAutoAssign(tx, { orderId: lateId, businessId: ids.biz, assignedBy: null }));
+  check("past the wait: it is no longer held back", !w2.photosUnchecked && !w2.photosHeld, JSON.stringify(w2));
+  await withSystemContext((tx) => runAutoAssign(tx, { orderId: lateId, businessId: ids.biz, assignedBy: null }));
+  check("agent.photo_check_missed is logged once", (await logRows(lateId, PHOTO_CHECK_MISSED_ACTION)).length === 1);
+  const handAssign = await mkOrder("UNCHECKEDHAND", { status: "ready_to_assign" });
+  await addPhoto(handAssign, "reference", 0);
+  await assignBy(va, handAssign);
+  check("staff assigning an unchecked order by hand is allowed", (await activeOf(handAssign)).length === 1);
 }
 
 // The app login may not delete activity_log rows (it is append-only), so the

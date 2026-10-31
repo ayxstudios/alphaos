@@ -13,6 +13,7 @@ import { Badge, Button, InfoBubble, useToast, type OrderStatus } from "@/compone
 import { ArrowRight, Check, Columns, X } from "@/components/ui/icons";
 import { formatStageRemaining, type StageTimer } from "@/lib/orders/stage-timers";
 import { cn, plural } from "@/lib/utils";
+import { PhotoHoldReason } from "@/components/orders/photo-hold-reason";
 import { UrgentPill } from "@/components/orders/urgent-pill";
 import { formatAt } from "@/lib/time";
 
@@ -457,6 +458,8 @@ export function OrdersOperationsTable({
   const toast = useToast();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [designerId, setDesignerId] = useState("");
+  /** Orders the assign refused for a pet with no clear face photo, waiting on a reason to go on. */
+  const [photoHeld, setPhotoHeld] = useState<{ ids: string[]; designerId: string; message: string } | null>(null);
   const [targetStatus, setTargetStatus] = useState<OrderStatus | "">("");
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
   const columnMenuRef = useRef<HTMLDivElement>(null);
@@ -570,10 +573,13 @@ export function OrdersOperationsTable({
     router.refresh();
   }
 
-  function reassign() {
+  function reassign(ids = selectedIds, toDesigner = designerId, reason?: string) {
     start(async () => {
-      const name = designers.find((designer) => designer.id === designerId)?.name ?? "the designer";
-      handleResult(await bulkReassignOrders(selectedIds, designerId), (n) => `${plural(n, "order")} assigned to ${name}`);
+      const name = designers.find((designer) => designer.id === toDesigner)?.name ?? "the designer";
+      const result = await bulkReassignOrders(ids, toDesigner, reason);
+      handleResult(result, (n) => `${plural(n, "order")} assigned to ${name}`);
+      const held = result.ok ? result.skipped.filter((s) => s.code === "photo_subject_missing") : [];
+      setPhotoHeld(held.length ? { ids: held.map((s) => s.orderId), designerId: toDesigner, message: held.map((s) => s.reason).join(" ") } : null);
     });
   }
 
@@ -645,6 +651,17 @@ export function OrdersOperationsTable({
         </div>
       </div>
 
+      {photoHeld && (
+        <div className="px-4 pb-3">
+          <PhotoHoldReason
+            message={photoHeld.message}
+            pending={pending}
+            onAssign={(reason) => reassign(photoHeld.ids, photoHeld.designerId, reason)}
+            onCancel={() => setPhotoHeld(null)}
+          />
+        </div>
+      )}
+
       {/* Bulk actions only exist once something is selected: a floating bar
           above the phone tab bar, centred on desktop. */}
       {selected.size > 0 && (
@@ -662,7 +679,7 @@ export function OrdersOperationsTable({
                 <option key={designer.id} value={designer.id}>{designer.name}</option>
               ))}
             </select>
-            <Button size="sm" variant="secondary" disabled={!designerId} loading={pending} onClick={reassign}>
+            <Button size="sm" variant="secondary" disabled={!designerId} loading={pending} onClick={() => reassign()}>
               Reassign
             </Button>
             <select

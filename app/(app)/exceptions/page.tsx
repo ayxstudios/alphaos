@@ -37,7 +37,7 @@ const KIND_LABELS: Record<string, string> = {
 const TODO: Record<string, { line: string; button?: string; to?: "order" | "messages" }> = {
   photo_count_mismatch: { line: "Ask the buyer for one more photo.", button: "Open order", to: "order" },
   photo_subject_missing: {
-    line: "Get a clear face photo from the buyer, or mark the photo fine on the order.",
+    line: "Get a clear face photo from the buyer so the order can go to a designer, or mark the photo fine on the order.",
     button: "Open order",
     to: "order",
   },

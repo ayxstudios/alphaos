@@ -50,6 +50,8 @@ type BulkSkipped = {
   orderId: string;
   orderNumber: string;
   reason: string;
+  /** photo_subject_missing: a pet has no clear face photo; the dialog asks for a reason to go on. */
+  code?: string;
 };
 
 export type BulkActionResult =
@@ -249,6 +251,8 @@ export async function markOrderComplete(orderId: string): Promise<CompleteOrderR
 export async function bulkReassignOrders(
   orderIds: string[],
   designerId: string,
+  /** Why a held order (a pet with no clear face photo) is given to a designer anyway; logged on the order. */
+  overrideReason?: string,
 ): Promise<BulkActionResult> {
   const user = await requireStaff();
   if ("error" in user) return { ok: false, message: user.error };
@@ -316,9 +320,9 @@ export async function bulkReassignOrders(
   let changed = 0;
   const result = await (async () => {
     for (const o of picked.eligible) {
-      const res = await reassignOrder(o.id, designerId, user.id);
+      const res = await reassignOrder(o.id, designerId, user.id, { overrideReason: overrideReason?.trim() || null });
       if (!res.ok) {
-        skipped.push({ orderId: o.id, orderNumber: o.number, reason: res.message });
+        skipped.push({ orderId: o.id, orderNumber: o.number, reason: res.message, code: res.code });
         continue;
       }
       if (res.changed) changed += 1;

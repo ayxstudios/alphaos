@@ -13,6 +13,7 @@ import { isAddOnItem, portraitLinesOf } from "@/lib/orders/add-ons";
 import { applyOrderStyle } from "@/lib/orders/item-styles";
 import { loadClassifyConfig, pickPortraitItem } from "@/lib/orders/portrait-item";
 import type { ClassifyConfig } from "@/lib/integrations/classify";
+import { holdsPhotoSlot } from "@/lib/photos/subjects";
 
 /**
  * The core of "complete an imported awaiting_details order", shared by the VA
@@ -270,7 +271,7 @@ export async function completeOrderDetailsCore(
     const hasPhotos = photoCount > 0;
     let toStatus: OrderStatus = order.status;
     if (order.status === "awaiting_details") {
-      const to = hasPhotos ? "ready_to_assign" : "awaiting_photos";
+      const to = hasPhotos && !(await holdsPhotoSlot(tx, order.id)) ? "ready_to_assign" : "awaiting_photos";
       await runTransition(tx, { id: actor.id, role: actor.role }, {
         orderId: order.id,
         to,
@@ -278,7 +279,7 @@ export async function completeOrderDetailsCore(
         metadata: { via: opts.via ?? "manual_complete" },
       });
       toStatus = to;
-    } else if (order.status === "awaiting_photos" && hasPhotos) {
+    } else if (order.status === "awaiting_photos" && hasPhotos && !(await holdsPhotoSlot(tx, order.id))) {
       await runTransition(tx, { id: actor.id, role: actor.role }, {
         orderId: order.id,
         to: "ready_to_assign",

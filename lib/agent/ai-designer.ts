@@ -29,6 +29,7 @@ import {
   disneyRefusal,
   eligibilityRefusal,
   MissingReferencePhotoError,
+  PhotoSubjectsHeldError,
 } from "@/lib/orders/assign";
 import { adminApproval, loadReworkHold, reworkAllows, reworkStaysMessage } from "@/lib/orders/rework";
 import { boardHolds, loadBoardHolder, staysOnBoardMessage } from "@/lib/orders/board-hold";
@@ -711,12 +712,15 @@ export type ReassignResult = { ok: true; changed: boolean } | { ok: false; code:
  * their words) from a caller acting on an owner's yes. Anyone else is refused
  * with code rework_stays. The same yes is needed to take any order off a
  * person's board (Yousif 2026-10-21): refused with code stays_on_board.
+ * A person assigning an order that has a pet or person with no clear face
+ * photo is refused with code photo_subject_missing (Yousif 2026-10-31); admin
+ * or va go on with `overrideReason`. A caller with no user (the agent) is not stopped.
  */
 export async function reassignOrder(
   orderId: string,
   designerId: string,
   byUserId: string | null,
-  opts: { dueAtHours?: number; ownerApproved?: string | null } = {},
+  opts: { dueAtHours?: number; ownerApproved?: string | null; overrideReason?: string | null } = {},
 ): Promise<ReassignResult> {
   return withSystemContext(async (tx) => {
     const [o] = await tx
@@ -776,6 +780,7 @@ export async function reassignOrder(
       }
     }
     const wasAgent = current ? await isAgentAssigned(tx, orderId) : false;
+    const [by] = byUserId ? await tx.select({ role: users.role }).from(users).where(eq(users.id, byUserId)).limit(1) : [];
     try {
       await createAssignment(tx, {
         orderId,
@@ -785,8 +790,12 @@ export async function reassignOrder(
         dueAtHours: opts.dueAtHours,
         reason: wasAgent ? "Reassigned from the AI designer." : null,
         ownerApproved: approvedBy,
+        photoGate: byUserId ? { role: by?.role === "admin" || by?.role === "va" ? by.role : "designer", overrideReason: opts.overrideReason ?? null } : undefined,
       });
     } catch (error) {
+      if (error instanceof PhotoSubjectsHeldError) {
+        return { ok: false as const, code: error.code, message: error.message };
+      }
       if (error instanceof MissingReferencePhotoError) {
         return {
           ok: false as const,

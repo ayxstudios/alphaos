@@ -25,7 +25,6 @@ import {
 import { onRevisionEdge } from "@/lib/agent/ai-core";
 import { aiQcRefusal } from "@/lib/qc/ai-qc-gate";
 import { duplicateSlotsGate } from "@/lib/qc/duplicate-slots";
-import { photoSubjectsGate } from "@/lib/photos/subjects";
 import { revisionStopGate } from "@/lib/qc/revision-stop";
 import { outgoingArtworkIds, wrongFileGate } from "@/lib/qc/wrong-file";
 import { resetRevisionDeadline, runAutoAssign } from "./assign";
@@ -57,6 +56,7 @@ type Edge = { roles: TransitionRole[]; revision?: boolean };
  */
 const GRAPH: Record<string, Edge> = {
   "awaiting_photos->ready_to_assign": { roles: STAFF },
+  "ready_to_assign->awaiting_photos": { roles: STAFF }, // a pet with no clear face photo parks here until the buyer sends one
   "ready_to_assign->in_design": { roles: STAFF_AND_DESIGNER }, // designer starts
   "ready_to_assign->awaiting_qc": { roles: STAFF_AND_DESIGNER }, // recover cards already completed off-board
   "in_design->ready_to_assign": { roles: STAFF_AND_DESIGNER }, // move back if started by mistake
@@ -277,14 +277,6 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
       via: "submit",
     });
     if (twin) throw new PreconditionError(twin.message);
-    // a pet or person bought with no clear face photo yet (Delaney 4200623137: Rambo drawn from a guess)
-    const faceless = await photoSubjectsGate(tx, actor, {
-      orderId,
-      businessId: order.businessId,
-      overrideReason: input.overrideReason,
-      via: "submit",
-    });
-    if (faceless) throw new PreconditionError(faceless.message);
   }
   if (key === "awaiting_qc->awaiting_approval") {
     await assertEveryPortrait(tx, orderId, order.platformOrderId, "pass");

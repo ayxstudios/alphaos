@@ -1,17 +1,21 @@
 // The pet slots on the server (./subject-types.ts has the shape and why):
 // which photos a check saw, the agent's photo check jobs and answers, a staff
-// "the photo is fine", and the hand-in gate.
+// "the photo is fine", and the assignment gate.
 //
 // Delaney 4200623137 (CPS, Oct 2026): the order was for Jax and Rambo, her
 // photos never showed Rambo's face clearly, the designer drew him from a guess
-// and the clear photo she sent on 23 Oct never reached the card. A slot with no
-// clear face photo now holds that pet: the designer cannot hand it in until
-// the photo is on the card or a staff member says the photo she has is fine.
+// and the clear photo she sent on 23 Oct never reached the card. Yousif
+// (31 Oct): "Our job is to give the designers all the photos they need to
+// create the portrait. Don't check after them after that." So the hold is at
+// OUR step: an order with a pet that has no clear face photo is not given to a
+// designer (staff need a reason, the agent parks it in awaiting_photos), and it
+// goes on by itself when a check finds the photo or staff say the one she has
+// is fine. A designer is never stopped or messaged about it.
 
 import crypto from "node:crypto";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
-import { withSystemContext, type RequestUser, type Tx } from "@/lib/db";
+import { SYSTEM_ACTOR_ID, withSystemContext, type RequestUser, type Tx } from "@/lib/db";
 import { activityLog, assets, businesses, exceptions, messages, orderItems, orders, users } from "@/lib/db/schema";
 import { parseEtsyReceiptReview } from "@/lib/integrations/etsy/receipt-review";
 import { liveOrderWhere } from "@/lib/orders/archive";
@@ -25,6 +29,9 @@ import { holdingSubjects, joinNames, type PhotoSubject, type PhotoSubjects, type
 export const PHOTO_SUBJECTS_CHECKED_ACTION = "order.photo_subjects_checked";
 export const PHOTO_SUBJECT_CLEARED_ACTION = "order.photo_subject_cleared";
 export const PHOTO_SUBJECTS_OVERRIDE_ACTION = "order.photo_subjects_override";
+export const PHOTO_SUBJECT_FILLED_ACTION = "order.photo_subject_filled";
+/** A new order waited for its photo check past CHECK_WAIT_HOURS and was assigned unchecked. */
+export const PHOTO_CHECK_MISSED_ACTION = "agent.photo_check_missed";
 
 /** Statuses the photo check looks at: before anyone draws, while drawing, in QC. */
 const CHECK_STATUSES = ["awaiting_photos", "ready_to_assign", "in_design", "awaiting_qc"] as const;
@@ -166,7 +173,64 @@ export async function saveSubjectCheck(
     action: PHOTO_SUBJECTS_CHECKED_ACTION,
     metadata: { subjects: value.subjects.map((s) => ({ name: s.name, face: s.face })), holding, photos: refIds.length, model: value.model },
   });
+  await noteFilledSlots(tx, { orderId: order.id, businessId: order.businessId, before: order.photoSubjects, after: value });
+  await releaseWhenClear(tx, { orderId: order.id, via: "photo_check" });
   return { ok: true, holding, subjects: value.subjects.length };
+}
+
+/** Statuses before a designer has the order: the hold applies here, and only here. */
+export const BEFORE_DESIGNER = ["awaiting_details", "awaiting_photos", "ready_to_assign", "on_hold"] as const;
+
+/**
+ * A slot that was holding the order and now has a clear face photo, on an
+ * order a designer already has: one plain line on the timeline ("New photo of
+ * Rambo added, photo 7"). Nothing is sent to the designer (Yousif 2026-10-31).
+ */
+async function noteFilledSlots(
+  tx: Tx,
+  input: { orderId: string; businessId: string; before: PhotoSubjects | null | undefined; after: PhotoSubjects },
+): Promise<void> {
+  const was = holdingSubjects(input.before);
+  if (!was.length) return;
+  const [o] = await tx.select({ status: orders.status }).from(orders).where(eq(orders.id, input.orderId));
+  if (!o || (BEFORE_DESIGNER as readonly string[]).includes(o.status)) return;
+  const refs = await tx
+    .select({ id: assets.id })
+    .from(assets)
+    .where(and(eq(assets.orderId, input.orderId), eq(assets.type, "reference"), isNull(assets.deletedAt)))
+    .orderBy(asc(assets.createdAt), asc(assets.id));
+  for (const w of was) {
+    const now = input.after.subjects.find((s) => s.key === w.key || sameName(s.name, w.name));
+    if (!now || now.face !== "clear") continue;
+    const n = now.bestAssetId ? refs.findIndex((r) => r.id === now.bestAssetId) + 1 : 0;
+    await tx.insert(activityLog).values({
+      businessId: input.businessId,
+      orderId: input.orderId,
+      actorId: null,
+      action: PHOTO_SUBJECT_FILLED_ACTION,
+      metadata: { name: now.name, photoNumber: n || null, assetId: now.bestAssetId },
+    });
+  }
+}
+
+/**
+ * An order parked in awaiting_photos for a pet's missing face photo goes on to
+ * ready_to_assign by itself once no slot holds it (the move runs auto-assign).
+ * A system move, logged like any other. Null when it did not move.
+ */
+export async function releaseWhenClear(tx: Tx, input: { orderId: string; via: "photo_check" | "staff_clear" }): Promise<boolean> {
+  const [o] = await tx.select({ status: orders.status, photoSubjects: orders.photoSubjects }).from(orders).where(eq(orders.id, input.orderId));
+  if (!o || o.status !== "awaiting_photos" || !o.photoSubjects?.subjects?.length || holdingSubjects(o.photoSubjects).length) return false;
+  if (!(await referenceIds(tx, input.orderId)).length) return false;
+  // Imported lazily: transitions -> assign -> this file.
+  const { runTransition } = await import("@/lib/orders/transitions");
+  await runTransition(tx, { id: SYSTEM_ACTOR_ID, role: "system" }, {
+    orderId: input.orderId,
+    to: "ready_to_assign",
+    expectedFrom: "awaiting_photos",
+    metadata: { via: "photo_subjects", reason: input.via === "staff_clear" ? "Every pet has a photo to draw from (staff said the photo is fine)." : "Every pet has a clear face photo." },
+  });
+  return true;
 }
 
 /**
@@ -208,31 +272,78 @@ export async function clearPhotoSubject(
       .update(exceptions)
       .set({ status: "resolved", resolvedAt: new Date(), resolvedBy: user.id, resolutionNote: `Photo marked fine: ${reason}` })
       .where(and(eq(exceptions.orderId, order.id), eq(exceptions.kind, "photo_subject_missing"), eq(exceptions.status, "open")));
+    await releaseWhenClear(tx, { orderId: order.id, via: "staff_clear" });
   }
   return { ok: true };
+}
+
+/** How long a new order waits for its photo check before it is assigned unchecked (autopilot's CHECK_WAIT_HOURS). */
+export const PHOTO_CHECK_WAIT_HOURS = 2;
+
+export type PhotoStanding =
+  /** Every pet has a clear face photo (or a staff clear), or nothing was bought that needs one. */
+  | { state: "ok" }
+  /** A pet or person has no clear face photo: the order is not given to a designer. */
+  | { state: "held"; subjects: string[] }
+  /** The photos were never checked (or changed since): wait for the check. */
+  | { state: "unchecked_waiting" }
+  /** Still unchecked after the wait: assign anyway and say so. */
+  | { state: "unchecked_missed" };
+
+/** What the assigning step should do about this order's pet photos. Read only. */
+export async function photoStanding(tx: Tx, orderId: string, now: Date = new Date()): Promise<PhotoStanding> {
+  const [o] = await tx.select({ photoSubjects: orders.photoSubjects, placedAt: orders.placedAt }).from(orders).where(eq(orders.id, orderId));
+  if (!o) return { state: "ok" };
+  const refs = await tx
+    .select({ id: assets.id, createdAt: assets.createdAt })
+    .from(assets)
+    .where(and(eq(assets.orderId, orderId), eq(assets.type, "reference"), isNull(assets.deletedAt)));
+  if (!refs.length) return { state: "ok" };
+  const checked = o.photoSubjects && o.photoSubjects.photoSig === photoSigOf(refs.map((r) => r.id));
+  if (checked) {
+    const waiting = holdingSubjects(o.photoSubjects);
+    return waiting.length ? { state: "held", subjects: waiting.map((s) => s.name) } : { state: "ok" };
+  }
+  const newest = Math.max(...refs.map((r) => new Date(r.createdAt).getTime()), o.placedAt ? new Date(o.placedAt).getTime() : 0);
+  return now.getTime() - newest < PHOTO_CHECK_WAIT_HOURS * 3_600_000 ? { state: "unchecked_waiting" } : { state: "unchecked_missed" };
+}
+
+/**
+ * True when the photo check has looked at the order's current photos and a
+ * pet or person still has no clear face photo. The auto-moves out of
+ * awaiting_photos leave such an order where it is; an unchecked order may move.
+ */
+export async function holdsPhotoSlot(tx: Tx, orderId: string): Promise<boolean> {
+  return (await photoStanding(tx, orderId)).state === "held";
 }
 
 export type PhotoSubjectsRefusal = { code: "photo_subject_missing"; message: string };
 
 export function photoSubjectsMessage(waiting: Pick<PhotoSubject, "name">[], orderNumber: string | null, fresh: boolean): string {
   const head = orderNumber ? `Order ${orderNumber}: ` : "";
-  const what = `there is no clear face photo of ${joinNames(waiting.map((s) => s.name))} yet, so it cannot go to QC.`;
+  const what = `there is no clear face photo of ${joinNames(waiting.map((s) => s.name))} yet, so it cannot go to a designer.`;
   const next = fresh
-    ? " We are getting one from the buyer, and it lands on the card as soon as she sends it."
+    ? " We are getting one from the buyer, and the order goes on to a designer as soon as it lands on the card."
     : " A new photo just came in and is being checked: try again in about 20 minutes.";
   return `${head}${what[0].toUpperCase()}${what.slice(1)}${next}`;
 }
 
+/** "Waiting on a photo of Rambo": the one line the board card, order page and assign dialog show for a held order. */
+export function waitingOnPhotoLine(waiting: Pick<PhotoSubject, "name">[]): string {
+  return `Waiting on a photo of ${joinNames(waiting.map((s) => s.name))}`;
+}
+
 /**
- * The hand-in gate: null when every pet and person bought has a clear face
- * photo (or a staff clear), when the order was never checked, or when staff
- * gave a reason (logged on the order). Designers cannot override it. The
- * agent's own transitions are never stopped here.
+ * The assignment gate: null when every pet and person bought has a clear face
+ * photo (or a staff clear), when the order was never checked, or when admin or
+ * va gave a reason (logged on the order). Designers never reach this. The
+ * agent's own assigning is never stopped here: runAutoAssign parks the order
+ * instead (lib/orders/assign.ts).
  */
 export async function photoSubjectsGate(
   tx: Tx,
   actor: { id: string; role: RequestUser["role"] | "system" },
-  input: { orderId: string; businessId: string; overrideReason?: unknown; via: "submit" },
+  input: { orderId: string; businessId: string; overrideReason?: unknown; via: "assign" },
 ): Promise<PhotoSubjectsRefusal | null> {
   if (actor.role === "system") return null;
   const [order] = await tx

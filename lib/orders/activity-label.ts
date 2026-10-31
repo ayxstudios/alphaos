@@ -47,7 +47,10 @@ const LABELS: Record<string, string> = {
   "order.duplicate_slots_override": "Sent although two portraits were the same file",
   "order.photo_subjects_checked": "Photos checked: who is in each",
   "order.photo_subject_cleared": "Photo marked fine",
-  "order.photo_subjects_override": "Handed in without a clear face photo",
+  "order.photo_subjects_override": "Given to a designer without a clear face photo",
+  "order.photo_subject_filled": "New photo of a pet or person added",
+  "agent.photo_check_missed": "Given to a designer before the photo check ran",
+  "agent.photo_hold_parked": "Waiting on a photo before it goes to a designer",
   "order.awaiting_approval": "Awaiting approval",
   "order.fulfillment_only": "Fulfilment only",
   "proof.viewed": "Proof viewed",
@@ -147,6 +150,16 @@ function photoSlotDetail(action: string, metadata: Record<string, unknown> | nul
     const names = joinNames(textList(metadata?.subjects));
     return names || reason ? [names, reason].filter(Boolean).join(": ") : null;
   }
+  if (action === "order.photo_subject_filled") {
+    const name = typeof metadata?.name === "string" ? metadata.name.trim() : "";
+    const n = typeof metadata?.photoNumber === "number" ? metadata.photoNumber : null;
+    return name ? `New photo of ${name} added${n ? `, photo ${n}` : ""}` : null;
+  }
+  if (action === "agent.photo_hold_parked") {
+    const names = joinNames(textList(metadata?.subjects));
+    return names ? `Waiting on a photo of ${names}` : null;
+  }
+  if (action === "agent.photo_check_missed") return "The photo check had not run on her photos after two hours, so it went on.";
   if (action === "agent.photo_shortfall_drafted" && metadata?.via === "photo_subjects") {
     const names = joinNames(textList(metadata.subjects));
     return names ? `Asked her once for a clear face photo of ${names}.` : null;

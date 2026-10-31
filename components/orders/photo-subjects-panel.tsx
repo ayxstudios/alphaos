@@ -7,6 +7,7 @@ import {
   type PhotoSubject,
   type PhotoSubjects,
 } from "@/lib/photos/subject-types";
+import { formatAt } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { PhotoSubjectFineForm } from "./photo-subject-fine-form";
 
@@ -16,31 +17,43 @@ import { PhotoSubjectFineForm } from "./photo-subject-fine-form";
  * waiting on a clear face photo. The agent's photo check fills it
  * (lib/photos/subjects.ts); staff can mark a held slot's photo fine. Presentation
  * only, so the order page, the board card and QC all use it.
+ *
+ * A face missing holds the order at ASSIGNMENT (Yousif 2026-10-31: "our job is
+ * to give the designers all the photos they need"), never at the designer's
+ * hand-in, so a designer sees the rows and the photo numbers but no banner.
  */
 /** url null = a photo that could not be shown; it still counts for the numbering. */
 type PanelPhoto = { id: string; url: string | null };
 
-const WAITING_LINE: Record<"order" | "card" | "qc", string> = {
-  order: "The designer cannot hand it in until one comes, or until someone marks the photo fine.",
-  card: "We are getting one from the buyer and it shows here when it lands. It cannot go to QC before then.",
-  qc: "Check that face against her photos before passing it, or mark the photo fine.",
+const WAITING_LINE = {
+  /** Not with a designer yet. */
+  before: "It goes to a designer when one comes, or when someone marks the photo fine.",
+  /** Already with a designer: nothing stops her; the new photo lands on the timeline. */
+  during: "It is already with the designer. A new photo shows here and on the timeline when it lands.",
 };
 
 export function PhotoSubjectsPanel({
   subjects: ps,
   photos,
-  where,
   orderId,
   onMarked,
+  withDesigner = false,
+  askedAt,
+  quiet = false,
 }: {
   subjects: PhotoSubjects | null | undefined;
   /** Her reference photos in upload order: "photo 2" is the second, as the check numbered them. */
   photos: PanelPhoto[];
-  where: "order" | "card" | "qc";
   /** Set for staff only: shows "The photo is fine" on a held slot. */
   orderId?: string;
   /** After a slot is marked fine (the board card reloads its detail; pages refresh). */
   onMarked?: () => void;
+  /** The order is already with a designer (in design or later): the banner says so. */
+  withDesigner?: boolean;
+  /** When the buyer was asked for the missing photo (ISO), or null. */
+  askedAt?: string | null;
+  /** A designer is looking: rows only, no waiting banner (nothing is held on her). */
+  quiet?: boolean;
 }) {
   if (!ps || !Array.isArray(ps.subjects) || ps.subjects.length === 0) return null;
   const numberOf = new Map(photos.map((p, i) => [p.id, i + 1]));
@@ -53,12 +66,14 @@ export function PhotoSubjectsPanel({
   return (
     <section aria-label="Who is in her photos" data-testid="photo-subjects" className="flex flex-col gap-2">
       <p className="text-xs font-semibold text-slate">Who is in her photos</p>
-      {waiting.length > 0 && (
+      {waiting.length > 0 && !quiet && (
         <div role="status" className="flex items-start gap-2 rounded-input border border-amber bg-surface px-3 py-2 text-sm text-ink">
           <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber" aria-hidden />
           <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-            <span className="font-semibold">No clear face photo of {joinNames(waiting.map((s) => s.name))} yet.</span>{" "}
-            {WAITING_LINE[where]}
+            <span className="font-semibold">Waiting on a photo of {joinNames(waiting.map((s) => s.name))}</span>
+            {askedAt && <span className="text-slate"> (asked the buyer {formatAt(askedAt, { day: "numeric", month: "short" })})</span>}
+            {". "}
+            {withDesigner ? WAITING_LINE.during : WAITING_LINE.before}
           </span>
         </div>
       )}

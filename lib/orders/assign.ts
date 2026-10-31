@@ -41,6 +41,7 @@ import {
   StaysOnBoardError,
 } from "@/lib/orders/board-hold";
 import { portraitStylesOf } from "@/lib/orders/portrait-item";
+import { BEFORE_DESIGNER, PHOTO_CHECK_MISSED_ACTION, photoStanding, photoSubjectsGate } from "@/lib/photos/subjects";
 import {
   coveredCount,
   coversStyles,
@@ -67,6 +68,20 @@ export class ArchivedOrderError extends Error {
   constructor(orderId: string, reason: string) {
     super(`Order ${orderId} was archived as not owed (${reason}); a person has to reopen it before it is assigned.`);
     this.name = "ArchivedOrderError";
+  }
+}
+
+/**
+ * A pet or person bought has no clear face photo yet, so the order is not given
+ * to a designer (Yousif 2026-10-31: "our job is to give the designers all the
+ * photos they need"). Admin or va can assign with a reason. The agent never
+ * throws this: runAutoAssign answers photosHeld and autopilot parks the order.
+ */
+export class PhotoSubjectsHeldError extends Error {
+  code = "photo_subject_missing" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "PhotoSubjectsHeldError";
   }
 }
 
@@ -303,6 +318,11 @@ export async function createAssignment(
     reason?: string | null;
     /** An owner's yes (who, and their words) to move a revision or failed QC to someone new (lib/orders/rework.ts). */
     ownerApproved?: string | null;
+    /**
+     * A person assigning by hand: refused (PhotoSubjectsHeldError) while a pet has no clear face
+     * photo, unless admin or va give overrideReason. Left out = the agent, never stopped here.
+     */
+    photoGate?: { role: "admin" | "va" | "designer"; overrideReason?: string | null };
   },
 ): Promise<{ assignmentId: string; dueAt: Date }> {
   // Hard stop: a Disney order never goes to a designer who does not draw Disney.
@@ -330,6 +350,22 @@ export async function createAssignment(
   // Hard stop (Yousif 2026-10-18, "designers keep saying there's photos
   // missing"): no designer ever receives an order without a reference photo.
   if (!(await hasReferencePhoto(tx, input.orderId))) throw new MissingReferencePhotoError(input.orderId);
+
+  // Hard stop (Yousif 2026-10-31): a pet or person with no clear face photo is
+  // not given to a designer until the photo is on the card. Only before a
+  // designer has the order, never on a rework or a hand-back, and never a
+  // check on the designer after that. Admin or va may go on with a reason.
+  if (input.photoGate && input.assignedBy) {
+    const [st] = await tx.select({ status: orders.status }).from(orders).where(eq(orders.id, input.orderId));
+    if (st && (BEFORE_DESIGNER as readonly string[]).includes(st.status)) {
+      const held = await photoSubjectsGate(
+        tx,
+        { id: input.assignedBy, role: input.photoGate.role },
+        { orderId: input.orderId, businessId: input.businessId, overrideReason: input.photoGate.overrideReason, via: "assign" },
+      );
+      if (held) throw new PhotoSubjectsHeldError(held.message);
+    }
+  }
 
   // An assigned order is live work (audit 2026-10-25: #CPS10281 sat archived
   // on Slamet's board with a revision owed, so no live-only view saw it). An
@@ -855,7 +891,19 @@ export async function rankForOrder(
 export async function runAutoAssign(
   tx: Tx,
   order: { orderId: string; businessId: string; assignedBy: string | null },
-): Promise<{ assigned: string | null; reworkHeld?: ReworkHold; missingPhoto?: boolean; noStyle?: boolean; styles?: string[] }> {
+): Promise<{
+  assigned: string | null;
+  reworkHeld?: ReworkHold;
+  missingPhoto?: boolean;
+  noStyle?: boolean;
+  styles?: string[];
+  /** A pet or person has no clear face photo: nobody is picked; the caller parks the order in awaiting_photos. */
+  photosHeld?: boolean;
+  /** The names of the pets or people with no clear face photo (with photosHeld). */
+  subjects?: string[];
+  /** The photos have not been checked yet: nobody is picked; the next pass tries again. */
+  photosUnchecked?: boolean;
+}> {
   // No photo = nobody is picked and nothing throws: the caller parks the order
   // (autopilot raises a card, a transition still succeeds) until a reference
   // photo is attached, then the next pass assigns it.
@@ -872,6 +920,14 @@ export async function runAutoAssign(
   // (Yousif 2026-10-21, lib/orders/board-hold.ts).
   const holder = await loadBoardHolder(tx, order.orderId);
   if (onPersonsBoard(holder)) return { assigned: holder.designerId };
+
+  // Our job is to give the designer every photo they need (Yousif 2026-10-31):
+  // a pet or person with no clear face photo is not assigned; an order whose
+  // photos were not checked yet waits for the check, then goes anyway.
+  const standing = await photoStanding(tx, order.orderId);
+  if (standing.state === "held") return { assigned: null, photosHeld: true, subjects: standing.subjects };
+  if (standing.state === "unchecked_waiting") return { assigned: null, photosUnchecked: true };
+  if (standing.state === "unchecked_missed") await noteCheckMissed(tx, order);
 
   // No style = no route (2026-10-23: CPS watercolor pets and couples saved with
   // no style went to whoever ranked first). Read it off the catalog; still none
@@ -909,6 +965,23 @@ export async function runAutoAssign(
   });
 
   return { assigned: chosen };
+}
+
+/** The wait for the photo check ran out and the order goes to a designer unchecked: said once on the order. */
+async function noteCheckMissed(tx: Tx, order: { orderId: string; businessId: string }): Promise<void> {
+  const [seen] = await tx
+    .select({ id: activityLog.id })
+    .from(activityLog)
+    .where(and(eq(activityLog.orderId, order.orderId), eq(activityLog.action, PHOTO_CHECK_MISSED_ACTION)))
+    .limit(1);
+  if (seen) return;
+  await tx.insert(activityLog).values({
+    businessId: order.businessId,
+    orderId: order.orderId,
+    actorId: null,
+    action: PHOTO_CHECK_MISSED_ACTION,
+    metadata: { note: "The photo check had not run, so the order was assigned without it." },
+  });
 }
 
 /** The business's AI Studio when the AI may draw this order (one style, switched on, not Disney, one portrait); else null. */

@@ -123,6 +123,7 @@ async function setup() {
 }
 
 let orderNo = 0;
+const threeHoursAgo = new Date(Date.now() - 3 * 3_600_000);
 type ItemSpec = { title: string; style?: string | null };
 async function mkOrder(o: { status: typeof orders.$inferInsert.status; items: ItemSpec[]; rawImport?: unknown; photo?: boolean }) {
   orderNo++;
@@ -138,6 +139,8 @@ async function mkOrder(o: { status: typeof orders.$inferInsert.status; items: It
         source: "manual",
         uploadToken: randomUUID(),
         rawImport: (o.rawImport ?? null) as never,
+        // Past the photo check's wait, so these routing checks are about the designer pick, not the wait.
+        placedAt: threeHoursAgo,
       })
       .returning({ id: orders.id });
     // Explicit, ascending ids so the FIRST item in the list is the lowest id:
@@ -162,6 +165,7 @@ async function mkOrder(o: { status: typeof orders.$inferInsert.status; items: It
         type: "reference",
         storage: "cdn",
         url: `https://example.test/guards-${stamp}-${orderNo}.jpg`,
+        createdAt: threeHoursAgo,
       });
     }
     return row.id;

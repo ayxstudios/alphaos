@@ -71,9 +71,14 @@ export async function loadReassignOptions(orderId: string): Promise<ReassignOpti
 }
 
 /** One tap: the one reassignment path (deactivates the old assignment, writes order.reassigned, keeps the AI queue in step). */
-export async function quickReassignOrder(orderId: string, designerId: string): Promise<{ ok: boolean; message: string }> {
-  const res = await bulkReassignOrders([orderId], designerId);
+export async function quickReassignOrder(
+  orderId: string,
+  designerId: string,
+  overrideReason?: string,
+): Promise<{ ok: boolean; message: string; needsReason?: boolean }> {
+  const res = await bulkReassignOrders([orderId], designerId, overrideReason);
   if (!res.ok) return { ok: false, message: res.message };
-  const skipped = res.skipped[0]?.reason;
-  return skipped ? { ok: false, message: skipped } : { ok: true, message: "Done. New designer set." };
+  const skipped = res.skipped[0];
+  if (skipped) return { ok: false, message: skipped.reason, needsReason: skipped.code === "photo_subject_missing" };
+  return { ok: true, message: "Done. New designer set." };
 }

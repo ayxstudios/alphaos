@@ -940,8 +940,10 @@ export default async function OrderDetailPage({
                 <PhotoSubjectsPanel
                   subjects={detail.photoSubjects}
                   photos={references}
-                  where={staffView ? "order" : "card"}
                   orderId={editable ? order.id : undefined}
+                  withDesigner={!["awaiting_details", "awaiting_photos", "ready_to_assign", "on_hold"].includes(order.status)}
+                  askedAt={detail.photoAskedAt}
+                  quiet={!staffView}
                 />
               </div>
             )}

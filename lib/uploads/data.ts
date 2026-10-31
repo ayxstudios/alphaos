@@ -7,6 +7,7 @@ import { ALLOWED_IMAGE_TYPES, MAX_UPLOAD_BYTES, extFor } from "@/lib/storage/r2"
 import { SNIFF_BYTES, sniffMatchesDeclared } from "./sniff";
 import { DEV_STORE_PREFIX, headStored, presignPut, readStoredHead, usingDevStore } from "./store";
 import { hashColumnsForKeys } from "@/lib/qc/asset-hash";
+import { holdsPhotoSlot } from "@/lib/photos/subjects";
 
 /**
  * Everything the PUBLIC upload page may render. Deliberately minimal (same
@@ -261,7 +262,7 @@ export async function saveCustomerUploads(token: string, keys: string[], note: s
       });
 
       let status = order.status;
-      if (order.status === "awaiting_photos" && r2Keys.length) {
+      if (order.status === "awaiting_photos" && r2Keys.length && !(await holdsPhotoSlot(tx, order.id))) {
         try {
           const res = await runTransition(tx, { id: SYSTEM_ACTOR_ID, role: "system" }, {
             orderId: order.id,

@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { activityLog, assets, assignments, orders, users } from "@/lib/db/schema";
@@ -55,6 +55,8 @@ export type CardDetail = {
   missingPortraits: MissingPortrait[];
   /** Who is in her photos and whose face is still missing (lib/photos/subjects.ts); null = not checked yet. */
   photoSubjects: PhotoSubjects | null;
+  /** When the buyer was last asked for the missing face photo (agent.photo_shortfall_drafted); null = not asked. */
+  photoAskedAt: string | null;
 };
 
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
@@ -202,12 +204,22 @@ export async function getCardDetail(user: RequestUser, orderId: string): Promise
 
     const [slots] = await tx.select({ photoSubjects: orders.photoSubjects }).from(orders).where(eq(orders.id, orderId));
 
+    const [asked] = slots?.photoSubjects
+      ? await tx
+          .select({ createdAt: activityLog.createdAt })
+          .from(activityLog)
+          .where(and(eq(activityLog.orderId, orderId), eq(activityLog.action, "agent.photo_shortfall_drafted")))
+          .orderBy(desc(activityLog.createdAt))
+          .limit(1)
+      : [];
+
     return {
       events,
       images,
       portraits,
       missingPortraits: pick?.mode === "slots" ? pick.missing : [],
       photoSubjects: slots?.photoSubjects ?? null,
+      photoAskedAt: asked ? new Date(asked.createdAt).toISOString() : null,
     };
   });
 }

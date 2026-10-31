@@ -26,6 +26,7 @@ import {
   type NormalizedLineItem,
   type ShopifyCredentials,
 } from "@/lib/integrations/shopify";
+import { holdsPhotoSlot } from "@/lib/photos/subjects";
 
 /**
  * Distinct option/property names seen in a shop's recent imports — the
@@ -368,7 +369,7 @@ export async function reresolveShop(user: RequestUser, shopId: string): Promise<
             .from(assets)
             .where(and(eq(assets.orderId, o.id), eq(assets.type, "reference")))
             .limit(1);
-          newStatus = photo ? "ready_to_assign" : "awaiting_photos";
+          newStatus = photo && !(await holdsPhotoSlot(tx, o.id)) ? "ready_to_assign" : "awaiting_photos";
         } else if (intended === "fulfillment_only") {
           newStatus = "fulfillment_only";
         } else {

@@ -392,7 +392,7 @@ export function QcScreen({
           </div>
           {ctx.photoSubjects ? (
             <div className="mb-4">
-              <PhotoSubjectsPanel subjects={ctx.photoSubjects} photos={ctx.references} where="qc" orderId={ctx.orderId} />
+              <PhotoSubjectsPanel subjects={ctx.photoSubjects} photos={ctx.references} orderId={ctx.orderId} withDesigner />
             </div>
           ) : null}
           <details ref={saysRef} className="group mb-4">

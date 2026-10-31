@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button, Drawer, useToast } from "@/components/ui";
 import { Users } from "@/components/ui/icons";
 import { cn } from "@/lib/utils";
+import { PhotoHoldReason } from "./photo-hold-reason";
 import { tourIsRunning } from "@/lib/tour/live";
 import { loadReassignOptions, quickReassignOrder, type ReassignOption } from "@/app/(app)/orders/reassign-actions";
 
@@ -29,6 +30,8 @@ export function QuickReassign({
   const [orderNumber, setOrderNumber] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  /** A pet with no clear face photo: the refusal, and the designer waiting for a reason to go on. */
+  const [held, setHeld] = useState<{ designer: ReassignOption; message: string } | null>(null);
   const [loading, startLoad] = useTransition();
   const [, startMove] = useTransition();
 
@@ -36,6 +39,7 @@ export function QuickReassign({
     setOpen(true);
     setError(null);
     setOptions(null);
+    setHeld(null);
     startLoad(async () => {
       const res = await loadReassignOptions(orderId);
       if (!res.ok) return setError(res.message);
@@ -44,15 +48,17 @@ export function QuickReassign({
     });
   }
 
-  function pick(d: ReassignOption) {
+  function pick(d: ReassignOption, reason?: string) {
     if (d.current) return;
     if (tourIsRunning()) return toast({ variant: "success", title: "That moves the order. Nothing moved in the tour." });
     setBusyId(d.id);
     setError(null);
     startMove(async () => {
-      const res = await quickReassignOrder(orderId, d.id);
+      const res = await quickReassignOrder(orderId, d.id, reason);
       setBusyId(null);
+      if (!res.ok && res.needsReason) return setHeld({ designer: d, message: res.message });
       if (!res.ok) return setError(res.message);
+      setHeld(null);
       toast({ variant: "success", title: `Moved to ${d.name}` });
       setOpen(false);
       router.refresh();
@@ -80,6 +86,16 @@ export function QuickReassign({
           <p role="alert" className="mb-3 text-sm text-rose">
             {error}
           </p>
+        )}
+        {held && (
+          <div className="mb-3">
+            <PhotoHoldReason
+              message={held.message}
+              pending={busyId !== null}
+              onAssign={(reason) => pick(held.designer, reason)}
+              onCancel={() => setHeld(null)}
+            />
+          </div>
         )}
         {options && options.length === 0 && <p className="text-sm text-slate">No designers work in this business yet.</p>}
         <ul className="flex flex-col gap-2">
