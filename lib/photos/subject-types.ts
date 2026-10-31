@@ -62,13 +62,22 @@ export const FACE_LABEL: Record<SubjectFace, string> = {
   none: "No photo of them",
 };
 
-/** How the buyer would say it in an email: a pet with no name, "the black lab", becomes "your black lab". */
+/**
+ * How the buyer would say it in an email to her. The photo check names the
+ * buyer herself "the customer" and someone it knows only by who they are to
+ * her "her fiancé" (2026-10-31); in her email those are "you" and "your
+ * fiancé". A pet with no name, "the black lab", becomes "your black lab". An
+ * aside in brackets ("Rambo (the beagle)") is the team's, never hers.
+ */
 export function buyerName(s: Pick<PhotoSubject, "name" | "kind">): string {
-  const name = s.name.trim();
+  const name = s.name.replace(/\s*\([^)]*\)/g, "").replace(/\s+/g, " ").trim() || s.name.trim();
+  if (/^(the (customer|buyer)|she|her|herself)$/i.test(name)) return "you";
+  const hers = /^(her|the (customer|buyer)['’]s)\s+/i;
+  if (hers.test(name)) return name.replace(hers, "your ");
   return s.kind === "person" ? name : name.replace(/^the\s+/i, "your ");
 }
 
-const possessive = (name: string) => (/s$/i.test(name) ? `${name}'` : `${name}'s`);
+const possessive = (name: string) => (name === "you" ? "your" : /s$/i.test(name) ? `${name}'` : `${name}'s`);
 
 /**
  * The words of the one "clear face photo" ask (template photo_subject_ask):

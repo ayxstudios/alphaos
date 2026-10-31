@@ -161,6 +161,13 @@ function pureTests() {
   );
   const thing = subjectAskVars([{ name: "the house", kind: "other" }], [{ name: "the house", kind: "other" }]);
   check("ask: a thing has no face", thing.subject_missing_faces === "a clear photo of your house", thing.subject_missing_faces);
+  check("ask: the customer herself is 'you'", buyerName({ name: "the customer", kind: "person" }) === "you");
+  check("ask: someone named by who they are to her is 'your ...'", buyerName({ name: "her fiancé", kind: "person" }) === "your fiancé" && buyerName({ name: "the customer's dad", kind: "person" }) === "your dad" && buyerName({ name: "her dog", kind: "pet" }) === "your dog");
+  check("ask: an aside in brackets never reaches her", buyerName({ name: "Rambo (the beagle)", kind: "pet" }) === "Rambo");
+  const couple = subjectAskVars([{ name: "the customer", kind: "person" }, { name: "her fiancé", kind: "person" }], [{ name: "the customer", kind: "person" }]);
+  check("ask: her own face missing", couple.subject_names === "you and your fiancé" && couple.subject_missing_faces === "a clear photo of your face", JSON.stringify(couple));
+  const both = subjectAskVars([{ name: "the customer", kind: "person" }, { name: "her fiancé", kind: "person" }], [{ name: "the customer", kind: "person" }, { name: "her fiancé", kind: "person" }]);
+  check("ask: both faces missing", both.subject_missing_faces === "clear photos of your and your fiancé's faces", both.subject_missing_faces);
 
   const fresh = photoSubjectsMessage([{ name: "Rambo" }], "4200623137", true);
   check(
