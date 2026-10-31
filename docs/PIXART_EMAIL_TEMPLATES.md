@@ -53,12 +53,14 @@ header). Only an admin can change them.
 | In the artist's hands | first designer assignment | draft (auto if switch 2) |
 | Proof ready (4 variants) | QC pass, picked by digital/physical and figure count | sent by the VA from QC, portrait attached |
 | Revision ready | QC pass after a revision round | sent by the VA from QC, portrait attached |
-| Proof reminder | 3 days after a proof with no decision | draft (auto if switch 2) |
+| Proof reminder | print and ship only, 3 days after a proof with no decision | draft (auto if switch 2) |
 | Now printing | approved physical order moves to printing | draft (auto if switch 2) |
 | Shipped | tracking added | draft (auto if switch 2) |
 
-Physical orders auto-approve 7 days after the proof if the buyer stays silent
-(terms); the proof reminder copy says so without promising a date.
+Nothing is approved on silence (Yousif 2026-10-31: "Even print and ship orders
+shouldn't go out without final approval from the customer."). A print and ship
+proof gets the 3-day reminder and a day-5 heads-up to the VA, then waits for the
+buyer; a digital proof gets no follow-up at all, it is in the buyer's court.
 
 ## Test sends
 
@@ -260,7 +262,7 @@ Just a friendly reminder that your portrait proof for order {{order_number}} is 
 This link opens your proof page, where you can approve it in one tap or tell us what you'd like changed:
 {{proof_link}}
 
-If we don't hear back within a few days, we'll go ahead with the proof as it is so your order isn't held up. We'd love your feedback first, though!
+Once you approve it, we'll send it off to be printed and shipped. If you'd like anything changed, just reply and let us know!
 
 Warmly,
 The PixArt Creatives team

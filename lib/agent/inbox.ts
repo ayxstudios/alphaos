@@ -47,6 +47,7 @@ import { mergeReplyClassification } from "@/lib/integrations/gmail/inbound";
 import { liveOrderWhere } from "@/lib/orders/archive";
 import { detectMentionedOrders } from "@/lib/orders/same-buyer";
 import { agentOrderScope, legacyQuiet } from "./scope";
+import { printShipWhere } from "@/lib/reminders/print-ship";
 import { proofUrl } from "@/lib/urls";
 
 import { draftAnswerToQuestion } from "./answer";
@@ -791,6 +792,10 @@ async function reminderStep(
           sql`not ${legacyQuiet()}`,
           // An AI portrait held for the owner has no sent proof to remind about.
           sql`${orders.aiState} is distinct from 'owner_review'`,
+          // A digital proof is in the buyer's court (Yousif 2026-10-31: "We also
+          // shouldn't be following up on email for digital items"): only a print
+          // and ship proof is reminded, and it never goes out on silence.
+          printShipWhere(),
         ),
       )
       .orderBy(asc(orders.createdAt))

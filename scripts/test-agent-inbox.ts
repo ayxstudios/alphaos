@@ -141,7 +141,7 @@ async function main() {
         .values({ businessId, email, firstName: "Inbox", lastName: "Test" })
         .returning({ id: customers.id });
 
-      async function order(tag: string, proofAgeHours: number) {
+      async function order(tag: string, proofAgeHours: number, productType: "digital" | "physical" = "digital") {
         const name = `${MARK}${tag}-${stamp}`;
         const [o] = await tx
           .insert(orders)
@@ -162,7 +162,7 @@ async function main() {
           title: "Custom pet portrait",
           figureCount: 1,
           figureCountSource: "manual",
-          productType: "digital",
+          productType,
         });
         const at = new Date(now.getTime() - proofAgeHours * HOUR);
         await tx.insert(proofs).values({ businessId, orderId: o.id, token: generateProofToken(), sentAt: at, createdAt: at });
@@ -192,13 +192,16 @@ async function main() {
       const revision = await order("revise", 2);
       const question = await order("question", 2);
       const unclear = await order("unclear", 2);
-      const stale = await order("stale", 80);
+      // Only a print and ship proof is reminded; a digital one is in her court.
+      const stale = await order("stale", 80, "physical");
+      const staleDigital = await order("stale-digital", 80);
       return {
         approval,
         revision,
         question,
         unclear,
         stale,
+        staleDigital,
         msg: {
           approval: await inbound(approval, "Love it, approved, please print"),
           revision: await inbound(revision, "Please make the dog's ears darker and remove the date"),
@@ -292,6 +295,10 @@ async function main() {
         .select({ id: messages.id, status: messages.status })
         .from(messages)
         .where(and(eq(messages.orderId, ids.stale.id), eq(messages.templateKey, "proof_reminder")));
+      const digitalReminders = await tx
+        .select({ id: messages.id })
+        .from(messages)
+        .where(and(eq(messages.orderId, ids.staleDigital.id), eq(messages.templateKey, "proof_reminder")));
       const unmatched = await tx
         .select({ id: exceptions.id, detail: exceptions.detail })
         .from(exceptions)
@@ -322,6 +329,7 @@ async function main() {
         unmatched,
         unmatchedLog: await act(null, "agent.reply_escalated", ids.msg.unmatched),
         reminders,
+        digitalReminders,
         reminderLog: await tx
           .select({ id: activityLog.id })
           .from(activityLog)
@@ -361,10 +369,11 @@ async function main() {
     check("unmatched: one unmatched_reply exception", result.unmatched.length === 1, String(result.unmatched.length));
     check("unmatched: agent.reply_escalated logged", result.unmatchedLog.length === 1, String(result.unmatchedLog.length));
     check(
-      "stale: one proof_reminder draft",
+      "stale print and ship: one proof_reminder draft",
       result.reminders.length === 1 && result.reminders[0]!.status === "draft" && result.reminderLog.length === 1,
       JSON.stringify(result.reminders),
     );
+    check("stale digital: no proof_reminder, it is in the buyer's court", result.digitalReminders.length === 0, JSON.stringify(result.digitalReminders));
 
     // ---- second tick: nothing left to do -----------------------------------
     const beforeSecond = await snapshot(businessId);

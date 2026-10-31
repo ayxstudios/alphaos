@@ -120,7 +120,7 @@ export const TEMPLATE_META: Record<
   },
   proof_reminder: {
     label: "Proof reminder",
-    description: "Sent three days after a proof if the customer has not answered.",
+    description: "Print and ship orders only: sent three days after a proof if the customer has not answered. Digital orders get no reminder, and nothing is printed until the customer approves.",
     variables: ["first_name", "order_number", "business_name", "proof_link", "sign_off"],
   },
   photo_shortfall: {

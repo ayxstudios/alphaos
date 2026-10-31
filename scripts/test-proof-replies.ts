@@ -229,18 +229,19 @@ async function dbTests() {
   check("question classification stays for the VA card", !!(await msgRow(questionMsg))?.metadata);
 
   // --- reminders sweep: a reply is not silence -------------------------------
-  // Shelby's exact shape: proof 3+ days out, she wrote 45 min ago, no decision yet.
-  const shelby = await order({ proofHoursAgo: 80 });
+  // Shelby's exact shape: proof 3+ days out, she wrote 45 min ago, no decision
+  // yet. Print and ship: a digital proof is never reminded at all (2026-10-31).
+  const shelby = await order({ proofHoursAgo: 80, physical: true });
   await inbound(shelby.id, "Could you change the background?", 0.75, null);
-  // Physical, proof 8 days out, she asked a question on day 2: no auto-approve.
+  // Physical, proof 8 days out, she asked a question on day 2.
   const asked = await order({ proofHoursAgo: 24 * 8, physical: true });
   await inbound(asked.id, "When will it ship?", 24 * 6, { intent: "question", confidence: 0.95 });
-  // Truly silent, 4 days: still reminded (the control).
-  const silent = await order({ proofHoursAgo: 96 });
+  // Truly silent print and ship, 4 days: still reminded (the control).
+  const silent = await order({ proofHoursAgo: 96, physical: true });
 
   const sweep = await runRemindersSweep({ businessIds: [ids.biz], now });
   check("sweep: no reminder after the buyer wrote (Shelby)", (await remindersFor(shelby.id)).length === 0);
-  check("sweep: a reply is not 7 days of silence, no auto-approve", (await statusOf(asked.id)) === "awaiting_approval" && (await remindersFor(asked.id)).length === 0);
+  check("sweep: a reply is not silence, no reminder and still awaiting approval", (await statusOf(asked.id)) === "awaiting_approval" && (await remindersFor(asked.id)).length === 0);
   const silentAlerts = await withSystemContext((tx) => tx.select({ id: alphaEvents.id }).from(alphaEvents).where(eq(alphaEvents.orderId, asked.id)));
   check("sweep: no 'customer silent' alert after a reply", silentAlerts.length === 0);
   check("sweep: a truly silent buyer is still reminded", (await remindersFor(silent.id)).length === 1);
@@ -249,7 +250,7 @@ async function dbTests() {
   check("sweep: nothing claimed for her proof", claims.length === 0);
 
   // --- the send gate: queued before she answered, she answered, then the flush.
-  const late = await order({ proofHoursAgo: 80 });
+  const late = await order({ proofHoursAgo: 80, physical: true });
   const queued = await reminder(late.id, "queued");
   await inbound(late.id, "I want changes please", 0.2, null);
   const res = await sendMessage(queued);

@@ -1,6 +1,6 @@
 // "Has the buyer said anything since the proof?" One answer for every road that
-// chases a silent proof: the reminders sweep (3-day reminder, day-5 alert, day-7
-// auto-approve), the agent inbox reminder and the send itself.
+// chases a silent proof: the reminders sweep (3-day reminder, day-5 alert), the
+// agent inbox reminder and the send itself.
 //
 // Shelby Leachet 4199624202 (CPS) asked for changes by email at 20:31 on
 // 2026-10-14; the reminders sweep sent her "please approve your proof" at 21:16
@@ -12,6 +12,8 @@ import { and, desc, eq, gt, isNull, ne, or, sql } from "drizzle-orm";
 
 import type { Tx } from "@/lib/db";
 import { activityLog, messages, orders, proofs } from "@/lib/db/schema";
+
+import { isPrintShipOrder } from "./print-ship";
 
 /** Inbound customer words on an order (email replies, Etsy conversation messages), not Etsy sale notices. */
 export function buyerWordsWhere() {
@@ -34,13 +36,15 @@ export async function buyerRepliedSince(tx: Tx, orderId: string, since: Date): P
 
 /**
  * Why a queued or drafted proof reminder must not go out, or null when it may:
- * the order left awaiting_approval, its latest proof was decided, or the buyer
- * wrote after that proof went out.
+ * the order left awaiting_approval, it is a digital order (no proof follow-ups,
+ * Yousif 2026-10-31: "Just leave it in their court"), its latest proof was
+ * decided, or the buyer wrote after that proof went out.
  */
 export async function staleProofReminderReason(tx: Tx, orderId: string): Promise<string | null> {
   const [order] = await tx.select({ status: orders.status }).from(orders).where(eq(orders.id, orderId)).limit(1);
   if (!order) return "the order is gone";
   if (order.status !== "awaiting_approval") return `the order is ${order.status.replace(/_/g, " ")}, not awaiting approval`;
+  if (!(await isPrintShipOrder(tx, orderId))) return "a digital order: no proof follow-ups, it is in the buyer's court";
   const [proof] = await tx
     .select({ decision: proofs.decision, at: sql<Date>`coalesce(${proofs.sentAt}, ${proofs.createdAt})`.mapWith((v) => new Date(v as string)) })
     .from(proofs)

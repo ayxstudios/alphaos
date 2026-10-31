@@ -216,11 +216,17 @@ inbox pass only ran where `agentInboxEnabled` was on (PixArt alone).
   escalated). Same road as a VA's tap (`applyReplyClassificationDecision`),
   stamped `agent.reply_applied`; open proof reminders on the order withdrawn.
 - `lib/reminders/buyer-replied.ts`: a reply of any kind after the proof is not
-  silence. The reminders sweep sends no 3-day reminder, no day-5 "customer
-  silent" alert and no day-7 auto-approve; `sendMessage` withdraws a queued or
-  drafted `proof_reminder` (archived draft, `email.proof_reminder_withdrawn`)
-  when the buyer wrote after the proof, the proof was decided or the order
-  moved on; the agent outbox withdraws such drafts instead of holding them.
+  silence. The reminders sweep sends no 3-day reminder and no day-5 "customer
+  silent" alert; `sendMessage` withdraws a queued or drafted `proof_reminder`
+  (archived draft, `email.proof_reminder_withdrawn`) when the buyer wrote after
+  the proof, the proof was decided, the order moved on or it is a digital order;
+  the agent outbox withdraws such drafts instead of holding them.
+- 2026-10-31 (Yousif: "We also shouldn't be following up on email for digital
+  items ... Just leave it in their court. Even print and ship orders shouldn't
+  go out without final approval from the customer."): the day-7 silence
+  auto-approve is gone, and only a print and ship proof is ever reminded
+  (`lib/reminders/print-ship.ts`: a physical line, or the Print & Ship add-on on
+  the Etsy receipt).
 
 ## L9 Not started in a day = a designer with room (2026-10-16)
 

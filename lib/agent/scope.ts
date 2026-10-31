@@ -47,8 +47,8 @@ export function agentMessageScope(): SQL {
  * The buyer REACHED OUT when, at or after LEGACY_BEFORE, any of:
  *   (a) an inbound message row sits on the order (any channel);
  *   (b) the customer decided one of its proofs on the proof page (approved, or
- *       asked for a revision). Only that decision counts: not the 7-day silence
- *       auto-approve, an owner's review fix, a staff-made revision or a reply
+ *       asked for a revision). Only that decision counts: not the old 7-day
+ *       silence auto-approve (removed 2026-10-31), an owner's review fix, a staff-made revision or a reply
  *       the agent applied from an email (an inbound message covers that one);
  *   (c) it was marked URGENT by a person, or by the agent because a buyer
  *       chased. The agent's own deadline and paid-order flags do not count.

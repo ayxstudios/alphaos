@@ -165,7 +165,7 @@ Just a friendly reminder that your portrait for order {{order_number}} is ready 
 
 {{proof_link}}
 
-If I don't hear from you after a little while, I'll finalize it as it is so your order isn't held up, but I'd love your feedback first!
+Once you approve it, I'll send it off to be printed and shipped. If you'd like anything changed, just reply and let me know!
 
 {{sign_off}}`,
   },

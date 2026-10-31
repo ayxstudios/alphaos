@@ -1,7 +1,10 @@
 /**
- * Reminders sweep (lib/reminders/sweep.ts): 48h photo reminder, 3-day proof
- * reminder, day-5 customer.silent Alpha event, and the day-7 silence
- * auto-approve rule (physical orders only — digital never auto-approves).
+ * Reminders sweep (lib/reminders/sweep.ts): 48h photo reminder, and for PRINT
+ * AND SHIP proofs only a 3-day proof reminder and a day-5 customer.silent Alpha
+ * event. Nothing is ever approved on silence and a digital proof gets no
+ * follow-up at all (Yousif 2026-10-31: "We also shouldn't be following up on
+ * email for digital items ... Just leave it in their court. Even print and ship
+ * orders shouldn't go out without final approval from the customer.").
  * Every fire is claimed exactly once via the reminder_fires ledger.
  */
 import "./load-env";
@@ -13,6 +16,7 @@ import { eq, inArray } from "drizzle-orm";
 import ws from "ws";
 
 import { withSystemContext } from "../lib/db";
+import { sendMessage } from "../lib/email/dispatch";
 import * as schema from "../lib/db/schema";
 import {
   activityLog,
@@ -27,7 +31,7 @@ import {
   shops,
   users,
 } from "../lib/db/schema";
-import { AUTO_APPROVE_REASON, runRemindersSweep } from "../lib/reminders/sweep";
+import { runRemindersSweep } from "../lib/reminders/sweep";
 
 let failures = 0;
 function report(name: string, pass: boolean, detail: string) {
@@ -52,12 +56,18 @@ const ids = {
   // Order B: physical, proof sent 4 days ago -> 3-day reminder only.
   orderBId: randomUUID(),
   proofBId: randomUUID(),
-  // Order C: physical, proof sent 8 days ago -> reminder + silent alert + auto-approve.
+  // Order C: physical, proof sent 8 days ago -> reminder + silent alert, NEVER approved.
   orderCId: randomUUID(),
   proofCId: randomUUID(),
-  // Order D: digital, proof sent 8 days ago -> reminder + silent alert, NEVER auto-approve.
+  // Order D: digital, proof sent 8 days ago -> nothing at all, it is in her court.
   orderDId: randomUUID(),
   proofDId: randomUUID(),
+  // Order E: its line says digital but the Etsy receipt has the Print & Ship add-on -> reminded.
+  orderEId: randomUUID(),
+  proofEId: randomUUID(),
+  // Order F: digital, a listing title that only OFFERS print & ship -> left alone.
+  orderFId: randomUUID(),
+  proofFId: randomUUID(),
 };
 
 async function setup() {
@@ -127,7 +137,7 @@ async function setup() {
       sentAt: new Date(now.getTime() - 4 * DAY),
     });
 
-    // Order C: physical, proof 8 days old (past every threshold).
+    // Order C: physical, proof 8 days old (past every threshold, still never approved).
     await tx.insert(orders).values({
       id: ids.orderCId,
       businessId: ids.businessId,
@@ -148,7 +158,7 @@ async function setup() {
       sentAt: new Date(now.getTime() - 8 * DAY),
     });
 
-    // Order D: digital, proof 8 days old — must NOT auto-approve.
+    // Order D: digital, proof 8 days old: no reminder, no alert, no approval.
     await tx.insert(orders).values({
       id: ids.orderDId,
       businessId: ids.businessId,
@@ -167,6 +177,55 @@ async function setup() {
       orderId: ids.orderDId,
       token: `proof-d-${suffix}`,
       sentAt: new Date(now.getTime() - 8 * DAY),
+    });
+
+    // Order E: the import missed the physical line, the receipt says Print & Ship.
+    await tx.insert(orders).values({
+      id: ids.orderEId,
+      businessId: ids.businessId,
+      shopId: ids.shopId,
+      customerId: ids.customerId,
+      platformOrderId: `RME-${suffix}`,
+      platformOrderName: "RME-1",
+      status: "awaiting_approval",
+      source: "manual",
+      uploadToken: randomUUID(),
+      rawImport: {
+        transactions: [
+          { title: "Custom Pet Portrait From Photo", listing_id: 1000000001, quantity: 1 },
+          { title: "Print &amp; Ship My Order - ADD-ON LISTING", listing_id: 1231801819, quantity: 1 },
+        ],
+      },
+    });
+    await tx.insert(orderItems).values({ businessId: ids.businessId, orderId: ids.orderEId, title: "Pet portrait", productType: "digital" });
+    await tx.insert(proofs).values({
+      id: ids.proofEId,
+      businessId: ids.businessId,
+      orderId: ids.orderEId,
+      token: `proof-e-${suffix}`,
+      sentAt: new Date(now.getTime() - 4 * DAY),
+    });
+
+    // Order F: a digital buy from a listing whose title offers both.
+    await tx.insert(orders).values({
+      id: ids.orderFId,
+      businessId: ids.businessId,
+      shopId: ids.shopId,
+      customerId: ids.customerId,
+      platformOrderId: `RMF-${suffix}`,
+      platformOrderName: "RMF-1",
+      status: "awaiting_approval",
+      source: "manual",
+      uploadToken: randomUUID(),
+      rawImport: { transactions: [{ title: "Custom Pet Portrait | Digital Download or Print & Ship Canvas", listing_id: 1000000002, quantity: 1 }] },
+    });
+    await tx.insert(orderItems).values({ businessId: ids.businessId, orderId: ids.orderFId, title: "Pet portrait", productType: "digital" });
+    await tx.insert(proofs).values({
+      id: ids.proofFId,
+      businessId: ids.businessId,
+      orderId: ids.orderFId,
+      token: `proof-f-${suffix}`,
+      sentAt: new Date(now.getTime() - 4 * DAY),
     });
   });
 }
@@ -224,67 +283,92 @@ async function main() {
     report("the too-recent order gets no photo reminder", noPhotoMsg === null, JSON.stringify(noPhotoMsg));
 
     report(
-      "proof reminder fires for all three aged proofs (B, C, D all past 3 days)",
+      "proof reminder fires for the print and ship proofs only (B, C, E), never the digital ones (D, F)",
       first.proofReminders.candidates === 3 && first.proofReminders.fired === 3,
       JSON.stringify(first.proofReminders),
     );
+    report("the digital proofs are counted as left in the buyer's court", first.digitalLeftAlone === 2, JSON.stringify(first));
+    report("no proof reminder for the digital order D", (await messageFor(ids.orderDId, "proof_reminder")) === null, "");
+    report("the Print & Ship add-on on the receipt counts even when the item row says digital (E)", (await messageFor(ids.orderEId, "proof_reminder")) !== null, "");
+    report("a listing title that only offers print & ship is still digital (F)", (await messageFor(ids.orderFId, "proof_reminder")) === null, "");
     report(
-      "customer.silent alert fires only for the two 8-day proofs (C, D), not the 4-day one (B)",
-      first.customerSilentAlerts.candidates === 2 && first.customerSilentAlerts.fired === 2,
+      "customer.silent alert fires only for the 8-day print proof (C), not the 4-day one (B) or the digital one (D)",
+      first.customerSilentAlerts.candidates === 1 && first.customerSilentAlerts.fired === 1,
       JSON.stringify(first.customerSilentAlerts),
     );
-    report(
-      "auto-approve fires only for the physical 8-day proof (C), never the digital one (D)",
-      first.autoApprovals.candidates === 1 && first.autoApprovals.fired === 1 && first.autoApprovals.failed === 0,
-      JSON.stringify(first.autoApprovals),
-    );
 
-    const [orderC, orderD, orderB] = await withSystemContext((tx) =>
+    const rows = await withSystemContext((tx) =>
       tx
         .select({ id: orders.id, status: orders.status })
         .from(orders)
-        .where(inArray(orders.id, [ids.orderCId, ids.orderDId, ids.orderBId])),
-    ).then((rows) => [ids.orderCId, ids.orderDId, ids.orderBId].map((id) => rows.find((r) => r.id === id)));
-    report("order C (physical, 8 days silent) is now approved", orderC?.status === "approved", JSON.stringify(orderC));
-    report("order D (digital, 8 days silent) is untouched, still awaiting_approval", orderD?.status === "awaiting_approval", JSON.stringify(orderD));
-    report("order B (physical, only 4 days silent) is untouched, still awaiting_approval", orderB?.status === "awaiting_approval", JSON.stringify(orderB));
-
-    const [proofCRow] = await withSystemContext((tx) =>
-      tx.select({ decision: proofs.decision }).from(proofs).where(eq(proofs.id, ids.proofCId)),
+        .where(inArray(orders.id, [ids.orderBId, ids.orderCId, ids.orderDId, ids.orderEId, ids.orderFId])),
     );
-    report("proof C carries the approved decision", proofCRow?.decision === "approved", JSON.stringify(proofCRow));
-
-    const autoApproveLog = await withSystemContext((tx) =>
-      tx.select({ metadata: activityLog.metadata }).from(activityLog).where(eq(activityLog.orderId, ids.orderCId)),
+    const statusOf = (id: string) => rows.find((r) => r.id === id)?.status;
+    report(
+      "nothing is approved on silence: B, C, D, E and F all still awaiting_approval",
+      [ids.orderBId, ids.orderCId, ids.orderDId, ids.orderEId, ids.orderFId].every((id) => statusOf(id) === "awaiting_approval"),
+      JSON.stringify(rows),
     );
-    const hasReason = autoApproveLog.some(
-      (r) => (r.metadata as { autoApproveReason?: string } | null)?.autoApproveReason === AUTO_APPROVE_REASON,
+    const decided = await withSystemContext((tx) =>
+      tx.select({ id: proofs.id, decision: proofs.decision }).from(proofs).where(eq(proofs.businessId, ids.businessId)),
+    );
+    report("no proof carries a decision", decided.every((p) => p.decision == null), JSON.stringify(decided));
+    const approvals = await withSystemContext((tx) =>
+      tx.select({ action: activityLog.action }).from(activityLog).where(eq(activityLog.businessId, ids.businessId)),
     );
     report(
-      "activity_log records the exact silence auto-approve reason",
-      hasReason,
-      JSON.stringify(autoApproveLog.map((r) => r.metadata)),
+      "no approval written to activity_log",
+      !approvals.some((r) => /approv/.test(r.action)),
+      JSON.stringify(approvals.map((r) => r.action)),
     );
 
     const silentEvents = await withSystemContext((tx) =>
-      tx.select({ orderId: alphaEvents.orderId, type: alphaEvents.type }).from(alphaEvents).where(eq(alphaEvents.businessId, ids.businessId)),
+      tx.select({ orderId: alphaEvents.orderId, type: alphaEvents.type, text: alphaEvents.text }).from(alphaEvents).where(eq(alphaEvents.businessId, ids.businessId)),
     );
     report(
-      "customer.silent Alpha events queued for C and D only",
-      silentEvents.length === 2 && silentEvents.every((e) => e.type === "customer.silent"),
+      "one customer.silent Alpha event, for C, saying it is not printed until approved",
+      silentEvents.length === 1 &&
+        silentEvents[0]!.orderId === ids.orderCId &&
+        silentEvents[0]!.type === "customer.silent" &&
+        /not printed until they approve/.test(silentEvents[0]!.text ?? ""),
       JSON.stringify(silentEvents),
     );
 
-    // Idempotency: re-running with the same `now` must not re-fire anything —
-    // order C already left awaiting_approval, and B/D's claims already exist.
+    // Idempotency: re-running with the same `now` must not re-fire anything.
     const second = await runRemindersSweep({ businessIds: [ids.businessId], now });
     report(
       "re-running the sweep at the same instant fires nothing new",
-      second.photoReminders.fired === 0 &&
-        second.proofReminders.fired === 0 &&
-        second.customerSilentAlerts.fired === 0 &&
-        second.autoApprovals.fired === 0,
+      second.photoReminders.fired === 0 && second.proofReminders.fired === 0 && second.customerSilentAlerts.fired === 0,
       JSON.stringify(second),
+    );
+
+    // A digital reminder queued before this rule (or tapped by a VA) is withdrawn at send.
+    const [queued] = await withSystemContext((tx) =>
+      tx
+        .insert(messages)
+        .values({
+          businessId: ids.businessId,
+          orderId: ids.orderDId,
+          customerId: ids.customerId,
+          direction: "outbound",
+          channel: "email",
+          status: "queued",
+          templateKey: "proof_reminder",
+          subject: "A reminder about your proof",
+          address: `reminders-customer-${suffix}@example.com`,
+          body: "Please approve your proof.",
+          dedupeKey: `test:${randomUUID()}`,
+        })
+        .returning({ id: messages.id }),
+    );
+    const res = await sendMessage(queued!.id);
+    const [after] = await withSystemContext((tx) =>
+      tx.select({ status: messages.status, archivedAt: messages.archivedAt, metadata: messages.metadata }).from(messages).where(eq(messages.id, queued!.id)),
+    );
+    report(
+      "a queued digital proof reminder is withdrawn, never sent",
+      !res.ok && "withdrawn" in res && res.withdrawn === true && after?.status === "draft" && !!after.archivedAt,
+      JSON.stringify({ res, after }),
     );
   } finally {
     await cleanup();

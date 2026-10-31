@@ -11,8 +11,9 @@ export const maxDuration = 60;
 /**
  * NOT in vercel.json crons — the daemon calls this directly (CRON_SECRET,
  * same bearer-auth contract as every other cron route). 48h photo reminder,
- * 3-day proof reminder, day-5 customer.silent Alpha event, day-7 silence
- * auto-approve on physical orders. See lib/reminders/sweep.ts. First, proofs
+ * and for print and ship proofs only a 3-day proof reminder and a day-5
+ * customer.silent Alpha event; nothing is approved on silence and a digital
+ * proof is left in the buyer's court. See lib/reminders/sweep.ts. First, proofs
  * held to go with the buyer's other order go out once their time is up or
  * nothing they wait on still counts (lib/orders/deliver-together-db.ts).
  */
@@ -27,14 +28,11 @@ export async function GET(req: NextRequest) {
     );
     const result = await runRemindersSweep();
     const itemsProcessed =
-      result.photoReminders.candidates +
-      result.proofReminders.candidates +
-      result.customerSilentAlerts.candidates +
-      result.autoApprovals.candidates;
+      result.photoReminders.candidates + result.proofReminders.candidates + result.customerSilentAlerts.candidates;
     await finishJobRun(runId, {
-      status: result.autoApprovals.failed > 0 ? "partial" : "ok",
+      status: "ok",
       itemsProcessed,
-      itemsFailed: result.autoApprovals.failed,
+      itemsFailed: 0,
       metadata: { ...result, deliveryHolds },
     });
     return NextResponse.json({ ...result, deliveryHolds });
