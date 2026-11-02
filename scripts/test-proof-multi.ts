@@ -298,15 +298,29 @@ async function main() {
     check("a single file over the cap is refused", !rh.ok && /Portrait 2 is .* MB, more than one email can carry/.test(rh.message), rh.ok ? "sent!" : rh.message);
     check("nothing went out and it stays in QC", sent.length === sendsH && (await outbound(h.id)).length === 0 && (await statusOf(h.id)) === "awaiting_qc");
 
-    // 3c. More than MAX_PROOF_EMAILS emails' worth: refused, nothing sent.
-    const many = await newOrder("many", {
+    // 3c. Five big portraits (4216369692, 4211937331): five emails, one portrait each.
+    const five = await newOrder("five", {
       email: true,
       quantity: 5,
-      files: [1, 2, 3, 4, 5].map((n) => ({ name: `p${n}-big`, unit: n })),
+      files: [1, 2, 3, 4, 5].map((n) => ({ name: `f${n}-big`, unit: n })),
+    });
+    const sendsF = sent.length;
+    const rf = await ownerApproveCore(vaUser, va.name, five.id);
+    check("a set needing 5 emails goes out", rf.ok && rf.delivery === "email" && /in 5 emails/.test(rf.description ?? ""), rf.ok ? rf.description : rf.message);
+    const fm = await outbound(five.id);
+    check("five sent emails, one portrait each", sent.length === sendsF + 5 && fm.length === 5 && fm.every((m) => m.status === "sent"), `${sent.length - sendsF} sends`);
+    check("that order moved on", (await statusOf(five.id)) === "awaiting_approval");
+
+    // 3c2. More than MAX_PROOF_EMAILS emails' worth: refused, nothing sent.
+    const tooMany = MAX_PROOF_EMAILS + 1;
+    const many = await newOrder("many", {
+      email: true,
+      quantity: tooMany,
+      files: Array.from({ length: tooMany }, (_, i) => ({ name: `p${i + 1}-big`, unit: i + 1 })),
     });
     const sendsM = sent.length;
     const rm = await ownerApproveCore(vaUser, va.name, many.id);
-    check("a set needing 5 emails is refused", !rm.ok && /more than 4 emails can carry/.test(rm.message), rm.ok ? "sent!" : rm.message);
+    check(`a set needing ${tooMany} emails is refused`, !rm.ok && new RegExp(`more than ${MAX_PROOF_EMAILS} emails can carry`).test(rm.message), rm.ok ? "sent!" : rm.message);
     check("nothing went out for it", sent.length === sendsM && (await outbound(many.id)).length === 0);
 
     // 3d. The split itself: consecutive groups in portrait order, each under the cap.
@@ -317,7 +331,10 @@ async function main() {
     check("an unknown size keeps one email", groups([20, null, 20]) === "0+1+2");
     check("one portrait is never split", groups([30]) === "0");
     check("one file over the cap: refused", groups([5, 25]) === "refused");
-    check(`more than ${MAX_PROOF_EMAILS} emails: refused`, groups([20, 20, 20, 20, 20]) === "refused" && groups([20, 20, 20, 20]) === "0 | 1 | 2 | 3");
+    check(
+      `more than ${MAX_PROOF_EMAILS} emails: refused`,
+      groups(Array(MAX_PROOF_EMAILS + 1).fill(20)) === "refused" && (groups(Array(MAX_PROOF_EMAILS).fill(20)).match(/\|/g) ?? []).length === MAX_PROOF_EMAILS - 1,
+    );
 
     // 4. No email on file: the Etsy desk sends the proof link, so size is no limit.
     const d = await newOrder("etsy", { email: false, quantity: 2, files: [{ name: "dog-big", unit: 1 }, { name: "cat-big", unit: 2 }] });

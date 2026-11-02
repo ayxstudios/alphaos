@@ -84,8 +84,12 @@ export async function describeAssetAttachment(
  */
 export const MAX_EMAIL_ATTACHMENT_BYTES = 24 * 1024 * 1024;
 
-/** The most emails one proof is split into (4200343312: nine portraits, about 40 MB). */
-export const MAX_PROOF_EMAILS = 4;
+/**
+ * The most emails one proof is split into (4200343312: nine portraits, about
+ * 40 MB). Was 4 until 4216369692 and 4211937331: five 4800x6000 portraits of
+ * 14 MB each need one email apiece, so Approve refused them every time.
+ */
+export const MAX_PROOF_EMAILS = 10;
 
 export type ProofAttachment = EmailAttachmentDescriptor & { n: number; label: string };
 

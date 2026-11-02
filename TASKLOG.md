@@ -264,3 +264,10 @@ Branch task/photo-gate-assign, worktree alphaos-wt-photo-assign, base c0ad229. N
 - [x] Copy and UI: "Waiting on a photo of Rambo (asked the buyer <date>)" on the board card, order page and assign dialogs; designer-facing hold UI removed; reason prompt on every staff assign and reassign path (order page form, quick reassign, bulk table); exceptions page wording
 - [x] Tests (throwaway local Postgres from docs/TESTING.md, own DB, dropped after): test:photo-subjects, test:assign-guards, test:transitions, test:duplicate-slots, test:wrong-file-gate all pass; test:limbo has the same 7 AI handover/digest failures as base c0ad229 (identical names); tsc + eslint clean
 - [x] landed 31 Oct under integrate:alphaos: rebased on 8b33b73, main d48d4e3 (no migration), prod CLI deploy dpl_FzZf28wtFSb2w4hcHmKYAbLuzzEJ aliased to alphaos-kappa; /api/health 200, /approve 307, /login 200, agent subjects 401 without the token and 200 with it, photo-subjects status ok; tsc clean, eslint clean on changed files, photo-subjects, assign-guards, transitions, duplicate-slots, wrong-file-gate pass, limbo only the 7 known AI handover/digest failures
+
+## 2026-11-02 Five big portraits could never be approved (Ayser, terminal)
+Ask: "4216369692 not sent keeps coming up, can we solve this please?"
+Branch task/proof-email-cap, worktree alphaos-wt-proof-emails, base 5ac7423. No migration.
+- [x] Cause: five 4800x6000 portraits of 14 MB each (69.9 MB) need one email apiece, MAX_PROOF_EMAILS was 4, so proofAttachments refused every Approve with "more than 4 emails can carry". Same on 4211937331 (69.1 MB).
+- [x] MAX_PROOF_EMAILS 4 -> 10.
+- [x] test-proof-multi: a set needing 5 emails goes out in five sends and moves on; 11 is refused. The two plural-wording FAILs in that script are the same on untouched 5ac7423 (not this change, left as is).
