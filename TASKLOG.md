@@ -271,3 +271,11 @@ Branch task/proof-email-cap, worktree alphaos-wt-proof-emails, base 5ac7423. No 
 - [x] Cause: five 4800x6000 portraits of 14 MB each (69.9 MB) need one email apiece, MAX_PROOF_EMAILS was 4, so proofAttachments refused every Approve with "more than 4 emails can carry". Same on 4211937331 (69.1 MB).
 - [x] MAX_PROOF_EMAILS 4 -> 10.
 - [x] test-proof-multi: a set needing 5 emails goes out in five sends and moves on; 11 is refused. The two plural-wording FAILs in that script are the same on untouched 5ac7423 (not this change, left as is).
+
+## Work clock: a revision is late from its own deadline (6 Nov)
+
+Branch task/alphaos-req365c5. Yousif 2026-11-06: "the revision sort of resets the timer"; an order 3 days in and 2 days into a revision should read revision, 2 days old, not 5 days late.
+- [x] lib/orders/work-clock.ts: one rule for every staff screen. While an order is in_design or awaiting_qc the clock is the active assignment's due_at (resetRevisionDeadline already gives every customer revision and QC fail a fresh one); at any other stage it is orders.due_at, the customer date, which never moves. workDueAt (JS) + workDueAtSql (scalar subquery, no join) + ageLabel.
+- [x] Staff boards (board-data.ts dueAt for non-designers), Orders page Overdue view + due filter + due column + isOverdue, Home overdue/due-today/shop overdue counts (lib/home/staff.ts), the Eye's delayed/overdueHours (lib/eye/data.ts) all read it. Designer boards unchanged (they already read their own deadline). Card modal keeps "Customer due" and "Designer due" side by side.
+- [x] Revision / QC failed pills on the compact staff card carry the send-back's age ("Revision · 2d old").
+- [x] npm run test:work-clock (pure), tsc clean, eslint clean on changed files. Live DB proof: in_design orders 10+ d late drop 15 -> 2 on the new clock (both Hanif QC fails, PC32229/PC32231); the 800+ "overdue" rows are mostly 330 approved digital orders never closed out and 146 proofs the buyer never answered, untouched here.
