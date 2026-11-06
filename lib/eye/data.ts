@@ -1,6 +1,7 @@
 import { and, desc, eq, gte, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
+import { workDueAtSql } from "@/lib/orders/work-clock";
 import {
   activityLog,
   assignments,
@@ -215,7 +216,8 @@ export async function getEyeData(scope: RequestUser, nowInput: Date = new Date()
         status: orders.status,
         aiState: orders.aiState,
         revisionCount: orders.revisionCount,
-        dueAt: orders.dueAt,
+        // Work clock: the assignment deadline while drawn or in QC (a revision resets it), the customer date otherwise.
+        dueAt: workDueAtSql().mapWith(orders.dueAt),
         placedAt: orders.placedAt,
         createdAt: orders.createdAt,
         updatedAt: orders.updatedAt,

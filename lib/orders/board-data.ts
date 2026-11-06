@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { currentPeriod } from "@/lib/orders/earnings";
+import { workDueAt } from "@/lib/orders/work-clock";
 import { isDesignerLike } from "@/lib/auth/roles";
 
 import { withUserContext, type RequestUser } from "@/lib/db";
@@ -71,7 +72,9 @@ export type BoardCard = {
   /**
    * The deadline this viewer is shown and sorted by (ISO). A designer sees
    * their OWN deadline (the active assignment's due_at, see CLAUDE.md
-   * Deadlines); staff see the customer SLA (orders.due_at).
+   * Deadlines); staff see the work clock (lib/orders/work-clock.ts): the
+   * assignment's deadline while it is drawn or in QC, which every revision
+   * resets, and the customer SLA (orders.due_at) at any other stage.
    */
   dueAt: string | null;
   /** Customer-facing SLA (orders.due_at). */
@@ -116,6 +119,8 @@ export type BoardCard = {
    */
   qcFail: QcFailInfo | null;
   customerRevision: QcFailInfo | null;
+  /** When that revision or QC fail landed on the board (ISO), so the card can say "Revision · 2d old". */
+  revisionAt: string | null;
   /**
    * In design with a portrait version newer than the last send-back (QC fail
    * or customer revision): Submit for QC will be accepted. The same rule the
@@ -480,8 +485,8 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
   const qcFail = new Map<string, QcFailInfo>();
   const customerRevision = new Map<string, QcFailInfo>();
   const customerRevisionAt = new Map<string, Date>();
+  const qcAt = new Map<string, Date>();
   if (revisionIds.length) {
-    const qcAt = new Map<string, Date>();
     for (const f of failRows) {
       if (qcFail.has(f.orderId)) continue; // keep only the most recent fail
       qcFail.set(f.orderId, {
@@ -520,6 +525,12 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
       customerRevisionAt.set(r.orderId, r.createdAt);
       qcFail.delete(r.orderId);
     }
+  }
+  // When the current send-back landed: the QC fail's time or the customer's decision, whichever the card shows.
+  const revisionAt = new Map<string, Date>();
+  for (const id of revisionIds) {
+    const at = qcFail.has(id) ? qcAt.get(id) : customerRevision.has(id) ? customerRevisionAt.get(id) : undefined;
+    if (at) revisionAt.set(id, at);
   }
 
   const name = new Map<string, string>();
@@ -574,9 +585,11 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
     orderId: o.id,
     orderNumber: o.platformOrderName ?? o.platformOrderId,
     status: o.status,
-    // A designer works to their own deadline; the customer SLA is staff-facing.
-    // An assignment without a due_at (legacy rows) falls back to the SLA.
-    dueAt: iso(isDesignerLike(viewerRole) ? (o.assignmentDueAt ?? o.dueAt) : o.dueAt),
+    // A designer works to their own deadline. Staff see the work clock: the
+    // same deadline while the order is drawn or in QC (a revision resets it),
+    // the customer SLA otherwise. A legacy assignment without a due_at falls
+    // back to the SLA either way.
+    dueAt: iso(isDesignerLike(viewerRole) ? (o.assignmentDueAt ?? o.dueAt) : workDueAt(o)),
     orderDueAt: iso(o.dueAt),
     assignmentDueAt: iso(o.assignmentDueAt),
     figureCount: fig.get(o.id) ?? 0,
@@ -594,6 +607,7 @@ async function enrich(user: RequestUser, rows: OrderRow[]): Promise<BoardCard[]>
     thumbnailUrl: thumb.get(o.id) ?? null,
     qcFail: qcFail.get(o.id) ?? null,
     customerRevision: customerRevision.get(o.id) ?? null,
+    revisionAt: iso(revisionAt.get(o.id) ?? null),
     readyForQc: o.status === "in_design" && readyForQc.has(o.id),
     urgent: !!o.urgentAt,
     urgentReason: o.urgentAt ? o.urgentReason : null,

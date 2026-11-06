@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { and, asc, desc, eq, inArray, isNotNull, isNull, lt, sql, type AnyColumn, type SQL } from "drizzle-orm";
 
 import { cleanSearchTerm, likeContains } from "@/lib/search";
+import { workDueAtSql } from "@/lib/orders/work-clock";
 import { auth } from "@/lib/auth";
 import { withUserContext } from "@/lib/db";
 import { loadShellData } from "@/lib/shell/context";
@@ -298,7 +299,9 @@ function viewWhere(view: ViewKey): SQL {
     case "overdue":
       // Same statuses as Home's overdue count: once an order has shipped the
       // customer deadline has been met, so shipped and later are never overdue.
-      return and(inArray(orders.status, DUE_STATUSES), isNotNull(orders.dueAt), lt(orders.dueAt, sql`now()`))!;
+      // Measured on the work clock: a revision is late from its own deadline,
+      // never from the order's first day (lib/orders/work-clock.ts).
+      return and(inArray(orders.status, DUE_STATUSES), isNotNull(workDueAtSql()), lt(workDueAtSql(), sql`now()`))!;
     case "needs_details":
       return eq(orders.status, "awaiting_details");
     case "needs_photos":
@@ -336,7 +339,7 @@ function statusFilterWhere(status: string) {
 function dueFilterWhere(due: string) {
   switch (due) {
     case "overdue":
-      return and(isNotNull(orders.dueAt), lt(orders.dueAt, sql`now()`));
+      return and(isNotNull(workDueAtSql()), lt(workDueAtSql(), sql`now()`));
     case "today":
       return sql`${orders.dueAt} >= date_trunc('day', now()) and ${orders.dueAt} < date_trunc('day', now()) + interval '1 day'`;
     case "week":
@@ -521,7 +524,9 @@ export default async function OrdersPage({
         source: orders.source,
         needsReview: orders.needsReview,
         revisionCount: orders.revisionCount,
-        dueAt: orders.dueAt,
+        // The work clock: the designer's current deadline while drawn or in QC
+        // (every revision resets it), the customer date otherwise.
+        dueAt: workDueAtSql().mapWith(orders.dueAt),
         placedAt: orders.placedAt,
         createdAt: orders.createdAt,
         updatedAt: orders.updatedAt,

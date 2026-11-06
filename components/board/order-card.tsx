@@ -4,6 +4,7 @@ import { Countdown } from "./countdown";
 import { cardLabels, LABEL_CLASS, optionName, portraitLine, revisionNote } from "./card-meta";
 import type { BoardCard } from "@/lib/orders/board-data";
 import { isWithCustomer } from "@/lib/orders/board-constants";
+import { ageLabel } from "@/lib/orders/work-clock";
 import { optionsSummary } from "@/lib/orders/options-summary";
 
 /**
@@ -44,8 +45,11 @@ export function OrderCard({
     // Only what a VA acts on makes a pill here; source and style stay in the open card.
     const urgent: { text: string; tone: "urgent" | "rose" | "pigment" | "amber" }[] = [];
     if (card.urgent) urgent.push({ text: "Urgent", tone: "urgent" });
-    if (card.qcFail) urgent.push({ text: "QC failed", tone: "rose" });
-    if (card.customerRevision) urgent.push({ text: "Revision", tone: "pigment" });
+    // The pill carries the revision's own age: its clock started when the
+    // send-back landed, not when the order did (Yousif 2026-11-06).
+    const age = card.revisionAt ? ` · ${ageLabel(card.revisionAt)}` : "";
+    if (card.qcFail) urgent.push({ text: `QC failed${age}`, tone: "rose" });
+    if (card.customerRevision) urgent.push({ text: `Revision${age}`, tone: "pigment" });
     if (!card.figuresResolved) urgent.push({ text: "Figures ?", tone: "amber" });
     // One buyer, several orders: a short pill; the other numbers are in the card that opens.
     if (card.sameBuyerNumbers.length) urgent.push({ text: "Same buyer", tone: "amber" });

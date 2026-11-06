@@ -4,6 +4,7 @@ import { cache } from "react";
 import { withUserContext, type RequestUser } from "@/lib/db";
 import { activityLog, designerBusinesses, designerProfiles, earnings, orders, printJobs, shops, users } from "@/lib/db/schema";
 import { liveOrderWhere } from "@/lib/orders/archive";
+import { workDueAtSql } from "@/lib/orders/work-clock";
 import { currentPeriod } from "@/lib/orders/earnings";
 import { getTodayQueue, type TodayItem, type TodayKind } from "@/lib/orders/today-queue";
 import { getEmailNeedsActionCounts } from "@/lib/email/outbox";
@@ -105,11 +106,13 @@ const load = cache(async (userId: string, role: RequestUser["role"], businessId:
           .groupBy(dayBucket(orders.updatedAt)),
         tx
           .select({
-            overdue: sql<number>`count(*) filter (where ${orders.dueAt} < now())::int`,
-            dueToday: sql<number>`count(*) filter (where ${dayBucket(orders.dueAt)} = ${todayKey})::int`,
+            // Overdue on the work clock (lib/orders/work-clock.ts): a revision
+            // is late from its own deadline, not from the order's first day.
+            overdue: sql<number>`count(*) filter (where ${workDueAtSql()} < now())::int`,
+            dueToday: sql<number>`count(*) filter (where ${dayBucket(workDueAtSql())} = ${todayKey})::int`,
           })
           .from(orders)
-          .where(and(live, isNotNull(orders.dueAt), inArray(orders.status, DUE_STATUSES))),
+          .where(and(live, isNotNull(workDueAtSql()), inArray(orders.status, DUE_STATUSES))),
         tx
           .select({
             judged: sql<number>`count(*) filter (where ${orders.dueAt} is not null)::int`,
@@ -131,7 +134,7 @@ const load = cache(async (userId: string, role: RequestUser["role"], businessId:
             name: shops.name,
             platform: shops.platform,
             open: sql<number>`count(${orders.id}) filter (where ${inArray(orders.status, OPEN_STATUSES)} and ${orders.archivedAt} is null)::int`,
-            overdue: sql<number>`count(${orders.id}) filter (where ${inArray(orders.status, DUE_STATUSES)} and ${orders.archivedAt} is null and ${orders.dueAt} < now())::int`,
+            overdue: sql<number>`count(${orders.id}) filter (where ${inArray(orders.status, DUE_STATUSES)} and ${orders.archivedAt} is null and ${workDueAtSql()} < now())::int`,
           })
           .from(shops)
           .leftJoin(orders, eq(orders.shopId, shops.id))
