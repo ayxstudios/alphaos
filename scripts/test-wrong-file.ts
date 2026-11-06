@@ -8,6 +8,7 @@ import {
   designerHeadsUpMessage,
   evaluateWrongFile,
   isDesignerHeadsUp,
+  retiredByRedraw,
   wentToCustomer,
   wrongFileMessage,
   wrongFileWarnings,
@@ -181,6 +182,51 @@ function main() {
   assert.equal(wentToCustomer(m, [file("m", 10), file("n", 11, { deletedAt: t(11.5) })], [t(12)]), true, "the replacement was removed before the pass");
   assert.equal(wentToCustomer(m, [file("m", 10), file("n", 11, { unit: 2 })], [t(12)]), true, "a newer file in another portrait slot");
   assert.equal(wentToCustomer(m, [file("m", 10), file("n", 13)], [t(12)]), true, "replaced only after it went out");
+
+  // 7 Nov, Jerome: Mabel's painting (4220775030) had been sent on 4220738504 by mistake, an order fully redrawn since.
+  // That file is no longer 4220738504's art: the hand-in goes through with a heads-up, the QC pass still stops on it.
+  const retiredMatch = evaluateWrongFile({
+    ...empty,
+    target: { assetId: "mabel", dhash: base, fineSig: A },
+    recent: [{ assetId: "sent-then-redrawn", dhash: away(0), fineSig: A, orderNumber: "4220738504", sent: false, retired: true }],
+  });
+  assert.equal(retiredMatch.blocked, true);
+  assert.equal(retiredMatch.reasons[0].matchSent, false);
+  assert.equal(retiredMatch.reasons[0].matchRetired, true);
+  assert.ok(retiredMatch.reasons.every(isDesignerHeadsUp));
+  assert.match(designerHeadsUpMessage(retiredMatch.reasons) ?? "", /also on order 4220738504\. If it does not belong there, upload that order's own portrait/);
+  assert.match(wrongFileMessage(retiredMatch.reasons) ?? "", /sent on order 4220738504, which has been redrawn since\. Check which order it belongs to/);
+  // A plain unsent match keeps its own wording and carries no retired flag.
+  assert.equal(mixup.reasons[0].matchRetired, undefined);
+  // A sent match on a third order still outranks the retired one: the hand-in is stopped on the sent copy.
+  const retiredAndSent = evaluateWrongFile({
+    ...empty,
+    target: { assetId: "t", dhash: base, fineSig: A },
+    recent: [
+      { assetId: "gone", dhash: away(0), fineSig: A, orderNumber: "PC40", sent: false, retired: true },
+      { assetId: "out", dhash: away(3), fineSig: A, orderNumber: "PC41", sent: true },
+    ],
+  });
+  assert.equal(retiredAndSent.reasons[0].matchAssetId, "out");
+  assert.equal(retiredAndSent.reasons.some(isDesignerHeadsUp), false);
+
+  // Was a sent file replaced in its own slot by a DIFFERENT picture? The ink decides.
+  const sig = (f: SlotFile, fineSig: string | null): SlotFile & { fineSig: string | null } => ({ ...f, fineSig });
+  const sentA = sig(file("sent", 10), A);
+  assert.equal(retiredByRedraw(sentA, [sentA, sig(file("redraw", 13), B)]), true, "a full redraw: another picture in the same slot");
+  assert.equal(retiredByRedraw(sig(file("sent", 10), drawing(1, 1)), [sentA, sig(file("name", 13), drawing(1, 2))]), false, "a new name band is a touch-up, not a redraw");
+  assert.equal(retiredByRedraw(sentA, [sentA, sig(file("again", 13), A)]), false, "the same picture re-exported");
+  assert.equal(retiredByRedraw(sentA, [sentA]), false, "nothing newer in the slot");
+  assert.equal(retiredByRedraw(sentA, [sentA, sig(file("older", 8), B)]), false, "an older file is not a replacement");
+  assert.equal(retiredByRedraw(sentA, [sentA, sig(file("other-slot", 13, { unit: 2 }), B)]), false, "a different picture in another portrait slot");
+  assert.equal(retiredByRedraw(sentA, [sentA, sig(file("other-item", 13, { itemId: "i2" }), B)]), false, "a different picture on another line item");
+  assert.equal(retiredByRedraw(sentA, [sentA, sig(file("removed", 13, { deletedAt: t(14) }), B)]), false, "the replacement was removed");
+  assert.equal(retiredByRedraw(sentA, [sentA, sig(file("unhashed", 13), null)]), false, "no fine signature on the replacement: never on a guess");
+  assert.equal(retiredByRedraw(sig(file("sent", 10), null), [sig(file("sent", 10), null), sig(file("redraw", 13), B)]), false, "no fine signature on the sent file");
+  assert.equal(retiredByRedraw(sig(file("sent", 10), blank), [sig(file("sent", 10), blank), sig(file("redraw", 13), blank)]), false, "two blank pages have no ink to compare");
+  // The newest file in the slot is the one that counts: a redraw that was put back to the sent picture is not a redraw.
+  assert.equal(retiredByRedraw(sentA, [sentA, sig(file("mid", 13), B), sig(file("last", 15), A)]), false, "the newest file is the sent picture again");
+  assert.equal(retiredByRedraw(sentA, [sentA, sig(file("mid", 13), A), sig(file("last", 15), B)]), true, "the newest file is a different picture");
 
   console.log("wrong-file: all checks passed");
 }

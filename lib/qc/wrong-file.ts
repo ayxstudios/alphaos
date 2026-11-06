@@ -28,6 +28,12 @@
  *            submit says which order the picture is for); QC pass still stops,
  *            so a person looks before anything reaches a customer
  *   stray    replaced on its order and never sent: not that order's art, ignored
+ *   retired  went to its customer, then its order got a different picture in the
+ *            same slot (an unhappy buyer's full redraw; the ink differs, a
+ *            touch-up or a new name band never counts): it is no longer that
+ *            order's art, so it is treated like unsent. 2026-11-07, Jerome:
+ *            Mabel's 4220775030 could not be handed in because her painting had
+ *            been sent on 4220738504 by mistake, an order fully redrawn since
  *
  * A block never overrides an owner on what the owner saw (Ayser 2026-10-22:
  * "dont override what i say"): an admin's QC pass goes through Auto QC's
@@ -45,7 +51,7 @@ import { orderNumberOf, loadSameBuyerContext, orientationOf } from "@/lib/orders
 import { loadProofFilePick } from "@/lib/proofs/files";
 import { hashColumnsFor } from "@/lib/qc/asset-hash";
 import { sameIds } from "@/lib/qc/auto-qc";
-import { SAME_PICTURE_DISTANCE, aspectOf, hamming, samePicture } from "@/lib/qc/image-hash";
+import { SAME_PICTURE_DISTANCE, SAME_PICTURE_INK_DIFF, aspectOf, hamming, inkDifference, samePicture } from "@/lib/qc/image-hash";
 
 export const WRONG_FILE_OVERRIDE_ACTION = "order.wrong_file_override";
 /** A designer handed in a picture that is also on another order where it has not gone out. */
@@ -66,8 +72,10 @@ export type WrongFileReason = {
   distance?: number;
   /** Share of inked pixels that differ (lib/qc/image-hash.ts inkDifference). */
   inkDiff?: number;
-  /** other_order / recent_art: false when the matched file never went to its own customer. */
+  /** other_order / recent_art: false when the matched file is not out there as its own customer's portrait (never sent, or retired). */
   matchSent?: boolean;
+  /** other_order / recent_art: the matched file did go out, but its own order was redrawn with a different picture since. */
+  matchRetired?: boolean;
 };
 
 export type WrongFileResult = { blocked: boolean; reasons: WrongFileReason[] };
@@ -77,8 +85,12 @@ export type WrongFileResult = { blocked: boolean; reasons: WrongFileReason[] };
 // ---------------------------------------------------------------------------
 
 export type HashedFile = { assetId: string; dhash: string | null; fineSig?: string | null; width?: number | null; height?: number | null };
-/** sent false = the file never went to its own order's customer (unknown counts as sent). */
-export type MatchCandidate = { assetId: string; dhash: string | null; fineSig?: string | null; orderNumber?: string; sent?: boolean };
+/**
+ * sent false = the file is not out there as its own order's portrait: it never
+ * went to the customer, or it did and was retired since (retired true). Unknown
+ * counts as sent.
+ */
+export type MatchCandidate = { assetId: string; dhash: string | null; fineSig?: string | null; orderNumber?: string; sent?: boolean; retired?: boolean };
 /** A reference file; fromCustomer false = staff attached it, so it is never compared. */
 export type ReferenceCandidate = MatchCandidate & { fromCustomer?: boolean };
 
@@ -136,7 +148,7 @@ export function evaluateWrongFile(input: WrongFileInput): WrongFileResult {
         matchOrderNumber: sib.c.orderNumber,
         distance: sib.distance,
         inkDiff: round3(sib.inkDiff),
-        ...(sib.c.sent === false ? { matchSent: false } : {}),
+        ...(sib.c.sent === false ? { matchSent: false, ...(sib.c.retired ? { matchRetired: true } : {}) } : {}),
       });
     }
     const rec = nearestSentFirst(target, input.recent.filter((c) => !used.has(c.assetId)));
@@ -150,7 +162,7 @@ export function evaluateWrongFile(input: WrongFileInput): WrongFileResult {
         matchOrderNumber: rec.c.orderNumber,
         distance: rec.distance,
         inkDiff: round3(rec.inkDiff),
-        ...(rec.c.sent === false ? { matchSent: false } : {}),
+        ...(rec.c.sent === false ? { matchSent: false, ...(rec.c.retired ? { matchRetired: true } : {}) } : {}),
       });
     }
   }
@@ -185,7 +197,10 @@ export function wrongFileMessage(reasons: WrongFileReason[]): string | null {
   // The same picture on an order where it has not gone out yet (2026-10-27): one of the two is the mix-up.
   const other = blocking.kind === "other_order" || blocking.kind === "recent_art" ? blocking.matchOrderNumber : null;
   if (blocking.matchSent === false) {
-    return `The same picture is also on ${other ? `order ${other}` : "another order"}, where it has not gone to the customer yet. Check which order it belongs to before it goes out.`;
+    const where = other ? `order ${other}` : "another order";
+    // Sent there once, but that order has a different picture now (2026-11-07): say so, it did go out.
+    if (blocking.matchRetired) return `The same picture was sent on ${where}, which has been redrawn since. Check which order it belongs to before it goes out.`;
+    return `The same picture is also on ${where}, where it has not gone to the customer yet. Check which order it belongs to before it goes out.`;
   }
   return `This file looks like ${what}. Upload the right file for this order.`;
 }
@@ -299,13 +314,35 @@ export function wentToCustomer(file: SlotFile & { type: string }, slotFiles: Slo
   );
 }
 
-export type MatchStanding = "sent" | "unsent" | "stray";
+export type SlotFileSig = SlotFile & { dhash?: string | null; fineSig?: string | null };
+
+/**
+ * A file that went to its customer and was then replaced in its own portrait
+ * slot by a different picture (an unhappy buyer's full redraw): that order's
+ * art is the new picture now, so the old one is not claimed there any more.
+ * The ink decides, as everywhere in this stop: a touch-up, a new name band or a
+ * re-export of the same picture is NOT a redraw. Never true on a guess: with
+ * either file unhashed or too blank to compare it stays false (still sent).
+ * Pure (tested).
+ */
+export function retiredByRedraw(file: SlotFileSig, slotFiles: SlotFileSig[]): boolean {
+  const slot = (f: SlotFile) => `${f.itemId ?? ""}:${f.unit ?? 1}`;
+  const newest = slotFiles
+    .filter((n) => n.id !== file.id && slot(n) === slot(file) && n.createdAt > file.createdAt && !n.deletedAt)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+  if (!newest) return false;
+  const ink = inkDifference(file.fineSig, newest.fineSig);
+  return ink !== null && ink > SAME_PICTURE_INK_DIFF;
+}
+
+export type MatchStanding = "sent" | "unsent" | "stray" | "retired";
 
 /**
  * Where each matched file stands on its own order: sent (that customer's
- * portrait), unsent (its order's current file, not out yet) or stray (replaced
- * there and never sent: not that order's art). Only matched files get here, so
- * this is a handful of reads at most.
+ * portrait), unsent (its order's current file, not out yet), stray (replaced
+ * there and never sent: not that order's art) or retired (sent, then replaced
+ * there by a different picture: not that order's art any more). Only matched
+ * files get here, so this is a handful of reads at most.
  */
 export async function standingOf(tx: Tx, ids: string[]): Promise<Map<string, MatchStanding>> {
   const out = new Map<string, MatchStanding>();
@@ -319,6 +356,8 @@ export async function standingOf(tx: Tx, ids: string[]): Promise<Map<string, Mat
       unit: assets.portraitUnit,
       createdAt: assets.createdAt,
       deletedAt: assets.deletedAt,
+      dhash: assets.dhash,
+      fineSig: assets.fineSig,
     })
     .from(assets)
     .where(inArray(assets.id, ids));
@@ -326,7 +365,15 @@ export async function standingOf(tx: Tx, ids: string[]): Promise<Map<string, Mat
     const [order] = await tx.select({ status: orders.status }).from(orders).where(eq(orders.id, orderId)).limit(1);
     const current = new Set(await currentArtworkIds(tx, orderId));
     const slotFiles = await tx
-      .select({ id: assets.id, itemId: assets.orderItemId, unit: assets.portraitUnit, createdAt: assets.createdAt, deletedAt: assets.deletedAt })
+      .select({
+        id: assets.id,
+        itemId: assets.orderItemId,
+        unit: assets.portraitUnit,
+        createdAt: assets.createdAt,
+        deletedAt: assets.deletedAt,
+        dhash: assets.dhash,
+        fineSig: assets.fineSig,
+      })
       .from(assets)
       .where(and(eq(assets.orderId, orderId), inArray(assets.type, ["submission", "final"])));
     const sentAt = (
@@ -339,7 +386,7 @@ export async function standingOf(tx: Tx, ids: string[]): Promise<Map<string, Mat
       const isCurrent = current.has(r.id);
       // An order past QC with no move logged (imported) still sent its current file.
       const sent = wentToCustomer(r, slotFiles, sentAt) || (isCurrent && !!order && SENT_STATUSES.has(order.status));
-      out.set(r.id, sent ? "sent" : isCurrent ? "unsent" : "stray");
+      out.set(r.id, sent ? (retiredByRedraw(r, slotFiles) ? "retired" : "sent") : isCurrent ? "unsent" : "stray");
     }
   }
   return out;
@@ -470,7 +517,10 @@ export async function checkWrongFileTx(tx: Tx, orderId: string, assetId: string)
   const placed = <C extends MatchCandidate>(list: C[]): C[] =>
     list
       .filter((c) => standing.get(c.assetId) !== "stray")
-      .map((c) => (standing.has(c.assetId) ? { ...c, sent: standing.get(c.assetId) === "sent" } : c));
+      .map((c) => {
+        const at = standing.get(c.assetId);
+        return at ? { ...c, sent: at === "sent", ...(at === "retired" ? { retired: true } : {}) } : c;
+      });
 
   const lineRows = await tx
     .select({
@@ -615,6 +665,7 @@ export async function wrongFileGate(
           matchOrderNumber: r.matchOrderNumber,
           distance: r.distance,
           inkDiff: r.inkDiff,
+          ...(r.matchRetired ? { retired: true } : {}),
         })),
       },
     });
