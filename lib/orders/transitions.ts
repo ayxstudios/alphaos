@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 
 import {
   withUserContext,
@@ -35,6 +35,7 @@ import { createEarningForCompletion } from "@/lib/orders/earnings";
 import { MAX_QC_ATTACHMENTS, type QcAttachment } from "@/lib/qc/attachments";
 import { sendQcFeedback } from "@/lib/notifications/designer-events";
 import { loadProofFilePick, portraitList } from "@/lib/proofs/files";
+import { digitalAutoCompleteVerdict, loadAutoCompleteInput } from "./auto-complete";
 import { queueShippedEmail } from "@/lib/print/parts";
 
 export type OrderStatus = (typeof orderStatus.enumValues)[number];
@@ -358,7 +359,12 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
   if (qc && qc.result === "fail" && !aiRevision) await sendQcFeedback(tx, { orderId: order.id });
   // Earnings only for design completions. Non-portrait completes never pay
   // (and have no assignment anyway — createEarnings is a double safeguard).
-  if (to === "complete" && !nonPortraitComplete) await createEarningForCompletion(tx, order.id, order.businessId);
+  if (to === "complete" && !nonPortraitComplete) {
+    // A system backfill names when the buyer really said yes (metadata.completedAt), so the
+    // earning lands in that month's payout period, never in today's.
+    const named = actor.role === "system" && typeof input.metadata?.completedAt === "string" ? new Date(input.metadata.completedAt) : null;
+    await createEarningForCompletion(tx, order.id, order.businessId, named && !Number.isNaN(named.getTime()) ? named : undefined);
+  }
 
   // Email side effects, composed into this transaction so a rolled-back
   // transition never leaves a stray proof or draft. See lib/email/dispatch.ts.
@@ -417,9 +423,57 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
     fromState: order.status,
     toState: to,
     metadata: logMeta,
+    // clock_timestamp(), not now(): two rows written in one transaction (an approval and
+    // its automatic close) must keep their real order on the timeline.
+    createdAt: sql`clock_timestamp()`,
   });
 
-  return warnings.length ? { status: to, warnings } : { status: to };
+  // Digital orders close on the buyer's yes (lib/orders/auto-complete.ts): nothing is owed
+  // after approval, so the order leaves every board and the Overdue view at once. She can
+  // still ask for touchups later: complete -> in_design is a revision edge above.
+  const status: OrderStatus =
+    key === "awaiting_approval->approved" && (await autoCompleteDigital(tx, actor, order, input.metadata)) ? "complete" : to;
+
+  return warnings.length ? { status, warnings } : { status };
+}
+
+/**
+ * approved -> complete for an all-digital order, in a savepoint so a refused close
+ * (an unresolved figure count, which drives payout) keeps the approval and leaves an
+ * `order.auto_complete_held` row saying why, instead of rolling the buyer's yes back.
+ */
+async function autoCompleteDigital(
+  tx: Tx,
+  actor: Actor,
+  order: { id: string; businessId: string },
+  metadata: Record<string, unknown> | undefined,
+): Promise<boolean> {
+  const verdict = digitalAutoCompleteVerdict(await loadAutoCompleteInput(tx, order.id));
+  if (!verdict.eligible) return false;
+  try {
+    await tx.transaction((sp) =>
+      runTransition(sp, actor, {
+        orderId: order.id,
+        to: "complete",
+        expectedFrom: "approved",
+        metadata: { via: "auto_complete_digital", approvedVia: typeof metadata?.via === "string" ? metadata.via : null },
+      }),
+    );
+    return true;
+  } catch (e) {
+    if (!(e instanceof OrderTransitionError)) throw e;
+    await tx.insert(activityLog).values({
+      businessId: order.businessId,
+      orderId: order.id,
+      actorId: null,
+      action: "order.auto_complete_held",
+      fromState: "approved",
+      toState: "approved",
+      metadata: { code: e.code, reason: e.message },
+      createdAt: sql`clock_timestamp()`,
+    });
+    return false;
+  }
 }
 
 /* --- side effects ------------------------------------------------------- */

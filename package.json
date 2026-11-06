@@ -92,7 +92,9 @@
     "test:agent-revision": "tsx scripts/test-agent-revision.ts",
     "test:stay-on-board": "tsx scripts/test-stay-on-board.ts",
     "test:deliver-together": "tsx scripts/test-deliver-together.ts",
-    "test:work-clock": "tsx scripts/test-work-clock.ts"
+    "test:work-clock": "tsx scripts/test-work-clock.ts",
+    "test:auto-complete": "tsx scripts/test-auto-complete.ts",
+    "auto-complete-digital": "tsx scripts/auto-complete-digital.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1102.0",

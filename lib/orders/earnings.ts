@@ -163,6 +163,8 @@ export async function createEarningForCompletion(
   tx: Tx,
   orderId: string,
   businessId: string,
+  /** When the work was really accepted (a backfill); the payout period follows it. Default: now. */
+  completedAt?: Date,
 ): Promise<void> {
   const [assignment] = await tx
     .select({ designerId: assignments.designerId })
@@ -181,7 +183,7 @@ export async function createEarningForCompletion(
       rate: calculation.rate,
       amount: calculation.amount,
       breakdown: calculation.breakdown,
-      period: currentPeriod(),
+      period: currentPeriod(completedAt),
       status: calculation.status,
       blockedReason: calculation.blockedReason,
     })

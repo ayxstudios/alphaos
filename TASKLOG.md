@@ -279,3 +279,13 @@ Branch task/alphaos-req365c5. Yousif 2026-11-06: "the revision sort of resets th
 - [x] Staff boards (board-data.ts dueAt for non-designers), Orders page Overdue view + due filter + due column + isOverdue, Home overdue/due-today/shop overdue counts (lib/home/staff.ts), the Eye's delayed/overdueHours (lib/eye/data.ts) all read it. Designer boards unchanged (they already read their own deadline). Card modal keeps "Customer due" and "Designer due" side by side.
 - [x] Revision / QC failed pills on the compact staff card carry the send-back's age ("Revision · 2d old").
 - [x] npm run test:work-clock (pure), tsc clean, eslint clean on changed files. Live DB proof: in_design orders 10+ d late drop 15 -> 2 on the new clock (both Hanif QC fails, PC32229/PC32231); the 800+ "overdue" rows are mostly 330 approved digital orders never closed out and 146 proofs the buyer never answered, untouched here.
+
+## Digital orders close on the buyer's yes (6 Nov)
+
+Branch task/alphaos-autocomplete. Yousif 2026-11-06: "Autocomplete digital orders once the buyer approves but they can still ask for touchups at a later date". ~470 approved all-digital orders never closed and sat in Overdue.
+- [x] lib/orders/auto-complete.ts: verdict = every line digital and no print job. Called at the end of runTransition on awaiting_approval->approved (every road: proof portal, email decision, agent inbox, Approve), runs approved->complete in a savepoint; a refused close (unresolved figure count) keeps the approval and writes order.auto_complete_held with the reason. The result status is complete so callers see it.
+- [x] Late touchups: complete->in_design was already a revision edge (Orders page "Create revision"); test proves it reopens with revisionCount+1 and the work clock restarts from the new assignment.
+- [x] Activity rows from runTransition use clock_timestamp() so an approval and its automatic close keep their order on the timeline (now() is the transaction start, both rows tied).
+- [x] createEarningForCompletion takes completedAt (system only, metadata.completedAt) so backfilled earnings land in the approval month, not this payout period.
+- [x] scripts/auto-complete-digital.ts: backfill, dry by default, --apply, --limit, --business; report JSON in ai-employee-agent/var/alphaos-auto-complete/. Dry run: 493 approved, 470 eligible (CPS 385, Perfetta 58, PixArt 27), 23 stay (physical/print), 20 with unresolved figures expected to hold.
+- [x] npm run test:auto-complete all pass (pure + DB round trip rolled back); tsc + eslint clean. test:transitions and test:earnings crash identically on main (pre-existing).
