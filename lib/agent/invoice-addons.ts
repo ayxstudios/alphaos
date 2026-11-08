@@ -295,7 +295,10 @@ export async function linkInvoiceAddonTx(
     .map((r) => r.title ?? "")
     .filter(Boolean);
   if (parent) {
-    await linkAddonTx(tx, { id: addon.id, businessId: addon.businessId, number, status: addon.status }, parent, titles.length ? titles : [hint.what]);
+    await linkAddonTx(tx, { id: addon.id, businessId: addon.businessId, number, status: addon.status }, parent, titles.length ? titles : [hint.what], {
+      physical: hint.physical,
+      via: "invoice",
+    });
   } else {
     await tx
       .update(orders)

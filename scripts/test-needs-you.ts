@@ -102,6 +102,8 @@ roadIs("CPS 4193881065 (a revision nobody holds): the owner's", { kind: "stuck_o
 roadIs("a first draft nobody holds: mine", { kind: "stuck_order", summary: "in design but no designer holds it", reason: "no_designer", revisions: 0 }, "agent");
 roadIs("not assigned ('Give it to Wahyu'): mine", { kind: "stuck_order", summary: "not assigned", reason: "not_assigned", recommendation: "Give it to Wahyu." }, "agent");
 roadIs("add-on with no portrait order: mine", { kind: "stuck_order", summary: "add-on (print or extra) with no portrait order linked", reason: "addon_orphan" }, "agent");
+roadIs("paid print not at a printer on a finished order: mine", { kind: "stuck_order", summary: "paid print whose portrait order is finished and approved, still not sent to a printer", recommendation: "Send it to the printer with its portrait order's approved art.", reason: "addon_unprinted" }, "agent");
+roadIs("paid print with no approved art: mine", { kind: "stuck_order", summary: "paid print whose portrait order is finished, with no approved art to print", recommendation: "Find the art the buyer approved, attach it to this order, then send it to the printer.", reason: "addon_no_art" }, "agent");
 roadIs("Perfetta figure count: mine", { kind: "intake_unparsed", summary: "Etsy order #4201436349: could not resolve figure count" }, "agent");
 roadIs("missing buyer email: mine", { kind: "intake_unparsed", summary: "Etsy order #4196810764: missing customer email" }, "agent");
 

@@ -17,6 +17,7 @@ import {
   designerBusinesses,
   designerProfiles,
   exceptions,
+  orderItems,
   orders,
   shops,
   users,
@@ -30,6 +31,8 @@ import { reassignOrder } from "./ai-designer";
 import { agentOrderScope, legacyQuiet } from "./scope";
 import { openExceptionTx } from "./exceptions";
 import { portraitStylesOf } from "@/lib/orders/portrait-item";
+import { isAddOnItem } from "@/lib/orders/add-ons";
+import type { ClassifyConfig } from "@/lib/integrations/classify";
 import { coveredCount, coversStyles, multiStyleAdvice, stylesLabel, stylesOfInput } from "@/lib/orders/order-styles";
 
 const HOUR = 3_600_000;
@@ -59,11 +62,21 @@ export const EMAIL_GRACE_HOURS = 12;
 /** An add-on with no portrait order gets a day for the link to show up. */
 export const ADDON_GRACE_HOURS = 24;
 /**
- * An add-on the buyer paid on an invoice the agent made (./invoice-addons.ts)
- * is the print road's for this long after it is linked, even when its order is
- * finished and archived; still not printed after that, it is limbo again.
+ * UPGRADES (Yousif 2026-11-08: "customers order digital only then upgrade to
+ * physical ... cannot be left behind"): a paid print finds the buyer's portrait
+ * order this far back, finished or not (a digital order closes on her yes), and
+ * this far ahead (a print bought a moment before its portrait).
  */
-export const INVOICE_ADDON_OWNED_DAYS = 14;
+export const ADDON_LOOKBACK_DAYS = 120;
+export const ADDON_LOOKAHEAD_DAYS = 7;
+/** A lone finished order is only taken once the print is this old: a portrait bought with it may still be importing. */
+export const ADDON_SETTLE_HOURS = 1;
+/**
+ * A paid print whose portrait order is finished prints within this long of
+ * being ready (linked, and its order's art approved), or it is raised: the
+ * print road takes it on its own, this is the net under it.
+ */
+export const ADDON_PRINT_HOURS = 24;
 /** A buyer chase (photo request or reminder) counts as live this long. */
 export const CHASE_LIVE_DAYS = 7;
 /**
@@ -302,6 +315,16 @@ export type OrderFacts = {
   parentLive: boolean;
   /** fulfillment_only: when a paid invoice was linked to its order (./invoice-addons.ts). */
   invoiceLinkedAt?: Date | null;
+  /** fulfillment_only: something to print and ship (a physical line, or a Print & Ship add-on), not a digital extra. */
+  addonPhysical?: boolean;
+  /** fulfillment_only: its linked portrait order is finished (complete, delivered, shipped). */
+  parentClosed?: boolean;
+  /** fulfillment_only: its linked portrait order carries the art the buyer approved. */
+  parentArt?: boolean;
+  /** fulfillment_only: when its linked order last became ready to print from (her approval, its move into its status). */
+  parentReadyAt?: Date | null;
+  /** fulfillment_only: a printer order exists for it (a cancelled or failed one does not count). */
+  addonPrinted?: boolean;
   /** Kinds of the open exceptions on this order. */
   openKinds: string[];
   style: string | null;
@@ -351,6 +374,8 @@ export type StuckReason =
   | "no_contact"
   | "no_photos"
   | "addon_orphan"
+  | "addon_unprinted"
+  | "addon_no_art"
   | "not_assigned"
   | "no_designer"
   | "on_hold";
@@ -366,14 +391,14 @@ export function ownerOf(o: OrderFacts, now: Date, opts: { ignoreStuck?: boolean 
   if (o.activeAssignment && !o.aiFailedHold) return { bucket: "designer", why: "has a designer" };
   if (o.status === "awaiting_approval") return { bucket: "buyer", why: "proof with the buyer" };
   if (["awaiting_qc", "approved", "printing"].includes(o.status)) return { bucket: "pipeline", why: `in ${o.status.replace(/_/g, " ")}` };
-  if (
-    o.status === "fulfillment_only" &&
-    o.invoiceLinkedAt &&
-    now.getTime() - o.invoiceLinkedAt.getTime() < INVOICE_ADDON_OWNED_DAYS * 24 * HOUR
-  ) {
-    return { bucket: "pipeline", why: "invoiced add-on, prints with its order's art" };
+  if (o.status === "fulfillment_only") {
+    if (o.addonPrinted) return { bucket: "pipeline", why: "add-on at the printer" };
+    // A print on a finished order is the print road's until the net in the
+    // switch below; anything else rides with its open portrait order.
+    if (o.parentLive && !(o.addonPhysical && o.parentClosed)) {
+      return { bucket: "pipeline", why: o.invoiceLinkedAt ? "invoiced add-on, prints with its order's art" : "add-on with its portrait order" };
+    }
   }
-  if (o.status === "fulfillment_only" && o.parentLive) return { bucket: "pipeline", why: "add-on with its portrait order" };
   const kinds = opts.ignoreStuck ? o.openKinds.filter((k) => k !== "stuck_order") : o.openKinds;
   if (kinds.length) return { bucket: "owner", why: `raised: ${kinds.join(", ")}` };
 
@@ -399,8 +424,19 @@ export function ownerOf(o: OrderFacts, now: Date, opts: { ignoreStuck?: boolean 
       if (chased) return { bucket: "buyer", why: "photos asked for" };
       return limbo("no_photos", o.lastChaseAt ? "no photos since the last reminder" : "photos never asked for");
     }
-    case "fulfillment_only":
-      return limbo("addon_orphan", o.invoiceLinkedAt ? "invoiced add-on still not printed" : "add-on with no portrait order", ADDON_GRACE_HOURS);
+    case "fulfillment_only": {
+      if (o.parentLive && o.addonPhysical && o.parentClosed) {
+        // Her portrait order is finished (a digital one closes on her yes): the
+        // print road prints this from its approved art. The clock runs from
+        // when it was ready (linked, approved, closed), not from the purchase.
+        const readyAt = Math.max(o.enteredAt.getTime(), o.parentReadyAt?.getTime() ?? 0);
+        if (now.getTime() - readyAt < ADDON_PRINT_HOURS * HOUR) return { bucket: "pipeline", why: "paid print, prints from its finished order's approved art" };
+        return o.parentArt
+          ? { bucket: "limbo", why: "paid print, its order is finished, still not sent to a printer", reason: "addon_unprinted", graceHours: ADDON_PRINT_HOURS }
+          : { bucket: "limbo", why: "paid print, its finished order has no approved art to print", reason: "addon_no_art", graceHours: ADDON_PRINT_HOURS };
+      }
+      return limbo("addon_orphan", o.invoiceLinkedAt ? "invoiced add-on with no portrait order to print from" : "add-on with no portrait order", ADDON_GRACE_HOURS);
+    }
     case "ready_to_assign":
       return limbo("not_assigned", o.inScope ? "nobody assigned" : "older order nobody assigned");
     case "in_design":
@@ -419,8 +455,14 @@ function decisionOf(v: DecisionRow | string | null): OrderFacts["decision"] {
   return d?.at ? { at: new Date(d.at), reason: d.reason ?? null, byAgent: !!d.byAgent, note: d.note ?? null } : null;
 }
 
+/** A Print & Ship add-on's title, as a Postgres regex (lib/orders/add-ons.ts ADD_ON_TITLE says the same). */
+const PRINT_SHIP_PG = "print[[:space:]]*(&|and)[[:space:]]*ship";
+/** Finished: the portrait went out and the buyer has it. */
+const DONE_STATUSES = ["complete", "delivered", "shipped"];
+
 async function loadOrderFacts(tx: Tx, businessId: string): Promise<OrderFacts[]> {
   const closedList = sql.join(CLOSED_STATUSES.map((s) => sql`${s}`), sql`, `);
+  const doneList = sql.join(DONE_STATUSES.map((s) => sql`${s}`), sql`, `);
   const rows = await tx
     .select({
       id: orders.id,
@@ -445,6 +487,28 @@ async function loadOrderFacts(tx: Tx, businessId: string): Promise<OrderFacts[]>
           and p.archived_at is null and p.status <> 'cancelled')`,
       invoiceLinkedAt: sql<string | null>`(select max(l.created_at) from activity_log l
         where l.order_id = ${orders.id} and l.action = 'agent.invoice_addon_linked')`,
+      // The add-on facts below read only fulfillment_only orders, and only their newest link.
+      // The CPS Etsy "Print & Ship My Order - ADD-ON LISTING" line is labelled digital (4217293668), so its title counts too.
+      addonPhysical: sql<boolean>`case when ${orders.status} = 'fulfillment_only' then exists (select 1 from order_items i
+        where i.order_id = ${orders.id} and (i.product_type = 'physical' or coalesce(i.title, '') ~* ${PRINT_SHIP_PG})) else false end`,
+      parentClosed: sql<boolean>`case when ${orders.status} = 'fulfillment_only' then coalesce((select p.status::text in (${doneList})
+        from activity_log l join orders p on p.id::text = l.metadata->>'parentOrderId'
+        where l.order_id = ${orders.id} and l.action = 'agent.addon_linked' order by l.created_at desc limit 1), false) else false end`,
+      // Her approval, stamped on the proof or (the agent's approve paths) the order's move to approved after it went out.
+      parentArt: sql<boolean>`case when ${orders.status} = 'fulfillment_only' then exists (select 1 from proofs pp
+        where pp.order_id::text = (select l.metadata->>'parentOrderId' from activity_log l where l.order_id = ${orders.id}
+            and l.action = 'agent.addon_linked' order by l.created_at desc limit 1)
+          and (pp.decision = 'approved' or (pp.decision is null and pp.sent_at is not null and exists (select 1 from activity_log pa
+            where pa.order_id = pp.order_id and pa.to_state = 'approved' and pa.created_at >= pp.sent_at)))) else false end`,
+      parentReadyAt: sql<string | null>`case when ${orders.status} = 'fulfillment_only' then (select greatest(l.created_at,
+          (select max(pp.decided_at) from proofs pp where pp.order_id = p.id and pp.decision = 'approved'),
+          (select max(a.created_at) from activity_log a where a.order_id = p.id and a.to_state = p.status
+            and a.from_state is distinct from a.to_state))
+        from activity_log l join orders p on p.id::text = l.metadata->>'parentOrderId'
+        where l.order_id = ${orders.id} and l.action = 'agent.addon_linked' order by l.created_at desc limit 1) end`,
+      addonPrinted: sql<boolean>`case when ${orders.status} = 'fulfillment_only' then exists (select 1 from print_jobs pj
+        where pj.order_id = ${orders.id} and pj.provider_order_id is not null and coalesce(pj.provider_payload->>'gift', '') <> 'true'
+          and not (pj.reconcile_state in ('problem', 'not_configured') and coalesce(pj.provider_status, '') ~* '^(cancel|fail)')) else false end`,
       openKinds: sql<string[]>`coalesce((select array_agg(e.kind) from exceptions e
         where e.order_id = ${orders.id} and e.status = 'open'), '{}'::text[])`,
       style: sql<string | null>`(select i.style from order_items i where i.order_id = ${orders.id} and i.style is not null order by i.id limit 1)`,
@@ -469,6 +533,11 @@ async function loadOrderFacts(tx: Tx, businessId: string): Promise<OrderFacts[]>
     enteredAt: new Date(r.enteredAt),
     lastChaseAt: r.lastChaseAt ? new Date(r.lastChaseAt) : null,
     invoiceLinkedAt: r.invoiceLinkedAt ? new Date(r.invoiceLinkedAt) : null,
+    addonPhysical: !!r.addonPhysical,
+    parentClosed: !!r.parentClosed,
+    parentArt: !!r.parentArt,
+    parentReadyAt: r.parentReadyAt ? new Date(r.parentReadyAt) : null,
+    addonPrinted: !!r.addonPrinted,
     openKinds: r.openKinds ?? [],
   }));
 }
@@ -591,7 +660,17 @@ export function stuckWords(
     case "addon_orphan":
       return {
         summary: "add-on (print or extra) with no portrait order linked",
-        recommendation: "Match it to the buyer's portrait order, or fulfil it on its own.",
+        recommendation: "Find the buyer's portrait order (same buyer, or the order number she wrote) and link it, or fulfil it on its own.",
+      };
+    case "addon_unprinted":
+      return {
+        summary: "paid print whose portrait order is finished and approved, still not sent to a printer",
+        recommendation: "Send it to the printer with its portrait order's approved art.",
+      };
+    case "addon_no_art":
+      return {
+        summary: "paid print whose portrait order is finished, with no approved art to print",
+        recommendation: "Find the art the buyer approved, attach it to this order, then send it to the printer.",
       };
     case "not_assigned":
       return { summary: `ready for a designer${o.style ? ` (${o.style})` : ""} but nobody has it`, recommendation: give };
@@ -851,52 +930,160 @@ export async function closeClearedBacklogs(businessId: string, opts: { now?: Dat
 // Add-on linking (L3): an add-on rides on the buyer's portrait order
 // ---------------------------------------------------------------------------
 
-export type AddonCandidate = { id: string; number: string; status: string; placedAt: Date | null };
+export type AddonCandidate = {
+  id: string;
+  number: string;
+  status: string;
+  placedAt: Date | null;
+  /** Its number is written on the add-on (a line title, the note, the buyer's message). */
+  named?: boolean;
+  /** Has a print of its own already. */
+  physical?: boolean;
+  /** Finished: complete, delivered or shipped. */
+  closed?: boolean;
+};
+
+/** The add-on looking for its portrait order. */
+export type AddonLookup = {
+  id: string;
+  businessId: string;
+  customerId: string | null;
+  placedAt: Date | null;
+  createdAt: Date;
+  /** Etsy's buyer id on the receipt: most Etsy orders carry no customer row. */
+  buyerUserId?: string | null;
+  /** Order numbers written on the add-on (namedOrderNumbers). */
+  named?: string[];
+  /** A print to ship: her finished orders count too (the upgrade), ADDON_LOOKBACK_DAYS back. */
+  physical?: boolean;
+};
 
 /**
- * The buyer's portrait orders an add-on could belong to: same business and
- * customer, still open (a finished order would never see the note), never an
- * add-on itself, placed within 30 days.
+ * Order numbers written on an add-on: Etsy receipt ids (4202684757) and shop
+ * order names (#CPS10300, PC32227), upper case without the #. Pure.
  */
-export async function findAddonParents(
-  tx: Tx,
-  addon: { id: string; businessId: string; customerId: string | null; placedAt: Date | null; createdAt: Date },
-): Promise<AddonCandidate[]> {
-  if (!addon.customerId) return [];
-  const at = addon.placedAt ?? addon.createdAt;
+export function namedOrderNumbers(...texts: (string | null | undefined)[]): string[] {
+  const out = new Set<string>();
+  for (const t of texts) {
+    if (!t) continue;
+    for (const m of t.matchAll(/(?<![\w#])#?([a-z]{2,5}\d{3,7})\b/gi)) out.add(m[1].toUpperCase());
+    for (const m of t.matchAll(/(?<!\d)(\d{9,11})(?!\d)/g)) out.add(m[1]);
+    for (const m of t.matchAll(/#(\d{3,7})\b/g)) out.add(m[1]);
+  }
+  return [...out];
+}
+
+/**
+ * The buyer's portrait orders an add-on could belong to, same business: hers
+ * (customer row or Etsy buyer id) or one whose number is written on it. Never
+ * an add-on itself. A digital extra looks at her open orders within 30 days (a
+ * finished order would never see it); a paid print also looks at her finished
+ * ones, ADDON_LOOKBACK_DAYS back and ADDON_LOOKAHEAD_DAYS ahead, since that is
+ * what an upgrade is (Yousif 2026-11-08). A named order has no window.
+ */
+export async function findAddonParents(tx: Tx, addon: AddonLookup, cfg?: ClassifyConfig | null): Promise<AddonCandidate[]> {
+  const named = [...new Set((addon.named ?? []).map((n) => n.replace(/^#/, "").toUpperCase()).filter(Boolean))];
+  const buyer = addon.buyerUserId?.trim() || null;
+  if (!addon.customerId && !buyer && !named.length) return [];
+  const at = (addon.placedAt ?? addon.createdAt).toISOString();
+  const placed = sql`coalesce(${orders.placedAt}, ${orders.createdAt})`;
+  const list = (xs: string[]) => sql.join(xs.map((x) => sql`${x}`), sql`, `);
+  const namedHit = named.length
+    ? sql`(upper(replace(coalesce(${orders.platformOrderName}, ''), '#', '')) in (${list(named)}) or ${orders.platformOrderId} in (${list(named)}))`
+    : sql`false`;
+  const hers = [
+    addon.customerId ? sql`${orders.customerId} = ${addon.customerId}` : null,
+    buyer ? sql`${orders.rawImport}->>'buyer_user_id' = ${buyer}` : null,
+  ].filter((x): x is NonNullable<typeof x> => !!x);
+  const sameBuyer = hers.length ? sql`(${sql.join(hers, sql` or `)})` : sql`false`;
+  const inWindow = addon.physical
+    ? sql`${placed} between ${at}::timestamptz - make_interval(days => ${ADDON_LOOKBACK_DAYS}::int) and ${at}::timestamptz + make_interval(days => ${ADDON_LOOKAHEAD_DAYS}::int)`
+    : sql`abs(extract(epoch from (${placed} - ${at}::timestamptz))) <= 30 * 86400`;
+  const done = sql`${orders.status}::text in ('complete', 'delivered', 'shipped')`;
   const rows = await tx
     .select({
       id: orders.id,
       number: sql<string>`coalesce(${orders.platformOrderName}, ${orders.platformOrderId})`,
       status: sql<string>`${orders.status}::text`,
       placedAt: orders.placedAt,
+      named: sql<boolean>`${namedHit}`,
+      closed: sql<boolean>`${done}`,
+      physical: sql<boolean>`exists (select 1 from order_items i where i.order_id = ${orders.id}
+        and (i.product_type = 'physical' or coalesce(i.title, '') ~* ${PRINT_SHIP_PG}))`,
     })
     .from(orders)
     .where(
       and(
         eq(orders.businessId, addon.businessId),
-        eq(orders.customerId, addon.customerId),
         ne(orders.id, addon.id),
         sql`${orders.archivedAt} is null`,
-        sql`${orders.status}::text not in ('cancelled', 'complete', 'delivered', 'shipped', 'fulfillment_only')`,
+        sql`${orders.status}::text not in ('cancelled', 'fulfillment_only')`,
+        addon.physical ? undefined : sql`not ${done}`,
         sql`not exists (select 1 from exceptions e where e.order_id = ${orders.id} and e.kind = 'addon_only')`,
-        sql`abs(extract(epoch from (coalesce(${orders.placedAt}, ${orders.createdAt}) - ${at.toISOString()}::timestamptz))) <= 30 * 86400`,
+        sql`(${namedHit} or (${sameBuyer} and ${inWindow}))`,
       ),
     );
-  return rows;
+  if (!rows.length) return [];
+  // An order of nothing but add-ons is another add-on, never a portrait to ride on.
+  const items = await tx
+    .select({ orderId: orderItems.orderId, title: orderItems.title, sku: orderItems.sku, style: orderItems.style })
+    .from(orderItems)
+    .where(inArray(orderItems.orderId, rows.map((r) => r.id)));
+  return rows
+    .filter((r) => {
+      const own = items.filter((i) => i.orderId === r.id);
+      return !own.length || own.some((i) => !isAddOnItem(i, cfg));
+    })
+    .map((r) => ({ ...r, named: !!r.named, closed: !!r.closed, physical: !!r.physical }));
+}
+
+export type AddonPick =
+  | { kind: "link"; parent: AddonCandidate }
+  | { kind: "wait" }
+  | { kind: "ask"; candidates: AddonCandidate[] };
+
+/**
+ * The one order an add-on rides on. The order written on it wins; else her
+ * only order; a print goes on the one she bought digital only; then the one
+ * bought within a day of it. Anything else is a person's pick. For the first
+ * ADDON_SETTLE_HOURS a lone finished order is not taken and an empty search
+ * asks nobody: a portrait bought with the add-on may still be importing. Pure.
+ */
+export function pickAddonParent(candidates: AddonCandidate[], addon: { physical?: boolean; at: Date }, now: Date): AddonPick {
+  const settling = now.getTime() - addon.at.getTime() < ADDON_SETTLE_HOURS * HOUR;
+  const named = candidates.filter((c) => c.named);
+  if (named.length === 1) return { kind: "link", parent: named[0] };
+  if (named.length > 1) return { kind: "ask", candidates: named };
+  let pool = candidates;
+  if (addon.physical && pool.length > 1) {
+    const digitalOnly = pool.filter((c) => !c.physical);
+    if (digitalOnly.length) pool = digitalOnly;
+  }
+  if (pool.length > 1) {
+    const together = pool.filter((c) => c.placedAt && Math.abs(c.placedAt.getTime() - addon.at.getTime()) <= 24 * HOUR);
+    if (together.length === 1) pool = together;
+  }
+  if (pool.length === 1) return settling && pool[0].closed ? { kind: "wait" } : { kind: "link", parent: pool[0] };
+  if (!pool.length && settling) return { kind: "wait" };
+  return { kind: "ask", candidates };
 }
 
 /**
  * Link an add-on to its portrait order: the add-on becomes fulfillment_only,
- * both orders get a note and an `agent.addon_linked` row naming the other.
+ * both orders get a note and an `agent.addon_linked` row naming the other. A
+ * print says on the portrait order that it was upgraded to print and ship.
  */
 export async function linkAddonTx(
   tx: Tx,
   addon: { id: string; businessId: string; number: string; status: string },
   parent: AddonCandidate,
   titles: string[],
+  opts: { physical?: boolean; via?: string } = {},
 ): Promise<void> {
   const what = titles.filter(Boolean).join(", ") || "add-on";
+  const parentNote = opts.physical
+    ? `Upgraded to print and ship by order ${addon.number} (${what}): the print ships with this portrait's approved art.`
+    : `Add-on order ${addon.number} (${what}) goes with this one.`;
   await tx
     .update(orders)
     .set({
@@ -907,8 +1094,9 @@ export async function linkAddonTx(
     .where(eq(orders.id, addon.id));
   await tx
     .update(orders)
-    .set({ notes: sql`concat_ws(E'\n', nullif(${orders.notes}, ''), ${`Add-on order ${addon.number} (${what}) goes with this one.`}::text)` })
+    .set({ notes: sql`concat_ws(E'\n', nullif(${orders.notes}, ''), ${parentNote}::text)` })
     .where(eq(orders.id, parent.id));
+  const how = { ...(opts.physical ? { upgrade: true } : {}), ...(opts.via ? { via: opts.via } : {}) };
   await tx.insert(activityLog).values([
     {
       businessId: addon.businessId,
@@ -917,14 +1105,14 @@ export async function linkAddonTx(
       action: "agent.addon_linked",
       fromState: addon.status as typeof orders.$inferSelect.status,
       toState: "fulfillment_only",
-      metadata: { parentOrderId: parent.id, parentNumber: parent.number },
+      metadata: { parentOrderId: parent.id, parentNumber: parent.number, ...how },
     },
     {
       businessId: addon.businessId,
       orderId: parent.id,
       actorId: null,
       action: "agent.addon_linked_child",
-      metadata: { addonOrderId: addon.id, addonNumber: addon.number, titles },
+      metadata: { addonOrderId: addon.id, addonNumber: addon.number, titles, ...how },
     },
   ]);
 }

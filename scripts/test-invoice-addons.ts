@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 
 import { hintFromRow, pickInvoiceHint, receiptListingIds, type InvoiceHint } from "../lib/agent/invoice-addons";
-import { INVOICE_ADDON_OWNED_DAYS, ownerOf, type OrderFacts } from "../lib/agent/limbo";
+import { ownerOf, type OrderFacts } from "../lib/agent/limbo";
 
 let passed = 0;
 function test(name: string, fn: () => void) {
@@ -114,15 +114,20 @@ const facts = (over: Partial<OrderFacts>): OrderFacts => ({
   ...over,
 });
 
-test("a linked invoice add-on whose order is finished and archived is the print road's", () => {
-  const o = ownerOf(facts({ invoiceLinkedAt: new Date(now.getTime() - 2 * DAY) }), now);
+test("an invoiced add-on on a live portrait order prints with that order's art", () => {
+  const o = ownerOf(facts({ invoiceLinkedAt: new Date(now.getTime() - 2 * DAY), parentLive: true }), now);
   assert.equal(o.bucket, "pipeline");
+  assert.equal(o.why, "invoiced add-on, prints with its order's art");
 });
 
-test("still not printed after the window, it is limbo again with a plain reason", () => {
-  const o = ownerOf(facts({ invoiceLinkedAt: new Date(now.getTime() - (INVOICE_ADDON_OWNED_DAYS + 1) * DAY) }), now);
+test("an invoiced add-on with no portrait order to print from gets a day, then is limbo with a plain reason", () => {
+  // Nothing prints it on its own (2026-11-08: it used to sit 14 days unwatched), so the net catches it after the day.
+  const fresh = ownerOf(facts({ invoiceLinkedAt: new Date(now.getTime() - 2 * 3_600_000), enteredAt: new Date(now.getTime() - 2 * 3_600_000) }), now);
+  assert.equal(fresh.bucket, "pipeline");
+  const o = ownerOf(facts({ invoiceLinkedAt: new Date(now.getTime() - 2 * DAY) }), now);
   assert.equal(o.bucket, "limbo");
-  assert.equal(o.why, "invoiced add-on still not printed");
+  assert.equal(o.why, "invoiced add-on with no portrait order to print from");
+  assert.equal(o.bucket === "limbo" && o.reason, "addon_orphan");
 });
 
 test("an add-on with a live portrait order stays owned without an invoice", () => {

@@ -56,8 +56,9 @@ import { rebalanceBusiness } from "./rebalance";
 import { reopenArchivedWithBuyerWords } from "@/lib/orders/reopen";
 import { parseIntake } from "./intake";
 import { findCatalogStyle, registerUnindexedProduct } from "./legacy-intake";
-import { findInvoiceAddons, invoiceHintForOrderTx, linkInvoiceAddonTx, type InvoiceHint } from "./invoice-addons";
+import { findInvoiceAddons, invoiceHintForOrderTx, linkInvoiceAddonTx, PRE_DESIGN_STATUSES, type InvoiceHint } from "./invoice-addons";
 import {
+  ADDON_LOOKBACK_DAYS,
   autoCloseStaleExceptions,
   autoResolveTx,
   checkDesignerBacklog,
@@ -66,7 +67,9 @@ import {
   getLimboCensus,
   handFailedAiToDesigners,
   linkAddonTx,
+  namedOrderNumbers,
   noDesignerRecommendation,
+  pickAddonParent,
   pickOverflowDesigner,
   reworkHeldNote,
   watchWaitingStates,
@@ -77,7 +80,7 @@ import { closeNothingLeft } from "./needs-you-desk";
 import { sendOwnerDigest, type OwnerDigestResult } from "./owner-digest";
 import { runQcOverduePass, type QcOverdueResult } from "./qc-overdue";
 import { loadPortraitStyle, portraitStylesOf } from "@/lib/orders/portrait-item";
-import { isAddOnItem } from "@/lib/orders/add-ons";
+import { isAddOnItem, isAddOnOnly, isLinkableAddOn, isPrintLine } from "@/lib/orders/add-ons";
 import { missingStyles, multiStyleGap } from "@/lib/orders/order-styles";
 
 /** How long a customer has to answer the shortfall email before a human is asked. */
@@ -291,10 +294,12 @@ async function tick(opts: AgentTickOptions): Promise<AgentTickReport> {
       errors: [],
     };
     reports.push(report);
-    const ctx: TickCtx = { dryRun, now, report };
+    const ctx: TickCtx = { dryRun, now, report, addonsSeen: new Set() };
 
     // Every business: a paid invoice the agent made is never a new portrait.
     if (!outOfTime()) await invoiceAddonStep(ctx, biz.id, outOfTime);
+    // Every business: an add-on (above all a print bought after a digital order) finds the order it belongs to.
+    if (!outOfTime()) await addonLinkStep(ctx, biz.id, outOfTime);
     if (biz.intake && !outOfTime()) await intakeStep(ctx, biz.id, outOfTime);
     if (biz.intake && !outOfTime()) await completenessStep(ctx, biz.id, outOfTime);
     if (biz.assign && !outOfTime()) await assignStep(ctx, biz.id, outOfTime);
@@ -437,7 +442,13 @@ function inboxCounts(r: InboxReport): AgentBusinessReport["inbox"] {
   return counts as AgentBusinessReport["inbox"];
 }
 
-type TickCtx = { dryRun: boolean; now: Date; report: AgentBusinessReport };
+type TickCtx = {
+  dryRun: boolean;
+  now: Date;
+  report: AgentBusinessReport;
+  /** Add-on orders already settled this tick (settleAddonTx), so a later step leaves them be. */
+  addonsSeen?: Set<string>;
+};
 
 /**
  * Run one order's work in its own system transaction. Counters are applied
@@ -563,6 +574,8 @@ async function intakeStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
           uploadToken: orders.uploadToken,
           rawImport: orders.rawImport,
           notes: orders.notes,
+          placedAt: orders.placedAt,
+          createdAt: orders.createdAt,
         })
         .from(orders)
         .where(eq(orders.id, id))
@@ -583,6 +596,9 @@ async function intakeStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
         .select({ styles: shops.styles, config: shops.integrationConfig })
         .from(shops)
         .where(eq(shops.id, order.shopId));
+      // An add-on receipt (Print & Ship on its own) has nothing to parse: it rides on her portrait order.
+      const addon = await settleAddonTx(tx, bump, ctx, order, (shop?.config ?? null) as ClassifyConfig | null);
+      if (addon !== "not_addon" && addon !== "nothing_to_link") return;
       const styleOptions = await shopStyleChoices(tx, order.businessId, shop?.styles);
       const [cust] = order.customerId
         ? await tx
@@ -729,6 +745,172 @@ async function invoiceAddonStep(ctx: TickCtx, businessId: string, outOfTime: () 
       }
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Add-ons (L3): every add-on rides on the buyer's portrait order
+// ---------------------------------------------------------------------------
+
+/** Where an add-on-only order waits for its link. */
+const ADDON_WAITING_STATUSES = ["fulfillment_only", ...PRE_DESIGN_STATUSES] as const;
+/** Title words that can make a line an add-on, to narrow the scan; isAddOnItem decides. */
+const ADDON_WORDS_PG =
+  "print[[:space:]]*(&|and)[[:space:]]*ship|add[[:space:]-]?on|rush|fast[[:space:]-]?track|upgrade|express|priority|expedite|skip[[:space:]]+the";
+/** Cards an add-on never needed once it rides on its order. */
+const ADDON_LINK_CLEARS: ExceptionKind[] = ["addon_only", "intake_unparsed", "photo_count_mismatch", "no_eligible_designer", "stuck_order"];
+
+const ADDON_ORDER_COLUMNS = {
+  id: orders.id,
+  businessId: orders.businessId,
+  status: orders.status,
+  customerId: orders.customerId,
+  platformOrderId: orders.platformOrderId,
+  platformOrderName: orders.platformOrderName,
+  placedAt: orders.placedAt,
+  createdAt: orders.createdAt,
+  notes: orders.notes,
+  rawImport: orders.rawImport,
+};
+
+type AddonOrder = {
+  id: string;
+  businessId: string;
+  status: string;
+  customerId: string | null;
+  platformOrderId: string;
+  platformOrderName: string | null;
+  placedAt: Date | null;
+  createdAt: Date;
+  notes: string | null;
+  rawImport: unknown;
+};
+
+/**
+ * Every add-on finds the order it belongs to, in every business (Yousif
+ * 2026-11-08: "customers order digital only then upgrade to physical ... cannot
+ * be left behind"): a Shopify add-on the import marked fulfillment_only, an
+ * Etsy add-on receipt still in intake, a print bought weeks after her digital
+ * order closed on her yes. The print road prints it from that order's art.
+ */
+async function addonLinkStep(ctx: TickCtx, businessId: string, outOfTime: () => boolean): Promise<void> {
+  const since = new Date(ctx.now.getTime() - ADDON_LOOKBACK_DAYS * 24 * HOUR).toISOString();
+  let rows: { id: string }[];
+  try {
+    rows = await withSystemContext((tx) =>
+      tx
+        .select({ id: orders.id })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.businessId, businessId),
+            inArray(orders.status, [...ADDON_WAITING_STATUSES]),
+            liveOrderWhere(),
+            agentOrderScope(),
+            sql`coalesce(${orders.placedAt}, ${orders.createdAt}) >= ${since}::timestamptz`,
+            sql`exists (select 1 from order_items i where i.order_id = ${orders.id})`,
+            sql`(${orders.status} = 'fulfillment_only' or not exists (select 1 from order_items i
+              where i.order_id = ${orders.id} and coalesce(i.title, '') !~* ${ADDON_WORDS_PG}))`,
+            sql`not exists (select 1 from activity_log l where l.order_id = ${orders.id}
+              and l.action in ('agent.addon_linked', 'agent.invoice_addon_linked'))`,
+            sql`not exists (select 1 from assignments a where a.order_id = ${orders.id} and a.active)`,
+            sql`not exists (select 1 from print_jobs pj where pj.order_id = ${orders.id} and pj.provider_order_id is not null)`,
+            // A person's answer on its add-on card stands.
+            sql`not exists (select 1 from exceptions e where e.order_id = ${orders.id} and e.kind = 'addon_only'
+              and e.status = 'resolved' and coalesce(e.resolution_note, '') not like 'auto:%')`,
+          ),
+        )
+        .orderBy(orders.createdAt)
+        .limit(BATCH),
+    );
+  } catch (e) {
+    ctx.report.errors.push({ orderId: "", message: `add-on links: ${errorMessage(e)}` });
+    return;
+  }
+  for (const { id } of rows) {
+    if (outOfTime()) return;
+    await perOrder(ctx, id, async (tx, bump) => {
+      const [order] = await tx
+        .select({ ...ADDON_ORDER_COLUMNS, shopConfig: shops.integrationConfig })
+        .from(orders)
+        .leftJoin(shops, eq(shops.id, orders.shopId))
+        .where(eq(orders.id, id))
+        .for("update", { of: orders });
+      if (!order || !(ADDON_WAITING_STATUSES as readonly string[]).includes(order.status)) return;
+      await settleAddonTx(tx, bump, ctx, order, (order.shopConfig ?? null) as ClassifyConfig | null);
+    });
+  }
+}
+
+/**
+ * An add-on-only order finds its portrait order: linked when one order is
+ * clearly hers (pickAddonParent: the order number written on it, her only
+ * order, the one she bought digital only), a person's card with the choices
+ * when not. Once per order and tick; never a designer either way.
+ * "not_addon" = something on it is a portrait; "nothing_to_link" = only gift cards.
+ */
+async function settleAddonTx(
+  tx: Tx,
+  bump: (apply: (r: AgentBusinessReport) => void) => void,
+  ctx: TickCtx,
+  order: AddonOrder,
+  cfg: ClassifyConfig | null,
+): Promise<"linked" | "wait" | "asked" | "seen" | "nothing_to_link" | "not_addon"> {
+  const lines = await tx
+    .select({ title: orderItems.title, sku: orderItems.sku, style: orderItems.style, productType: orderItems.productType })
+    .from(orderItems)
+    .where(eq(orderItems.orderId, order.id));
+  if (!isAddOnOnly(lines, cfg)) return "not_addon";
+  const linkable = lines.filter((l) => isLinkableAddOn(l, cfg));
+  if (!linkable.length) return "nothing_to_link";
+  if (ctx.addonsSeen?.has(order.id)) return "seen";
+  ctx.addonsSeen?.add(order.id);
+
+  const titles = linkable.map((l) => l.title ?? "").filter(Boolean);
+  const physical = linkable.some(isPrintLine);
+  const raw = order.rawImport as { buyer_user_id?: string | number | null; message_from_buyer?: string | null; transactions?: EtsyTransaction[] } | null;
+  const said = (Array.isArray(raw?.transactions) ? raw.transactions : []).flatMap((t) => (t.variations ?? []).map((v) => v.formatted_value ?? ""));
+  const own = [order.platformOrderId, order.platformOrderName ?? ""].map((n) => n.replace(/^#/, "").toUpperCase());
+  const named = namedOrderNumbers(...titles, order.notes, raw?.message_from_buyer, ...said).filter((n) => !own.includes(n));
+  const candidates = await findAddonParents(
+    tx,
+    { ...order, buyerUserId: raw?.buyer_user_id != null ? String(raw.buyer_user_id) : null, named, physical },
+    cfg,
+  );
+  const pick = pickAddonParent(candidates, { physical, at: order.placedAt ?? order.createdAt }, ctx.now);
+  const label = orderLabel(order);
+  if (pick.kind === "link") {
+    await linkAddonTx(tx, { id: order.id, businessId: order.businessId, number: label, status: order.status }, pick.parent, titles, {
+      physical,
+      via: "agent_autopilot",
+    });
+    const open = await tx
+      .select({ id: exceptions.id, kind: exceptions.kind })
+      .from(exceptions)
+      .where(and(eq(exceptions.orderId, order.id), eq(exceptions.status, "open"), inArray(exceptions.kind, ADDON_LINK_CLEARS)));
+    await autoResolveTx(
+      tx,
+      open.map((e) => ({ id: e.id, businessId: order.businessId, orderId: order.id, kind: e.kind, reason: `linked to order ${pick.parent.number}` })),
+      ctx.now,
+    );
+    bump((r) => (r.addonLinked = (r.addonLinked ?? 0) + 1));
+    return "linked";
+  }
+  if (pick.kind === "wait") return "wait";
+  bump((r) => (r.addonOnly += 1));
+  const recommendation = pick.candidates.length
+    ? `Link it to the right portrait order: ${pick.candidates.map((p) => p.number).join(" or ")}.`
+    : physical
+      ? `A paid print with no portrait order from this buyer in the last ${ADDON_LOOKBACK_DAYS} days: find hers (her messages, or the order number she gave) and link it so it prints.`
+      : "No open portrait order from this buyer in the last 30 days: fulfil it on its own or check with the buyer.";
+  await raise(tx, bump, ctx.now, order, "addon_only",
+    `Order #${label} is an add-on only (${titles.join(", ") || "no title"}): match it to the portrait order and fulfil it`,
+    {
+      titles,
+      physical,
+      candidates: pick.candidates.map((p) => ({ id: p.id, number: p.number, status: p.status, closed: !!p.closed })),
+      recommendation,
+    });
+  return "asked";
 }
 
 /** The Etsy variations on the stored receipt, for the exception detail. */
@@ -1017,6 +1199,8 @@ async function assignStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
           customerId: orders.customerId,
           placedAt: orders.placedAt,
           createdAt: orders.createdAt,
+          notes: orders.notes,
+          rawImport: orders.rawImport,
           shopConfig: shops.integrationConfig,
         })
         .from(orders)
@@ -1050,27 +1234,16 @@ async function assignStep(ctx: TickCtx, businessId: string, outOfTime: () => boo
         .from(orderItems)
         .where(eq(orderItems.orderId, order.id));
       const cfg = (order.shopConfig ?? null) as ClassifyConfig | null;
-      if (classifyOrder({ sourceName: null, lines, config: cfg }) === "fulfillment_only") {
-        // No limbo (L3): an add-on rides on the buyer's one portrait order.
-        const titles = lines.map((l) => l.title ?? "").filter(Boolean);
-        const parents = await findAddonParents(tx, order);
-        if (parents.length === 1) {
-          await linkAddonTx(tx, { id: order.id, businessId: order.businessId, number: orderLabel(order), status: order.status }, parents[0], titles);
-          const open = await tx
-            .select({ id: exceptions.id })
-            .from(exceptions)
-            .where(and(eq(exceptions.orderId, order.id), eq(exceptions.kind, "addon_only"), eq(exceptions.status, "open")));
-          await autoResolveTx(tx, open.map((e) => ({ id: e.id, businessId: order.businessId, orderId: order.id, kind: "addon_only", reason: `linked to order ${parents[0].number}` })), ctx.now);
-          bump((r) => (r.addonLinked = (r.addonLinked ?? 0) + 1));
-          return;
+      if (classifyOrder({ sourceName: null, lines, config: cfg }) === "fulfillment_only" || isAddOnOnly(lines, cfg)) {
+        // No limbo (L3): an add-on rides on the buyer's portrait order (settleAddonTx).
+        const settled = await settleAddonTx(tx, bump, ctx, order, cfg);
+        if (settled === "nothing_to_link" || settled === "not_addon") {
+          const titles = lines.map((l) => l.title ?? "").filter(Boolean);
+          bump((r) => (r.addonOnly += 1));
+          await raise(tx, bump, ctx.now, order, "addon_only",
+            `Order #${orderLabel(order)} has nothing to draw (${titles.join(", ") || "no title"}): fulfil it on its own or close it`,
+            { titles, candidates: [], recommendation: "Nothing on it to draw or to ride on a portrait order: fulfil it on its own or close it." });
         }
-        bump((r) => (r.addonOnly += 1));
-        const recommendation = parents.length
-          ? `Link it to the right portrait order: ${parents.map((p) => p.number).join(" or ")}.`
-          : "No open portrait order from this buyer in the last 30 days: fulfil it on its own or check with the buyer.";
-        await raise(tx, bump, ctx.now, order, "addon_only",
-          `Order #${orderLabel(order)} is an add-on only (${titles.join(", ") || "no title"}): match it to the portrait order and fulfil it`,
-          { titles: lines.map((l) => l.title), candidates: parents.map((p) => ({ id: p.id, number: p.number, status: p.status })), recommendation });
         return;
       }
 

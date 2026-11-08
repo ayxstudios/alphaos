@@ -46,3 +46,27 @@ export function portraitLinesOf<T extends { title?: string | null; sku?: string 
   const portraits = items.filter((i) => !isAddOnItem(i, cfg));
   return portraits.length ? portraits : items;
 }
+
+/** A gift card (PixArt's "eGift Card"): a non-portrait line, but never a print or extra for an order. */
+export const GIFT_CARD_TITLE = /\b(e-?)?gift\s*(card|voucher|certificate)\b/i;
+
+/** An add-on line that rides on a portrait order (a gift card does not). Pure. */
+export function isLinkableAddOn(
+  item: { title?: string | null; sku?: string | null; style?: string | null },
+  cfg: ClassifyConfig | null | undefined,
+): boolean {
+  return isAddOnItem(item, cfg) && !GIFT_CARD_TITLE.test(item.title ?? "");
+}
+
+/** Nothing to draw: every line is an add-on. Pure. */
+export function isAddOnOnly(
+  items: { title?: string | null; sku?: string | null; style?: string | null }[],
+  cfg: ClassifyConfig | null | undefined,
+): boolean {
+  return items.length > 0 && items.every((i) => isAddOnItem(i, cfg));
+}
+
+/** A print to ship: a physical line, or a Print & Ship title (CPS's Etsy add-on listing is saved as digital). Pure. */
+export function isPrintLine(item: { title?: string | null; productType?: string | null }): boolean {
+  return item.productType === "physical" || /\bprint\s*(&|and)\s*ship/i.test(item.title ?? "");
+}

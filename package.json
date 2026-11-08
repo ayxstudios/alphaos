@@ -54,6 +54,7 @@
     "test:agent-inbox": "tsx scripts/test-agent-inbox.ts",
     "test:legacy-intake": "tsx scripts/test-legacy-intake.ts",
     "test:invoice-addons": "tsx scripts/test-invoice-addons.ts",
+    "test:addon-upgrades": "tsx scripts/test-addon-upgrades.ts",
     "test:ai-designer": "tsx scripts/test-ai-designer.ts",
     "test:agent-capacity": "tsx scripts/test-agent-capacity.ts",
     "test:agent-config": "tsx scripts/test-agent-config.ts",
