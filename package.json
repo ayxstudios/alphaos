@@ -94,7 +94,8 @@
     "test:deliver-together": "tsx scripts/test-deliver-together.ts",
     "test:work-clock": "tsx scripts/test-work-clock.ts",
     "test:auto-complete": "tsx scripts/test-auto-complete.ts",
-    "auto-complete-digital": "tsx scripts/auto-complete-digital.ts"
+    "auto-complete-digital": "tsx scripts/auto-complete-digital.ts",
+    "backlog-close": "tsx scripts/backlog-close.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1102.0",
