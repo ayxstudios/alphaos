@@ -117,6 +117,12 @@ export type ExceptionFacts = {
   excerpt?: string | null;
   /** photo_subject_missing: a pet or person bought still has no clear face photo (lib/photos/subjects.ts). */
   photoHolding?: boolean;
+  /**
+   * addon_only: "linked" once it rides on an order (agent.addon_linked /
+   * agent.invoice_addon_linked), "moved" when a person moved it on to
+   * fulfilment after the card opened, null while nobody has.
+   */
+  addonSettled?: "linked" | "moved" | null;
 };
 
 /** A Gmail / Outlook emoji reaction: nothing to read, nothing to answer. Pure. */
@@ -165,7 +171,11 @@ export function staleReason(f: ExceptionFacts): string | null {
       if (!f.productOrdersHeld) return "no order waiting on it";
       return null;
     case "addon_only":
-      if (st === "fulfillment_only") return "linked to its portrait order";
+      // Its status alone is no answer: a print already in fulfillment_only (a
+      // Shopify import, a print bought after her order closed) is asked about
+      // too. PC32251 (2026-11-08): the ask closed itself the tick it opened.
+      if (f.addonSettled === "linked") return "linked to its portrait order";
+      if (f.addonSettled === "moved") return "moved on to fulfilment";
       if (someoneHasIt) return "a designer has it";
       return null;
     case "reply_unclear":
@@ -217,6 +227,12 @@ async function loadExceptionFacts(tx: Tx, businessId: string) {
             and coalesce(m2.sent_at, m2.manual_sent_at, m2.created_at) > ${exceptions.createdAt})))`,
       excerpt: sql<string | null>`${exceptions.detail}->>'excerpt'`,
       photoHolding: sql<boolean>`(${exceptions.kind} = 'photo_subject_missing' and ${photoHoldingWhere()})`,
+      addonSettled: sql<"linked" | "moved" | null>`case when ${exceptions.kind} <> 'addon_only' then null
+        when exists (select 1 from activity_log l where l.order_id = ${exceptions.orderId}
+          and l.action in ('agent.addon_linked', 'agent.invoice_addon_linked')) then 'linked'
+        when exists (select 1 from activity_log l where l.order_id = ${exceptions.orderId}
+          and l.to_state::text in ('fulfillment_only', 'printing', 'shipped', 'delivered', 'complete')
+          and l.created_at > ${exceptions.createdAt}) then 'moved' end`,
       styleMapped: sql<boolean>`(${exceptions.kind} = 'new_product' and exists (
         select 1 from styles s where s.id = ${exceptions.detail}->>'styleId' and not s.auto_created))`,
       productOrdersHeld: sql<boolean>`(${exceptions.kind} = 'new_product' and exists (

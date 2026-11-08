@@ -117,7 +117,10 @@ function pureTests() {
   );
   check("L1 reply: real words stay open", staleReason(facts({ kind: "reply_unclear", status: "in_design", excerpt: "Can you make the ears lighter?" })) === null);
   check("L1 photos: went to a designer", staleReason(facts({ kind: "photo_count_mismatch", activeAssignment: true })) === "went to a designer with the photos it had");
-  check("L1 add-on: linked", staleReason(facts({ kind: "addon_only", status: "fulfillment_only" })) === "linked to its portrait order");
+  check("L1 add-on: linked", staleReason(facts({ kind: "addon_only", status: "fulfillment_only", addonSettled: "linked" })) === "linked to its portrait order");
+  // PC32251 (2026-11-08): a print already in fulfillment_only that nobody linked keeps its ask open.
+  check("L1 add-on: fulfillment_only alone is not linked", staleReason(facts({ kind: "addon_only", status: "fulfillment_only" })) === null);
+  check("L1 add-on: a person moved it on", staleReason(facts({ kind: "addon_only", status: "fulfillment_only", addonSettled: "moved" })) === "moved on to fulfilment");
   check("L1 email failed: went out", staleReason(facts({ kind: "email_send_failed", status: "in_design", failedMailSent: true })) === "the email went out");
   check(
     "L1 AI failed: AI still holding it stays open",
