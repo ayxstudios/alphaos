@@ -1,8 +1,12 @@
 /**
  * Wrong-file stop (incident 16 Oct 2026: PixArt PC32132, Saiya alone portrait,
  * was delivered the PC32131 Parker + Saiya landscape file). A file that is the
- * same picture as another file it must not be is refused on designer submit and
- * on QC pass; staff can override with a reason, designers cannot.
+ * same picture as another file it must not be is refused on QC pass; staff can
+ * override with a reason. A hand-in never stops on it (Yousif 2026-11-08: "make
+ * sure that there is no 'this looks like another file' issue for designers
+ * looking to upload into awaiting QC, it's slowing everything down"): every
+ * match is a heads-up, told to whoever handed it in and logged on the order, and
+ * QC looks at it before anything reaches a customer.
  *
  * Same picture = both looks agree (lib/qc/image-hash.ts samePicture): the dHash
  * within SAME_PICTURE_DISTANCE bits AND the 64x80 fine signature within
@@ -22,11 +26,10 @@
  * Which other-order files count (2026-10-27, Jerome: 4213333468's portrait was
  * also put on 4204560873 by mistake, and the RIGHT order could not be handed in):
  *   sent     the file went to its own customer (current when its order passed QC,
- *            or a final): blocks everyone, staff override as above
- *   unsent   still its order's current file, never past QC there: a designer's
- *            hand-in goes through with a heads-up naming the other order (the
- *            submit says which order the picture is for); QC pass still stops,
- *            so a person looks before anything reaches a customer
+ *            or a final): QC pass stops, staff override as above
+ *   unsent   still its order's current file, never past QC there: the heads-up
+ *            names the other order (the hand-in says which order the picture is
+ *            for); QC pass still stops, so a person looks first
  *   stray    replaced on its order and never sent: not that order's art, ignored
  *   retired  went to its customer, then its order got a different picture in the
  *            same slot (an unhappy buyer's full redraw; the ink differs, a
@@ -44,9 +47,9 @@
 import { and, desc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 
 import { isAgentAssigned } from "@/lib/agent/ai-core";
-import { isDesignerLike } from "@/lib/auth/roles";
 import { withSystemContext, type RequestUser, type Tx } from "@/lib/db";
 import { activityLog, assets, autoQcChecks, orderItems, orders } from "@/lib/db/schema";
+import { wrongFileNoteText } from "@/lib/qc/auto-qc-text";
 import { orderNumberOf, loadSameBuyerContext, orientationOf } from "@/lib/orders/same-buyer";
 import { loadProofFilePick } from "@/lib/proofs/files";
 import { hashColumnsFor } from "@/lib/qc/asset-hash";
@@ -205,16 +208,29 @@ export function wrongFileMessage(reasons: WrongFileReason[]): string | null {
   return `This file looks like ${what}. Upload the right file for this order.`;
 }
 
-/** A match a designer's hand-in does not stop on: the same picture on another order that never went out. */
+/** The same picture on another order where it is not out there as that order's portrait (never sent, or retired). */
 export function isDesignerHeadsUp(r: WrongFileReason): boolean {
   return (r.kind === "other_order" || r.kind === "recent_art") && r.matchSent === false;
 }
 
-/** The note a designer sees with a hand-in that went through on a heads-up match. */
+const whereOf = (rs: WrongFileReason[]) => [...new Set(rs.map((r) => (r.matchOrderNumber ? `order ${r.matchOrderNumber}` : "another order")))];
+
+/**
+ * The note whoever handed the order in sees: every match, since a hand-in never
+ * stops on the picture check (2026-11-08). Plain words, one sentence per kind.
+ */
 export function designerHeadsUpMessage(reasons: WrongFileReason[]): string | null {
-  const where = [...new Set(reasons.filter(isDesignerHeadsUp).map((r) => (r.matchOrderNumber ? `order ${r.matchOrderNumber}` : "another order")))];
-  if (!where.length) return null;
-  return `The same picture is also on ${where.join(" and ")}. If it does not belong there, upload ${where.length === 1 ? "that order's" : "each order's"} own portrait on its card.`;
+  const notes: string[] = [];
+  const onOrders = reasons.filter((r) => r.kind === "other_order" || r.kind === "recent_art");
+  const sent = whereOf(onOrders.filter((r) => !isDesignerHeadsUp(r)));
+  const unsent = whereOf(onOrders.filter(isDesignerHeadsUp)).filter((w) => !sent.includes(w));
+  if (sent.length) notes.push(`This picture looks like the one already sent on ${sent.join(" and ")}. If it is the wrong file, upload this order's own portrait on its card.`);
+  if (unsent.length)
+    notes.push(`The same picture is also on ${unsent.join(" and ")}. If it does not belong there, upload ${unsent.length === 1 ? "that order's" : "each order's"} own portrait on its card.`);
+  if (reasons.some((r) => r.kind === "reference")) notes.push("This file looks like the customer's own photo. If it is the wrong file, upload the portrait on this card.");
+  const ai = reasons.find((r) => r.kind === "auto_qc");
+  if (ai) notes.push(`Auto QC flagged this file before: ${wrongFileNoteText(ai.note).replace(/\.\s*$/, "")}. QC will check it again.`);
+  return notes.length ? notes.join(" ") : null;
 }
 
 /**
@@ -608,8 +624,10 @@ export function autoQcWrongFileReason(check: AutoQcWrongFileCheck | null | undef
 /**
  * The one gate every road uses: null when the order's current artwork may go
  * on (nothing blocks, or staff gave an override reason, which is logged on the
- * order), else a refusal with the plain message. Designers and helpers never
- * override. `system` (importers, the AI Studio's own pipeline, cron) passes:
+ * order), else a refusal with the plain message. A hand-in (via "submit") is
+ * never refused: its matches come back as a heads-up in `warnings` and are
+ * logged. Designers and helpers never override a QC pass.
+ * `system` (importers, the AI Studio's own pipeline, cron) passes:
  * Auto QC's wrongFile and the owner's Approve check that work.
  * Orientation warnings never block; read them with wrongFileWarningsFor.
  */
@@ -647,10 +665,12 @@ export async function wrongFileGate(
   if (ai) reasons.push(ai);
   if (!reasons.length) return null;
 
-  // A designer's hand-in says which order the picture is for: the same picture on
-  // another order that never went out is a heads-up, logged for QC, never a wall
-  // (2026-10-27, Jerome). QC pass still stops on it, so a person looks first.
-  if (input.via === "submit" && isDesignerLike(actor.role) && reasons.every(isDesignerHeadsUp)) {
+  // A hand-in never stops on the picture check (Yousif 2026-11-08: "make sure that there is no 'this looks like
+  // another file' issue for designers looking to upload into awaiting QC, it's slowing everything down"). Every
+  // match is a heads-up: told to whoever handed it in, logged on the order for QC, and QC pass still stops on it,
+  // so a person looks before anything reaches a customer. Until then only a match on an order where the picture
+  // never went out went through (2026-10-27, Jerome); a sent copy, the customer's photo or Auto QC's flag walled it.
+  if (input.via === "submit") {
     await tx.insert(activityLog).values({
       businessId: input.businessId,
       orderId: input.orderId,
@@ -658,6 +678,7 @@ export async function wrongFileGate(
       action: WRONG_FILE_HEADS_UP_ACTION,
       metadata: {
         via: input.via,
+        kinds: [...new Set(reasons.map((r) => r.kind))],
         matches: reasons.map((r) => ({
           kind: r.kind,
           assetId: r.assetId,
@@ -665,7 +686,9 @@ export async function wrongFileGate(
           matchOrderNumber: r.matchOrderNumber,
           distance: r.distance,
           inkDiff: r.inkDiff,
+          ...((r.kind === "other_order" || r.kind === "recent_art") && r.matchSent !== false ? { sent: true } : {}),
           ...(r.matchRetired ? { retired: true } : {}),
+          ...(r.kind === "auto_qc" ? { note: r.note } : {}),
         })),
       },
     });

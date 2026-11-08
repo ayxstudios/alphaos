@@ -79,6 +79,22 @@ function main() {
   const ref = evaluateWrongFile({ ...empty, target: { assetId: "t", dhash: base, fineSig: A }, references: [{ assetId: "r", dhash: away(0), fineSig: A }] });
   assert.equal(ref.blocked, true);
   assert.match(wrongFileMessage(ref.reasons) ?? "", /customer's reference photo/);
+  // The hand-in goes in with a heads-up in plain words; QC pass stops on the message above.
+  assert.equal(designerHeadsUpMessage(ref.reasons), "This file looks like the customer's own photo. If it is the wrong file, upload the portrait on this card.");
+  // Auto QC's flag: its code word is left out of what the designer reads.
+  assert.equal(
+    designerHeadsUpMessage([{ kind: "auto_qc", note: "Portrait 2 (other_order): This file shows the cat on the other portrait." }]),
+    "Auto QC flagged this file before: Portrait 2: This file shows the cat on the other portrait. QC will check it again.",
+  );
+  // Several kinds at once: one sentence each, sent copies first.
+  const many = designerHeadsUpMessage([
+    { kind: "recent_art", note: "", matchOrderNumber: "PC1", matchSent: true },
+    { kind: "other_order", note: "", matchOrderNumber: "PC2", matchSent: false },
+    { kind: "reference", note: "" },
+  ]);
+  assert.match(many ?? "", /^This picture looks like the one already sent on order PC1\. .* The same picture is also on order PC2\. .* This file looks like the customer's own photo\./);
+  // Orientation alone is never a heads-up.
+  assert.equal(designerHeadsUpMessage([{ kind: "orientation", note: "landscape file on a portrait order" }]), null);
   // A reference staff attached (the last proof, for a revision) is never compared.
   const staffRef = evaluateWrongFile({ ...empty, target: { assetId: "t", dhash: base, fineSig: A }, references: [{ assetId: "r", dhash: away(0), fineSig: A, fromCustomer: false }] });
   assert.equal(staffRef.blocked, false);
@@ -137,9 +153,10 @@ function main() {
   assert.match(designerHeadsUpMessage(mixup.reasons) ?? "", /also on order 4204560873\. If it does not belong there, upload that order's own portrait/);
   // QC (staff) still stops on it, with words that fit: neither copy has gone out.
   assert.match(wrongFileMessage(mixup.reasons) ?? "", /also on order 4204560873, where it has not gone to the customer yet/);
-  // Unknown standing counts as sent: never a heads-up.
+  // Unknown standing counts as sent: not a mix-up candidate. The hand-in still goes in (2026-11-08, Yousif: no
+  // "this looks like another file" wall on a hand-in) and says the picture already went out there.
   assert.equal(rec.reasons.some(isDesignerHeadsUp), false);
-  assert.equal(designerHeadsUpMessage(rec.reasons), null);
+  assert.match(designerHeadsUpMessage(rec.reasons) ?? "", /^This picture looks like the one already sent on order \S+\. If it is the wrong file, upload this order's own portrait on its card\.$/);
 
   // A sent match outranks a closer unsent one, so the hand-in is stopped on the sent one.
   const both = evaluateWrongFile({
@@ -152,6 +169,7 @@ function main() {
   });
   assert.equal(both.reasons[0].matchAssetId, "sent-copy");
   assert.equal(both.reasons.some(isDesignerHeadsUp), false);
+  assert.match(designerHeadsUpMessage(both.reasons) ?? "", /already sent on order PC8\./);
   assert.match(wrongFileMessage(both.reasons) ?? "", /artwork on order PC8\. Upload the right file/);
   // The buyer's other order only unsent, but a sent copy on another order: the sent one still blocks.
   const sibUnsent = evaluateWrongFile({

@@ -6,7 +6,9 @@
  *      not gone out: it goes through with a heads-up naming that order, logged;
  *   2. QC pass still stops on it until staff give a reason;
  *   3. once that order's picture went to its customer, the same picture on yet
- *      another order is refused for the designer;
+ *      another order still goes in (2026-11-08, Yousif: no "this looks like
+ *      another file" wall on a hand-in) with a heads-up saying it was already
+ *      sent there, and QC pass stops on it;
  *   4. a copy replaced before it went out is a stray and stops counting;
  *   5. (2026-11-07, Jerome: Mabel's 4220775030 could not be handed in because her
  *      painting had been sent on 4220738504 by mistake, an order fully redrawn
@@ -205,28 +207,41 @@ async function main() {
     await pass("checked: this is Alyssa's");
     report("QC pass with a reason goes through", (await statusOf(ctx.alyssa)) === "awaiting_approval", `status ${await statusOf(ctx.alyssa)}`);
 
-    console.log("=== 3. the picture went out on Alyssa's: on any other order it is refused ===");
+    console.log("=== 3. the picture went out on Alyssa's: on another order it goes in with a heads-up, QC stops ===");
     await addFile(ctx.third, P);
-    let refused: OrderTransitionError | null = null;
+    const third = await transition(designer, { orderId: ctx.third, to: "awaiting_qc", expectedFrom: "in_design" });
+    const thirdNote = third.warnings?.join(" ") ?? "";
+    report(
+      "designer hand-in of a picture already sent on another order is not walled",
+      third.status === "awaiting_qc" && (await statusOf(ctx.third)) === "awaiting_qc",
+      `status ${await statusOf(ctx.third)}`,
+    );
+    report("the heads-up says it was already sent on Alyssa's order", thirdNote.includes(`already sent on order ${num("ALYSSA")}`), thirdNote || "(no heads-up)");
+    const thirdLogged = await withSystemContext((tx) =>
+      tx
+        .select({ metadata: activityLog.metadata })
+        .from(activityLog)
+        .where(and(eq(activityLog.orderId, ctx.third), eq(activityLog.action, WRONG_FILE_HEADS_UP_ACTION))),
+    );
+    const thirdMatches = (thirdLogged[0]?.metadata as { matches?: { sent?: boolean }[] } | null)?.matches ?? [];
+    report("the heads-up is logged as a sent match for QC", thirdLogged.length === 1 && thirdMatches.some((m) => m.sent === true), JSON.stringify(thirdLogged[0]?.metadata ?? null));
+    let thirdStopped: OrderTransitionError | null = null;
     try {
-      await transition(designer, { orderId: ctx.third, to: "awaiting_qc", expectedFrom: "in_design" });
+      await transition(va, {
+        orderId: ctx.third,
+        to: "awaiting_approval",
+        expectedFrom: "awaiting_qc",
+        metadata: { itemResults: passingItemResults, signature: ctx.vaName },
+      });
     } catch (e) {
-      if (e instanceof OrderTransitionError) refused = e;
+      if (e instanceof OrderTransitionError) thirdStopped = e;
       else throw e;
     }
     report(
-      "designer hand-in of a picture already sent on another order is refused",
-      !!refused && /Upload the right file for this order/.test(refused.message) && (await statusOf(ctx.third)) === "in_design",
-      refused ? refused.message : "NOT refused",
+      "QC pass stops on the sent copy without a reason",
+      !!thirdStopped && /Upload the right file for this order/.test(thirdStopped.message) && (await statusOf(ctx.third)) === "awaiting_qc",
+      thirdStopped ? thirdStopped.message : "NOT stopped",
     );
-    // Erin's order still carries it too: refused the same way until her own art is up.
-    let erinRefused = false;
-    try {
-      await transition(designer, { orderId: ctx.erin, to: "awaiting_qc", expectedFrom: "in_design" });
-    } catch (e) {
-      erinRefused = e instanceof OrderTransitionError;
-    }
-    report("the order with the mix-up stays refused", erinRefused && (await statusOf(ctx.erin)) === "in_design", `status ${await statusOf(ctx.erin)}`);
 
     console.log("=== 4. Erin's own picture replaces the stray: it stops counting ===");
     await addFile(ctx.erin, Q);
@@ -277,17 +292,29 @@ async function main() {
     report("the redrawn order itself goes in with its new picture, no heads-up", redrawn.status === "awaiting_qc" && !redrawn.warnings, `status ${redrawn.status}`);
 
     console.log("=== 5b. a touch-up of the sent picture is not a redraw: it stays sent ===");
-    let keptRefused: OrderTransitionError | null = null;
+    const fifth = await transition(designer, { orderId: ctx.fifth, to: "awaiting_qc", expectedFrom: "in_design" });
+    const fifthNote = fifth.warnings?.join(" ") ?? "";
+    report(
+      "the hand-in goes in, the heads-up says the picture was already sent",
+      fifth.status === "awaiting_qc" && fifthNote.includes(`already sent on order ${num("KEPT")}`),
+      `status ${fifth.status}, heads-up ${fifthNote || "none"}`,
+    );
+    let keptStopped: OrderTransitionError | null = null;
     try {
-      await transition(designer, { orderId: ctx.fifth, to: "awaiting_qc", expectedFrom: "in_design" });
+      await transition(va, {
+        orderId: ctx.fifth,
+        to: "awaiting_approval",
+        expectedFrom: "awaiting_qc",
+        metadata: { itemResults: passingItemResults, signature: ctx.vaName },
+      });
     } catch (e) {
-      if (e instanceof OrderTransitionError) keptRefused = e;
+      if (e instanceof OrderTransitionError) keptStopped = e;
       else throw e;
     }
     report(
-      "the same picture on another order is still refused for the designer",
-      !!keptRefused && /Upload the right file for this order/.test(keptRefused.message) && (await statusOf(ctx.fifth)) === "in_design",
-      keptRefused ? keptRefused.message : "NOT refused",
+      "QC pass stops on it as a sent copy (not a redrawn one)",
+      !!keptStopped && /Upload the right file for this order/.test(keptStopped.message) && !/redrawn since/.test(keptStopped.message),
+      keptStopped ? keptStopped.message : "NOT stopped",
     );
   } finally {
     await withSystemContext(async (tx) => {

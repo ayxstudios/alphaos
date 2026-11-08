@@ -173,11 +173,16 @@ export function describeEvent(e: CardEvent, viewerRole?: "admin" | "va" | "desig
     case "order.wrong_file_heads_up": {
       // The designer saw this as a toast; QC sees which order to compare with.
       if (designer) return null;
-      const matches = Array.isArray(e.metadata?.matches) ? (e.metadata.matches as { matchOrderNumber?: unknown }[]) : [];
-      const nums = [...new Set(matches.map((m) => (typeof m?.matchOrderNumber === "string" ? m.matchOrderNumber : "")).filter(Boolean))];
-      return nums.length
-        ? `handed in a picture that is also on order ${nums.join(" and ")}: check which order it belongs to`
-        : "handed in a picture that is also on another order: check which order it belongs to";
+      // Since 2026-11-08 every match goes in this way: the customer's photo and Auto QC's flag too.
+      const matches = Array.isArray(e.metadata?.matches) ? (e.metadata.matches as { kind?: unknown; matchOrderNumber?: unknown }[]) : [];
+      const onOrders = matches.filter((m) => m?.kind !== "reference" && m?.kind !== "auto_qc");
+      const nums = [...new Set(onOrders.map((m) => (typeof m?.matchOrderNumber === "string" ? m.matchOrderNumber : "")).filter(Boolean))];
+      const parts: string[] = [];
+      if (nums.length) parts.push(`a picture that is also on order ${nums.join(" and ")}`);
+      else if (onOrders.length || !matches.length) parts.push("a picture that is also on another order");
+      if (matches.some((m) => m?.kind === "reference")) parts.push("a file that looks like the customer's photo");
+      if (matches.some((m) => m?.kind === "auto_qc")) parts.push("the file Auto QC flagged as the wrong one");
+      return `handed in ${parts.join(" and ")}: check which order it belongs to`;
     }
     case "order.same_buyer_noted":
       return "noted that this customer has other orders";
