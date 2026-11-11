@@ -20,9 +20,9 @@ export const WITH_CUSTOMER_STATUSES = ["awaiting_approval", "approved", "printin
 
 /**
  * States an order can be SENT BACK to design from (a QC fail, a customer or
- * VA revision). A send-back asks for a new version, so a submission uploaded
- * before it no longer counts toward Submit for QC (enforced in
- * lib/orders/transitions.ts, mirrored in the card modal). Resuming from
+ * VA revision). A send-back asks for a new version; a person handing in the
+ * same files again is told so and QC sees it, but is never refused (Yousif
+ * 2026-11-11; lib/orders/transitions.ts, the card modal). Resuming from
  * on_hold is not a send-back.
  */
 export const SENT_BACK_FROM = ["awaiting_qc", "awaiting_approval", "approved", "printing", "shipped", "delivered", "complete"] as const;

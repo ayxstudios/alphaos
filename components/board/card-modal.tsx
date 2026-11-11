@@ -554,15 +554,17 @@ function CardUploadPanel({
     if (first) setPortraitKey(first);
   }, [missingKeys]);
   const missingWho = missingPortraits.length ? portraitList(missingPortraits.map((m) => m.n)) : "";
-  // After a send-back (QC fail, revision) the old versions no longer count:
-  // the server refuses Submit for QC until a newer version is uploaded.
+  // After a send-back (QC fail, revision) a new version is what is normally
+  // wanted, but a designer who stands by the files may send them again as they
+  // are: nothing blocks a hand-in before a person checks it (Yousif 2026-11-11).
   const lastSendBack = (detail?.events ?? [])
     .filter((e) => e.toState === "in_design" && e.fromState && (SENT_BACK_FROM as readonly string[]).includes(e.fromState))
     .reduce<string | null>((max, e) => (!max || e.createdAt > max ? e.createdAt : max), null);
   const freshVersion =
     !!latestSubmission && (!lastSendBack || Date.parse(latestSubmission.createdAt) > Date.parse(lastSendBack));
-  // The server refuses Submit for QC while a portrait has no file (transitions.ts).
-  const canSubmit = freshVersion && !missingPortraits.length;
+  // Submit for QC shows as soon as there is any artwork: a portrait with no
+  // file or no new version goes to QC with a heads-up (transitions.ts).
+  const canSubmit = !!latestSubmission;
   const canUpload = !designer || canDesignerUpload;
   // Why a designer can't upload right now, in the card's own terms: a card
   // that hasn't been started is NOT locked, it just needs starting first.
@@ -577,11 +579,11 @@ function CardUploadPanel({
   const designerHint = !canDesignerUpload
     ? designerNote
     : latestSubmission && missingPortraits.length
-      ? `${portraits.length - missingPortraits.length} of ${portraits.length} portraits uploaded. Add ${missingWho}, then submit them for QC.`
+      ? `${portraits.length - missingPortraits.length} of ${portraits.length} portraits uploaded. Add ${missingWho}, then submit them for QC. You can also submit as it is.`
       : freshVersion
         ? "Ready. Press Submit for QC, or add a new version first."
         : latestSubmission
-          ? "Add a new version with the changes, then submit it for QC."
+          ? "Add a new version with the changes, then submit it for QC. If nothing needs changing, submit it as it is."
           : multiPortrait
             ? `This order is ${portraits.length} separate portraits. Add each one, then submit them for QC.`
             : "Add the finished portrait, then submit it for QC.";

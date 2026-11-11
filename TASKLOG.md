@@ -328,3 +328,11 @@ Branch task/custom-proof-email-1111, base c9d168b. Yousif 2026-11-11 on PixArt P
 - [x] landed 11 Nov under integrate:alphaos: main 22193b1, prod CLI deploy dpl_6mKecExRmW5nxcKVBma9swKYxLH2 aliased to alphaos-kappa; /api/health 200, /approve 307, /login 200.
 - [x] PC32231 set: activity c43e579d (words passed the agent send gate) + card note e86c5a54. Prod proof with the live code: renders "#PC32231 - PixArt Creatives - We're So Sorry: Raya & Luka Redrawn From Scratch" and the apology signed "Regards, Brianna"; a sent revision email spends it (rolled back); still pending after the rollback.
 - Undo: an activity_log `proof.custom_email_cleared` row on the order (the template goes again).
+
+## Hand-in is never refused; only a person fails QC (Yousif 11 Nov 2026 22:49, task/alphaos-reqba265)
+Ask: "don't do any preliminary checks or block anything that the designer wants to submit ... The failed QC should only be after a human checks and then says so." Mar could not re-submit orders the agent's QC pass had sent back (his three-backgrounds order #CPS10284 twice).
+- [x] lib/orders/transitions.ts: a person's in_design -> awaiting_qc is never refused for no new version since a send-back, an empty portrait or a duplicate file; each is a heads-up (returned as a warning, toasted on the board) and one activity row `order.hand_in_heads_up` {via, kinds, notes}. Still refused: an order with no artwork at all, and the agent's own (system) hand-in. A person's QC pass is unchanged (still stops on missing / duplicate / wrong file).
+- [x] components/board/card-modal.tsx: Submit for QC shows whenever the order has a version ("submit it as it is").
+- [x] scripts/test-hand-in-heads-up.ts (new, npm run test:hand-in-heads-up), test-transitions + test-duplicate-slots updated; those plus test:wrong-file-gate pass on a local DB; tsc + eslint clean on the changed files.
+- [x] Agent side (ai-employee-agent 28d73dc0): the 2 h QC takeover only passes or leaves an order in Awaiting QC; it never calls /api/approve/reject.
+- Known gap: a one-portrait order with several option files (three backgrounds) still shows QC and the buyer the newest file only (lib/proofs/files.ts single mode).

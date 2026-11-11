@@ -260,8 +260,23 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
     await assertFiguresResolved(tx, orderId, order.platformOrderId);
   }
   if (to === "awaiting_qc") {
-    await assertHasSubmission(tx, orderId, order.platformOrderId);
-    await assertEveryPortrait(tx, orderId, order.platformOrderId, "submit");
+    const stale = await assertHasSubmission(tx, orderId, order.platformOrderId, actor.role === "system");
+    // A person's hand-in is never refused on a check (Yousif 2026-11-11: "don't do any preliminary checks or block
+    // anything that the designer wants to submit ... The failed QC should only be after a human checks and then says
+    // so"). No new version since a send-back (Mar #CPS10284: three background options failed back as "one file", and
+    // the re-submit refused for want of a new one), a portrait with no file, a picture match and one file on two
+    // portraits are heads-ups: told to whoever
+    // handed it in, logged on the order, and the person on QC decides. Only the AI Studio's own hand-in (system)
+    // still needs a file for every portrait: nobody drew those, so an empty slot is the pipeline's own gap.
+    if (actor.role === "system") {
+      await assertEveryPortrait(tx, orderId, order.platformOrderId, "submit");
+    }
+    const headsUp: { kind: "no_new_version" | "missing_portrait" | "duplicate_slots"; note: string }[] = [];
+    if (stale) headsUp.push({ kind: "no_new_version", note: stale });
+    if (actor.role !== "system") {
+      const gap = await missingPortraitNote(tx, orderId);
+      if (gap) headsUp.push({ kind: "missing_portrait", note: gap });
+    }
     const wrong = await wrongFileGate(tx, actor, {
       orderId,
       businessId: order.businessId,
@@ -270,14 +285,23 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
       warnings,
     });
     if (wrong) throw new PreconditionError(wrong.message);
-    // two portraits she asked to be different, handed in as one file (Shelby PC32228, Kara PC32205)
+    // two portraits she asked to be different, handed in as one file (Shelby PC32228, Kara PC32205): QC pass stops on it
     const twin = await duplicateSlotsGate(tx, actor, {
       orderId,
       businessId: order.businessId,
-      overrideReason: input.overrideReason,
       via: "submit",
     });
-    if (twin) throw new PreconditionError(twin.message);
+    if (twin) headsUp.push({ kind: "duplicate_slots", note: twin.message });
+    if (headsUp.length) {
+      await tx.insert(activityLog).values({
+        businessId: order.businessId,
+        orderId,
+        actorId: actor.id,
+        action: HAND_IN_HEADS_UP_ACTION,
+        metadata: { via: "submit", kinds: headsUp.map((h) => h.kind), notes: headsUp.map((h) => h.note) },
+      });
+      warnings.push(...headsUp.map((h) => h.note));
+    }
   }
   if (key === "awaiting_qc->awaiting_approval") {
     await assertEveryPortrait(tx, orderId, order.platformOrderId, "pass");
@@ -517,7 +541,25 @@ async function assertEveryPortrait(
   );
 }
 
-async function assertHasSubmission(tx: Tx, orderId: string, platformOrderId: string): Promise<void> {
+/** A hand-in that went to QC with a heads-up: a portrait with no file, or one file on two portraits (activity_log). */
+export const HAND_IN_HEADS_UP_ACTION = "order.hand_in_heads_up";
+
+/** What a person's hand-in is told when a purchased portrait has no file: a heads-up, never a refusal. */
+async function missingPortraitNote(tx: Tx, orderId: string): Promise<string | null> {
+  const pick = await loadProofFilePick(tx, orderId);
+  if (pick.mode !== "slots" || !pick.missing.length) return null;
+  const gap = pick.missing.map((m) => m.n);
+  return `${portraitList(gap)} of ${pick.expected} ${gap.length === 1 ? "has" : "have"} no file yet. It went to QC as it is; add ${gap.length === 1 ? "the file" : "the files"} if ${gap.length === 1 ? "it is" : "they are"} still to come.`;
+}
+
+/**
+ * A hand-in needs artwork on the order. After a send-back (QC fail, revision) a
+ * person may hand in the same files again (they stand by them, or the send-back
+ * was wrong): that is never refused, it returns the heads-up for them and for
+ * QC. Only an order with no artwork at all is refused (there is nothing to
+ * check), and the AI Studio's own hand-in (strict) still needs a new version.
+ */
+async function assertHasSubmission(tx: Tx, orderId: string, platformOrderId: string, strict: boolean): Promise<string | null> {
   const [lastSendBack] = await tx
     .select({ at: activityLog.createdAt })
     .from(activityLog)
@@ -542,13 +584,20 @@ async function assertHasSubmission(tx: Tx, orderId: string, platformOrderId: str
       ),
     )
     .limit(1);
-  if (!submission) {
-    throw new PreconditionError(
-      lastSendBack
-        ? `Cannot submit order ${platformOrderId} to QC: add a new version for this revision first.`
-        : `Cannot submit order ${platformOrderId} to QC: upload at least one finished portrait first.`,
-    );
+  if (submission) return null;
+  if (lastSendBack && !strict) {
+    const [any] = await tx
+      .select({ id: assets.id })
+      .from(assets)
+      .where(and(eq(assets.orderId, orderId), eq(assets.type, "submission"), isNull(assets.deletedAt)))
+      .limit(1);
+    if (any) return "No new version was added since this order was sent back. It went to QC as it is; add the new version if one is still to come.";
   }
+  throw new PreconditionError(
+    lastSendBack && strict
+      ? `Cannot submit order ${platformOrderId} to QC: add a new version for this revision first.`
+      : `Cannot submit order ${platformOrderId} to QC: upload at least one finished portrait first.`,
+  );
 }
 
 type QcOutcome = {

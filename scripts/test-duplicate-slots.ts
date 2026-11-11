@@ -29,7 +29,7 @@ function main() {
   assert.equal(optionDifference(pair.a, pair.b), "Background: Blush / Blue");
   assert.equal(
     duplicateSlotsMessage(pair, "PC32228", "submit"),
-    "Order PC32228: Portrait 1 and portrait 2 are the same file, but she asked for two different portraits (Background: Blush / Blue). Upload the right file for each portrait.",
+    "Order PC32228: Portrait 1 and portrait 2 are the same file, but she asked for two different portraits (Background: Blush / Blue). It went to QC as it is; upload the right file if one is wrong.",
   );
   assert.match(duplicateSlotsMessage(pair, "PC32228", "qc_pass"), /Fail it back to the designer, or send it anyway only if you have checked it is right\.$/);
 
@@ -61,7 +61,7 @@ function main() {
   const units = duplicateCandidates([{ ...shelby[0], itemId: "pets" }, { ...shelby[1], itemId: "pets" }]);
   assert.equal(units.length, 1);
   assert.equal(optionDifference(units[0].a, units[0].b), null);
-  assert.match(duplicateSlotsMessage(units[0], null, "submit"), /^Portrait 1 and portrait 2 are the same file, but she asked for two different portraits\. Upload/);
+  assert.match(duplicateSlotsMessage(units[0], null, "submit"), /^Portrait 1 and portrait 2 are the same file, but she asked for two different portraits\. It went to QC as it is/);
   // The very same asset in two slots she set apart.
   assert.equal(duplicateCandidates([file({ n: 1, assetId: "x", itemId: "a", options: opts("Blue") }), file({ n: 2, assetId: "x", itemId: "b", options: opts("Blush") })]).length, 1);
 

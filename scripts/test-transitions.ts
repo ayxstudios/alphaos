@@ -233,19 +233,14 @@ async function main() {
     `status ${late.status}, revisionCount ${late.revisionCount}`,
   );
 
-  console.log("=== a revision needs a NEW version before it goes back to QC ===");
-  await expectThrow(
-    "resubmit after a revision with only the old version",
-    ctx.lateOrderId,
-    () => transition(va, { orderId: ctx.lateOrderId, to: "awaiting_qc", expectedFrom: "in_design" }),
-    "in_design",
-  );
-  await addSubmission(ctx.lateOrderId);
-  await transition(va, { orderId: ctx.lateOrderId, to: "awaiting_qc", expectedFrom: "in_design" });
+  // Yousif 2026-11-11: nothing blocks a person's hand-in before a person checks it. The same files after a send-back
+  // go to QC with a heads-up instead of "add a new version for this revision first" (Mar #CPS10284).
+  console.log("=== a hand-in with only the old version after a revision goes to QC with a heads-up ===");
+  const sameFiles = await transition(va, { orderId: ctx.lateOrderId, to: "awaiting_qc", expectedFrom: "in_design" });
   report(
-    "resubmit after a revision with a new version",
-    (await statusOf(ctx.lateOrderId)) === "awaiting_qc",
-    `status now ${await statusOf(ctx.lateOrderId)}`,
+    "resubmit after a revision with only the old version is not refused",
+    (await statusOf(ctx.lateOrderId)) === "awaiting_qc" && (sameFiles.warnings ?? []).some((w) => /No new version was added/.test(w)),
+    `status now ${await statusOf(ctx.lateOrderId)}; ${(sameFiles.warnings ?? []).join(" ") || "(no heads-up)"}`,
   );
 
   // --- cleanup -------------------------------------------------------------

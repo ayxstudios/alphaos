@@ -81,6 +81,7 @@
     "test:wrong-file-gate": "tsx scripts/test-wrong-file-gate.ts",
     "test:revision-stop": "tsx scripts/test-revision-stop.ts",
     "test:duplicate-slots": "tsx scripts/test-duplicate-slots.ts",
+    "test:hand-in-heads-up": "tsx scripts/test-hand-in-heads-up.ts",
     "test:photo-subjects": "tsx scripts/test-photo-subjects.ts",
     "test:approve-stop": "tsx scripts/test-approve-stop.ts",
     "test:qc-overdue": "tsx scripts/test-qc-overdue.ts",

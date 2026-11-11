@@ -45,6 +45,7 @@ const LABELS: Record<string, string> = {
   "qc.backup_approver": "QC passed to the backup approver",
   "order.wrong_file_override": "Wrong-file stop overridden",
   "order.wrong_file_heads_up": "Handed in with a picture-check heads-up",
+  "order.hand_in_heads_up": "Handed in with a heads-up for QC",
   "order.revision_stop_override": "Sent although Auto QC said the revision was not done",
   "order.duplicate_slots_override": "Sent although two portraits were the same file",
   "order.photo_subjects_checked": "Photos checked: who is in each",

@@ -3,8 +3,10 @@
  * file for two portraits the buyer asked to be different: Shelby PC32228
  * (Lucille on Blue and on Blush, the blue file twice) and Kara PC32205's first
  * round (Winnie on Purple and on Grass, one file twice). Kara's then went out
- * as two identical frames. The hand-in (in_design -> awaiting_qc) and a QC pass
- * now stop on it.
+ * as two identical frames. A QC pass stops on it. A hand-in (in_design ->
+ * awaiting_qc) is never refused (Yousif 2026-11-11: nothing blocks what a
+ * designer wants to submit before a person checks it): it goes to QC with a
+ * heads-up, logged on the order.
  *
  * Only a byte-identical file counts: the same picture hashes and size on
  * record, then the same stored size and ETag in R2. The same pet on two
@@ -12,7 +14,7 @@
  * called a copy. Across two lines it stops only when a portrait option she set
  * differs (a background, a pet name); copies, a digital file plus its print and
  * lines with no readable options may share a file. Staff who looked send it
- * with a reason (logged on the order); a designer uploads the right file.
+ * with a reason (logged on the order).
  */
 import { eq, inArray } from "drizzle-orm";
 
@@ -97,7 +99,7 @@ export function duplicateSlotsMessage(pair: DuplicatePair, orderNumber: string |
   const diff = optionDifference(pair.a, pair.b);
   const what = `portrait ${pair.a.n} and portrait ${pair.b.n} are the same file, but she asked for two different portraits${diff ? ` (${diff})` : ""}.`;
   return via === "submit"
-    ? `${head}${what[0].toUpperCase()}${what.slice(1)} Upload the right file for each portrait.`
+    ? `${head}${what[0].toUpperCase()}${what.slice(1)} It went to QC as it is; upload the right file if one is wrong.`
     : `${head}${what[0].toUpperCase()}${what.slice(1)} Fail it back to the designer, or send it anyway only if you have checked it is right.`;
 }
 
