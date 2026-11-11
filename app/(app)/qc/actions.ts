@@ -32,6 +32,7 @@ import {
 } from "@/lib/email/templates";
 import { textToHtml } from "@/lib/integrations/gmail/mime";
 import { claimedMessage, claimHolder } from "@/lib/qc/claims";
+import { CUSTOM_PROOF_LABEL, pendingCustomProofEmail } from "@/lib/qc/custom-proof-email";
 import {
   assertQcPassAllowed,
   runTransition,
@@ -189,7 +190,10 @@ export async function prepareQcEmailPreview(input: {
     if (holder) return { ok: false as const, code: "claimed", message: claimedMessage(holder.holder) };
     const proof = await ensureProof(tx, ctx.order);
     const selection = selectProofTemplate(ctx);
-    const template = await resolveTemplate(tx, ctx.order.businessId, selection.key);
+    // Words written ahead for this one order (an upset customer's redraw) go
+    // instead of the template, whichever screen passes it (lib/qc/custom-proof-email.ts).
+    const custom = await pendingCustomProofEmail(tx, ctx.order.id);
+    const template = await resolveTemplate(tx, ctx.order.businessId, selection.key, custom);
     const rendered = renderTemplate(template, {
       first_name: ctx.customer.firstName ?? "there",
       order_number: ctx.order.orderNumber,
@@ -210,8 +214,10 @@ export async function prepareQcEmailPreview(input: {
         body: rendered.body,
         html: textToHtml(rendered.body),
         templateKey: selection.key,
-        templateLabel: TEMPLATE_META[selection.key].label,
-        templateReason: selection.reason,
+        templateLabel: custom ? CUSTOM_PROOF_LABEL : TEMPLATE_META[selection.key].label,
+        templateReason: custom
+          ? `A message written for this order goes instead of the ${TEMPLATE_META[selection.key].label} template${custom.why ? `: ${custom.why}` : "."}`
+          : selection.reason,
         proofId: proof.id,
         proofLink: proofUrl(proof.token),
         emails: set.parts.length,

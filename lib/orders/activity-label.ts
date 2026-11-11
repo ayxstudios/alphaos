@@ -24,6 +24,8 @@ const LABELS: Record<string, string> = {
   "agent.reply_answer_drafted": "Agent drafted an answer",
   "agent.proof_reminder_drafted": "Agent drafted a proof reminder",
   "email.proof_reminder_withdrawn": "Proof reminder withdrawn: the buyer answered",
+  "proof.custom_email_set": "Custom proof email set: it goes instead of the template at the next QC pass",
+  "proof.custom_email_cleared": "Custom proof email removed: the template goes",
   "order.reassigned": "Reassigned",
   "order.imported": "Imported",
   "order.created_manual": "Created by hand",

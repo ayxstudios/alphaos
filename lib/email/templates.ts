@@ -283,6 +283,8 @@ export async function resolveTemplate(
   tx: Tx,
   businessId: string,
   key: TemplateKey,
+  /** One order's own words instead of the template (lib/qc/custom-proof-email.ts); {{sign_off}} still fills in. */
+  override?: EmailTemplate | null,
 ): Promise<EmailTemplate> {
   const [row] = await tx
     .select({ subject: emailTemplates.subject, body: emailTemplates.body })
@@ -294,7 +296,9 @@ export async function resolveTemplate(
     .from(businesses)
     .where(eq(businesses.id, businessId))
     .limit(1);
-  const template = row ?? defaultTemplateForBusiness(business ?? {}, key);
+  const template = override
+    ? { subject: override.subject, body: override.body }
+    : row ?? defaultTemplateForBusiness(business ?? {}, key);
   return withSignOff(template, signOffFor({ ...(business ?? {}), replySignOff: replySignOffOf(business?.agentConfig) }));
 }
 
