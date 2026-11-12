@@ -35,7 +35,7 @@ export async function reopenUndrawn(input: { order: string; why: string; apply?:
     if (o.status !== "complete") return { ok: false as const, code: "status", message: `Order ${o.number} is ${o.status}, not complete.` };
     const hist = await tx.select({ id: assignments.id }).from(assignments).where(eq(assignments.orderId, o.id)).limit(1);
     if (hist.length) return { ok: false as const, code: "has_designer", message: "A designer held this order: not an undrawn import." };
-    const finals = await tx.select({ id: assets.id }).from(assets).where(eq(assets.orderId, o.id));
+    const finals = await tx.select({ id: assets.id, type: assets.type }).from(assets).where(eq(assets.orderId, o.id));
     if (finals.some((a) => a.type !== "reference")) return { ok: false as const, code: "has_art", message: "The order has art on it: not undrawn." };
     if (!input.apply) return { ok: true as const, applied: false, order: o.number, id: o.id };
     await tx.update(orders).set({ status: "ready_to_assign" }).where(eq(orders.id, o.id));
