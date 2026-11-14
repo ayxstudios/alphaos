@@ -83,7 +83,14 @@ export async function closeApprovedDigital(opts: { limit?: number; businessFilte
       tx
         .select({ orderId: activityLog.orderId, at: sql<string>`max(${activityLog.createdAt})::text` })
         .from(activityLog)
-        .where(and(inArray(activityLog.orderId, ids), eq(activityLog.toState, "approved")))
+        // A held or edit row (approved -> approved) is not an approval: it must never move the earning period.
+        .where(
+          and(
+            inArray(activityLog.orderId, ids),
+            eq(activityLog.toState, "approved"),
+            sql`${activityLog.fromState} IS DISTINCT FROM 'approved'`,
+          ),
+        )
         .groupBy(activityLog.orderId),
     ]);
     const itemsBy = new Map<string, { productType: "digital" | "physical" }[]>();
@@ -109,6 +116,7 @@ export async function closeApprovedDigital(opts: { limit?: number; businessFilte
         orderId: r.id,
         to: "complete",
         expectedFrom: "approved",
+        autoClose: "digital",
         metadata: { via: "auto_complete_digital_backfill", ...(r.approvedAt ? { completedAt: new Date(r.approvedAt).toISOString() } : {}) },
       });
       out.closed.push({ orderId: r.id, number: r.number, business: r.business });
@@ -116,6 +124,48 @@ export async function closeApprovedDigital(opts: { limit?: number; businessFilte
       if (!(e instanceof OrderTransitionError)) throw e;
       out.held.push({ orderId: r.id, number: r.number, business: r.business, reason: e.message });
     }
+  }
+  return out;
+}
+
+/**
+ * A digital order closes even when its figure count is unknown; its earning then waits
+ * blocked as "Missing figure count." This retries inference for those orders (bounded) and,
+ * when a count is found, resolves the earning through the same path the Payouts page uses.
+ */
+export type BlockedFigureRetry = { checked: number; resolved: { orderId: string; number: string; amount: string }[]; stillBlocked: number };
+
+export async function retryBlockedFigureEarnings(opts: { limit?: number } = {}): Promise<BlockedFigureRetry> {
+  const { and, eq } = await import("drizzle-orm");
+  const { withSystemContext } = await import("@/lib/db");
+  const { earnings, orders } = await import("@/lib/db/schema");
+  const { autoResolveOrderFigures } = await import("./figure-auto");
+  const { recalculateBlockedEarning } = await import("./earnings");
+  const limit = opts.limit ?? 50;
+
+  const rows = await withSystemContext((tx) =>
+    tx
+      .select({
+        id: earnings.id,
+        orderId: earnings.orderId,
+        businessId: earnings.businessId,
+        number: sql<string>`coalesce(${orders.platformOrderName}, ${orders.platformOrderId})`,
+      })
+      .from(earnings)
+      .innerJoin(orders, eq(orders.id, earnings.orderId))
+      .where(and(eq(earnings.status, "blocked"), eq(earnings.blockedReason, "Missing figure count.")))
+      .orderBy(earnings.createdAt)
+      .limit(limit),
+  );
+  const out: BlockedFigureRetry = { checked: rows.length, resolved: [], stillBlocked: 0 };
+  for (const r of rows) {
+    const done = await withSystemContext(async (tx) => {
+      if ((await autoResolveOrderFigures(tx, r.orderId)) > 0) return null;
+      const res = await recalculateBlockedEarning(tx, r.id, r.businessId);
+      return res.ok ? res.amount : null;
+    });
+    if (done) out.resolved.push({ orderId: r.orderId, number: r.number, amount: done });
+    else out.stillBlocked++;
   }
   return out;
 }

@@ -1,5 +1,6 @@
 import { decodeHtmlEntities } from "./html-entities";
 import { resolveProductType, type ProductTypeResolution } from "../figures";
+import { isFigureCountLabel, parseCountOptionValue } from "../figure-values";
 import { clampItemQuantity } from "../../orders/item-quantity";
 
 // Words in a LISTING TITLE that name a made, shipped thing outright (the Print &
@@ -94,13 +95,6 @@ export type EtsyReviewDefaults = {
 
 export type MissingField = "Customer email" | "Style" | "Reference photos";
 
-const FIGURE_LABELS = new Set([
-  "number of pets",
-  "number of people",
-  "number of figures",
-  "figures",
-]);
-
 const PRODUCT_ATTRIBUTE_LABELS = [
   /size/i,
   /print on/i,
@@ -134,14 +128,6 @@ function unixToIso(value: unknown): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function firstInteger(value: string | null): number | null {
-  if (!value) return null;
-  const match = value.match(/\d+/);
-  if (!match) return null;
-  const n = Number(match[0]);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-
 function parseVariations(value: unknown): EtsyVariationPair[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((v) => {
@@ -153,10 +139,17 @@ function parseVariations(value: unknown): EtsyVariationPair[] {
   });
 }
 
+/**
+ * The figure count an Etsy line's own options state. The label match is tolerant
+ * on case and punctuation ("Number Of People/Pets", "Number Of Figures/Pets",
+ * "No. of characters (...)"; see isFigureCountLabel) and the value is read
+ * subject-first ("Venue +2 people/pets" is 3), then by its first integer ("2
+ * Figures+Background" is 2). "Add Background" and anything else unclear is null.
+ */
 function extractFigureCount(variations: EtsyVariationPair[]): number | null {
   for (const variation of variations) {
-    if (FIGURE_LABELS.has(variation.label.toLowerCase())) {
-      const n = firstInteger(variation.value);
+    if (isFigureCountLabel(variation.label)) {
+      const n = parseCountOptionValue(variation.value);
       if (n) return n;
     }
   }

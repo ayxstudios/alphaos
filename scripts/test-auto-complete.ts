@@ -13,7 +13,9 @@ import { withAlphaPushesHeld } from "../lib/alpha/client";
 import { SYSTEM_ACTOR_ID, withSystemContext } from "../lib/db";
 import { activityLog, earnings, orderItems, orders, printJobs } from "../lib/db/schema";
 import { digitalAutoCompleteVerdict } from "../lib/orders/auto-complete";
-import { runTransition } from "../lib/orders/transitions";
+import { autoResolveOrderFigures } from "../lib/orders/figure-auto";
+import { recalculateBlockedEarning } from "../lib/orders/earnings";
+import { PreconditionError, runTransition } from "../lib/orders/transitions";
 
 let fails = 0;
 const report = (name: string, ok: boolean, detail = "") => {
@@ -100,6 +102,77 @@ async function dbRoundTrip() {
         }
         const res = await runTransition(tx, SYSTEM, { orderId: cand.id, to: "approved", expectedFrom: "awaiting_approval", metadata: { via: "test" } });
         report(`db ${cand.number}: physical order stays approved`, res.status === "approved", res.status);
+        throw new Rollback();
+      }),
+    );
+  } catch (e) {
+    if (!(e instanceof Rollback)) throw e;
+  }
+  // An all-digital order with an UNRESOLVED figure count still closes (Yousif 2026-11-14: "Digital approved but
+  // not mark complete doesnt make sense"): the earning waits blocked, a person pressing Complete is still refused.
+  try {
+    await withAlphaPushesHeld(() =>
+      withSystemContext(async (tx) => {
+        const [cand] = await tx
+          .select({ id: orders.id, number: orders.platformOrderId })
+          .from(orders)
+          .where(eq(orders.status, "awaiting_approval"))
+          .orderBy(desc(orders.createdAt))
+          .limit(1);
+        if (!cand) {
+          console.log("SKIP db: no awaiting_approval order for the unresolved-figure case");
+          throw new Rollback();
+        }
+        await tx.delete(printJobs).where(eq(printJobs.orderId, cand.id));
+        await tx
+          .update(orderItems)
+          .set({ productType: "digital", figureCount: null, figureCountSource: "unresolved", title: "Custom Pet Portrait", style: null, options: null, rawVariations: [] })
+          .where(eq(orderItems.orderId, cand.id));
+        await tx.update(orders).set({ rawImport: null }).where(eq(orders.id, cand.id));
+        const res = await runTransition(tx, SYSTEM, { orderId: cand.id, to: "approved", expectedFrom: "awaiting_approval", metadata: { via: "test" } });
+        report(`db ${cand.number}: approve with unresolved figures still returns complete`, res.status === "complete", res.status);
+        const [o] = await tx.select({ status: orders.status }).from(orders).where(eq(orders.id, cand.id));
+        report("db: unresolved-figure digital order is complete", o.status === "complete", o.status);
+        const acts = await tx.select({ action: activityLog.action, from: activityLog.fromState, to: activityLog.toState }).from(activityLog).where(eq(activityLog.orderId, cand.id));
+        report("db: no auto_complete_held row", !acts.some((a) => a.action === "order.auto_complete_held"));
+        const pending = acts.find((a) => a.action === "order.auto_complete_figures_pending");
+        report("db: auto_complete_figures_pending row, null states", !!pending && pending.from == null && pending.to == null);
+        const [earn] = await tx.select({ id: earnings.id, status: earnings.status, reason: earnings.blockedReason }).from(earnings).where(eq(earnings.orderId, cand.id));
+        report("db: earning is blocked 'Missing figure count.'", earn?.status === "blocked" && earn?.reason === "Missing figure count.", `${earn?.status} ${earn?.reason}`);
+
+        // The nightly retry: once the options name a count, inference fills it, logs it, and the earning resolves.
+        await tx.update(orderItems).set({ rawVariations: [{ name: "Options", value: "House & 3 Figure/pet" }] }).where(eq(orderItems.orderId, cand.id));
+        const left = await autoResolveOrderFigures(tx, cand.id);
+        const [it] = await tx.select({ n: orderItems.figureCount }).from(orderItems).where(eq(orderItems.orderId, cand.id));
+        report("db: retry infers House & 3 Figure/pet = 4", left === 0 && it.n === 4, `left ${left}, count ${it.n}`);
+        const auto = await tx.select({ meta: activityLog.metadata, from: activityLog.fromState }).from(activityLog).where(and(eq(activityLog.orderId, cand.id), eq(activityLog.action, "order.figure_count_auto")));
+        report("db: one order.figure_count_auto row with the count", auto.length === 1 && (auto[0].meta as { count?: number })?.count === 4 && auto[0].from == null);
+        const rec = await recalculateBlockedEarning(tx, earn.id, (await tx.select({ b: orders.businessId }).from(orders).where(eq(orders.id, cand.id)))[0].b);
+        console.log(`INFO recalculateBlockedEarning: ${JSON.stringify(rec)}`);
+        throw new Rollback();
+      }),
+    );
+  } catch (e) {
+    if (!(e instanceof Rollback)) throw e;
+  }
+  // A person (no autoClose flag) pressing Complete on an unresolved count keeps today's refusal.
+  try {
+    await withAlphaPushesHeld(() =>
+      withSystemContext(async (tx) => {
+        const [cand] = await tx.select({ id: orders.id }).from(orders).where(eq(orders.status, "approved")).limit(1);
+        if (!cand) {
+          console.log("SKIP db: no approved order for the manual-complete refusal");
+          throw new Rollback();
+        }
+        await tx.update(orderItems).set({ figureCount: null, figureCountSource: "unresolved", title: "Custom Pet Portrait", style: null, options: null, rawVariations: [] }).where(eq(orderItems.orderId, cand.id));
+        await tx.update(orders).set({ rawImport: null }).where(eq(orders.id, cand.id));
+        let refused = false;
+        try {
+          await tx.transaction((sp) => runTransition(sp, SYSTEM, { orderId: cand.id, to: "complete", expectedFrom: "approved", metadata: { via: "test" } }));
+        } catch (e) {
+          refused = e instanceof PreconditionError;
+        }
+        report("db: manual Complete with unresolved figures is still refused", refused);
         throw new Rollback();
       }),
     );

@@ -185,6 +185,13 @@ export type TransitionInput = {
   overrideReason?: string;
   /** The caller already ran the wrong-file and revision stops for this move (confirmQcPassAndSend does, before it emails). */
   wrongFileChecked?: boolean;
+  /**
+   * Set only by the digital auto-close (autoCompleteDigital and the closeApprovedDigital sweep). An
+   * all-digital order with no print job always closes on the buyer's yes: this skips ONLY the
+   * unresolved-figure-count refusal (the earning is created blocked, "Missing figure count.", and a
+   * person fills the count later). A person pressing Complete keeps the precondition.
+   */
+  autoClose?: "digital";
 };
 
 export type TransitionResult = { status: OrderStatus; warnings?: string[] };
@@ -257,7 +264,7 @@ export async function runTransition(tx: Tx, actor: Actor, input: TransitionInput
 
   // Preconditions before we mutate anything.
   if (to === "complete" && !nonPortraitComplete) {
-    await assertFiguresResolved(tx, orderId, order.platformOrderId);
+    await assertFiguresResolved(tx, orderId, order.platformOrderId, input.autoClose === "digital");
   }
   if (to === "awaiting_qc") {
     const stale = await assertHasSubmission(tx, orderId, order.platformOrderId, actor.role === "system");
@@ -481,6 +488,7 @@ async function autoCompleteDigital(
         to: "complete",
         expectedFrom: "approved",
         metadata: { via: "auto_complete_digital", approvedVia: typeof metadata?.via === "string" ? metadata.via : null },
+        autoClose: "digital",
       }),
     );
     return true;
@@ -501,9 +509,9 @@ async function autoCompleteDigital(
 }
 
 /* --- side effects ------------------------------------------------------- */
-async function assertFiguresResolved(tx: Tx, orderId: string, platformOrderId: string): Promise<void> {
+async function assertFiguresResolved(tx: Tx, orderId: string, platformOrderId: string, digitalAutoClose = false): Promise<void> {
   const items = await tx
-    .select({ figureCount: orderItems.figureCount })
+    .select({ id: orderItems.id, businessId: orderItems.businessId, figureCount: orderItems.figureCount })
     .from(orderItems)
     .where(eq(orderItems.orderId, orderId));
   if (items.length === 0) {
@@ -512,6 +520,25 @@ async function assertFiguresResolved(tx: Tx, orderId: string, platformOrderId: s
     );
   }
   if (items.some((i) => i.figureCount == null) && (await autoResolveOrderFigures(tx, orderId)) > 0) {
+    if (digitalAutoClose) {
+      // Digital orders always close. The earning is created blocked ("Missing figure count.") and
+      // resolves once a person (or the nightly retry) sets the count.
+      const still = await tx
+        .select({ id: orderItems.id, businessId: orderItems.businessId })
+        .from(orderItems)
+        .where(and(eq(orderItems.orderId, orderId), isNull(orderItems.figureCount)));
+      await tx.insert(activityLog).values({
+        businessId: still[0]?.businessId ?? items[0].businessId,
+        orderId,
+        actorId: null,
+        action: "order.auto_complete_figures_pending",
+        fromState: null,
+        toState: null,
+        metadata: { itemIds: still.map((i) => i.id), note: "closed without a figure count; the earning waits blocked until it is set" },
+        createdAt: sql`clock_timestamp()`,
+      });
+      return;
+    }
     throw new PreconditionError(
       `Cannot complete order ${platformOrderId}: it has an unresolved figure count. Resolve it from Orders first (figure count drives payout).`,
     );

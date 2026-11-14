@@ -188,7 +188,10 @@ async function main() {
     await transition(va, { orderId, to: "awaiting_qc", expectedFrom: "in_design" });
     await transition(va, { orderId, to: "awaiting_approval", expectedFrom: "awaiting_qc", metadata: { itemResults: passingItemResults, signature: ctx.vaName } });
     await transition(va, { orderId, to: "approved", expectedFrom: "awaiting_approval" });
-    await transition(va, { orderId, to: "complete", expectedFrom: "approved" });
+    // A digital order closes on the buyer's yes (autoCompleteDigital), so only complete it by hand if it is still approved.
+    if ((await withSystemContext((tx) => tx.select({ s: orders.status }).from(orders).where(eq(orders.id, orderId))))[0]?.s === "approved") {
+      await transition(va, { orderId, to: "complete", expectedFrom: "approved" });
+    }
     rows = await earningRows(orderId);
     report(
       "revision round-trip creates no second earning",

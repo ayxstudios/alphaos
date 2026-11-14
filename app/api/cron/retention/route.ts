@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { isAuthorizedCron } from "@/lib/cron/auth";
-import { closeApprovedDigital } from "@/lib/orders/auto-complete";
+import { closeApprovedDigital, retryBlockedFigureEarnings } from "@/lib/orders/auto-complete";
 import { sweepExpiredAssets } from "@/lib/storage/retention";
 import { failJobRun, finishJobRun, JOB_NAMES, startJobRun } from "@/lib/jobs/ledger";
 
@@ -19,14 +19,16 @@ export async function GET(req: NextRequest) {
     const summary = await sweepExpiredAssets();
     // Approved all-digital orders the inline hook held (figure count unresolved at the
     // time) close here once the count can be inferred; a bounded batch keeps the run short.
-    const digital = await closeApprovedDigital({ limit: 20 }).catch((e: unknown) => ({ error: String(e) }));
+    const digital = await closeApprovedDigital({ limit: 100 }).catch((e: unknown) => ({ error: String(e) }));
+    // Complete orders whose earning waits on "Missing figure count.": retry the count, then resolve the earning.
+    const blockedRetry = await retryBlockedFigureEarnings({ limit: 50 }).catch((e: unknown) => ({ error: String(e) }));
     await finishJobRun(runId, {
       status: summary.errors > 0 ? "partial" : "ok",
       itemsProcessed: summary.scanned,
       itemsFailed: summary.errors,
-      metadata: { ...summary, digital },
+      metadata: { ...summary, digital, blockedRetry },
     });
-    return NextResponse.json({ ...summary, digital });
+    return NextResponse.json({ ...summary, digital, blockedRetry });
   } catch (error) {
     await failJobRun(runId, error);
     throw error;
