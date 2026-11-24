@@ -164,6 +164,8 @@ export type AgentBusinessReport = {
   outbox?: Omit<OutboxReport, "errors">;
   /** No limbo pass (docs/NO_LIMBO.md): junk mail cleared, stale rows closed, stuck orders raised, census. */
   noLimbo?: NoLimboReport;
+  /** Milliseconds each step took this tick (only the steps that ran), to see what eats the budget. */
+  stepMs?: Record<string, number>;
   errors: AgentOrderError[];
 };
 
@@ -269,7 +271,23 @@ async function tick(opts: AgentTickOptions): Promise<AgentTickReport> {
       .orderBy(businesses.name),
   );
 
+  // FAIR TICK (CPS 2026-11-24, Yousif: "CPS is falling behind in clean slating"): every step used to run shop by shop
+  // in name order, so the slower passes of the first shops spent the whole 45 s budget and The Custom Portrait Shop
+  // (last by name) and PixArt got no assignment pass at all from 23 Nov 13:25Z: 36 CPS orders with photos sat on
+  // nobody's board while designers had room. Now the order moves (add-ons, intake, completeness, assign) run for EVERY
+  // shop first, then the slower passes, and the starting shop rotates every tick so no shop is always last.
+  const rot = bizRows.length ? Math.floor(started / 600_000) % bizRows.length : 0;
+  const ordered = [...bizRows.slice(rot), ...bizRows.slice(0, rot)];
   const reports: AgentBusinessReport[] = [];
+  const ctxs = new Map<string, TickCtx>();
+  const timed = async (report: AgentBusinessReport, step: string, fn: () => Promise<unknown>) => {
+    const t0 = Date.now();
+    try {
+      await fn();
+    } finally {
+      report.stepMs = { ...(report.stepMs ?? {}), [step]: (report.stepMs?.[step] ?? 0) + Date.now() - t0 };
+    }
+  };
   for (const biz of bizRows) {
     const report: AgentBusinessReport = {
       businessId: biz.id,
@@ -294,15 +312,27 @@ async function tick(opts: AgentTickOptions): Promise<AgentTickReport> {
       errors: [],
     };
     reports.push(report);
-    const ctx: TickCtx = { dryRun, now, report, addonsSeen: new Set() };
+    ctxs.set(biz.id, { dryRun, now, report, addonsSeen: new Set() });
+  }
 
+  // Phase 1: the order moves, every shop.
+  for (const biz of ordered) {
+    const ctx = ctxs.get(biz.id)!;
+    const report = ctx.report;
     // Every business: a paid invoice the agent made is never a new portrait.
-    if (!outOfTime()) await invoiceAddonStep(ctx, biz.id, outOfTime);
+    if (!outOfTime()) await timed(report, "invoiceAddons", () => invoiceAddonStep(ctx, biz.id, outOfTime));
     // Every business: an add-on (above all a print bought after a digital order) finds the order it belongs to.
-    if (!outOfTime()) await addonLinkStep(ctx, biz.id, outOfTime);
-    if (biz.intake && !outOfTime()) await intakeStep(ctx, biz.id, outOfTime);
-    if (biz.intake && !outOfTime()) await completenessStep(ctx, biz.id, outOfTime);
-    if (biz.assign && !outOfTime()) await assignStep(ctx, biz.id, outOfTime);
+    if (!outOfTime()) await timed(report, "addonLink", () => addonLinkStep(ctx, biz.id, outOfTime));
+    if (biz.intake && !outOfTime()) await timed(report, "intake", () => intakeStep(ctx, biz.id, outOfTime));
+    if (biz.intake && !outOfTime()) await timed(report, "completeness", () => completenessStep(ctx, biz.id, outOfTime));
+    if (biz.assign && !outOfTime()) await timed(report, "assign", () => assignStep(ctx, biz.id, outOfTime));
+  }
+
+  // Phase 2: everything else, every shop.
+  for (const biz of ordered) {
+    const ctx = ctxs.get(biz.id)!;
+    const report = ctx.report;
+    const t2 = Date.now();
     if (biz.assign && !outOfTime()) {
       try {
         const rb = await rebalanceBusiness(biz.id, { dryRun, now });
@@ -346,7 +376,8 @@ async function tick(opts: AgentTickOptions): Promise<AgentTickReport> {
       if (outbox.exceptionsOpened && !report.exceptionKinds.includes("email_send_failed")) report.exceptionKinds.push("email_send_failed");
       for (const e of errors) report.errors.push({ orderId: "", message: e.messageId ? `email ${e.messageId}: ${e.message}` : e.message });
     }
-    if (!outOfTime()) await noLimboStep(ctx, biz.id, biz.assign);
+    if (!outOfTime()) await timed(report, "noLimbo", () => noLimboStep(ctx, biz.id, biz.assign));
+    report.stepMs = { ...(report.stepMs ?? {}), phase2: Date.now() - t2 };
   }
 
   // Portraits waiting on an owner's QC past ownerQcSlaHours: one URGENT, then
