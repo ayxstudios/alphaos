@@ -511,7 +511,7 @@ export type Candidate = {
    * overflow = past the limit they stay eligible as if unquota'd (by rank).
    * An order in 2+ styles touches a group per style: combineQuotas folds them.
    */
-  styleQuota?: { limit: number; priority: number; usedToday: number; overflow?: boolean } | null;
+  styleQuota?: { limit: number; priority: number; usedToday: number; overflow?: boolean; share?: number } | null;
 };
 
 export type RankedCandidate = Candidate & {
@@ -543,8 +543,9 @@ export type RankedCandidate = Candidate & {
  * the order's styles first, then the order below. Never a Disney-only designer
  * for a plain primary.
  *
- * Order among the eligible: manual rank (asc) -> most remaining capacity ->
- * lowest work-in-progress -> best 30-day on-time rate.
+ * Order among the eligible: manual rank (asc) -> share turn (quota groups
+ * with a share) -> most remaining capacity -> lowest work-in-progress -> best
+ * 30-day on-time rate.
  */
 export function rankCandidates(
   candidates: Candidate[],
@@ -585,11 +586,19 @@ export function rankCandidates(
   // unquota'd rest, by rank.
   const quotaPriority = (c: RankedCandidate) =>
     c.styleQuota && quotaOpen(c) ? c.styleQuota.priority : Number.MAX_SAFE_INTEGER;
+  // Share split (StyleDailyLimit.share): among open quota holders tied on
+  // priority and rank, the next order goes to whoever would sit lowest against
+  // their share after taking it, (used + 1) / share. Mar 2 + Wahyu 1 gives
+  // Mar, Wahyu, Mar | Mar, Wahyu, Mar ...: one in every three to Wahyu. No
+  // share = 0 for everyone, so the order below is unchanged.
+  const shareTurn = (c: RankedCandidate) =>
+    c.styleQuota && quotaOpen(c) && (c.styleQuota.share ?? 0) > 0 ? (c.styleQuota.usedToday + 1) / c.styleQuota.share! : 0;
   eligible.sort(
     (a, b) =>
       (primaryOnly ? b.covers - a.covers : 0) ||
       quotaPriority(a) - quotaPriority(b) ||
       a.rank - b.rank ||
+      shareTurn(a) - shareTurn(b) ||
       b.remainingCapacity - a.remainingCapacity ||
       a.wipCount - b.wipCount ||
       b.onTimeRate30d - a.onTimeRate30d,
@@ -817,7 +826,7 @@ export async function loadRankedCandidates(
           firstForOrder: r.firstForOrder === true,
         }));
       const state = combineQuotas(
-        h.groups.map((g) => ({ limit: g.limit, priority: g.priority, usedToday: quotaUsed(g, uses), overflow: g.overflow === true })),
+        h.groups.map((g) => ({ limit: g.limit, priority: g.priority, usedToday: quotaUsed(g, uses), overflow: g.overflow === true, share: g.share })),
       );
       if (state) quotaFor.set(h.designerId, state);
     }

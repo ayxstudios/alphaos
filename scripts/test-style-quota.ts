@@ -294,5 +294,57 @@ const allFull = rankCandidates(
 );
 check("Disney designers all full: nobody, never Abdul", allFull.length === 0, ids(allFull));
 
+// ---------------------------------------------------------------------------
+// Share split (Yousif 2026-11-28): PixArt Disney pet, one order in every three
+// to Wahyu, two to Mar. Same priority and rank, Mar share 2, Wahyu share 1.
+// ---------------------------------------------------------------------------
+const shareDay = (n: number, tweak: (c: Candidate[]) => Candidate[] = (c) => c): string => {
+  const took: Record<string, number> = { mar: 0, wahyu: 0 };
+  const other: Record<string, number> = { mar: 0, wahyu: 0 };
+  let seq = "";
+  for (let i = 0; i < n; i++) {
+    const pool = tweak([
+      { ...base, designerId: "mar", rank: 1, dailyCapacity: 30, ordersAssignedToday: took.mar + other.mar, styles: ["cartoon", "Disney Pet"], styleQuota: { limit: 30, priority: -3, usedToday: took.mar, share: 2 } },
+      { ...base, designerId: "wahyu", rank: 1, dailyCapacity: 30, ordersAssignedToday: took.wahyu + other.wahyu, styles: ["cartoon", "Disney Pet", "Disneyfy People"], styleQuota: { limit: 30, priority: -3, usedToday: took.wahyu, overflow: true, share: 1 } },
+      { ...base, designerId: "febri", rank: 8, dailyCapacity: 4, styles: ["cartoon", "Disney Pet"], styleQuota: { limit: 0, priority: -1, usedToday: 0 } },
+    ]);
+    const pick = rankCandidates(pool, { style: "cartoon" })[0]?.designerId ?? "-";
+    seq += pick === "mar" ? "M" : pick === "wahyu" ? "W" : "?";
+    if (pick in took) took[pick]++;
+  }
+  return seq;
+};
+const count = (s: string, ch: string) => s.split(ch).length - 1;
+const nine = shareDay(9);
+check("share 2:1: nine orders = 6 Mar, 3 Wahyu", count(nine, "M") === 6 && count(nine, "W") === 3, nine);
+check("share 2:1: every block of three holds exactly one Wahyu", [0, 3, 6].every((i) => count(nine.slice(i, i + 3), "W") === 1), nine);
+const thirty = shareDay(30);
+check("share 2:1: a 30-order day = 20 Mar, 10 Wahyu", count(thirty, "M") === 20 && count(thirty, "W") === 10, thirty);
+check("share 2:1: never Febri (closed) while they are open", !thirty.includes("?"));
+// Wahyu busy with other work (Disney people, CPS): the split still holds, it follows the group's count.
+const busy = shareDay(9, (c) => c.map((x) => (x.designerId === "wahyu" ? { ...x, ordersAssignedToday: x.ordersAssignedToday + 8 } : x)));
+check("share 2:1: holds when Wahyu carries other orders that day", count(busy, "M") === 6 && count(busy, "W") === 3, busy);
+// Mar at his daily capacity: everything goes to Wahyu, nobody is left without a designer.
+const marFull = shareDay(4, (c) => c.map((x) => (x.designerId === "mar" ? { ...x, ordersAssignedToday: 30 } : x)));
+check("share: Mar full for the day -> Wahyu takes all", marFull === "WWWW", marFull);
+// No share anywhere: the old tie-break (most remaining capacity) is untouched.
+const noShare = rankCandidates(
+  [
+    { ...base, designerId: "mar", rank: 1, dailyCapacity: 30, ordersAssignedToday: 5, styles: ["cartoon"], styleQuota: { limit: 30, priority: -3, usedToday: 5 } },
+    { ...base, designerId: "wahyu", rank: 1, dailyCapacity: 30, ordersAssignedToday: 2, styles: ["cartoon"], styleQuota: { limit: 30, priority: -3, usedToday: 2 } },
+  ],
+  { style: "cartoon" },
+);
+check("no share: most remaining capacity still decides", ids(noShare) === "wahyu,mar", ids(noShare));
+// Priority and rank still come before the share.
+const prio = rankCandidates(
+  [
+    { ...base, designerId: "mar", rank: 1, styles: ["cartoon"], styleQuota: { limit: 30, priority: -3, usedToday: 9, share: 2 } },
+    { ...base, designerId: "wahyu", rank: 1, styles: ["cartoon"], styleQuota: { limit: 30, priority: -2, usedToday: 0, share: 1 } },
+  ],
+  { style: "cartoon" },
+);
+check("share never beats quota priority", ids(prio) === "mar,wahyu", ids(prio));
+
 console.log(failed ? `\ntest-style-quota FAILED (${failed})` : "\ntest-style-quota OK");
 process.exit(failed ? 1 : 0);

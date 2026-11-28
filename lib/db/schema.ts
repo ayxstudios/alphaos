@@ -431,6 +431,14 @@ export type StyleDailyLimit = {
    * assignment today counts.
    */
   newOrdersOnly?: boolean;
+  /**
+   * Split weight among designers tied on quota priority AND rank for these
+   * styles: each new order goes to whoever is furthest behind their share of
+   * today's orders (Yousif 2026-11-28: PixArt Disney pet, Mar share 2, Wahyu
+   * share 1 = one order in every three to Wahyu). Absent on every tied
+   * designer = the split is by most remaining capacity, as before.
+   */
+  share?: number;
 };
 
 export const designerProfiles = pgTable("designer_profiles", {
